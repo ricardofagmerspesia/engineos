@@ -32,6 +32,22 @@ src/orders/
 6. Tests: service unit test (repository mocked) + controller e2e for the happy path and one auth/validation failure.
 7. List endpoints: pagination params (`page/limit` or cursor), default 20, max 100, return metadata.
 
+## Controller input — typed DTOs, no inline pipes
+
+Bind `@Query()` / `@Param()` to typed DTO classes. Inline binding decorators are prohibited.
+
+```typescript
+// NO — inline pipes + per-param Swagger decorators
+@ApiQuery({ name: 'page', required: false, type: Number })
+async list(@Query('page', new DefaultValuePipe(1), ParseIntPipe) page = 1) {}
+
+// YES — DTO carries defaults, coercion (@Type(() => Number)), and @ApiProperty docs
+async list(@Param() params: ClientParamsDto, @Query() query: PaginationQueryDto) {}
+```
+- No inline `@ApiQuery` / `@ApiParam` — DTO `@ApiProperty` covers Swagger.
+- No inline `DefaultValuePipe` / `ParseIntPipe` — use `@Type()` + defaults in the DTO.
+- Controllers stay lean (target <20 lines): no calculations, no aggregation, no repository/entity access — delegate to a service.
+
 ## Codegen
 
 Use the `nestjs` MCP tools for scaffolding (`nestjs_generate_resource`, `nestjs_generate_service`, etc.) — then adapt output to the layout above. MCP output is a starting point, not gospel.
@@ -52,3 +68,5 @@ Use the `nestjs` MCP tools for scaffolding (`nestjs_generate_resource`, `nestjs_
 - `process.env` in services → move to config.
 - Repository injected into controller → route through service.
 - Unbounded `find()` without pagination on list routes.
+- Inline `ParseIntPipe`/`DefaultValuePipe`/`@ApiQuery` on params → move to a typed DTO.
+- Controller doing math/aggregation or >20 lines → push into a service.

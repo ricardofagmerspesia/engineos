@@ -44,6 +44,7 @@ and `settings.local.json` — this repo never touches it.
 | `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
 | `skills/adr` | Decision records | Architecture choices |
 | `skills/eval-harness` | Scaffold golden sets, runners, LLM-judge | LLM feature without evals |
+| `skills/release-notes` | Structured release page from commits/PRs | Version bump / "write release notes" |
 | `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |
 | `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
 | `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |

@@ -8,7 +8,9 @@
 ## Validation & DTOs
 - DO validate every external input with class-validator DTOs (or zod pipes) at the controller edge.
 - DO use separate DTOs for input and output — never expose ORM entities in responses.
-- DO whitelist: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` globally.
+- DO make every endpoint declare both a request DTO and a response DTO; never return an untyped service result.
+- DO make boundary DTOs classes, not interfaces/type aliases (decorators need a class). Use `@ValidateNested()` + `@Type()` for nested objects.
+- DO whitelist: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` globally — also blocks mass assignment.
 - DON'T trust internal callers either at module boundaries that cross trust zones.
 
 ## Services & data access
