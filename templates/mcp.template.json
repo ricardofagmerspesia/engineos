@@ -1,0 +1,35 @@
+{
+  "$comment": "EngineOS MCP baseline. Copy entries into ~/.claude/settings.json mcpServers (or use `claude mcp add`). NEVER put literal tokens here — env var references only.",
+  "mcpServers": {
+    "context7": {
+      "$when": "Live, version-correct library docs while coding.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "github": {
+      "$when": "PRs, issues, CI status from the terminal.",
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": { "Authorization": "Bearer ${GITHUB_MCP_TOKEN}" }
+    },
+    "chrome-devtools": {
+      "$when": "Verify UI changes in a real browser (screenshots, console, network).",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
+    },
+    "postgres": {
+      "$when": "Read-only schema/data introspection for analysis and debugging.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL_READONLY}"]
+    },
+    "nestjs": {
+      "$when": "NestJS scaffolding, docs, and security checklists.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@nestjs-mcp/server"]
+    }
+  }
+}

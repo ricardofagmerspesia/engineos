@@ -1,0 +1,57 @@
+# EngineOS
+
+Shared AI engineering environment for Claude Code. One source of truth for how we build:
+rules, skills, routing, quality-gate hooks, and MCP baseline — versioned, reviewed via PR,
+installed with one command.
+
+Spec: see `docs/PRD.md`.
+
+## Install
+
+```bash
+git clone <repo-url> ~/projects/engineos
+cd ~/projects/engineos && ./install.sh
+```
+
+Idempotent — re-run after every `git pull`. The installer:
+1. Refuses to install if secret-looking strings are in the repo.
+2. Adds one import line to your `~/.claude/CLAUDE.md` (personal lines untouched).
+3. Symlinks `skills/` into `~/.claude/skills/`.
+4. Merges the two quality-gate hooks into `~/.claude/settings.json` (backup created).
+
+Personal stuff (output style, personal hooks, keys) stays in your own `~/.claude/CLAUDE.md`
+and `settings.local.json` — this repo never touches it.
+
+## What's inside
+
+| Path | What | When it fires |
+|---|---|---|
+| `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action |
+| `rules/base.md`, `security.md`, `git.md` | Always-on standards | Every session |
+| `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md` | Per-domain standards | Loaded by router per intent |
+| `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
+| `skills/react-patterns` | Team React/Next shapes | Frontend work |
+| `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
+| `skills/adr` | Decision records | Architecture choices |
+| `hooks/post-edit-check.sh` | Typecheck+lint changed package after every AI edit | PostToolUse Edit\|Write |
+| `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
+| `templates/mcp.template.json` | MCP baseline (context7, github, chrome-devtools, postgres, nestjs) | Manual add |
+| `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
+
+## Relationship to plugins
+
+EngineOS routes to — and depends on — these installed plugins, it does not replace them:
+- **superpowers** — brainstorming, TDD, systematic debugging, verification-before-completion
+- **tlc-spec-driven** — spec → design → tasks → execute workflow
+
+Install both before/with EngineOS.
+
+## Changing a standard
+
+Rules are code. Open a PR, team reviews, merge, everyone `git pull && ./install.sh`.
+No Slack-announcement standards.
+
+## Security
+
+- No secrets in this repo, ever. The installer and reviewers enforce it. Leaked = rotate.
+- `mcp.template.json` uses env-var references only.
