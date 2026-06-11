@@ -51,6 +51,19 @@ for skill in "$REPO_DIR"/skills/*/; do
   fi
 done
 
+# ---------- 4b. Symlink subagents ----------
+mkdir -p "$CLAUDE_DIR/agents"
+for agent in "$REPO_DIR"/agents/*.md; do
+  name=$(basename "$agent")
+  target="$CLAUDE_DIR/agents/$name"
+  if [ -L "$target" ] || [ ! -e "$target" ]; then
+    ln -sfn "$agent" "$target"
+    echo "agent linked: ${name%.md}"
+  else
+    warn "skip: $target exists and is not a symlink"
+  fi
+done
+
 # ---------- 5. Hooks: merge into settings.json (requires jq) ----------
 chmod +x "$REPO_DIR"/hooks/*.sh
 if command -v jq >/dev/null 2>&1; then
@@ -72,6 +85,16 @@ if command -v jq >/dev/null 2>&1; then
      else . end)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
+
+  # ---------- 5b. Shared permission allowlist (read-only commands) ----------
+  jq -s '
+    .[0] as $settings | .[1].allow as $shared |
+    $settings |
+    .permissions //= {} |
+    .permissions.allow = ((.permissions.allow // []) + $shared | unique)
+  ' "$SETTINGS" "$REPO_DIR/templates/permissions.template.json" > "$SETTINGS.tmp" \
+    && mv "$SETTINGS.tmp" "$SETTINGS"
+  green "Shared read-only allowlist merged into permissions."
 else
   warn "jq not found — add hooks manually to $SETTINGS:"
   warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/post-edit-check.sh"

@@ -33,6 +33,11 @@ and `settings.local.json` — this repo never touches it.
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
 | `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
 | `skills/adr` | Decision records | Architecture choices |
+| `skills/eval-harness` | Scaffold golden sets, runners, LLM-judge | LLM feature without evals |
+| `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |
+| `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
+| `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |
+| `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/post-edit-check.sh` | Typecheck+lint changed package after every AI edit | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
 | `templates/mcp.template.json` | MCP baseline (context7, github, chrome-devtools, postgres, nestjs) | Manual add |

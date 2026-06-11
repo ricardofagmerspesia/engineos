@@ -10,6 +10,7 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/base.md
 @rules/security.md
 @rules/git.md
+@rules/memory.md
 
 ## Router — classify before acting
 
@@ -34,7 +35,9 @@ Rules for routing:
 | LLM/agent work (prompt, agent, RAG, embedding, eval, tool schema) | Read `rules/llm-apps.md`; skill `llm-engineering` |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | Read `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` — decision gets recorded, not just chatted |
-| Review / pre-merge ("review", "is this safe", PR URL) | code-review skill + Read `rules/security.md` checklist |
+| Review / pre-merge ("review", "is this safe", PR URL) | code-review skill; if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
+| Test writing ("write tests", "add coverage", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets |
+| Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | skill `eval-harness` |
 | Claiming done / complete / fixed | `superpowers:verification-before-completion` — evidence before assertion, always |
 
 ## Non-negotiables (apply regardless of routing)
