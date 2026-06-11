@@ -1,0 +1,14 @@
+{
+  "name": "engineos",
+  "displayName": "EngineOS",
+  "description": "Shared AI engineering environment: intent router, scalable-system rules, stack skills (NestJS/React/LLM), security-reviewer and test-writer subagents, quality-gate hooks.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Ricardo Fagmer",
+    "url": "https://github.com/ricardofagmer"
+  },
+  "repository": "https://github.com/ricardofagmer/engineer-spec-ia-pattern",
+  "license": "MIT",
+  "keywords": ["engineering", "rules", "router", "nestjs", "react", "llm", "security"],
+  "hooks": "./hooks/hooks.json"
+}

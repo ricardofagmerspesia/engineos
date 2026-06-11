@@ -1,0 +1,60 @@
+# EngineOS CI security review — copy to <repo>/.github/workflows/claude-security.yml
+# Requires repo secret: ANTHROPIC_API_KEY (CI-scoped key, NOT a personal key).
+# Runs only when the diff touches security-relevant paths — tune the paths filter per repo.
+name: Claude Security Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - "**/auth/**"
+      - "**/middleware/**"
+      - "**/guards/**"
+      - "**/*controller*"
+      - "**/*webhook*"
+      - "**/prompts/**"
+      - "**/agent/**"
+      - "**/.env*"
+      - "**/package.json"
+
+concurrency:
+  group: claude-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are an adversarial security reviewer. Map the attack surface of this PR's
+            diff and actively construct abuse paths. Assume an attacker who knows the source.
+
+            Hunt specifically:
+            - Broken object-level authorization (IDOR): can user A reach user B's data?
+            - Missing/weak authentication on new endpoints, queue consumers, webhooks
+            - Injection: SQL string building, shell exec with user data, path traversal,
+              unescaped HTML output
+            - Secrets in code, config, logs, or error messages
+            - Unvalidated input: missing DTO validation, unbounded sizes, mass assignment
+            - SSRF via user-influenced URLs
+            - Prompt injection: untrusted content reaching LLM instructions;
+              over-privileged agent tools; model output crossing trust boundaries unvalidated
+            - Insecure crypto: homemade hashing, non-constant-time comparison
+
+            Every finding needs a CONCRETE attack path (payload/sequence) and severity
+            (CRITICAL/HIGH/MEDIUM/LOW by impact x reachability). Verify exploitability by
+            reading the actual code path — discard findings already mitigated upstream.
+            Zero findings is a valid result: state CLEAR and list what you checked.
+            End with verdict: BLOCK | MERGE WITH FIXES | CLEAR.
+          claude_args: "--max-turns 15"

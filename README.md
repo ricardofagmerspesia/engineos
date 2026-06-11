@@ -8,12 +8,22 @@ Spec: see `docs/PRD.md`.
 
 ## Install
 
+Two modes — **pick one**, not both (both = duplicate skills/hooks):
+
+**A. Script (recommended — full setup):**
 ```bash
-git clone <repo-url> ~/projects/engineos
+git clone git@github.com:ricardofagmer/engineer-spec-ia-pattern.git ~/projects/engineos
 cd ~/projects/engineos && ./install.sh
 ```
 
-Idempotent — re-run after every `git pull`. The installer:
+**B. Plugin (skills + agents + hooks only — no constitution import, no permissions):**
+```
+/plugin marketplace add ricardofagmer/engineer-spec-ia-pattern
+/plugin install engineos@engineos
+```
+Plugin mode still needs the router: add `@<plugin-path>/CLAUDE.md` to your `~/.claude/CLAUDE.md` manually, or just use mode A.
+
+Mode A is idempotent — re-run after every `git pull`. The installer:
 1. Refuses to install if secret-looking strings are in the repo.
 2. Adds one import line to your `~/.claude/CLAUDE.md` (personal lines untouched).
 3. Symlinks `skills/` into `~/.claude/skills/`.
@@ -50,6 +60,21 @@ EngineOS routes to — and depends on — these installed plugins, it does not r
 - **tlc-spec-driven** — spec → design → tasks → execute workflow
 
 Install both before/with EngineOS.
+
+## CI agents
+
+Copy `templates/github/*.yml` into a project's `.github/workflows/`:
+- `claude-review.yml` — convention/correctness review on every PR (reads the repo's CLAUDE.md)
+- `claude-security.yml` — adversarial security review, fires only on security-relevant paths
+
+Both need repo secret `ANTHROPIC_API_KEY` — create a **CI-scoped key**, never reuse a personal one. Tune the security workflow's `paths` filter per repo.
+
+## Usage analytics
+
+```bash
+./scripts/usage-report.sh 30   # which intents/skills fired in last 30 days
+```
+Quarterly: zero-hit rules/skills are prune candidates.
 
 ## Changing a standard
 

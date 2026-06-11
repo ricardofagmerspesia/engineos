@@ -1,0 +1,43 @@
+# EngineOS CI code review — copy to <repo>/.github/workflows/claude-review.yml
+# Requires repo secret: ANTHROPIC_API_KEY (CI-scoped key, NOT a personal key).
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    # Skip drafts and bot PRs
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.type != 'Bot' }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review this PR diff for correctness and quality. Read the project's CLAUDE.md
+            and follow its conventions over generic preferences.
+
+            Report only findings that change behavior or violate stated conventions:
+            - Bugs: logic errors, unhandled failure paths, race conditions, N+1 I/O
+            - Contract breaks: API shape changes, missing validation on new inputs
+            - Missing tests for business logic or bug fixes (project rule: fix ships with test)
+            - Convention violations against CLAUDE.md
+
+            For each finding: file:line, what breaks, concrete fix direction.
+            Do NOT comment on style that linters cover, or rewrite working code.
+            If the PR is clean, say so in one line — do not invent findings.
+            PRs over 400 changed lines: note the size limit violation first.
+          claude_args: "--max-turns 12"

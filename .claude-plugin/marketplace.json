@@ -1,0 +1,16 @@
+{
+  "name": "engineos",
+  "owner": {
+    "name": "Ricardo Fagmer",
+    "email": "ricardofagmer@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "engineos",
+      "source": "./",
+      "description": "Shared AI engineering environment: router, rules, stack skills, subagents, quality-gate hooks.",
+      "version": "1.0.0",
+      "author": { "name": "Ricardo Fagmer" }
+    }
+  ]
+}
