@@ -51,7 +51,7 @@ and `settings.local.json` — this repo never touches it.
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/post-edit-check.sh` | Typecheck+lint changed package after every AI edit | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
-| `templates/mcp.template.json` | MCP baseline (context7, github, chrome-devtools, postgres, nestjs) | Manual add |
+| `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (jira/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
 
 ## Relationship to plugins

@@ -1,5 +1,5 @@
 {
-  "$comment": "EngineOS MCP baseline. Copy entries into ~/.claude/settings.json mcpServers (or use `claude mcp add`). NEVER put literal tokens here — env var references only.",
+  "$comment": "EngineOS MCP baseline. Copy entries into ~/.claude/settings.json mcpServers (or `claude mcp add`). NEVER put literal tokens/connection strings here — env-var references only. Entries marked $verify use community servers whose exact package name/transport should be confirmed before trusting; pin a version once chosen. Connect only the servers a given machine actually needs.",
   "mcpServers": {
     "context7": {
       "$when": "Live, version-correct library docs while coding.",
@@ -19,17 +19,113 @@
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest"]
     },
-    "postgres": {
-      "$when": "Read-only schema/data introspection for analysis and debugging.",
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL_READONLY}"]
-    },
     "nestjs": {
       "$when": "NestJS scaffolding, docs, and security checklists.",
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "@nestjs-mcp/server"]
+    },
+
+    "postgres": {
+      "$when": "Postgres schema/data introspection. Point at a READ-ONLY role.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${POSTGRES_URL_READONLY}"]
+    },
+    "mysql": {
+      "$when": "MySQL/MariaDB schema and query introspection.",
+      "$verify": "community package — confirm @benborla29/mcp-server-mysql before pinning",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@benborla29/mcp-server-mysql"],
+      "env": {
+        "MYSQL_HOST": "${MYSQL_HOST}",
+        "MYSQL_PORT": "${MYSQL_PORT}",
+        "MYSQL_USER": "${MYSQL_USER}",
+        "MYSQL_PASS": "${MYSQL_PASS}",
+        "MYSQL_DB": "${MYSQL_DB}"
+      }
+    },
+    "oracle": {
+      "$when": "Oracle DB introspection (e.g. Tasy schema work).",
+      "$verify": "no official Oracle MCP server. Confirm a community server (e.g. mcp-server-oracle via uvx) and ensure Oracle Instant Client is installed and on PATH/LD_LIBRARY_PATH.",
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-oracle"],
+      "env": { "ORACLE_CONNECTION_STRING": "${ORACLE_CONNECTION_STRING}" }
+    },
+
+    "docker": {
+      "$when": "Inspect/manage local containers, images, compose stacks.",
+      "$verify": "community server (QuantGeekDev/docker-mcp). Talks to the local Docker socket — grants broad control; connect only on trusted machines.",
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["docker-mcp"]
+    },
+    "kubernetes": {
+      "$when": "Inspect/operate clusters; uses the current kubeconfig context.",
+      "$verify": "community server (Flux159/mcp-server-kubernetes). Inherits full kubeconfig permissions — point at a read-only/limited context for safety.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-server-kubernetes"],
+      "env": { "KUBECONFIG": "${KUBECONFIG}" }
+    },
+
+    "azure": {
+      "$when": "Query/manage Azure resources. Auth via Azure CLI (`az login`) credentials.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp@latest", "server", "start"]
+    },
+    "aws": {
+      "$when": "AWS resource/docs access. Auth via the local AWS profile/SSO or env credentials.",
+      "$verify": "AWS Labs publishes several focused servers (awslabs.core-mcp-server, .aws-documentation-mcp-server, etc.). Pick the ones you need.",
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["awslabs.core-mcp-server@latest"],
+      "env": {
+        "AWS_PROFILE": "${AWS_PROFILE}",
+        "AWS_REGION": "${AWS_REGION}"
+      }
+    },
+    "gcp": {
+      "$when": "Query GCP resources. Auth via Application Default Credentials (`gcloud auth application-default login`).",
+      "$verify": "no single canonical GCP MCP server — confirm a community/official package (e.g. Google's MCP Toolbox) before pinning.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "google-cloud-mcp"],
+      "env": { "GOOGLE_CLOUD_PROJECT": "${GOOGLE_CLOUD_PROJECT}" }
+    },
+
+    "jira": {
+      "$when": "Jira issues/sprints and Confluence pages.",
+      "$verify": "community server (sooperset/mcp-atlassian) covering Jira + Confluence. Use a scoped API token.",
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "JIRA_URL": "${JIRA_URL}",
+        "JIRA_USERNAME": "${JIRA_USERNAME}",
+        "JIRA_API_TOKEN": "${JIRA_API_TOKEN}"
+      }
+    },
+    "slack": {
+      "$when": "Read/post to Slack channels, search messages.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "SLACK_TEAM_ID": "${SLACK_TEAM_ID}"
+      }
+    },
+    "discord": {
+      "$when": "Read/post to Discord channels via a bot.",
+      "$verify": "community server (e.g. barryyip0625/mcp-discord). Confirm package + required bot intents.",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-discord"],
+      "env": { "DISCORD_TOKEN": "${DISCORD_TOKEN}" }
     }
   }
 }
