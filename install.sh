@@ -72,17 +72,23 @@ if command -v jq >/dev/null 2>&1; then
 
   POST="$REPO_DIR/hooks/post-edit-check.sh"
   STOP="$REPO_DIR/hooks/stop-verify.sh"
+  ROUTE="$REPO_DIR/hooks/route-before-change.sh"
+  MARK="$REPO_DIR/hooks/mark-unrecorded.sh"
+  RECORD="$REPO_DIR/hooks/record-verify.sh"
 
-  jq --arg post "$POST" --arg stop "$STOP" '
-    .hooks //= {} |
-    .hooks.PostToolUse //= [] |
-    (if ([.hooks.PostToolUse[]? | .hooks[]? | select(.command == $post)] | length) == 0
-     then .hooks.PostToolUse += [{matcher: "Edit|Write", hooks: [{type: "command", command: $post}]}]
-     else . end) |
-    .hooks.Stop //= [] |
-    (if ([.hooks.Stop[]? | .hooks[]? | select(.command == $stop)] | length) == 0
-     then .hooks.Stop += [{matcher: "", hooks: [{type: "command", command: $stop}]}]
-     else . end)
+  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" '
+    # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
+    def add($event; $matcher; $cmd):
+      .hooks[$event] //= []
+      | (if ([.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length) == 0
+         then .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}]
+         else . end);
+    .hooks //= {}
+    | add("PreToolUse";  "Edit|Write"; $route)
+    | add("PostToolUse"; "Edit|Write"; $post)
+    | add("PostToolUse"; "Edit|Write"; $mark)
+    | add("Stop";        "";           $stop)
+    | add("Stop";        "";           $record)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
 
@@ -97,8 +103,11 @@ if command -v jq >/dev/null 2>&1; then
   green "Shared read-only allowlist merged into permissions."
 else
   warn "jq not found — add hooks manually to $SETTINGS:"
+  warn "  PreToolUse  matcher 'Edit|Write' -> $REPO_DIR/hooks/route-before-change.sh"
   warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/post-edit-check.sh"
+  warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/mark-unrecorded.sh"
   warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
+  warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
 fi
 
 # ---------- 6. MCP reminder ----------
