@@ -53,6 +53,9 @@ and `settings.local.json` — this repo never touches it.
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
 | `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (jira/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
+| `changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
+| `archived/` | Completed change records, moved from `changes/` | After work is done + verified |
+| `memory/` | Durable, team-shared takeaways that outlive a single change | When a finished change leaves a lasting fact |
 
 ## Relationship to plugins
 
@@ -76,6 +79,34 @@ Both need repo secret `ANTHROPIC_API_KEY` — create a **CI-scoped key**, never 
 ./scripts/usage-report.sh 30   # which intents/skills fired in last 30 days
 ```
 Quarterly: zero-hit rules/skills are prune candidates.
+
+## Change tracking
+
+Three git-tracked folders give every change an auditable trail. Each has a README
+with the full file template; below is when and how to use each.
+
+**1. Start a change → `changes/`**
+When you begin a unit of work, create a record:
+```bash
+cp changes/_template.md "changes/$(date +%F)-<slug>.md"   # or copy the shape from changes/README.md
+```
+Fill in What / Why / Scope. Set `status: active`. Commit it with the work it tracks.
+
+**2. Finish a change → `archived/`**
+Once the work is done and verified (typecheck + lint + tests shown):
+```bash
+git mv "changes/<date>-<slug>.md" "archived/<date>-<slug>.md"
+```
+Set `status: done` and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
+
+**3. Capture a lasting fact → `memory/`**
+If the change leaves a durable takeaway (a decision, a convention, a gotcha),
+write a one-concept file in `memory/` and link it from the archived record with
+`[[memory-slug]]`. Skip this for routine changes — only distil what's worth recalling.
+
+Boundaries: `memory/` is EngineOS's own knowledge store — not personal Claude
+memory and not a copy of `rules/`. See `rules/memory.md` for which knowledge lives
+where.
 
 ## Changing a standard
 
