@@ -25,6 +25,10 @@ Rules for routing:
 - Unknown intent → proceed with always-on rules only. Never block on routing.
 - Pure questions/explanations need no routing — answer directly.
 - Rules paths are relative to this file's directory.
+- This table is mirrored deterministically by the `PreToolUse` hook
+  `hooks/route-before-change.sh`, whose canonical path→domain map is
+  `hooks/routing-map.sh`. Keep the two in sync; the hook file is authoritative for
+  file-pattern routing.
 
 | Intent (signals) | Load |
 |---|---|
