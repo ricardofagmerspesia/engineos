@@ -57,14 +57,14 @@ route_for_path() {
       echo "rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator"; return 0 ;;
   esac
   case "$f" in
-    *.css|*.scss|*/components/*|*/pages/*)
+    *.css|*.scss|*/components/*|*/app/*|*/pages/*)
       echo "rules/frontend.md+architecture.md | skill:react-patterns | agent:frontend-coordinator"; return 0 ;;
   esac
 
   # LLM / agent work
   case "$f" in
     *prompt*|*rag*|*eval*|*embedding*|*llm*)
-      echo "rules/llm-apps.md | skill:llm-engineering | agent:ia-coordinator"; return 0 ;;
+      echo "rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator"; return 0 ;;
   esac
 
   return 0

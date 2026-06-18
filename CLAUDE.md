@@ -25,18 +25,24 @@ Rules for routing:
 - Unknown intent → proceed with always-on rules only. Never block on routing.
 - Pure questions/explanations need no routing — answer directly.
 - Rules paths are relative to this file's directory.
-- This table is mirrored deterministically by the `PreToolUse` hook
-  `hooks/route-before-change.sh`, whose canonical path→domain map is
-  `hooks/routing-map.sh`. Keep the two in sync; the hook file is authoritative for
-  file-pattern routing.
+- The **stack/domain rows** below (backend, frontend, LLM, DBA, DevOps, security,
+  test) are mirrored deterministically by the `PreToolUse` hook
+  `hooks/route-before-change.sh`. Its canonical path→domain map is
+  `hooks/routing-map.sh` — that file is authoritative for file-pattern routing;
+  this table is the human mirror, keep them in sync. The **intent rows** (new
+  feature, bug, refactor, ADR, release notes, eval, claiming-done) are
+  request-driven and have no hook equivalent.
 
 | Intent (signals) | Load |
 |---|---|
 | New feature / multi-file change ("add", "build", "create", "implement") | `superpowers:brainstorming` first, then `tlc-spec-driven` for spec/design/tasks, then stack rules below |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
-| Backend work (NestJS, API, service, controller, migration, queue) | Read `rules/architecture.md` + `rules/backend.md` + `rules/testing.md`; skill `nestjs-patterns`; nestjs MCP for codegen |
-| Frontend work (React, Next, component, page, UI, styling) | Read `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns` |
-| LLM/agent work (prompt, agent, RAG, embedding, eval, tool schema) | Read `rules/llm-apps.md`; skill `llm-engineering` |
+| Backend work (NestJS, API, service, controller, migration, queue) | Read `rules/architecture.md` + `rules/backend.md` + `rules/testing.md`; skill `nestjs-patterns`; nestjs MCP for codegen; `backend-coordinator` agent for scoped analysis/changes |
+| Frontend work (React, Next, component, page/app, UI, styling) | Read `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; `frontend-coordinator` agent |
+| LLM/agent work (prompt, agent, RAG, embedding, eval, tool schema) | Read `rules/llm-apps.md`; skill `llm-engineering`; `llm-coordinator` agent |
+| DBA / data layer (`*.sql`, migrations, schema, query perf, indexing) | Read `rules/architecture.md` + `rules/data.md`; `dba-coordinator` agent (postgres/oracle MCP for introspection) |
+| DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud) | Read `rules/architecture.md` + `rules/observability.md`; `devops-coordinator` agent (kubernetes/gcp/github MCP) |
+| Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials) | Read `rules/security.md`; dispatch `security-reviewer` subagent |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | Read `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` — decision gets recorded, not just chatted |
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
