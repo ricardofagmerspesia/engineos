@@ -24,10 +24,10 @@ cd ~/projects/engineos && ./install.sh
 Plugin mode still needs the router: add `@<plugin-path>/CLAUDE.md` to your `~/.claude/CLAUDE.md` manually, or just use mode A.
 
 Mode A is idempotent — re-run after every `git pull`. The installer:
-1. Refuses to install if secret-looking strings are in the repo.
+1. Refuses to install if secret-looking strings are in the repo (fails closed).
 2. Adds one import line to your `~/.claude/CLAUDE.md` (personal lines untouched).
-3. Symlinks `skills/` into `~/.claude/skills/`.
-4. Merges the two quality-gate hooks into `~/.claude/settings.json` (backup created).
+3. Symlinks `skills/` and `agents/` into `~/.claude/`.
+4. Merges the EngineOS hooks (routing, quality-gate, and change-governance) into `~/.claude/settings.json` (write-once backup), plus the shared read-only allowlist.
 
 Personal stuff (output style, personal hooks, keys) stays in your own `~/.claude/CLAUDE.md`
 and `settings.local.json` — this repo never touches it.
@@ -38,7 +38,7 @@ and `settings.local.json` — this repo never touches it.
 |---|---|---|
 | `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action |
 | `rules/base.md`, `security.md`, `git.md` | Always-on standards | Every session |
-| `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md` | Per-domain standards | Loaded by router per intent |
+| `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Per-domain standards | Loaded by router per intent |
 | `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
 | `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
@@ -47,6 +47,7 @@ and `settings.local.json` — this repo never touches it.
 | `skills/release-notes` | Structured release page from commits/PRs | Version bump / "write release notes" |
 | `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |
 | `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
+| `agents/{backend,frontend,dba,devops,llm}-coordinator.md` | Domain specialists, dual-mode audit/implement, shared report format | Scoped domain analysis or changes |
 | `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |

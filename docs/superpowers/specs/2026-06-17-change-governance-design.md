@@ -1,7 +1,7 @@
 # EngineOS Change-Governance System — Design
 
 Date: 2026-06-17
-Status: Approved — building
+Status: Implemented (detection mechanism changed from git-status to flag-file — see §3)
 
 ## Goal
 
@@ -65,46 +65,50 @@ Procedure run after work is complete:
 
 Scope: changes→archived only (no memory distill, no external tracker).
 
-### 3. `hooks/record-verify.sh` (Stop) — hard-block once
+### 3. Marker-file detection (IMPLEMENTED — supersedes the git-status idea below)
 
-- Guard: `stop_hook_active == true` → exit 0 (never loop).
-- If transcript shows code-file Edit/Write this session AND **no file was added
-  under `archived/` in the working tree/index** (evidence the record-change skill
-  ran its `git mv`) → block once with `{decision:"block", reason:...}`.
-- **Evidence-based detection** (NOT transcript text grep): use
-  `git status --porcelain archived/` for a new/renamed entry, or
-  `git diff --cached --name-status` showing a rename into `archived/`. The skill
-  name string in the transcript is unreliable (it appears whenever the workflow is
-  merely discussed).
-- Independent from `stop-verify.sh`. Two sequential gates accepted (verify, record).
+Detection is a **flag file**, not transcript text and not a `git status archived/`
+check. This is deterministic and avoids both the transcript-string false-positive
+(the skill name appears whenever the workflow is merely discussed) and the
+committed-record blind spot of git-status detection.
 
-## Wiring
+- **`hooks/mark-unrecorded.sh` (PostToolUse Edit|Write):** on a code-file edit
+  (excluding `changes/ archived/ memory/ docs/ hooks/`), write a flag at
+  `<git-dir>/ENGINEOS_UNRECORDED.<session_id>`. Ordered BEFORE `post-edit-check.sh`
+  so a failing typecheck (exit 2) cannot stop the flag being set.
+- **`hooks/record-verify.sh` (Stop):** guard `stop_hook_active==true` → exit 0
+  (never loop). If `<git-dir>/ENGINEOS_UNRECORDED.<session_id>` exists → block once.
+- **`record-change` skill:** final step `rm -f <git-dir>/ENGINEOS_UNRECORDED*`
+  clears the flag.
 
-- Add both hooks to `hooks/hooks.json` under PreToolUse and Stop.
-- `install.sh`: extend the hook-merge so mode-A users get both. (Blocked from
-  taking effect until the user's reverting `settings.json` process is stopped —
-  plugin installs via `hooks.json` are unaffected.)
-- Register the skill (lives in `skills/`, auto-discovered).
+Both hooks resolve `<git-dir>` from `cwd` (`git rev-parse --absolute-git-dir`) so
+they always target the same file, and scope the marker to `session_id` so a flag
+left by a crashed/cleared session never blocks a different session, and linked
+worktrees (per-worktree git-dir) don't cross-talk.
 
-## Verification
+Independent from `stop-verify.sh`. Two sequential Stop gates accepted (verify,
+then record) — each loop-guarded.
 
-- `hooks/test-route.sh`: feed sample PreToolUse payloads (tsx, controller, sql,
-  workflow yaml, prompt file, excluded `changes/` file) → assert the emitted
-  `additionalContext` matches the expected routing (and excluded paths emit none).
-- Stop-gate dry run: craft a fake transcript + temp git state with and without an
-  `archived/` rename → assert block vs allow.
-- Manual: edit a `.tsx` in a real session, confirm router context appears and the
-  permission prompt still fires.
+## Wiring (IMPLEMENTED)
 
-## PR split (per git.md ≤400 lines)
+- All five hooks wired in `hooks/hooks.json` (PreToolUse: route; PostToolUse:
+  mark-unrecorded then post-edit-check; Stop: stop-verify then record-verify).
+- `install.sh` merges all five idempotently for mode-A users.
+- `record-change` skill lives in `skills/`, auto-discovered (invoked as the
+  `record-change` skill — NOT a `/engineos:` slash command).
 
-- **PR1 — routing:** `routing-map.sh`, `route-before-change.sh`, hooks.json wiring,
-  `test-route.sh`, CLAUDE.md mirror note.
-- **PR2 — record/enforce:** `record-change` skill, `record-verify.sh`, hooks.json
-  wiring, install.sh update.
+## Verification (IMPLEMENTED)
+
+- `hooks/test-route.sh` (12/12): routing assertions incl. excluded paths.
+- `hooks/test-governance.sh` (6/6): marker set, same-session block, cross-session
+  isolation, loop guard, glob clear.
+- `.github/workflows/ci.yml` runs both suites + shellcheck + JSON validation + an
+  end-to-end secrets-gate test on every PR.
+- Manual (still recommended once): edit a `.tsx` in a real session, confirm router
+  context appears and the permission prompt still fires.
 
 ## Open risks (carried)
 
-- `additionalContext` without `permissionDecision` injection behavior — confirm in
-  a live session.
-- settings.json reverter unresolved → mode-A merge won't persist yet.
+- `additionalContext` without `permissionDecision` injection — confirm in a live
+  session (the only item still needing a real-session check).
+- settings.json reverter was resolved during implementation; mode-A merge persists.

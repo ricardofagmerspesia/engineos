@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Canonical EngineOS path -> routing map. Sourced by route-before-change.sh.
-# THIS FILE IS AUTHORITATIVE. The router table in CLAUDE.md is a human-readable
-# mirror; keep it in sync with this. The /engineos:audit orchestrator routes by
-# domain token (not file pattern), so it does not duplicate this mapping.
+# THIS FILE IS AUTHORITATIVE for file-pattern routing. The stack/domain rows of the
+# CLAUDE.md router table are the human-readable mirror; keep them in sync with this.
+# (A future /engineos:audit orchestrator would route by domain token, not file
+# pattern, so it would not duplicate this mapping — not yet built.)
 
 # route_excluded <path> -> exit 0 if the path is a meta/non-code file that should
 # get NO routing (prevents recursive/noisy routing on our own scaffolding).
