@@ -49,8 +49,12 @@ and `settings.local.json` — this repo never touches it.
 | `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
 | `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
+| `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |
 | `hooks/post-edit-check.sh` | Typecheck+lint changed package after every AI edit | PostToolUse Edit\|Write |
+| `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
+| `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
+| `skills/record-change` | Finalize a change: mark done, register files+movements, `changes/`→`archived/` | After completing work |
 | `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (jira/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
 | `changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
