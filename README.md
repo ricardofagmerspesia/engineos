@@ -48,6 +48,9 @@ and `settings.local.json` — this repo never touches it.
 | `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |
 | `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
 | `agents/{backend,frontend,dba,devops,llm}-coordinator.md` | Domain specialists, dual-mode audit/implement, shared report format | Scoped domain analysis or changes |
+| `agents/{kubernetes,gcp,postgres,oracle,cicd}-specialist.md` | Read-only MCP-bound leaf specialists for deep audits | Dispatched by /engineos:audit or coordinators |
+| `agents/audit-consolidator.md` | Merges specialist reports into one status report (verdict + root cause + plan) | End of an audit run |
+| `commands/audit.md`, `commands/implement.md` | Orchestrator entry points (`/engineos:audit`, `/engineos:implement`): fan out to specialists, consolidate | Multi-domain audit or coordinated change |
 | `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |
@@ -56,7 +59,7 @@ and `settings.local.json` — this repo never touches it.
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
 | `skills/record-change` | Finalize a change: mark done, register files+movements, `changes/`→`archived/` | After completing work |
-| `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (jira/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
+| `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (mcp-atlassian/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
 | `changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
 | `archived/` | Completed change records, moved from `changes/` | After work is done + verified |
