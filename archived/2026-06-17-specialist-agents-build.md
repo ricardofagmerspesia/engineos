@@ -1,6 +1,7 @@
 ---
 name: 2026-06-17-specialist-agents-build
-status: active
+status: done
+completed: 2026-06-17
 owner: Ricardo Fagmer
 ---
 
@@ -28,8 +29,20 @@ and consolidates into a status report (the screenshot pattern).
 
 ## Verification
 
-(to be filled — frontmatter/tools lint, command file validity, agent refs resolve,
-hooks test suites still green.)
+- 13 agents total; new leaf/consolidator frontmatter has name+description+tools
+  (server-level MCP grants: mcp__kubernetes/gcp/postgres/oracle/github/mcp-atlassian).
+- 2 command files valid (description present).
+- All MCP servers referenced exist in `templates/mcp.template.json`.
+- All `agent:*` refs in routing-map resolve.
+- JSON valid (plugin.json, mcp template, hooks.json); secrets gate clean (rc=1).
+- Regression: routing 12/12, governance 6/6.
+
+## Changes registered
+
+1 commit 72979b3, files: agents/{kubernetes,gcp,postgres,oracle,cicd}-specialist.md,
+agents/audit-consolidator.md, commands/{audit,implement}.md, mcp.template.json
+(jira→mcp-atlassian), README.md, CLAUDE.md, CHANGELOG.md, plugin.json (1.2.0),
+specialist-agents spec status. Movement: this record `git mv`'d changes/ → archived/.
 
 ## Notes
 
