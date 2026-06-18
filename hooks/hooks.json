@@ -17,11 +17,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-edit-check.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/mark-unrecorded.sh"
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/mark-unrecorded.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-edit-check.sh"
           }
         ]
       }
