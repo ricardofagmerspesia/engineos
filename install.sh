@@ -14,17 +14,28 @@ warn()  { printf '\033[33m%s\033[0m\n' "$*"; }
 echo "EngineOS install from: $REPO_DIR"
 
 # ---------- 1. Secrets gate: refuse to install a repo containing secrets ----------
-SECRET_PATTERNS='sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN( RSA| EC|) PRIVATE KEY-----'
-if grep -rIEq "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh 2>/dev/null; then
-  red "ABORT: secret-looking strings found in the repo. Remove + rotate before installing/pushing:"
-  grep -rIEl "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh
-  exit 1
-fi
+# NOTE: no empty regex alternations — BSD grep (macOS default) aborts the whole
+# pattern on an empty branch, which previously made this gate a silent no-op.
+# The gate FAILS CLOSED: a grep error (rc>=2, e.g. bad pattern) aborts the install.
+SECRET_PATTERNS='sk-ant-[A-Za-z0-9_-]{10,}|sk-proj-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|gh[opsu]_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|ATATT[A-Za-z0-9_=.-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|"private_key_id"[[:space:]]*:|[a-z][a-z+]+://[^/[:space:]]+:[^@[:space:]]+@'
+
+set +e
+SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh)
+SECRET_RC=$?
+set -e
+case "$SECRET_RC" in
+  0) red "ABORT: secret-looking strings found in the repo. Remove + rotate before installing/pushing:"
+     printf '%s\n' "$SECRET_HITS"
+     exit 1 ;;
+  1) : ;;  # no matches — clean
+  *) red "ABORT: secrets-gate pattern failed to run (grep rc=$SECRET_RC). Failing closed."
+     exit 1 ;;
+esac
 
 # ---------- 2. Warn about secrets in local settings (not repo, but still bad) ----------
-if [ -f "$SETTINGS" ] && grep -qE 'sk-ant-[A-Za-z0-9_-]{10,}' "$SETTINGS"; then
-  warn "WARNING: literal API key found in $SETTINGS."
-  warn "Move it to a shell env var (export ANTHROPIC_API_KEY=...) and ROTATE the key."
+if [ -f "$SETTINGS" ] && grep -Elq "$SECRET_PATTERNS" "$SETTINGS" >/dev/null 2>&1; then
+  warn "WARNING: secret-looking value(s) found in $SETTINGS (API key / token / connection string)."
+  warn "Move them to shell env vars (export VAR=...; reference \${VAR} in config) and ROTATE."
 fi
 
 # ---------- 3. Import EngineOS constitution into global CLAUDE.md ----------
@@ -41,6 +52,7 @@ fi
 # ---------- 4. Symlink skills ----------
 mkdir -p "$CLAUDE_DIR/skills"
 for skill in "$REPO_DIR"/skills/*/; do
+  [ -d "$skill" ] || continue   # empty glob guard (no nullglob on bash 3.2)
   name=$(basename "$skill")
   target="$CLAUDE_DIR/skills/$name"
   if [ -L "$target" ] || [ ! -e "$target" ]; then
@@ -54,6 +66,7 @@ done
 # ---------- 4b. Symlink subagents ----------
 mkdir -p "$CLAUDE_DIR/agents"
 for agent in "$REPO_DIR"/agents/*.md; do
+  [ -e "$agent" ] || continue   # empty glob guard
   name=$(basename "$agent")
   target="$CLAUDE_DIR/agents/$name"
   if [ -L "$target" ] || [ ! -e "$target" ]; then
@@ -68,7 +81,8 @@ done
 chmod +x "$REPO_DIR"/hooks/*.sh
 if command -v jq >/dev/null 2>&1; then
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
-  cp "$SETTINGS" "$SETTINGS.engineos.bak"
+  # write-once backup: never clobber the last known-good with an already-bad file
+  [ -f "$SETTINGS.engineos.bak" ] || cp "$SETTINGS" "$SETTINGS.engineos.bak"
 
   POST="$REPO_DIR/hooks/post-edit-check.sh"
   STOP="$REPO_DIR/hooks/stop-verify.sh"
@@ -85,22 +99,27 @@ if command -v jq >/dev/null 2>&1; then
          else . end);
     .hooks //= {}
     | add("PreToolUse";  "Edit|Write"; $route)
-    | add("PostToolUse"; "Edit|Write"; $post)
     | add("PostToolUse"; "Edit|Write"; $mark)
+    | add("PostToolUse"; "Edit|Write"; $post)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
 
   # ---------- 5b. Shared permission allowlist (read-only commands) ----------
-  jq -s '
-    .[0] as $settings | .[1].allow as $shared |
-    $settings |
-    .permissions //= {} |
-    .permissions.allow = ((.permissions.allow // []) + $shared | unique)
-  ' "$SETTINGS" "$REPO_DIR/templates/permissions.template.json" > "$SETTINGS.tmp" \
-    && mv "$SETTINGS.tmp" "$SETTINGS"
-  green "Shared read-only allowlist merged into permissions."
+  PERMS="$REPO_DIR/templates/permissions.template.json"
+  if [ -f "$PERMS" ]; then
+    jq -s '
+      .[0] as $settings | (.[1].allow // []) as $shared |
+      $settings |
+      .permissions //= {} |
+      .permissions.allow = ((.permissions.allow // []) + $shared | unique)
+    ' "$SETTINGS" "$PERMS" > "$SETTINGS.tmp" \
+      && mv "$SETTINGS.tmp" "$SETTINGS"
+    green "Shared read-only allowlist merged into permissions."
+  else
+    warn "permissions template missing ($PERMS) — skipped allowlist merge."
+  fi
 else
   warn "jq not found — add hooks manually to $SETTINGS:"
   warn "  PreToolUse  matcher 'Edit|Write' -> $REPO_DIR/hooks/route-before-change.sh"

@@ -39,9 +39,10 @@ Create a TodoWrite item per step and do them in order.
    git mv "changes/<file>.md" "archived/<file>.md"
    ```
 
-6. **Clear the flag.** Tell the Stop gate the work is recorded:
+6. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
+   session-scoped marker(s); the glob also clears any legacy unsuffixed flag):
    ```bash
-   rm -f "$(git rev-parse --absolute-git-dir)/ENGINEOS_UNRECORDED"
+   rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
    ```
 
 7. **Verify.** Confirm the record is in `archived/` with `status: done`, the flag

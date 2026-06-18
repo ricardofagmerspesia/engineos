@@ -30,11 +30,12 @@
 - DO set concurrency limits on workers; unbounded `Promise.all` over user-sized arrays is a DoS on yourself.
 
 ## Observability
-- DO use structured logging (pino/nestjs-pino) with correlation ids propagated per request.
-- DO log at boundaries (request in/out, job start/end, external calls), not every function.
-- DON'T log payloads containing PII or secrets.
+- Follow `rules/observability.md` for the log schema, correlation-id propagation,
+  and error taxonomy. NestJS mechanism: `nestjs-pino` as the structured logger.
+  (PII/secrets never in logs — `rules/security.md`.)
 
 ## Config & lifecycle
-- DO validate env via `ConfigModule` schema at boot — missing var = crash at startup, not at 3am request.
+- DO validate env at boot via a `ConfigModule` schema — missing var crashes at
+  startup, not at a 3am request. (The fail-fast-config principle is in `rules/architecture.md`.)
 - DO implement graceful shutdown (`enableShutdownHooks`) — drain queues, close DB pools.
 - DO add `/health` (liveness) and readiness checks for orchestrators.

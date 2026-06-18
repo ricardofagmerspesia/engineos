@@ -22,10 +22,11 @@ esac
 
 # ---------- locate package dir and repo root ----------
 find_up() {  # find_up <start_dir> <filename...> ; echoes dir containing first match
-  local d="$1"; shift
-  while [ "$d" != "/" ]; do
+  local d="$1" prev=""; shift
+  # guard against relative paths where dirname converges to "." and never hits "/"
+  while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
     for f in "$@"; do [ -e "$d/$f" ] && { echo "$d"; return 0; }; done
-    d=$(dirname "$d")
+    prev="$d"; d=$(dirname "$d")
   done
   return 1
 }

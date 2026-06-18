@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools present
+        run: { jq --version; shellcheck --version; bash --version | head -1; }
+
+      - name: Shellcheck hooks + scripts (errors only)
+        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh
+
+      - name: Validate JSON
+        run: |
+          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json; do
+            jq empty "$f" && echo "ok $f"
+          done
+
+      - name: Routing hook tests
+        run: bash hooks/test-route.sh
+
+      - name: Change-governance marker tests
+        run: bash hooks/test-governance.sh
+
+      - name: Secrets gate aborts on a planted secret
+        run: |
+          tmp=$(mktemp -d)
+          cp -r . "$tmp/repo"
+          # assemble the test token at runtime so this workflow file does not itself
+          # match the secrets gate at rest (which would abort every real install)
+          prefix='sk-ant-'
+          printf '%sapi03-PLANTEDSECRETVALUE1234567890\n' "$prefix" > "$tmp/repo/leak.txt"
+          if HOME="$tmp/home" bash "$tmp/repo/install.sh" >/dev/null 2>&1; then
+            echo "FAIL: secrets gate did not abort on a planted key"; exit 1
+          fi
+          echo "ok: gate aborted as expected"
+
+      - name: Secrets gate passes on a clean tree
+        run: |
+          tmp=$(mktemp -d)
+          if HOME="$tmp/home" bash install.sh >/dev/null 2>&1; then
+            echo "ok: clean install succeeded"
+          else
+            echo "FAIL: install aborted on a clean repo"; exit 1
+          fi

@@ -17,7 +17,7 @@ EDITED=$(grep -c '"name":[[:space:]]*"\(Edit\|Write\)"' "$TRANSCRIPT" 2>/dev/nul
 [ "${EDITED:-0}" -eq 0 ] && exit 0
 
 # Did any code file get touched?
-grep -q '"file_path":[[:space:]]*"[^"]*\.\(ts\|tsx\|js\|jsx\|py\|go\|rs\)"' "$TRANSCRIPT" 2>/dev/null || exit 0
+grep -q '"file_path":[[:space:]]*"[^"]*\.\(ts\|tsx\|js\|jsx\|py\|go\|rs\|sql\)"' "$TRANSCRIPT" 2>/dev/null || exit 0
 
 # Did anything verification-shaped run?
 if grep -qE '(npm|pnpm|yarn|bun)[^"]*\b(test|typecheck|lint|build)\b|vitest|jest|tsc\b|pytest|go test|cargo test' "$TRANSCRIPT" 2>/dev/null; then
