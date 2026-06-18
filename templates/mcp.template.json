@@ -97,7 +97,7 @@
       "env": { "GOOGLE_CLOUD_PROJECT": "${GOOGLE_CLOUD_PROJECT}" }
     },
 
-    "jira": {
+    "mcp-atlassian": {
       "$when": "Jira issues/sprints and Confluence pages.",
       "$verify": "community server (sooperset/mcp-atlassian) covering Jira + Confluence. Use a scoped API token.",
       "type": "stdio",

@@ -43,6 +43,8 @@ Rules for routing:
 | DBA / data layer (`*.sql`, migrations, schema, query perf, indexing) | Read `rules/architecture.md` + `rules/data.md`; `dba-coordinator` agent (postgres/oracle MCP for introspection) |
 | DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud) | Read `rules/architecture.md` + `rules/observability.md`; `devops-coordinator` agent (kubernetes/gcp/github MCP) |
 | Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials) | Read `rules/security.md`; dispatch `security-reviewer` subagent |
+| Multi-domain audit / system health check ("audit", "analyze the system", "what's broken across X") | `/engineos:audit <domain\|all>` — fans out to coordinators + MCP leaf specialists, consolidates into a status report |
+| Coordinated multi-domain change | `/engineos:implement <domain> <task>` — dispatches coordinators in implement mode (spec-gated) |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | Read `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` — decision gets recorded, not just chatted |
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
