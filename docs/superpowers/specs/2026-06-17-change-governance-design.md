@@ -8,9 +8,9 @@ Status: Implemented (detection mechanism changed from git-status to flag-file �
 Make the EngineOS workflow self-enforcing around every change:
 
 ```
-PreToolUse(Edit|Write)  → route-before-change.sh  : inject rules + specialist + project CLAUDE.md (+ soft changes/ reminder)
+PreToolUse(Edit|Write)  → route-before-change.sh  : inject rules + specialist + project CLAUDE.md (+ soft .engineos/changes/ reminder)
         ↓ edits happen
-work complete           → /engineos:record-change  : mark done, describe, log files+movements, git mv changes/→archived/
+work complete           → /engineos:record-change  : mark done, describe, log files+movements, git mv .engineos/changes/→.engineos/archived/
         ↑ enforced
 Stop                    → record-verify.sh         : hard-block ONCE if code changed but no change was recorded
 ```
@@ -27,16 +27,16 @@ string via `hookSpecificOutput.additionalContext` (exit 0, non-blocking).
   human-readable mirror and carries a comment pointing here as canonical. The
   `/engineos:audit` orchestrator routes by domain *token*, not file pattern, so it
   does not duplicate the mapping.
-- **Exclusions (no routing):** `changes/`, `archived/`, `memory/`, `docs/`,
+- **Exclusions (no routing):** `.engineos/`, `docs/`,
   `hooks/`, `*.md` meta, lockfiles. Prevents recursive/noisy routing on meta-edits.
 - **Project patterns:** if a `CLAUDE.md` exists up-tree from the target, append
   "follow project CLAUDE.md (project > EngineOS)".
-- **Soft changes/ reminder:** if the target is code and no `changes/*.md` with
+- **Soft .engineos/changes/ reminder:** if the target is code and no `.engineos/changes/*.md` with
   `status: active` exists, append a one-line reminder to open a record. Non-blocking.
 - **Permission flow:** do NOT set `permissionDecision` (preserve the user's normal
   edit-permission prompt). Documented fallback: if a CC version requires
   `permissionDecision:"allow"` for injection, that is the only case to set it.
-- Pure bash + jq, no network. Cheap: one path classify + at most one `ls changes/`.
+- Pure bash + jq, no network. Cheap: one path classify + at most one `ls .engineos/changes/`.
 
 Routing map (canonical, in `routing-map.sh`):
 
@@ -55,25 +55,25 @@ Routing map (canonical, in `routing-map.sh`):
 
 Procedure run after work is complete:
 
-1. Locate the active `changes/*.md` (`status: active`). If none, create from
-   `changes/_template.md`.
+1. Locate the active `.engineos/changes/*.md` (`status: active`). If none, create from
+   `.engineos/changes/_template.md`.
 2. Write **What was made** (concrete description).
 3. **Register changes + movements:** capture `git status --short` and
    `git diff --stat` (staged + unstaged) into the record; note any `git mv`.
 4. Set `status: done`, `completed: <YYYY-MM-DD>`.
-5. `mkdir -p archived/<YYYY>/<MM>/<DD>` then `git mv changes/<file> archived/<YYYY>/<MM>/<DD>/<file>` (grouped by completed date).
+5. `mkdir -p .engineos/archived/<YYYY>/<MM>/<DD>` then `git mv .engineos/changes/<file> .engineos/archived/<YYYY>/<MM>/<DD>/<file>` (grouped by completed date).
 
 Scope: changes→archived only (no memory distill, no external tracker).
 
 ### 3. Marker-file detection (IMPLEMENTED — supersedes the git-status idea below)
 
-Detection is a **flag file**, not transcript text and not a `git status archived/`
+Detection is a **flag file**, not transcript text and not a `git status .engineos/archived/`
 check. This is deterministic and avoids both the transcript-string false-positive
 (the skill name appears whenever the workflow is merely discussed) and the
 committed-record blind spot of git-status detection.
 
 - **`hooks/mark-unrecorded.sh` (PostToolUse Edit|Write):** on a code-file edit
-  (excluding `changes/ archived/ memory/ docs/ hooks/`), write a flag at
+  (excluding `.engineos/ docs/ hooks/`), write a flag at
   `<git-dir>/ENGINEOS_UNRECORDED.<session_id>`. Ordered BEFORE `post-edit-check.sh`
   so a failing typecheck (exit 2) cannot stop the flag being set.
 - **`hooks/record-verify.sh` (Stop):** guard `stop_hook_active==true` → exit 0

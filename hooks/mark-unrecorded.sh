@@ -21,7 +21,7 @@ case "$FILE" in
 esac
 # never flag edits to our own scaffolding/meta
 case "$FILE" in
-  */changes/*|*/archived/*|*/memory/*|*/docs/*|*/hooks/*) exit 0 ;;
+  */.engineos/*|*/docs/*|*/hooks/*) exit 0 ;;
 esac
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')

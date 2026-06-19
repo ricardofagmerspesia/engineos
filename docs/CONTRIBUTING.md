@@ -13,13 +13,13 @@ Duplication drifts.
 ## Workflow for any change
 
 1. Branch from `main`: `feat/…`, `fix/…`, `chore/…`, `docs/…`.
-2. Open a `changes/` record (`cp changes/_template.md changes/$(date +%F)-<slug>.md`,
-   `status: active`). See `changes/README.md`.
+2. Open a `.engineos/changes/` record (`cp .engineos/changes/_template.md .engineos/changes/$(date +%F)-<slug>.md`,
+   `status: active`). See `.engineos/changes/README.md`.
 3. Make the change. Keep PRs ≤400 lines (see `rules/git.md`); split larger work.
 4. Verify (see below) and show the output in the PR description.
 5. Close the record with the `record-change` skill (marks done, registers files +
-   movements, moves `changes/` → `archived/`). Distil any lasting fact into
-   `memory/`.
+   movements, moves `.engineos/changes/` → `.engineos/archived/`). Distil any lasting fact into
+   `.engineos/memory/`.
 6. PR with what + why + how-verified. Self-review the diff first.
 
 ## Adding each artifact type

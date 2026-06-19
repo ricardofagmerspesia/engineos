@@ -128,7 +128,7 @@ gcp, jira) already exist in `templates/mcp.template.json`. Work required:
 
 ## Memory / persistence
 
-- **Audit reports** → `docs/audits/<YYYY-MM-DD>-<domain>.md` in the **target**
+- **Audit reports** → `.engineos/audits/<YYYY-MM-DD>-<domain>.md` in the **target**
   project (team-shared artifact, per `rules/memory.md` — not personal memory).
   The orchestrator writes this after consolidation.
 - **Personal memory** (`~/.claude/.../memory/`) — only user prefs (e.g. default
@@ -161,5 +161,5 @@ already exists. Verify plugin auto-discovery of both dirs; update
   shared output format.
 - `/engineos:audit all` dispatches 5 coordinators and produces a consolidated
   report with a top-line STATUS.
-- Audit run writes `docs/audits/<date>-all.md`.
+- Audit run writes `.engineos/audits/<date>-all.md`.
 - Lint/format hooks pass on changed files.

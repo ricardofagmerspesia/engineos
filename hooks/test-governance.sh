@@ -20,9 +20,9 @@ mark(){ printf '{"cwd":"%s","session_id":"%s","tool_input":{"file_path":"%s"}}' 
 mark S1 "$T/src/foo.ts"
 [ -f "$GD/ENGINEOS_UNRECORDED.S1" ] && ok || no "code edit did not set flag"
 
-# meta edit does NOT set a flag
-mark S1 "$T/changes/x.md"; mark S1 "$T/docs/y.md"
-[ -f "$GD/ENGINEOS_UNRECORDED.Smeta" ] && no "meta edit set a flag" || ok
+# edits under .engineos/ or docs/ do NOT set a flag (even code files there)
+mark Smeta "$T/.engineos/changes/note.ts"; mark Smeta "$T/docs/gen.ts"
+[ -f "$GD/ENGINEOS_UNRECORDED.Smeta" ] && no "excluded-dir edit set a flag" || ok
 
 # same session blocks
 [ "$(dec "$(printf '{"cwd":"%s","session_id":"S1","stop_hook_active":false}' "$T")")" = "block" ] && ok || no "same-session did not block"

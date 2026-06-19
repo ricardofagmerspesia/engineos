@@ -23,9 +23,9 @@ type: decision | convention | fact | reference
   to a *consuming* project stay in that project's `docs/adr/`.
 - Use this for knowledge about EngineOS itself that isn't a rule, skill, or code.
 
-## Relationship to changes/ and archived/
+## Relationship to .engineos/changes/ and .engineos/archived/
 
-- `changes/` — in-progress change records (active work).
-- `archived/` — completed change records, moved out of `changes/`.
-- `memory/` — the distilled, durable takeaways. A finished change in `archived/`
+- `.engineos/changes/` — in-progress change records (active work).
+- `.engineos/archived/` — completed change records, moved out of `.engineos/changes/`.
+- `.engineos/memory/` — the distilled, durable takeaways. A finished change in `.engineos/archived/`
   may leave a lasting fact here; link back with `[[change-slug]]`.

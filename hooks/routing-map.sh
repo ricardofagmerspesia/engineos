@@ -9,7 +9,7 @@
 # get NO routing (prevents recursive/noisy routing on our own scaffolding).
 route_excluded() {
   case "$1" in
-    */changes/*|*/archived/*|*/memory/*|*/docs/*|*/hooks/*) return 0 ;;
+    */.engineos/*|*/docs/*|*/hooks/*) return 0 ;;
   esac
   case "${1##*/}" in
     *.md|*.lock|package-lock.json|pnpm-lock.yaml|yarn.lock) return 0 ;;

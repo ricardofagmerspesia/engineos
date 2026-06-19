@@ -1,4 +1,4 @@
-# changes/
+# .engineos/changes/
 
 In-progress change records — one file per change, initiative, or unit of work
 currently active. The working surface for tracking what is being changed and why,
@@ -32,10 +32,10 @@ owner: <name>
 ## Lifecycle
 
 ```
-changes/  --(work complete + verified)-->  archived/
+.engineos/changes/  --(work complete + verified)-->  .engineos/archived/
 ```
 
 When a change is done and verified, set `status: done` and move the file to
-`archived/<YYYY>/<MM>/<DD>/` (grouped by the completed date — see `archived/README.md`).
-Distil any lasting fact into `memory/` and link it. Git retains the full move
+`.engineos/archived/<YYYY>/<MM>/<DD>/` (grouped by the completed date — see `.engineos/archived/README.md`).
+Distil any lasting fact into `.engineos/memory/` and link it. Git retains the full move
 history — nothing is lost.
