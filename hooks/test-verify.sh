@@ -115,6 +115,22 @@ DEC=$(invoke "$T" "$TSCRIPT" false)
 rm -rf "$T" "$TSCRIPT"
 [ "$DEC" = "block" ] && ok || no "case7 space-in-path: expected 'block', got '$DEC'"
 
+# ---------- Case 8: Read-only .ts file in a failing-test package — no block ----------
+# A transcript that contains only a "Read" tool_use (not Edit/Write) for a .ts file
+# must NOT cause a block, even when that package's test script exits 1.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"
+touch "$T/src/readonly.ts"
+TSCRIPT=$(mktemp)
+# Emit a Read tool_use line — same shape as make_transcript but tool name is Read.
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","tool_input":{"file_path":"%s"}}]}}\n' \
+  "$T/src/readonly.ts" > "$TSCRIPT"
+DEC=$(invoke "$T" "$TSCRIPT" false)
+rm -rf "$T" "$TSCRIPT"
+[ -z "$DEC" ] && ok || no "case8 read-only-no-block: expected empty decision for Read-only transcript, got '$DEC'"
+
 echo "---"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

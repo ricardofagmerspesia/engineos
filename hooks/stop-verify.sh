@@ -29,11 +29,15 @@ fi
 ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 # ---------- collect changed code files from transcript ----------
-# grep for Edit/Write tool calls with code file paths (not sql).
+# Scope to Edit/Write tool calls only — Read calls are excluded so that merely
+# reading a file doesn't pull its package into the test run.
+# JSONL: each tool call is one line that contains both "name":"Edit"|"Write" and
+# "file_path". Select matching lines first, then extract the path.
 # Note: harness transcripts use "tool_input" while real transcripts use "input";
 # extracting "file_path" directly handles both forms.
-FILES=$(grep -o '"file_path":[[:space:]]*"[^"]*\.\(ts\|tsx\|js\|jsx\|py\|go\|rs\)"' "$TRANSCRIPT" 2>/dev/null \
-  | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' \
+FILES=$(grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write)"' "$TRANSCRIPT" 2>/dev/null \
+  | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx|py|go|rs)"' \
+  | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/' \
   | sort -u) || true
 [ -n "$FILES" ] || exit 0
 
