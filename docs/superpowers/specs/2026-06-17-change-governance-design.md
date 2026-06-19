@@ -46,7 +46,7 @@ Routing map (canonical, in `routing-map.sh`):
 | `*.controller/.service/.module/.resolver/.dto/.entity.ts` | backend, architecture, testing | nestjs-patterns | backend-coordinator |
 | `*.sql`, `migrations/`, schema | architecture | — | dba-coordinator |
 | `*.tf Dockerfile`, k8s/helm yaml, `.github/workflows/` | architecture | — | devops-coordinator |
-| prompt/agent/rag/eval paths | llm-apps | llm-engineering | ia-coordinator |
+| prompt/agent/rag/eval paths | llm-apps | llm-engineering | llm-coordinator |
 | `*.spec.* *.test.*` | testing | — | test-writer |
 | auth/guard/middleware/secret/env | security | — | security-reviewer |
 | else | base, git only | — | — |
