@@ -29,7 +29,8 @@ check "prompt -> llm"          "/tmp/ai/prompt-builder.ts"          "llm-coordin
 check "app router -> frontend" "/tmp/web/app/page-helper.ts"        "frontend-coordinator"
 check "spec -> test"           "/tmp/api/user.service.spec.ts"      "test-writer"
 check "auth -> security"       "/tmp/api/auth.guard.ts"             "security-reviewer"
-check "excluded changes/"      "/tmp/repo/changes/2026-01-01-x.md"  ""
+check "excluded .engineos/"    "/tmp/repo/.engineos/changes/x.md"   ""
+check "excluded .engineos ts"  "/tmp/repo/.engineos/notes.ts"       ""
 check "excluded md"            "/tmp/repo/README.md"                ""
 check "excluded hooks/"        "/tmp/repo/hooks/foo.sh"             ""
 

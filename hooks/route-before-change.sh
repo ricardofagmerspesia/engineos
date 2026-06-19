@@ -42,14 +42,14 @@ if PROJ_CLAUDE=$(find_up "$START" CLAUDE.md); then
   PROJ_NOTE=" | follow project CLAUDE.md (project > EngineOS): $PROJ_CLAUDE"
 fi
 
-# soft changes/ reminder: code edit with no active record
+# soft .engineos/changes reminder: code edit with no active record
 CHANGE_NOTE=""
 case "$FILE" in
   *.ts|*.tsx|*.js|*.jsx|*.py|*.go|*.rs|*.sql)
     if GITDIR=$(find_up "$START" .git); then
       REPO="${GITDIR%/.git}"
-      if [ -d "$REPO/changes" ] && ! grep -lq '^status:[[:space:]]*active' "$REPO"/changes/*.md 2>/dev/null; then
-        CHANGE_NOTE=" | no active changes/ record — open one (changes/_template.md)"
+      if [ -d "$REPO/.engineos/changes" ] && ! grep -lq '^status:[[:space:]]*active' "$REPO"/.engineos/changes/*.md 2>/dev/null; then
+        CHANGE_NOTE=" | no active .engineos/changes record — open one (.engineos/changes/_template.md)"
       fi
     fi
     ;;

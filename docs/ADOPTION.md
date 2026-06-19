@@ -67,20 +67,21 @@ Verify: open a Claude session in `<project>` and confirm it reads the file.
 
 ## 3. Enable the change-tracking lifecycle in the project
 
-The governance gates look for `<project>/changes/`. Create the lifecycle dirs:
+All EngineOS change-tracking state lives under a **single hidden folder**,
+`.engineos/`, so it doesn't clutter the project root. Create it once:
 
 ```bash
 cd <project>
-mkdir -p changes archived
-cp ~/projects/engineos/changes/_template.md changes/_template.md
-cp ~/projects/engineos/changes/README.md   changes/README.md
-cp ~/projects/engineos/archived/README.md  archived/README.md
-# optional: a project-local memory/ for durable decisions
+mkdir -p .engineos/changes .engineos/archived
+cp ~/projects/engineos/.engineos/changes/_template.md .engineos/changes/_template.md
+cp ~/projects/engineos/.engineos/changes/README.md    .engineos/changes/README.md
+cp ~/projects/engineos/.engineos/archived/README.md   .engineos/archived/README.md
+# optional: .engineos/memory/ for durable decisions; .engineos/audits/ is created by /audit
 ```
-Commit these. Now: open a `changes/<date>-<slug>.md` when you start work, close it
-with the `record-change` skill when done (Step 7).
+Commit these. Now: open a `.engineos/changes/<date>-<slug>.md` when you start work,
+close it with the `record-change` skill when done (Step 7).
 
-Verify: `ls changes/` shows the template + README.
+Verify: `ls .engineos/changes/` shows the template + README.
 
 ---
 
@@ -158,7 +159,7 @@ DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
 /audit all                 # all domains
 /audit dba src/orders      # one domain, scoped
 ```
-→ writes `docs/audits/<date>-<domain>.md` with a top-line STATUS + remediation plan.
+→ writes `.engineos/audits/<date>-<domain>.md` with a top-line STATUS + remediation plan.
 
 **Make a coordinated change** (spec-gated):
 ```
@@ -168,8 +169,8 @@ DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
 
 **Close every unit of work** with the record-change skill:
 ```
-record-change            # marks the changes/ record done, registers files+movements,
-                         # git mv changes/ -> archived/YYYY/MM/DD/, clears the Stop flag
+record-change            # marks the .engineos/changes/ record done, registers files+movements,
+                         # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/DD/, clears the Stop flag
 ```
 
 **Verification before "done"** is enforced: typecheck + lint + relevant tests, output
@@ -208,5 +209,5 @@ Rules are code. Don't edit your local copy — open a PR to the EngineOS repo
 | Multi-domain read-only audit | `/audit <domain\|all> [scope]` |
 | Coordinated multi-domain change | `/implement <domain> <task>` |
 | Deep MCP-backed inspection | leaf specialists (auto-dispatched by `/audit`) |
-| Change record lifecycle | `changes/` → `record-change` skill → `archived/` |
+| Change record lifecycle | `.engineos/changes/` → `record-change` skill → `.engineos/archived/` |
 | Verification + record enforcement | Stop gates (automatic) |

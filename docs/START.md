@@ -163,12 +163,12 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 ## 8. The change lifecycle (every unit of work)
 
 ```
-open a record            → cp changes/_template.md changes/<date>-<slug>.md  (status: active)
+open a record            → cp .engineos/changes/_template.md .engineos/changes/<date>-<slug>.md  (status: active)
    ↓ do the work (routing + gates active)
 verify                   → typecheck + lint + tests, output shown
-record-change skill      → status done, register files+movements, git mv → archived/YYYY/MM/DD/
+record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/DD/
 ```
-This is what the Stop gates enforce. Distil any durable decision into `memory/`.
+This is what the Stop gates enforce. Distil any durable decision into `.engineos/memory/`.
 
 ---
 
@@ -177,7 +177,7 @@ This is what the Stop gates enforce. Distil any durable decision into `memory/`.
 1. Ask for the change ("add pagination to the orders list endpoint").
 2. Router announces backend rules + `nestjs-patterns` + `backend-coordinator`.
 3. For >2 files / a new feature, brainstorming + a spec come first — go with it.
-4. Open a `changes/` record.
+4. Open a `.engineos/changes/` record.
 5. Implement (or `/implement backend ...`). Each edit gets routed guidance.
 6. Verify — show typecheck/lint/test output.
 7. `record-change` to close and archive. Done.

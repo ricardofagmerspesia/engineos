@@ -6,7 +6,7 @@ installed with one command.
 
 Spec: see `docs/PRD.md`.
 
-- **New user? Read [`START.md`](START.md)** — how to invoke the skills, agents, commands, MCPs, hooks, and the change lifecycle day to day.
+- **New user? Read [`docs/START.md`](docs/START.md)** — how to invoke the skills, agents, commands, MCPs, hooks, and the change lifecycle day to day.
 - **Adopting into a project? Follow [`docs/ADOPTION.md`](docs/ADOPTION.md)** — step-by-step from clone to working patterns.
 
 ## Install
@@ -61,12 +61,12 @@ and `settings.local.json` — this repo never touches it.
 | `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
-| `skills/record-change` | Finalize a change: mark done, register files+movements, `changes/`→`archived/` | After completing work |
+| `skills/record-change` | Finalize a change: mark done, register files+movements, `.engineos/changes/`→`.engineos/archived/` | After completing work |
 | `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (mcp-atlassian/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
-| `changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
-| `archived/` | Completed change records, moved from `changes/` | After work is done + verified |
-| `memory/` | Durable, team-shared takeaways that outlive a single change | When a finished change leaves a lasting fact |
+| `.engineos/changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
+| `.engineos/archived/` | Completed change records, moved from `.engineos/changes/` | After work is done + verified |
+| `.engineos/memory/` | Durable, team-shared takeaways that outlive a single change | When a finished change leaves a lasting fact |
 
 ## Relationship to plugins
 
@@ -96,26 +96,26 @@ Quarterly: zero-hit rules/skills are prune candidates.
 Three git-tracked folders give every change an auditable trail. Each has a README
 with the full file template; below is when and how to use each.
 
-**1. Start a change → `changes/`**
+**1. Start a change → `.engineos/changes/`**
 When you begin a unit of work, create a record:
 ```bash
-cp changes/_template.md "changes/$(date +%F)-<slug>.md"   # or copy the shape from changes/README.md
+cp .engineos/changes/_template.md ".engineos/changes/$(date +%F)-<slug>.md"   # or copy the shape from .engineos/changes/README.md
 ```
 Fill in What / Why / Scope. Set `status: active`. Commit it with the work it tracks.
 
-**2. Finish a change → `archived/`**
+**2. Finish a change → `.engineos/archived/`**
 Once the work is done and verified (typecheck + lint + tests shown):
 ```bash
-mkdir -p "archived/<YYYY>/<MM>/<DD>" && git mv "changes/<date>-<slug>.md" "archived/<YYYY>/<MM>/<DD>/<date>-<slug>.md"
+mkdir -p ".engineos/archived/<YYYY>/<MM>/<DD>" && git mv ".engineos/changes/<date>-<slug>.md" ".engineos/archived/<YYYY>/<MM>/<DD>/<date>-<slug>.md"
 ```
 Set `status: done` and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
 
-**3. Capture a lasting fact → `memory/`**
+**3. Capture a lasting fact → `.engineos/memory/`**
 If the change leaves a durable takeaway (a decision, a convention, a gotcha),
-write a one-concept file in `memory/` and link it from the archived record with
+write a one-concept file in `.engineos/memory/` and link it from the archived record with
 `[[memory-slug]]`. Skip this for routine changes — only distil what's worth recalling.
 
-Boundaries: `memory/` is EngineOS's own knowledge store — not personal Claude
+Boundaries: `.engineos/memory/` is EngineOS's own knowledge store — not personal Claude
 memory and not a copy of `rules/`. See `rules/memory.md` for which knowledge lives
 where.
 

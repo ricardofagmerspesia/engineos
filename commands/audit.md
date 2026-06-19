@@ -30,8 +30,8 @@ the rest is an optional scope (paths/services/namespaces).
 
 4. **Consolidate**: dispatch `audit-consolidator` with all collected reports.
 
-5. **Write the report** to `docs/audits/<YYYY-MM-DD>-<domain>.md` in the target
-   project (create `docs/audits/` if absent). Print the top-line STATUS.
+5. **Write the report** to `.engineos/audits/<YYYY-MM-DD>-<domain>.md` in the
+   target project (create `.engineos/audits/` if absent). Print the top-line STATUS.
 
 ## Rules
 

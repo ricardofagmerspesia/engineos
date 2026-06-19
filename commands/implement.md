@@ -14,7 +14,7 @@ is the domain (`backend|frontend|dba|devops|ia|all`), the rest is the task.
    stop and route to `superpowers:brainstorming` + `tlc-spec-driven` before
    implementing.
 
-2. **Open a change record** (`changes/_template.md` → `changes/<date>-<slug>.md`,
+2. **Open a change record** (`.engineos/changes/_template.md` → `.engineos/changes/<date>-<slug>.md`,
    `status: active`) describing the task.
 
 3. **Select coordinator(s)** by domain (the dual-mode domain coordinators do the
@@ -32,7 +32,7 @@ is the domain (`backend|frontend|dba|devops|ia|all`), the rest is the task.
    stop hooks enforce this).
 
 6. **Record** — close the change via the `record-change` skill (mark done,
-   register files + movements, `changes/` → `archived/`).
+   register files + movements, `.engineos/changes/` → `.engineos/archived/`).
 
 ## Rules
 
