@@ -18,11 +18,17 @@ Create a TodoWrite item per step and do them in order.
    If none exists, create one from `.engineos/changes/_template.md`, named
    `<YYYY-MM-DD>-<short-kebab-slug>.md`, and fill What / Why / Scope from the work.
 
-2. **Describe what was made.** In the record's `## What` (and `## Notes` if
-   useful), write a concrete, past-tense summary of the change — not intentions,
-   what actually landed.
+2. **Confirm the spec exists.** Read the record's `spec:` front-matter field and
+   verify that file exists under `docs/specs/`. If it is missing or the field is
+   empty, the change is not ready to archive — write the spec first (brainstorm →
+   `docs/specs/<YYYY-MM-DD>-<slug>-design.md`), set `spec:`, then continue.
 
-3. **Register changes and movements.** Capture the real diff into the record under
+3. **Describe what was made.** Fill `## What was made` with a concrete, past-tense
+   account of what actually landed (not intentions), and resolve `## Checklist` —
+   every item ticked `- [x]`, or struck through with a one-line reason if dropped.
+   A record with unticked, unexplained checklist items is not done.
+
+4. **Register changes and movements.** Capture the real diff into the record under
    a `## Changes registered` section:
    ```bash
    git status --short
@@ -31,10 +37,11 @@ Create a TodoWrite item per step and do them in order.
    List the touched files and any `git mv` / renames. If the work spanned commits,
    add `git log --oneline <base>..HEAD`. Paste the actual output, not a paraphrase.
 
-4. **Mark done.** Set front matter `status: done` and add `completed: <YYYY-MM-DD>`
+5. **Mark done.** Only after `## What was made` is written and `## Checklist` is fully resolved:
+   set front matter `status: done` and add `completed: <YYYY-MM-DD>`
    (use the real current date).
 
-5. **Archive it under a date tree.** Archived records are grouped
+6. **Archive it under a date tree.** Archived records are grouped
    `.engineos/archived/<YYYY>/<MM>/<DD>/`. Derive the date from the record's `completed`
    field (same as the filename prefix), create the path, and move it:
    ```bash
@@ -43,13 +50,13 @@ Create a TodoWrite item per step and do them in order.
    git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${D:8:2}/<file>.md"
    ```
 
-6. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
+7. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
    session-scoped marker(s); the glob also clears any legacy unsuffixed flag):
    ```bash
    rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
    ```
 
-7. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<DD>/` with
+8. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<DD>/` with
    `status: done`, the flag file is gone, and `git status` reflects the rename.
 
 ## Scope
@@ -58,4 +65,4 @@ Create a TodoWrite item per step and do them in order.
   and do NOT touch external trackers (Jira) — out of scope for this skill.
 - One record per unit of work. Don't batch unrelated changes into one record.
 - If nothing was actually changed (no code touched), there is nothing to record —
-  remove the flag (step 6) and stop.
+  remove the flag (step 7) and stop.
