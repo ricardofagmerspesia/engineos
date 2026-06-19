@@ -1,6 +1,6 @@
 ---
 name: devops-coordinator
-description: Domain specialist for DevOps/infra work (CI/CD pipelines, Docker, Kubernetes/Helm, Terraform/IaC, cloud resources, observability config). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes config) per the MODE given or inferred. Use for infra/pipeline analysis or changes; follows EngineOS architecture/security/observability rules.
+description: Domain specialist for DevOps/infra work (CI/CD pipelines, Docker, Kubernetes/Helm, Terraform/IaC, cloud resources, observability config). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes config) per the MODE given or inferred. Use for infra/pipeline analysis or changes; follows EngineOS architecture/security/observability rules. Alias: hinokuma (invocable by this name).
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 

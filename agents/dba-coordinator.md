@@ -1,6 +1,6 @@
 ---
 name: dba-coordinator
-description: Domain specialist for database work (schema design, migrations, query performance, indexing, data access patterns) across Postgres/Oracle and other relational stores. Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes migrations/queries) per the MODE given or inferred. Use for data-layer analysis or changes; follows EngineOS architecture/data rules.
+description: Domain specialist for database work (schema design, migrations, query performance, indexing, data access patterns) across Postgres/Oracle and other relational stores. Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes migrations/queries) per the MODE given or inferred. Use for data-layer analysis or changes; follows EngineOS architecture/data rules. Alias: ronaldo (invocable by this name).
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
