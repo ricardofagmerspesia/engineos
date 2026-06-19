@@ -117,8 +117,9 @@ if command -v jq >/dev/null 2>&1; then
   ROUTE="$REPO_DIR/hooks/route-before-change.sh"
   MARK="$REPO_DIR/hooks/mark-unrecorded.sh"
   RECORD="$REPO_DIR/hooks/record-verify.sh"
+  ENSURE="$REPO_DIR/hooks/ensure-project-layout.sh"
 
-  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" '
+  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" '
     # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
     def add($event; $matcher; $cmd):
       .hooks[$event] //= []
@@ -131,6 +132,7 @@ if command -v jq >/dev/null 2>&1; then
     | add("PostToolUse"; "Edit|Write"; $post)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
+    | add("SessionStart"; "";          $ensure)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
 
@@ -155,6 +157,7 @@ else
   warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/mark-unrecorded.sh"
   warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
+  warn "  SessionStart -> $REPO_DIR/hooks/ensure-project-layout.sh"
 fi
 
 # ---------- 6. MCP reminder ----------
