@@ -37,6 +37,8 @@ jobs:
           # match the secrets gate at rest (which would abort every real install)
           prefix='sk-ant-'
           printf '%sapi03-PLANTEDSECRETVALUE1234567890\n' "$prefix" > "$tmp/repo/leak.txt"
+          # the gate scans TRACKED files, so the planted secret must be staged
+          git -C "$tmp/repo" add leak.txt
           if HOME="$tmp/home" bash "$tmp/repo/install.sh" >/dev/null 2>&1; then
             echo "FAIL: secrets gate did not abort on a planted key"; exit 1
           fi
