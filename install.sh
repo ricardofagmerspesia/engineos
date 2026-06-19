@@ -16,21 +16,28 @@ echo "EngineOS install from: $REPO_DIR"
 # ---------- 1. Secrets gate: refuse to install a repo containing secrets ----------
 # NOTE: no empty regex alternations — BSD grep (macOS default) aborts the whole
 # pattern on an empty branch, which previously made this gate a silent no-op.
-# The gate FAILS CLOSED: a grep error (rc>=2, e.g. bad pattern) aborts the install.
+# Scans GIT-TRACKED files only (what could be committed) — untracked junk
+# (node_modules, build output, stray projects) is irrelevant to "secrets in the
+# repo" and would only cause false positives. Falls back to a recursive scan if
+# REPO_DIR is not a git work tree. FAILS CLOSED on an invalid pattern.
 SECRET_PATTERNS='sk-ant-[A-Za-z0-9_-]{10,}|sk-proj-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|gh[opsu]_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|ATATT[A-Za-z0-9_=.-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|"private_key_id"[[:space:]]*:|[a-z][a-z+]+://[^/[:space:]]+:[^@[:space:]]+@'
 
 set +e
-SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh)
-SECRET_RC=$?
+# fail closed if the pattern itself is invalid (grep rc>=2 on a trivial probe)
+printf '' | grep -E "$SECRET_PATTERNS" >/dev/null 2>&1
+[ "$?" -ge 2 ] && { set -e; red "ABORT: secrets-gate pattern failed to compile. Failing closed."; exit 1; }
+
+if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  SECRET_HITS=$( cd "$REPO_DIR" && git ls-files -z | grep -zv '^install\.sh$' | xargs -0 grep -IlE "$SECRET_PATTERNS" 2>/dev/null )
+else
+  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh 2>/dev/null)
+fi
 set -e
-case "$SECRET_RC" in
-  0) red "ABORT: secret-looking strings found in the repo. Remove + rotate before installing/pushing:"
-     printf '%s\n' "$SECRET_HITS"
-     exit 1 ;;
-  1) : ;;  # no matches — clean
-  *) red "ABORT: secrets-gate pattern failed to run (grep rc=$SECRET_RC). Failing closed."
-     exit 1 ;;
-esac
+if [ -n "$SECRET_HITS" ]; then
+  red "ABORT: secret-looking strings found in tracked files. Remove + rotate before installing/pushing:"
+  printf '%s\n' "$SECRET_HITS"
+  exit 1
+fi
 
 # ---------- 2. Warn about secrets in local settings (not repo, but still bad) ----------
 if [ -f "$SETTINGS" ] && grep -Elq "$SECRET_PATTERNS" "$SETTINGS" >/dev/null 2>&1; then
