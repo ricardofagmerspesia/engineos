@@ -12,8 +12,9 @@ inside `set +e` (it was aborting under set -e/pipefail on a no-match rc=1).
 
 ## Why
 A stray untracked dir (leo-curso/, a Prisma course) with an interpolated
-`postgresql://${user}:${pass}@` literal false-tripped the gate and would abort
-every install. A secrets gate should check what could be committed (tracked), not
+connection-string template literal (a postgres URL built from `${}` placeholders)
+false-tripped the gate and would abort every install. A secrets gate should check
+what could be committed (tracked), not
 random untracked junk (node_modules, build output, other projects).
 
 ## Scope

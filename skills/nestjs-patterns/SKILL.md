@@ -55,11 +55,37 @@ Use the `nestjs` MCP tools for scaffolding (`nestjs_generate_resource`, `nestjs_
 ## Common team decisions (defaults)
 
 - Global pipes: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`.
-- Global exception filter returning `{ statusCode, error, message, correlationId }`.
-- Auth: guards at controller level, `@Public()` decorator for exceptions — secure by default.
+- Global exception filter returning `{ statusCode, error, message, correlationId }` (+ optional `details` for validation errors, `timestamp`). Map `ValidationException` / domain errors / `HttpException` to this one shape.
+- Auth: guards at controller level, `@Public()` decorator for exceptions — secure by default. Read the authenticated principal with a `@CurrentUser()` param decorator (supports `@CurrentUser()` for the whole object or `@CurrentUser('id')` for a field) — never reach into `request.user` in controllers.
 - Queues: BullMQ; one processor class per queue; jobs idempotent via dedupe key.
 - Config: `ConfigModule` with schema validation (joi/zod); typed config service; no raw `process.env` outside config layer.
 - Logging: nestjs-pino, correlation id middleware, log boundaries only.
+
+## Testing doubles — prefer in-memory fakes over mocks
+
+For service/use-case tests, back each repository contract with a concrete
+**in-memory fake** (a `Map`/array implementing the same interface) rather than
+ad-hoc mocks. Ship the fake next to the contract (`*.in-memory.repository.ts`).
+Fakes give real behavior (queries, ordering, conflicts) and don't rot when the
+interface changes the way `jest.fn()` mocks silently do. Reserve mocks for true
+external I/O (HTTP, clock).
+
+## HTTP integration tests — `*.integration.http`
+
+For endpoint checks, keep REST Client `*.integration.http` files next to the
+controller: variables at the top, `###`-delimited requests, `@name` labels to chain
+responses. Never hardcode tokens/secrets — pull them from a request step or an env
+var. These are runnable docs + a fast manual smoke; they don't replace the e2e in
+the endpoint checklist.
+
+## Prisma (when the project uses it)
+
+- **Modular schema:** split the schema by domain — `prisma/models/<module>.prisma`,
+  one file per feature — instead of one giant `schema.prisma`.
+- **Mapping:** TypeScript naming in models; `@@map("<snake_case_plural>")` for table
+  names and `@map` for columns so the DB stays snake_case.
+- **Migrations:** name per module in kebab-case, incremental (`<module>`, then
+  `<module>-<change>`). Migration safety rules live in `rules/data.md`.
 
 ## Anti-patterns to flag in existing code
 
@@ -70,3 +96,5 @@ Use the `nestjs` MCP tools for scaffolding (`nestjs_generate_resource`, `nestjs_
 - Unbounded `find()` without pagination on list routes.
 - Inline `ParseIntPipe`/`DefaultValuePipe`/`@ApiQuery` on params → move to a typed DTO.
 - Controller doing math/aggregation or >20 lines → push into a service.
+- Reaching into `request.user` in a controller → use the `@CurrentUser()` decorator.
+- Service/use-case tests mocking repositories with `jest.fn()` → use an in-memory fake.
