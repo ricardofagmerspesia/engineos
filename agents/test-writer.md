@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature has acceptance criteria needing test coverage, when a bug fix needs a regression test, or when asked to backfill tests. Follows EngineOS testing rules.
+description: Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature has acceptance criteria needing test coverage, when a bug fix needs a regression test, or when asked to backfill tests. Follows EngineOS testing rules. Alias: mendes (invocable by this name).
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
