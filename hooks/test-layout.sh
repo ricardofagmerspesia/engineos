@@ -45,5 +45,21 @@ rm -rf "$N"
 OUT4=$(printf '{"cwd":"%s","session_id":"S1"}' "$REPO" | bash "$DIR/ensure-project-layout.sh")
 [ -z "$OUT4" ] && ok || no "engineos repo not skipped"
 
+# --- no-jq fallback: cwd parsed via grep/sed path still scaffolds ---
+# Build a minimal PATH that includes git/grep/sed/etc. but excludes jq.
+# On macOS both git and jq live in /usr/bin, so we symlink the needed tools
+# into a temp dir and leave jq out.
+NOJQ_BIN=$(mktemp -d)
+for _t in git grep sed head bash cp mkdir dirname; do
+  _p=$(command -v "$_t" 2>/dev/null)
+  [ -f "$_p" ] && ln -s "$_p" "$NOJQ_BIN/$_t" 2>/dev/null || true
+done
+J=$(mktemp -d); ( cd "$J" && git init -q )
+OUT5=$(printf '{"cwd":"%s","session_id":"S1"}' "$J" | PATH="$NOJQ_BIN:/bin" bash "$DIR/ensure-project-layout.sh")
+[ -d "$J/docs/specs" ] && printf '%s' "$OUT5" | grep -q '^\[engineos\] scaffolded' \
+  && ok || no "no-jq fallback path did not scaffold"
+rm -rf "$J" "$NOJQ_BIN"
+unset NOJQ_BIN _t _p
+
 echo "---"; echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
