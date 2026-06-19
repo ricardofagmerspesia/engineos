@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit "security review" request. Read-only — reports findings, never edits.
+description: Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit "security review" request. Read-only — reports findings, never edits. Alias: vega (invocable by this name).
 tools: Read, Grep, Glob, Bash
 ---
 

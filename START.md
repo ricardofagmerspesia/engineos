@@ -77,6 +77,12 @@ Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 | dba-coordinator | ronaldo |
 | llm-coordinator | hermsdorff |
 | oracle-specialist | leo |
+| kubernetes-specialist | kovac |
+| gcp-specialist | nakamura |
+| postgres-specialist | tobias |
+| cicd-specialist | fontana |
+| security-reviewer | vega |
+| test-writer | mendes |
 | audit-consolidator | corradin |
 
 e.g. `borisenko, audit the orders service` works the same as naming the coordinator.
