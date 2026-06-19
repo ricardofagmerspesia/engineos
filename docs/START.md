@@ -166,7 +166,7 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 open a record            → cp changes/_template.md changes/<date>-<slug>.md  (status: active)
    ↓ do the work (routing + gates active)
 verify                   → typecheck + lint + tests, output shown
-record-change skill      → status done, register files+movements, git mv → archived/
+record-change skill      → status done, register files+movements, git mv → archived/YYYY/MM/DD/
 ```
 This is what the Stop gates enforce. Distil any durable decision into `memory/`.
 

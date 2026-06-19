@@ -61,7 +61,7 @@ Procedure run after work is complete:
 3. **Register changes + movements:** capture `git status --short` and
    `git diff --stat` (staged + unstaged) into the record; note any `git mv`.
 4. Set `status: done`, `completed: <YYYY-MM-DD>`.
-5. `git mv changes/<file> archived/<file>`.
+5. `mkdir -p archived/<YYYY>/<MM>/<DD>` then `git mv changes/<file> archived/<YYYY>/<MM>/<DD>/<file>` (grouped by completed date).
 
 Scope: changes→archived only (no memory distill, no external tracker).
 

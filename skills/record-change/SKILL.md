@@ -34,9 +34,13 @@ Create a TodoWrite item per step and do them in order.
 4. **Mark done.** Set front matter `status: done` and add `completed: <YYYY-MM-DD>`
    (use the real current date).
 
-5. **Archive it.** Move the record, preserving history:
+5. **Archive it under a date tree.** Archived records are grouped
+   `archived/<YYYY>/<MM>/<DD>/`. Derive the date from the record's `completed`
+   field (same as the filename prefix), create the path, and move it:
    ```bash
-   git mv "changes/<file>.md" "archived/<file>.md"
+   D=2026-06-19   # the record's completed date, YYYY-MM-DD
+   mkdir -p "archived/${D:0:4}/${D:5:2}/${D:8:2}"
+   git mv "changes/<file>.md" "archived/${D:0:4}/${D:5:2}/${D:8:2}/<file>.md"
    ```
 
 6. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
@@ -45,8 +49,8 @@ Create a TodoWrite item per step and do them in order.
    rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
    ```
 
-7. **Verify.** Confirm the record is in `archived/` with `status: done`, the flag
-   file is gone, and `git status` reflects the rename.
+7. **Verify.** Confirm the record is in `archived/<YYYY>/<MM>/<DD>/` with
+   `status: done`, the flag file is gone, and `git status` reflects the rename.
 
 ## Scope
 
