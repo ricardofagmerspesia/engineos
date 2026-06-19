@@ -10,6 +10,7 @@ track `.claude-plugin/plugin.json` (semver).
 - `audit-consolidator` agent — merges specialist reports into one status report (verdict + root cause + ordered plan); Jira read-only for context.
 - Orchestrator commands `/engineos:audit` and `/engineos:implement` (`commands/`) — fan out to coordinators + leaves, consolidate; implement is spec-gated and record-closed.
 - Router rows for the audit/implement orchestrators.
+- `install.sh` now symlinks `commands/` (mode A): orchestrators available as `/audit`, `/implement`.
 
 ### Changed
 - Renamed the Atlassian MCP template entry `jira` → `mcp-atlassian` to match the community server and live config.

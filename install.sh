@@ -77,6 +77,23 @@ for agent in "$REPO_DIR"/agents/*.md; do
   fi
 done
 
+# ---------- 4c. Symlink commands (mode A: available as /audit, /implement; the
+# /engineos: namespace prefix only applies in plugin mode) ----------
+if [ -d "$REPO_DIR/commands" ]; then
+  mkdir -p "$CLAUDE_DIR/commands"
+  for cmd in "$REPO_DIR"/commands/*.md; do
+    [ -e "$cmd" ] || continue   # empty glob guard
+    name=$(basename "$cmd")
+    target="$CLAUDE_DIR/commands/$name"
+    if [ -L "$target" ] || [ ! -e "$target" ]; then
+      ln -sfn "$cmd" "$target"
+      echo "command linked: /${name%.md}"
+    else
+      warn "skip: $target exists and is not a symlink"
+    fi
+  done
+fi
+
 # ---------- 5. Hooks: merge into settings.json (requires jq) ----------
 chmod +x "$REPO_DIR"/hooks/*.sh
 if command -v jq >/dev/null 2>&1; then
