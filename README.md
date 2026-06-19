@@ -4,7 +4,10 @@ Shared AI engineering environment for Claude Code. One source of truth for how w
 rules, skills, routing, quality-gate hooks, and MCP baseline — versioned, reviewed via PR,
 installed with one command.
 
-Spec: see `docs/PRD.md`. **Adopting EngineOS into a project? Follow [`docs/ADOPTION.md`](docs/ADOPTION.md)** — step-by-step from clone to working patterns.
+Spec: see `docs/PRD.md`.
+
+- **New user? Read [`START.md`](START.md)** — how to invoke the skills, agents, commands, MCPs, hooks, and the change lifecycle day to day.
+- **Adopting into a project? Follow [`docs/ADOPTION.md`](docs/ADOPTION.md)** — step-by-step from clone to working patterns.
 
 ## Install
 
