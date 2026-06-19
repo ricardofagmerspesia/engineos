@@ -1,6 +1,6 @@
 ---
 name: frontend-coordinator
-description: Domain specialist for frontend work (React, Next.js, components, pages/app router, state, data fetching, forms, styling, performance, accessibility). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code) per the MODE given or inferred. Use for frontend-focused analysis or changes; follows EngineOS architecture/frontend/testing rules.
+description: Domain specialist for frontend work (React, Next.js, components, pages/app router, state, data fetching, forms, styling, performance, accessibility). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code) per the MODE given or inferred. Use for frontend-focused analysis or changes; follows EngineOS architecture/frontend/testing rules. Alias: arturo (invocable by this name).
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 

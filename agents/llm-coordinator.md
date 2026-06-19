@@ -1,6 +1,6 @@
 ---
 name: llm-coordinator
-description: Domain specialist for LLM/AI engineering (prompt design, agent tools, structured output, RAG pipelines, embeddings, evals). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code/prompts) per the MODE given or inferred. Use for LLM-feature analysis or changes; follows EngineOS llm-apps rules and the llm-engineering skill.
+description: Domain specialist for LLM/AI engineering (prompt design, agent tools, structured output, RAG pipelines, embeddings, evals). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code/prompts) per the MODE given or inferred. Use for LLM-feature analysis or changes; follows EngineOS llm-apps rules and the llm-engineering skill. Alias: hermsdorff (invocable by this name).
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 

@@ -67,6 +67,20 @@ say "use the `<name>` agent to …".
 
 Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 
+**Aliases** — these agents also answer to a short name (say either):
+
+| Canonical | Alias |
+|---|---|
+| backend-coordinator | borisenko |
+| frontend-coordinator | arturo |
+| devops-coordinator | hinokuma |
+| dba-coordinator | ronaldo |
+| llm-coordinator | hermsdorff |
+| oracle-specialist | leo |
+| audit-consolidator | corradin |
+
+e.g. `borisenko, audit the orders service` works the same as naming the coordinator.
+
 ---
 
 ## 3. Commands — orchestrators

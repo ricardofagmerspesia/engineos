@@ -1,6 +1,6 @@
 ---
 name: backend-coordinator
-description: Domain specialist for backend work (NestJS, APIs, services, data access, queues, workers, migrations). Dual-mode — AUDIT (read-only analysis, returns findings) or IMPLEMENT (writes code) depending on the MODE given by the orchestrator or inferred from the request. Use for backend-focused analysis or changes; follows EngineOS architecture/backend/testing rules.
+description: Domain specialist for backend work (NestJS, APIs, services, data access, queues, workers, migrations). Dual-mode — AUDIT (read-only analysis, returns findings) or IMPLEMENT (writes code) depending on the MODE given by the orchestrator or inferred from the request. Use for backend-focused analysis or changes; follows EngineOS architecture/backend/testing rules. Alias: borisenko (invocable by this name).
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
