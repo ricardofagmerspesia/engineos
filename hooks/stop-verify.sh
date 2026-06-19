@@ -29,9 +29,10 @@ fi
 ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 # ---------- collect changed code files from transcript ----------
-# grep for Edit/Write tool calls with code file paths (not sql)
-FILES=$(grep '"name":[[:space:]]*"\(Edit\|Write\)"' "$TRANSCRIPT" 2>/dev/null \
-  | grep -o '"file_path":[[:space:]]*"[^"]*\.\(ts\|tsx\|js\|jsx\|py\|go\|rs\)"' \
+# grep for Edit/Write tool calls with code file paths (not sql).
+# Note: harness transcripts use "tool_input" while real transcripts use "input";
+# extracting "file_path" directly handles both forms.
+FILES=$(grep -o '"file_path":[[:space:]]*"[^"]*\.\(ts\|tsx\|js\|jsx\|py\|go\|rs\)"' "$TRANSCRIPT" 2>/dev/null \
   | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/' \
   | sort -u) || true
 [ -n "$FILES" ] || exit 0
@@ -62,9 +63,10 @@ elif [ -f "$ROOT/yarn.lock" ];      then RUN="yarn run"; EXEC="yarn"
 else                                     RUN="npm run";  EXEC="npx --no-install"; fi
 
 # ---------- map files to unique package dirs ----------
-# Use indexed arrays (bash 3.2 / BSD macOS safe — no associative arrays)
+# Use newline-safe read loop so paths with spaces are handled correctly.
 PKG_DIRS=""
-for FILE in $FILES; do
+while IFS= read -r FILE; do
+  [ -n "$FILE" ] || continue
   DIR_OF=$(dirname "$FILE")
   PKG=$(find_up "$DIR_OF" package.json project.json 2>/dev/null) || continue
   # dedupe: only add if not already present
@@ -72,20 +74,22 @@ for FILE in $FILES; do
     *"|${PKG}|"*) ;;  # already have it
     *) PKG_DIRS="${PKG_DIRS}|${PKG}|" ;;
   esac
-done
+done <<< "$FILES"
 [ -n "$PKG_DIRS" ] || exit 0
 
 # ---------- run scoped verification ----------
 FAILED=0
 OUT=""
 
-# strip leading/trailing pipes and split into list
+# strip leading/trailing pipes into newline-delimited list; iterate with here-string
+# so FAILED/OUT mutations inside the loop survive (no subshell).
 PKG_LIST=$(printf '%s' "$PKG_DIRS" | tr '|' '\n' | grep -v '^$' | sort -u)
 
 HAS_NX=0
 [ -f "$ROOT/nx.json" ] && HAS_NX=1
 
-for PKG_DIR in $PKG_LIST; do
+while IFS= read -r PKG_DIR; do
+  [ -n "$PKG_DIR" ] || continue
   [ -d "$PKG_DIR" ] || continue
 
   if [ "$HAS_NX" -eq 1 ] && command -v jq >/dev/null 2>&1; then
@@ -109,11 +113,14 @@ for PKG_DIR in $PKG_LIST; do
       [ "$TARGET" = "test" ] && TIMEOUT=180
 
       STEP_OUT=$( (cd "$ROOT" && TO "$TIMEOUT" $EXEC nx run "${PROJ}:${TARGET}" 2>&1) ) && continue
-      EXIT_CODE=$?
 
-      # distinguish "nx target not found" (infra skip) from real failure
-      if printf '%s' "$STEP_OUT" | grep -qiE 'cannot find.*target|target.*not found|no target.*found'; then
-        continue  # infra quirk — skip, never block
+      # TARGET_EXISTS=1 means nx show confirmed the target; any non-zero here is a real failure.
+      # Only apply an anchored nx-phrase check as a last-resort guard in case nx show
+      # itself gave a false positive (e.g. stale cache). Anchored to Nx's actual output
+      # only — never applied to test/lint output more broadly.
+      if printf '%s' "$STEP_OUT" | grep -qiE \
+          "cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task"; then
+        continue  # target genuinely absent despite nx show — infra skip
       fi
 
       FAILED=1
@@ -138,11 +145,12 @@ ${STEP_OUT}"
 ${STEP_OUT}"
     done
   fi
-done
+done <<< "$PKG_LIST"
 
 # ---------- decide ----------
 if [ "$FAILED" -eq 1 ]; then
-  SUMMARY=$(printf '%b' "$OUT" | head -80)
+  # Strip leading newline(s) so the JSON reason starts with text, not a blank line.
+  SUMMARY=$(printf '%s' "$OUT" | sed '/./,$!d' | head -80)
   REASON="EngineOS gate: verification failed. ${SUMMARY}"
   if command -v jq >/dev/null 2>&1; then
     jq -n --arg r "$REASON" '{decision: "block", reason: $r}'

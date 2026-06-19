@@ -24,7 +24,8 @@ invoke() {
 # ---------- helper: build a fake transcript recording an Edit of a file ----------
 make_transcript() {  # <dest_file> <abs_path_to_changed_file>
   local DEST="$1" FPATH="$2"
-  # Keep the pattern the hook greps for: "name": "Edit" and "file_path": "<abs>"
+  # Uses "tool_input" (harness format); real Claude transcripts use "input".
+  # The hook greps "file_path" directly so both forms are extracted correctly.
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","tool_input":{"file_path":"%s"}}]}}\n' \
     "$FPATH" > "$DEST"
 }
@@ -87,6 +88,32 @@ make_transcript "$TSCRIPT" "$T/src/x.ts"
 DEC=$(invoke "$T" "$TSCRIPT" false)
 rm -rf "$T" "$TSCRIPT"
 [ -z "$DEC" ] && ok || no "case5 no-test-script: expected empty decision, got '$DEC'"
+
+# ---------- Case 6: Failing lint, passing test — block (per-step non-test failure) ----------
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"test":"exit 0","lint":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"
+touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+DEC=$(invoke "$T" "$TSCRIPT" false)
+rm -rf "$T" "$TSCRIPT"
+[ "$DEC" = "block" ] && ok || no "case6 failing-lint-pass-test: expected 'block', got '$DEC'"
+
+# ---------- Case 7: Path with spaces — failing test must still block (FIX 1) ----------
+# Build a temp repo whose source file lives under a directory whose name contains a space.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+SPACED_DIR="$T/my pkg"
+mkdir -p "$SPACED_DIR/src"
+printf '{"scripts":{"test":"exit 1"}}\n' > "$SPACED_DIR/package.json"
+touch "$SPACED_DIR/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$SPACED_DIR/src/x.ts"
+DEC=$(invoke "$T" "$TSCRIPT" false)
+rm -rf "$T" "$TSCRIPT"
+[ "$DEC" = "block" ] && ok || no "case7 space-in-path: expected 'block', got '$DEC'"
 
 echo "---"
 echo "pass=$pass fail=$fail"
