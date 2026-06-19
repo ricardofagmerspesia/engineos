@@ -106,7 +106,7 @@ Fill in What / Why / Scope. Set `status: active`. Commit it with the work it tra
 **2. Finish a change → `archived/`**
 Once the work is done and verified (typecheck + lint + tests shown):
 ```bash
-git mv "changes/<date>-<slug>.md" "archived/<date>-<slug>.md"
+mkdir -p "archived/<YYYY>/<MM>/<DD>" && git mv "changes/<date>-<slug>.md" "archived/<YYYY>/<MM>/<DD>/<date>-<slug>.md"
 ```
 Set `status: done` and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
 

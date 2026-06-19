@@ -36,5 +36,6 @@ changes/  --(work complete + verified)-->  archived/
 ```
 
 When a change is done and verified, set `status: done` and move the file to
-`archived/`. Distil any lasting fact into `memory/` and link it. Git retains the
-full move history — nothing is lost.
+`archived/<YYYY>/<MM>/<DD>/` (grouped by the completed date — see `archived/README.md`).
+Distil any lasting fact into `memory/` and link it. Git retains the full move
+history — nothing is lost.
