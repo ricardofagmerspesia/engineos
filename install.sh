@@ -86,9 +86,13 @@ done
 
 # ---------- 4c. Symlink commands (mode A: available as /audit, /implement; the
 # /engineos: namespace prefix only applies in plugin mode) ----------
+# Links top-level commands AND the generated per-agent commands under
+# commands/agents/. Per-agent files are linked FLAT into ~/.claude/commands/ so
+# they invoke as bare /<name> (e.g. /borisenko), not /agents:<name> — a
+# subdirectory would namespace them in symlink mode.
 if [ -d "$REPO_DIR/commands" ]; then
   mkdir -p "$CLAUDE_DIR/commands"
-  for cmd in "$REPO_DIR"/commands/*.md; do
+  for cmd in "$REPO_DIR"/commands/*.md "$REPO_DIR"/commands/agents/*.md; do
     [ -e "$cmd" ] || continue   # empty glob guard
     name=$(basename "$cmd")
     target="$CLAUDE_DIR/commands/$name"
