@@ -2,6 +2,7 @@
 name: <YYYY-MM-DD>-<short-kebab-slug>
 status: active
 owner: <name>
+spec: docs/specs/<YYYY-MM-DD>-<slug>-design.md
 ---
 
 ## What
@@ -12,6 +13,13 @@ owner: <name>
 
 ## Scope
 <files, modules, or surfaces touched>
+
+## Checklist
+- [ ] <planned step>
+- [ ] <planned step>
+
+## What was made
+<filled on completion: past-tense, concrete account of what actually landed>
 
 ## Verification
 <how it was checked: typecheck, lint, tests, manual>
