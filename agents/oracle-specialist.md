@@ -1,6 +1,6 @@
 ---
 name: oracle-specialist
-description: Read-only Oracle leaf specialist. Introspects schema, indexes, and execution plans via the oracle MCP (read-only connection) and reports findings in the shared specialist format. Dispatched by the dba-coordinator or the audit orchestrator. Never runs DDL/DML.
+description: Read-only Oracle leaf specialist. Introspects schema, indexes, and execution plans via the oracle MCP (read-only connection) and reports findings in the shared specialist format. Dispatched by the audit orchestrator (or by a coordinator when the coordinator is itself the top-level agent). Never runs DDL/DML.
 tools: Read, Grep, Glob, Bash, mcp__oracle
 ---
 

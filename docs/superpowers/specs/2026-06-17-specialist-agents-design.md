@@ -52,7 +52,7 @@ Domain token maps to a set of agents (the routing map):
 | `frontend` | frontend-coordinator |
 | `devops`   | devops-coordinator, kubernetes-specialist, gcp-specialist, cicd-specialist |
 | `dba`      | dba-coordinator, postgres-specialist, oracle-specialist |
-| `ia`       | ia-coordinator |
+| `ia`       | llm-coordinator |
 | `all`      | all 5 coordinators in parallel |
 
 `scope` (optional) narrows to specific paths/services and, when present, lets the
@@ -66,7 +66,7 @@ knowledge; usable directly or via a command):
 - `frontend-coordinator` — React/Next/styling/perf/a11y. Tools: Read, Grep, Glob, Bash, Edit, Write.
 - `devops-coordinator` — CI/CD, containers, clusters, cloud, observability. Tools: Read, Grep, Glob, Bash, Edit, Write.
 - `dba-coordinator` — schema, migrations, query performance, data access. Tools: Read, Grep, Glob, Bash, Edit, Write.
-- `ia-coordinator` — prompts, RAG, agent tooling, evals. Tools: Read, Grep, Glob, Bash, Edit, Write.
+- `llm-coordinator` — prompts, RAG, agent tooling, evals. Tools: Read, Grep, Glob, Bash, Edit, Write.
 
 **5 MCP-bound leaf specialists** (deep, narrow, each gets only its MCP):
 - `kubernetes-specialist` — kubernetes MCP (read-only cluster context).

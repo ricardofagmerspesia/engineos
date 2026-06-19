@@ -1,6 +1,6 @@
 ---
 name: gcp-specialist
-description: Read-only Google Cloud leaf specialist. Inspects GCP resources (compute, storage, IAM, networking, billing signals) via the gcp MCP and reports findings in the shared specialist format. Dispatched by the devops-coordinator or the audit orchestrator. Never mutates cloud resources.
+description: Read-only Google Cloud leaf specialist. Inspects GCP resources (compute, storage, IAM, networking, billing signals) via the gcp MCP and reports findings in the shared specialist format. Dispatched by the audit orchestrator (or by a coordinator when the coordinator is itself the top-level agent). Never mutates cloud resources.
 tools: Read, Grep, Glob, Bash, mcp__gcp
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: kubernetes-specialist
-description: Read-only Kubernetes leaf specialist. Inspects cluster state (workloads, events, resource usage, config) via the kubernetes MCP and reports findings in the shared specialist format. Dispatched by the devops-coordinator or the audit orchestrator for deep cluster analysis. Never mutates the cluster.
+description: Read-only Kubernetes leaf specialist. Inspects cluster state (workloads, events, resource usage, config) via the kubernetes MCP and reports findings in the shared specialist format. Dispatched by the audit orchestrator (or by a coordinator when the coordinator is itself the top-level agent) for deep cluster analysis. Never mutates the cluster.
 tools: Read, Grep, Glob, Bash, mcp__kubernetes
 ---
 
