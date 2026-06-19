@@ -9,6 +9,8 @@ Where knowledge lives. One home per fact — duplication drifts.
 | Architectural decisions + why | Project `docs/adr/` | PR + `adr` skill |
 | Project facts: stack, commands, domain glossary, convention deltas | Project `CLAUDE.md` | PR to project |
 | Feature requirements/specs | Project `docs/specs/` (or tracker) | Spec workflow |
+| Product requirements (what/why) | Project `docs/prds/` | PRD template |
+| Project rule deltas (longer-form) | Project `docs/rules/` | PR to project |
 | Personal preferences (style, tools, workflow) | Your `~/.claude/CLAUDE.md` + Claude memory | Yours alone |
 | Session-only context | Nowhere — let it die with the session | — |
 

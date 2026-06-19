@@ -60,3 +60,7 @@ Rules for routing:
 3. No secrets in code, config, or commits. Ever. See `rules/security.md`.
 4. Follow existing project conventions over these rules when they conflict —
    project `CLAUDE.md` > EngineOS > defaults.
+5. Standard project layout: every project carries `.engineos/{changes,archived,memory}`
+   + `docs/{specs,prds,rules}`. The SessionStart hook scaffolds anything missing
+   (non-blocking). Spec-first for every change; the change record links its spec and
+   carries a checklist + a "what was made" account before it is archived.

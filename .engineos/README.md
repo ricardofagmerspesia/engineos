@@ -10,6 +10,11 @@ clutter the project root.
 | `memory/` | Durable, repo-specific takeaways that outlive a single change |
 | `audits/` | `/audit` reports (`<date>-<domain>.md`) — created on first audit |
 
+Beyond this folder, the standard project layout also includes `docs/specs/`
+(design specs), `docs/prds/` (product requirements), and `docs/rules/` (project
+rule deltas only — team rules live in the engineos repo). The SessionStart
+`ensure-project-layout` hook scaffolds any of these that are missing.
+
 Lifecycle: open a record in `changes/` → work → close with the `record-change`
 skill (moves it to `archived/<YYYY>/<MM>/<DD>/`, clears the Stop-gate flag) → distil
 any lasting fact into `memory/`. See each subfolder's README.
