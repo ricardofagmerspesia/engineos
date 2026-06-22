@@ -22,7 +22,7 @@ a runtime bug.
 
 ## Goal
 
-Full EngineOS parity in Cursor — router, rules, skills, agents, and the
+Full EngineOS parity in Cursor — router, rules, skills, agents, commands, and the
 governance hooks — provisioned by `install.sh` into both the global `~/.cursor/`
 and each project's `.cursor/`, staying in sync the way the Claude Code side does.
 
@@ -45,6 +45,12 @@ and each project's `.cursor/`, staying in sync the way the Claude Code side does
 - Rules: `.cursor/rules/*.mdc` with frontmatter `description`, `globs`,
   `alwaysApply`. `alwaysApply:true` = always in context; `globs` = auto-attach by
   file pattern. Skills: `.cursor/skills/<name>/SKILL.md`. Agents: `.cursor/agents/*.md`.
+- **Commands:** `.cursor/commands/<name>.md` (project) and `~/.cursor/commands/<name>.md`
+  (global). One file = one command; invoked as `/<name>` (the filename, no
+  namespace prefix — unlike CC plugin commands which namespace as
+  `/engineos:<name>`). Body is a plain prompt; trailing text after the slash
+  command is appended as arguments (no `argument-hint`/`allowed-tools`
+  frontmatter — those are CC-only and are dropped on port).
 
 ## Architecture: single-source core + thin adapters
 
@@ -98,6 +104,24 @@ Generate EngineOS rules as Cursor rules:
   collision only if it conflicts; otherwise leave project-local skills untouched
   (never overwrite a non-EngineOS skill).
 
+### Phase 2b — commands mirror (`templates/cursor/commands/*.md`)
+EngineOS slash commands (`commands/*.md`) have no Cursor target today, so
+`/audit`, `/implement`, `/production-env` are invisible in Cursor. Mirror them:
+- Source of truth stays `commands/*.md`. A port produces
+  `templates/cursor/commands/<name>.md` with CC-only frontmatter
+  (`argument-hint`, `allowed-tools`) **stripped** and the `description` folded
+  into a leading `# /<name>` heading + one-line summary. Body (the prompt) is
+  copied verbatim; `$ARGUMENTS` semantics hold (Cursor appends trailing text).
+- Skip the `commands/agents/*.md` invoke-shims — Cursor has native agents
+  (Phase 2), so the per-agent CC command shims are redundant there.
+- `install.sh` copies these into `~/.cursor/commands/` (global) and project
+  `.cursor/commands/` under the `engineos-`-safe naming, idempotent and
+  non-clobbering like skills/agents (never overwrite a hand-authored command).
+- Naming caveat: Cursor commands are unnamespaced (`/production-env`), whereas
+  the CC side is `/engineos:production-env`. Document both so users aren't
+  surprised; a project-local command of the same name would shadow ours, so the
+  installer must detect and warn rather than overwrite.
+
 ### Phase 3 — hooks port (`templates/cursor/hooks/` + `hooks/cursor/`)
 Map each EngineOS hook to a Cursor event via the shared core:
 | EngineOS hook (CC) | Cursor event | Block mechanism |
@@ -119,9 +143,10 @@ Add a Cursor section, gated and idempotent like the CC section:
 - Detect Cursor (`~/.cursor` exists) — if absent, skip silently (don't force).
 - Global: write/merge `~/.cursor/hooks.json` (preserve existing rtk + other
   hooks — merge, never clobber), copy hook scripts to `~/.cursor/hooks/`, mirror
-  skills/agents to `~/.cursor/skills` + `~/.cursor/agents`, write the always-on +
-  router `.mdc` to a global rules location if Cursor supports user rules; else
-  document that rules are project-scoped.
+  skills/agents to `~/.cursor/skills` + `~/.cursor/agents`, mirror commands to
+  `~/.cursor/commands` (Phase 2b), write the always-on + router `.mdc` to a global
+  rules location if Cursor supports user rules; else document that rules are
+  project-scoped.
 - Project: a helper (run by the SessionStart scaffold hook or an
   `engineos-cursor-init`) drops the generated `.mdc` rules + `mcp`/hooks into a
   repo's `.cursor/` without overwriting hand-authored project rules (write under
@@ -158,7 +183,7 @@ Add a Cursor section, gated and idempotent like the CC section:
 ## Rollout
 
 Stacked, atomic PRs off `main` (each ≤400 lines): P0 probe → P1 rules → P2
-skills/agents → P3 hooks → P4 install.sh → P5 docs/tests. Branch
+skills/agents → P2b commands → P3 hooks → P4 install.sh → P5 docs/tests. Branch
 `feat/cursor-adapter` carries the series.
 
 ## Appendix — Phase 0 findings
