@@ -52,6 +52,7 @@ Rules for routing:
 | Test writing ("write tests", "add coverage", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | skill `eval-harness` |
 | Claiming done / complete / fixed | `superpowers:verification-before-completion` — evidence before assertion, always |
+| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | skill `post-spec-verify` — lint + typecheck + build + API/Web startup check; fix loop until clean before reporting done |
 
 ## Non-negotiables (apply regardless of routing)
 
