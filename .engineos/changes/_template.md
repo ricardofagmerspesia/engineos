@@ -3,6 +3,7 @@ name: <YYYY-MM-DD>-<short-kebab-slug>
 status: active
 owner: <name>
 spec: docs/specs/<YYYY-MM-DD>-<slug>-design.md
+domain: <backend|frontend|llm|dba|devops|security|test|general>
 ---
 
 ## What
