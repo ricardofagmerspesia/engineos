@@ -4,29 +4,29 @@ Completed change records, moved here from `.engineos/changes/` once the work is 
 verified. This is the historical trail — treat as read-only; do not edit archived
 records except to fix a factual error.
 
-## Layout — grouped by date, then domain
+## Layout — grouped by month, then domain
 
-Records are filed under `.engineos/archived/<YYYY>/<MM>/<DD>/<domain>/<record>.md`
-(year → month → day → domain), using the record's `completed` date and its
+Records are filed under `.engineos/archived/<YYYY>/<MM>/<domain>/<record>.md`
+(year → month → domain), using the record's `completed` date and its
 `domain:` front matter (`backend`, `frontend`, `llm`, `dba`, `devops`, `security`,
-`test`, or `general` for anything that doesn't fit a single domain). Example:
+`test`, or `general` for anything that doesn't fit a single domain). No day
+folder — the exact date still lives in the filename's `<YYYY-MM-DD>-<slug>`
+prefix. Example:
 
 ```
 .engineos/archived/
   README.md
   2026/
     06/
-      17/
-        backend/  2026-06-17-review-findings-fixes.md
-      19/
-        general/  2026-06-19-start-guide.md
+      backend/  2026-06-17-review-findings-fixes.md
+      general/  2026-06-19-start-guide.md
 ```
 
 Records archived before 2026-07-02 predate the domain segment and stay flat
-under their day folder — not migrated.
+under `<YYYY>/<MM>/<DD>/` — not migrated.
 
-The `record-change` skill creates the dated path on archive. This README stays at
-the `.engineos/archived/` root.
+The `record-change` skill creates the month/domain path on archive. This README
+stays at the `.engineos/archived/` root.
 
 A file lands here unchanged from `.engineos/changes/` except:
 

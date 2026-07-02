@@ -44,15 +44,16 @@ Create a TodoWrite item per step and do them in order.
    set front matter `status: done` and add `completed: <YYYY-MM-DD>`
    (use the real current date).
 
-6. **Archive it under a date+domain tree.** Archived records are grouped
-   `.engineos/archived/<YYYY>/<MM>/<DD>/<domain>/`. Derive the date from the record's
-   `completed` field (same as the filename prefix) and the domain from its
-   `domain:` field, create the path, and move it:
+6. **Archive it under a month+domain tree.** Archived records are grouped
+   `.engineos/archived/<YYYY>/<MM>/<domain>/` — no day folder; the exact date
+   still lives in the filename prefix. Derive year/month from the record's
+   `completed` field and the domain from its `domain:` field, create the path,
+   and move it:
    ```bash
    D=2026-06-19   # the record's completed date, YYYY-MM-DD
    DOM=backend    # the record's domain: field
-   mkdir -p ".engineos/archived/${D:0:4}/${D:5:2}/${D:8:2}/${DOM}"
-   git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${D:8:2}/${DOM}/<file>.md"
+   mkdir -p ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}"
+   git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}/<file>.md"
    ```
 
 7. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
@@ -61,7 +62,7 @@ Create a TodoWrite item per step and do them in order.
    rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
    ```
 
-8. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<DD>/<domain>/` with
+8. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<domain>/` with
    `status: done`, the flag file is gone, and `git status` reflects the rename.
 
 ## Scope

@@ -36,7 +36,7 @@ gates — without ever blocking work.
 | Path | Holds | Seed on scaffold |
 |---|---|---|
 | `.engineos/changes/` | Active change records (one per in-progress unit) | `_template.md` + `README.md` |
-| `.engineos/archived/` | Completed records, `archived/<YYYY>/<MM>/<DD>/<domain>/` (domain segment added 2026-07-02, see [archive-domain-folder-design](2026-07-02-archive-domain-folder-design.md)) | `README.md` |
+| `.engineos/archived/` | Completed records, `archived/<YYYY>/<MM>/<domain>/` (domain added, day dropped 2026-07-02, see [archive-domain-folder-design](2026-07-02-archive-domain-folder-design.md)) | `README.md` |
 | `.engineos/memory/` | Durable repo-specific takeaways | `README.md` |
 | `docs/specs/` | Feature/design specs (brainstorm → spec) | `README.md` |
 | `docs/prds/` | Product requirement docs | `README.md` + `_template.md` |

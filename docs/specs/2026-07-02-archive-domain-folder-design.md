@@ -1,7 +1,7 @@
-# Archive tree: add domain folder under date
+# Archive tree: add domain folder, drop day folder
 
 **Date:** 2026-07-02
-**Status:** Approved (design)
+**Status:** Approved (design), amended same day (day folder dropped)
 **Author:** Ricardo Fagmer
 
 ## Problem
@@ -9,18 +9,20 @@
 `.engineos/archived/<YYYY>/<MM>/<DD>/<slug>.md` groups records by date only. On a
 day with several unrelated changes (e.g. an api fix and a frontend tweak), the
 date folder mixes domains with no way to scan "what changed in the api lately"
-without opening every file.
+without opening every file. A day-per-folder tree is also deep for how few
+records land on any given day — hard to browse, not much payoff.
 
 ## Decision (locked with user)
 
-Insert a domain folder between day and filename:
+Drop the day folder; add a domain folder instead:
 
 ```
-.engineos/archived/<YYYY>/<MM>/<DD>/<domain>/<slug>.md
+.engineos/archived/<YYYY>/<MM>/<domain>/<slug>.md
 ```
 
-- **Order:** date first, domain second — keeps chronological browsing intact,
-  groups same-day work by domain underneath.
+- **Day folder removed.** The exact date isn't lost — the filename still
+  carries the full `<YYYY-MM-DD>-<slug>` prefix — it's just not a folder level.
+  Month is kept as the coarse time bucket.
 - **Domain vocabulary:** the same fixed set `hooks/routing-map.sh` already
   routes by — `backend`, `frontend`, `llm`, `dba`, `devops`, `security`, `test`
   — plus `general` for changes that don't fit one domain (tooling, docs,
@@ -35,9 +37,8 @@ Example:
 .engineos/archived/
   2026/
     07/
-      02/
-        backend/  2026-07-02-user-role-modification.md
-        devops/   2026-07-02-ci-cache-fix.md
+      backend/  2026-07-02-user-role-modification.md
+      devops/   2026-07-02-ci-cache-fix.md
 ```
 
 ## Change-record requirement
