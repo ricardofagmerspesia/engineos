@@ -11,7 +11,7 @@ One change per file. Filename: `<YYYY-MM-DD>-<short-kebab-slug>.md`.
 name: <YYYY-MM-DD>-<short-kebab-slug>
 status: active
 owner: <name>
-domain: <backend|frontend|llm|dba|devops|security|test|general>
+domain: <backend|frontend|mobile|dba|llm|devops|security|test|docs|general>
 ---
 
 ## What

@@ -8,8 +8,9 @@ records except to fix a factual error.
 
 Records are filed under `.engineos/archived/<YYYY>/<MM>/<domain>/<record>.md`
 (year → month → domain), using the record's `completed` date and its
-`domain:` front matter (`backend`, `frontend`, `llm`, `dba`, `devops`, `security`,
-`test`, or `general` for anything that doesn't fit a single domain). No day
+`domain:` front matter (`backend`, `frontend`, `mobile`, `dba`, `llm`, `devops`,
+`security`, `test`, `docs`, or `general` for anything that doesn't fit a single
+domain). No day
 folder — the exact date still lives in the filename's `<YYYY-MM-DD>-<slug>`
 prefix. Example:
 

@@ -17,9 +17,9 @@ Create a TodoWrite item per step and do them in order.
    `status: active`. If more than one, pick the one matching the work just done.
    If none exists, create one from `.engineos/changes/_template.md`, named
    `<YYYY-MM-DD>-<short-kebab-slug>.md`, and fill What / Why / Scope from the work.
-   Confirm `domain:` is set to one of `backend`, `frontend`, `llm`, `dba`, `devops`,
-   `security`, `test`, or `general` (no single domain fits) — required to build the
-   archive path in step 6.
+   Confirm `domain:` is set to one of `backend`, `frontend`, `mobile`, `dba`, `llm`,
+   `devops`, `security`, `test`, `docs`, or `general` (no single domain fits) —
+   required to build the archive path in step 6.
 
 2. **Confirm the spec exists.** Read the record's `spec:` front-matter field and
    verify that file exists under `docs/specs/`. If it is missing or the field is
