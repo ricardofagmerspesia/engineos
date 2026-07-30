@@ -1,0 +1,1 @@
+Faça uma entrevista comigo para tirar dúvidas sobre o funcionamento do sistema. Leia as documentações gerais na pasta `@docs` e pense no que está faltando de informação sobre o sistema, tanto de maneira técnica quanto de produto.
