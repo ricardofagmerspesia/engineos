@@ -27,6 +27,7 @@ Rules for routing:
 - Unknown intent → proceed with always-on rules only. Never block on routing.
 - Pure questions/explanations need no routing — answer directly.
 - Rules paths are relative to this file's directory.
+- After the work is delivered, offer the output artifact — see **Output artifact** below.
 - The **stack/domain rows** below (backend, frontend, LLM, DBA, DevOps, security,
   test) are mirrored deterministically by the `PreToolUse` hook
   `hooks/route-before-change.sh`. Its canonical path→domain map is
@@ -56,11 +57,33 @@ Rules for routing:
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | Read `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` — decision gets recorded, not just chatted |
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
+| Business / career strategy — market opportunity ("where is this market going", "before competitors"), skill learning path ("what do I learn, in what order"), blocked non-technical decision ("X or Y and I can't decide"), positioning & perceived authority, monetizing existing assets | skill `strategy` — five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to `docs/strategy/`. Technical "X vs Y" stays with `adr`; `strategy` handles business/career/positioning decisions |
 | Review / pre-merge ("review", "is this safe", PR URL) | code-review skill; if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
 | Test writing ("write tests", "add coverage", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | skill `eval-harness` |
 | Claiming done / complete / fixed | `superpowers:verification-before-completion` — evidence before assertion, always |
 | Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | skill `post-spec-verify` — lint + typecheck + build + API/Web startup check; fix loop until clean before reporting done |
+
+## Output artifact — offer after every request
+
+Once the request has been answered or the work delivered (after
+`superpowers:verification-before-completion` where it applies), ask in one question which
+output artifact to produce next:
+
+| Option | Offer when |
+|---|---|
+| Scaffold the implementation | the request has an implementable shape (code, config, infra) |
+| Create a reusable template | **frontend / mobile intents only** |
+| Create a UI/UX design | **frontend / mobile intents only** |
+| Generate a flowchart of the proposed change or creation | there is a flow, sequence, or decision path worth drawing |
+| Proceed without generating any additional artifact | always — list it last |
+
+Rules:
+- **Prune what doesn't apply.** Options are filtered per task; offering a dead option is a defect.
+- **Never** offer template or UI/UX design for backend, DBA, DevOps, LLM, security, test,
+  or docs work — those are frontend/mobile artifacts.
+- Ask **once per request, after the work** — never as a substitute for doing it, never before.
+- The user's pick becomes the next unit of work: classify it through the router table again.
 
 ## Non-negotiables (apply regardless of routing)
 
@@ -82,3 +105,6 @@ Rules for routing:
    units (>3 files, >1 domain, ≥3 unblocked tasks, any sweep), freeze the shared
    contracts, then dispatch a whole wave of agents in ONE message over disjoint file
    scopes. Doing independent units serially is a defect, not a style choice.
+8. Offer the output artifact after every request per **Output artifact** above: scaffold,
+   flowchart, and "no artifact" are eligible for any task; reusable template and UI/UX design
+   only for frontend and mobile intents. Options that don't fit the task are not offered.
