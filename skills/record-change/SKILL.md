@@ -17,6 +17,9 @@ Create a TodoWrite item per step and do them in order.
    `status: active`. If more than one, pick the one matching the work just done.
    If none exists, create one from `.engineos/changes/_template.md`, named
    `<YYYY-MM-DD>-<short-kebab-slug>.md`, and fill What / Why / Scope from the work.
+   Confirm `domain:` is set to one of `backend`, `frontend`, `mobile`, `dba`, `llm`,
+   `devops`, `security`, `test`, `docs`, or `general` (no single domain fits) —
+   required to build the archive path in step 6.
 
 2. **Confirm the spec exists.** Read the record's `spec:` front-matter field and
    verify that file exists under `docs/specs/`. If it is missing or the field is
@@ -41,13 +44,16 @@ Create a TodoWrite item per step and do them in order.
    set front matter `status: done` and add `completed: <YYYY-MM-DD>`
    (use the real current date).
 
-6. **Archive it under a date tree.** Archived records are grouped
-   `.engineos/archived/<YYYY>/<MM>/<DD>/`. Derive the date from the record's `completed`
-   field (same as the filename prefix), create the path, and move it:
+6. **Archive it under a month+domain tree.** Archived records are grouped
+   `.engineos/archived/<YYYY>/<MM>/<domain>/` — no day folder; the exact date
+   still lives in the filename prefix. Derive year/month from the record's
+   `completed` field and the domain from its `domain:` field, create the path,
+   and move it:
    ```bash
    D=2026-06-19   # the record's completed date, YYYY-MM-DD
-   mkdir -p ".engineos/archived/${D:0:4}/${D:5:2}/${D:8:2}"
-   git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${D:8:2}/<file>.md"
+   DOM=backend    # the record's domain: field
+   mkdir -p ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}"
+   git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}/<file>.md"
    ```
 
 7. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
@@ -56,7 +62,7 @@ Create a TodoWrite item per step and do them in order.
    rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
    ```
 
-8. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<DD>/` with
+8. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<domain>/` with
    `status: done`, the flag file is gone, and `git status` reflects the rename.
 
 ## Scope

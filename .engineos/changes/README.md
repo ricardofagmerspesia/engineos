@@ -11,6 +11,7 @@ One change per file. Filename: `<YYYY-MM-DD>-<short-kebab-slug>.md`.
 name: <YYYY-MM-DD>-<short-kebab-slug>
 status: active
 owner: <name>
+domain: <backend|frontend|mobile|dba|llm|devops|security|test|docs|general>
 ---
 
 ## What
@@ -36,6 +37,7 @@ owner: <name>
 ```
 
 When a change is done and verified, set `status: done` and move the file to
-`.engineos/archived/<YYYY>/<MM>/<DD>/` (grouped by the completed date — see `.engineos/archived/README.md`).
+`.engineos/archived/<YYYY>/<MM>/<domain>/` (grouped by completed month, then by the
+record's `domain:` field — see `.engineos/archived/README.md`).
 Distil any lasting fact into `.engineos/memory/` and link it. Git retains the full move
 history — nothing is lost.

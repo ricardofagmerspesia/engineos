@@ -118,8 +118,9 @@ if command -v jq >/dev/null 2>&1; then
   MARK="$REPO_DIR/hooks/mark-unrecorded.sh"
   RECORD="$REPO_DIR/hooks/record-verify.sh"
   ENSURE="$REPO_DIR/hooks/ensure-project-layout.sh"
+  SCALE="$REPO_DIR/hooks/task-scale-advisor.sh"
 
-  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" '
+  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" '
     # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
     def add($event; $matcher; $cmd):
       .hooks[$event] //= []
@@ -133,6 +134,7 @@ if command -v jq >/dev/null 2>&1; then
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)
+    | add("UserPromptSubmit"; "";      $scale)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
 
@@ -158,6 +160,7 @@ else
   warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
   warn "  SessionStart -> $REPO_DIR/hooks/ensure-project-layout.sh"
+  warn "  UserPromptSubmit -> $REPO_DIR/hooks/task-scale-advisor.sh"
 fi
 
 # ---------- 6. MCP reminder ----------
