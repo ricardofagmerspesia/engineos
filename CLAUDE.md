@@ -11,6 +11,8 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/security.md
 @rules/git.md
 @rules/memory.md
+@rules/parallelism.md
+@rules/models.md
 
 ## Router — classify before acting
 
@@ -35,7 +37,8 @@ Rules for routing:
 
 | Intent (signals) | Load |
 |---|---|
-| New feature / multi-file change ("add", "build", "create", "implement") | `superpowers:brainstorming` first, then `tlc-spec-driven` for spec/design/tasks, then stack rules below |
+| New feature / multi-file change ("add", "build", "create", "implement") | `superpowers:brainstorming` first, then `tlc-spec-driven` for spec/design/tasks, then stack rules below. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
+| Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Read `rules/parallelism.md` + `rules/models.md`; fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development` |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
 | Backend work (NestJS, API, service, controller, migration, queue) | Read `rules/architecture.md` + `rules/backend.md` + `rules/testing.md`; skill `nestjs-patterns`; nestjs MCP for codegen; `backend-coordinator` agent for scoped analysis/changes |
 | Frontend work (React, Next, component, page/app, UI, styling) | Read `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; `frontend-coordinator` agent |
@@ -45,6 +48,9 @@ Rules for routing:
 | DBA / data layer (`*.sql`, migrations, schema, query perf, indexing) | Read `rules/architecture.md` + `rules/data.md`; `dba-coordinator` agent (postgres/oracle MCP for introspection) |
 | DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud) | Read `rules/architecture.md` + `rules/observability.md`; `devops-coordinator` agent (kubernetes/gcp/github MCP) |
 | Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials) | Read `rules/security.md`; dispatch `security-reviewer` subagent |
+| System comprehension / onboarding docs ("document the system", "architecture docs", "docs for new devs", "understand the codebase") | `/analisy-architecture` — `architecture-analyst` agent (alias `analyst`) runs `patterns/1-Analisys`, produces code-grounded architecture + onboarding docs |
+| Fill doc gaps by interview ("interview me about the system", "ask me about how X works", resolve open hypotheses) | `/talk-about-the-system` — `architecture-analyst` in INTERVIEW mode (`patterns/2-Interview-brainstorm.md`), interactive, folds answers back into `docs/` |
+| End-to-end API QA ("test all endpoints", "run the API test suite", "QA the system", Postman/Newman run) | `qa-tester` agent (alias `qa`) — clean-slate Docker up, endpoint inventory JSON + Postman collection, headless Newman run of all endpoints/scenarios (skips MFA/email), pass/fail report; non-interactive |
 | Multi-domain audit / system health check ("audit", "analyze the system", "what's broken across X") | `/engineos:audit <domain\|all>` — fans out to coordinators + MCP leaf specialists, consolidates into a status report |
 | Coordinated multi-domain change | `/engineos:implement <domain> <task>` — dispatches coordinators in implement mode (spec-gated) |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | Read `rules/architecture.md`; finish with a simplify pass |
@@ -67,3 +73,12 @@ Rules for routing:
    + `docs/{specs,prds,rules}`. The SessionStart hook scaffolds anything missing
    (non-blocking). Spec-first for every change; the change record links its spec and
    carries a checklist + a "what was made" account before it is archived.
+6. Model assignment per `rules/models.md`: spec/PRD on the most capable tier (`fable`),
+   architecture/design/hard-debug/security on the design tier (`opus`), code and tests on
+   the build tier (`sonnet`), mechanical work on the cheap tier (`haiku`). The tier is the
+   contract, the model name is today's binding — rebind when a stronger model ships.
+   Never trade correctness for cost.
+7. Parallel by default per `rules/parallelism.md`: when work splits into independent
+   units (>3 files, >1 domain, ≥3 unblocked tasks, any sweep), freeze the shared
+   contracts, then dispatch a whole wave of agents in ONE message over disjoint file
+   scopes. Doing independent units serially is a defect, not a style choice.
