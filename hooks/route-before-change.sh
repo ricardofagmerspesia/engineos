@@ -26,10 +26,12 @@ route_excluded "$FILE" && exit 0
 GUIDE=$(route_for_path "$FILE")
 
 find_up() {  # find_up <start_dir> <name> ; echoes full path of first match up-tree
-  local d="$1" name="$2"
-  while [ "$d" != "/" ] && [ -n "$d" ]; do
+  local d="$1" name="$2" prev=""
+  # `prev` guard: on a relative path dirname converges to "." and never reaches "/",
+  # which would spin forever. Same guard as post-edit-check.sh / stop-verify.sh.
+  while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
     [ -e "$d/$name" ] && { echo "$d/$name"; return 0; }
-    d=$(dirname "$d")
+    prev="$d"; d=$(dirname "$d")
   done
   return 1
 }

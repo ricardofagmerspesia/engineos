@@ -18,7 +18,10 @@ PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' | tr '[:upper:]' '[:low
 has() { printf '%s' "$PROMPT" | grep -qE "$1"; }
 
 ACTION='\b(add|build|create|implement|develop|refactor|migrate|port|mirror|rewrite|redesign|extract|split|backfill|integrate|scaffold|modernize)\b'
-SCALE='\b(all|every|entire|whole|across|full stack|fullstack|end.to.end|end2end|multiple|several|both|system.wide|codebase|monorepo|module[s]?|service[s]?|endpoint[s]?|screen[s]?|page[s]?|component[s]?|feature[s]?|epic|milestone|phase|roadmap|suite)\b'
+# Countable nouns are PLURAL-ONLY on purpose: "add a component" / "new service" is a
+# one-unit change and must not trip the fan-out advice. Only "components"/"services"
+# (or an explicit breadth word like "all"/"across") signals parallelizable scale.
+SCALE='\b(all|every|entire|whole|across|full stack|fullstack|end.to.end|end2end|multiple|several|both|system.wide|codebase|monorepo|modules|services|endpoints|screens|pages|components|features|epic|milestone|phase|roadmap|suite)\b'
 SPEC='\b(spec|specification|prd|requirement[s]?|product brief|design doc|rfc|adr)\b'
 DESIGN='\b(architect|architecture|design|decompose|trade.?off|should we use)\b'
 

@@ -1,7 +1,7 @@
 ---
 name: audit-consolidator
 description: Merges multiple specialist reports (coordinators + leaf specialists) into a single consolidated status report with a top-line verdict, root cause, and an ordered remediation plan. Read-only. May pull related Jira issues for context via the atlassian MCP, but NEVER writes to Jira. Dispatched last by the audit orchestrator. Alias: corradin (invocable by this name).
-tools: Read, mcp__mcp-atlassian
+tools: Read, Grep, Glob, mcp__mcp-atlassian
 model: opus
 ---
 
