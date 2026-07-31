@@ -36,6 +36,16 @@ fi
 # Skip the engineos repo itself (it ships the manifest at its root).
 [ -f "$ROOT/hooks/layout-manifest.sh" ] && [ -f "$ROOT/install.sh" ] && exit 0
 
+# Opt-in gate: scaffolding dirties the worktree, so it never runs on repos that
+# haven't adopted EngineOS. Adopted = `.engineos/` already present, or the user
+# opts a new project in with ENGINEOS_SCAFFOLD=1. ENGINEOS_SCAFFOLD=0 disables
+# even for adopted repos. One hint line tells new projects how to opt in.
+[ "${ENGINEOS_SCAFFOLD:-}" = "0" ] && exit 0
+if [ ! -d "$ROOT/.engineos" ] && [ "${ENGINEOS_SCAFFOLD:-}" != "1" ]; then
+  printf '[engineos] layout not scaffolded (opt-in): run `mkdir .engineos` in the project or set ENGINEOS_SCAFFOLD=1\n'
+  exit 0
+fi
+
 # shellcheck source=/dev/null
 source "$REPO_DIR/hooks/layout-manifest.sh" 2>/dev/null || exit 0
 

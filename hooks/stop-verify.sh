@@ -37,6 +37,9 @@ ROOT=$(repo_root "$CWD") || exit 0
 [ -n "$ROOT" ] || exit 0
 
 # ---------- collect changed code files from transcript ----------
+# JS/TS-family only: the runner below understands package.json/nx scripts and
+# nothing else, so other extensions would be collected but never verified —
+# a silent no-op that reads as coverage. Non-JS stacks verify manually (CLAUDE.md #2).
 # Scope to Edit/Write/NotebookEdit tool calls only — Read calls are excluded so
 # that merely reading a file doesn't pull its package into the test run.
 # Prefer jq: it parses the actual tool_use structure (name + input.file_path),
@@ -53,11 +56,11 @@ if command -v jq >/dev/null 2>&1; then
       | select(.name == "Edit" or .name == "Write" or .name == "NotebookEdit")
       | (.input.file_path // .tool_input.file_path // empty)
     ' "$TRANSCRIPT" 2>/dev/null \
-    | grep -E '\.(ts|tsx|js|jsx|py|go|rs)$' \
+    | grep -E '\.(ts|tsx|js|jsx)$' \
     | sort -u) || true
 else
   FILES=$(grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write|NotebookEdit)"' "$TRANSCRIPT" 2>/dev/null \
-    | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx|py|go|rs)"' \
+    | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx)"' \
     | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/' \
     | sort -u) || true
 fi

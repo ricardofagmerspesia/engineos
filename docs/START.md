@@ -148,7 +148,7 @@ These run on their own. Know what they do and how to respond:
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
 | `stop-verify` | when finishing | if it blocks: run typecheck + lint + tests, show output |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
-| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` |
+| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) |
 | `task-scale-advisor` | on your prompt | nothing — non-blocking nudge to fan out + pick the right model tier on big/spec/design prompts |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."

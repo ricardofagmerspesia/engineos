@@ -68,11 +68,13 @@ Verify: open a Claude session in `<project>` and confirm it reads the file.
 ## 3. Enable the change-tracking lifecycle in the project
 
 All EngineOS change-tracking state lives under a **single hidden folder**,
-`.engineos/`, so it doesn't clutter the project root. You don't scaffold this by
-hand: **open a Claude Code session in `<project>`** and the `SessionStart` hook
+`.engineos/`, so it doesn't clutter the project root. Scaffolding is **opt-in**
+so the hook never dirties repos that haven't adopted EngineOS: run
+`mkdir .engineos` in the project (or set `ENGINEOS_SCAFFOLD=1`), then **open a
+Claude Code session in `<project>`** and the `SessionStart` hook
 (`ensure-project-layout.sh`) creates anything missing —
 `.engineos/{changes,archived,memory}` plus `docs/{specs,prds,rules}` — non-blocking,
-safe to run every session. `memory/` is part of the standard layout, not optional;
+safe to run every session. `ENGINEOS_SCAFFOLD=0` disables it entirely. `memory/` is part of the standard layout, not optional;
 it's where durable, team-shared decisions get distilled (`rules/memory.md`).
 `.engineos/audits/` is created separately, by `/audit`, on first use.
 

@@ -62,6 +62,14 @@ rm -f "$GD/ENGINEOS_UNRECORDED.S1"
 [ "$(dec "$(printf '{"cwd":"%s","session_id":"S1","stop_hook_active":false}' "$T")")" = "none" ] && ok || no "flag not cleared by session-scoped rm"
 [ "$(dec "$(printf '{"cwd":"%s","session_id":"S2","stop_hook_active":false}' "$T")")" = "block" ] && ok || no "sibling session's flag was wiped by another session's clear"
 
+# defer escape hatch: marker silences the gate for that session only, without
+# deleting the debt flag itself
+touch "$GD/ENGINEOS_UNRECORDED.S2.deferred"
+[ "$(dec "$(printf '{"cwd":"%s","session_id":"S2","stop_hook_active":false}' "$T")")" = "none" ] && ok || no "defer marker did not silence the gate"
+[ -f "$GD/ENGINEOS_UNRECORDED.S2" ] && ok || no "defer removed the debt flag (it must only silence)"
+mark S3 "$T/src/baz.ts"
+[ "$(dec "$(printf '{"cwd":"%s","session_id":"S3","stop_hook_active":false}' "$T")")" = "block" ] && ok || no "another session inherited S2's defer"
+
 rm -rf "$T"
 echo "---"; echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

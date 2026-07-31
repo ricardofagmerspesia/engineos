@@ -27,5 +27,11 @@ GITDIR=$(git_dir "$CWD") || exit 0
 
 [ -f "$GITDIR/ENGINEOS_UNRECORDED.$SID" ] || exit 0
 
-jq -n '{decision:"block", reason:"EngineOS gate: code changed but the change was not recorded. Run the record-change skill — mark the changes/ record done, register files + movements, git mv it to archived/. That step clears this flag."}'
+# Escape hatch: an explicit defer marker silences the gate for this session
+# without deleting the debt flag, so declining to record is a one-touch action
+# instead of a manual rm inside .git. Reaped with the flags after 7 days.
+[ -f "$GITDIR/ENGINEOS_UNRECORDED.$SID.deferred" ] && exit 0
+
+jq -n --arg defer "$GITDIR/ENGINEOS_UNRECORDED.$SID.deferred" \
+  '{decision:"block", reason:("EngineOS gate: code changed but the change was not recorded. Run the record-change skill — mark the changes/ record done, register files + movements, git mv it to archived/. That step clears this flag. To defer recording for this session instead, create the marker: touch \"" + $defer + "\"")}'
 exit 0
