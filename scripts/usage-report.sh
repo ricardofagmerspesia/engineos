@@ -22,7 +22,7 @@ grep -h -oE '\[router\] intent=[a-zA-Z-]+' $FILES 2>/dev/null \
 
 echo ""
 echo "## EngineOS skill invocations"
-for s in nestjs-patterns react-patterns llm-engineering adr eval-harness release-notes; do
+for s in nestjs-patterns react-patterns llm-engineering adr eval-harness release-notes record-change strategy; do
   # shellcheck disable=SC2086
   n=$(grep -hl "\"skill\"[[:space:]]*:[[:space:]]*\"$s\"" $FILES 2>/dev/null | wc -l | tr -d ' ')
   printf "%6s  %s\n" "$n" "$s"

@@ -14,4 +14,3 @@ writes only in the mobile tree — never API/backend, web frontend, or DevOps/in
 If a mirror needs a missing API or a web change, it reports a `### Blocked`
 section naming the owning coordinator. Relay its report back verbatim; do not
 re-do its work yourself.
-</content>

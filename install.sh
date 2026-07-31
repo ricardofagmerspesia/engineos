@@ -28,9 +28,9 @@ printf '' | grep -E "$SECRET_PATTERNS" >/dev/null 2>&1
 [ "$?" -ge 2 ] && { set -e; red "ABORT: secrets-gate pattern failed to compile. Failing closed."; exit 1; }
 
 if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  SECRET_HITS=$( cd "$REPO_DIR" && git ls-files -z | grep -zv '^install\.sh$' | xargs -0 grep -IlE "$SECRET_PATTERNS" 2>/dev/null )
+  SECRET_HITS=$( cd "$REPO_DIR" && git ls-files -z | grep -zvE '^install\.(sh|ps1)$' | xargs -0 grep -IlE "$SECRET_PATTERNS" 2>/dev/null )
 else
-  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh 2>/dev/null)
+  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh --exclude=install.ps1 2>/dev/null)
 fi
 set -e
 if [ -n "$SECRET_HITS" ]; then
@@ -104,6 +104,50 @@ if [ -d "$REPO_DIR/commands" ]; then
     fi
   done
 fi
+
+# ---------- 4d. Symlink rules + patterns ----------
+# Agents/skills reference these by relative path (rules/*.md, patterns/*) — without
+# them installed alongside skills/agents/commands, those references resolve to
+# nothing on an installed machine.
+mkdir -p "$CLAUDE_DIR/rules"
+for rule in "$REPO_DIR"/rules/*.md; do
+  [ -e "$rule" ] || continue   # empty glob guard
+  name=$(basename "$rule")
+  target="$CLAUDE_DIR/rules/$name"
+  if [ -L "$target" ] || [ ! -e "$target" ]; then
+    ln -sfn "$rule" "$target"
+    echo "rule linked: $name"
+  else
+    warn "skip: $target exists and is not a symlink"
+  fi
+done
+
+mkdir -p "$CLAUDE_DIR/patterns"
+for pattern in "$REPO_DIR"/patterns/*; do
+  [ -e "$pattern" ] || continue   # empty glob guard
+  name=$(basename "$pattern")
+  target="$CLAUDE_DIR/patterns/$name"
+  if [ -L "$target" ] || [ ! -e "$target" ]; then
+    ln -sfn "$pattern" "$target"
+    echo "pattern linked: $name"
+  else
+    warn "skip: $target exists and is not a symlink"
+  fi
+done
+
+# ---------- 4e. Prune dangling symlinks ----------
+# A rename in the repo (e.g. commands/analisy-architecture.md -> analyze-architecture.md)
+# otherwise leaves a stale symlink whose target no longer exists — a slash command
+# that still "exists" in ~/.claude/commands but silently 404s. Sweep the directories
+# we manage and drop any symlink pointing at nothing.
+for dir in "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$CLAUDE_DIR/commands"; do
+  [ -d "$dir" ] || continue
+  while IFS= read -r -d '' link; do
+    [ -e "$link" ] && continue   # target resolves, keep it
+    rm -f "$link"
+    echo "pruned dangling link: ${link#"$CLAUDE_DIR/"}"
+  done < <(find "$dir" -maxdepth 1 -type l -print0)
+done
 
 # ---------- 5. Hooks: merge into settings.json (requires jq) ----------
 chmod +x "$REPO_DIR"/hooks/*.sh

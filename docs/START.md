@@ -3,7 +3,7 @@
 New to EngineOS? This is how to actually use it day to day: what fires
 automatically, and how to invoke the skills, agents, commands, and MCPs by hand.
 
-> Setting it up for the first time? Do [`docs/ADOPTION.md`](docs/ADOPTION.md) first.
+> Setting it up for the first time? Do [`ADOPTION.md`](ADOPTION.md) first.
 > This guide assumes EngineOS is already installed.
 
 ## Mental model
@@ -55,16 +55,23 @@ relevant — let them.
 Agents run in their own context and report back. Dispatch with the Task tool, or
 say "use the `<name>` agent to …".
 
+EngineOS ships 18 agents total.
+
 **Domain coordinators** (dual-mode — AUDIT read-only, or IMPLEMENT writes):
-`backend-coordinator`, `frontend-coordinator`, `dba-coordinator`,
-`devops-coordinator`, `llm-coordinator`.
+`backend-coordinator`, `frontend-coordinator`, `mobile-coordinator`,
+`dba-coordinator`, `devops-coordinator`, `llm-coordinator`.
 
 **Leaf specialists** (read-only, MCP-backed deep dives — usually auto-dispatched by
 `/audit`): `kubernetes-specialist`, `gcp-specialist`, `postgres-specialist`,
 `oracle-specialist`, `cicd-specialist`.
 
 **Reviewers / writers:** `security-reviewer` (adversarial, read-only),
-`test-writer`, `audit-consolidator` (merges reports into one verdict).
+`test-writer`, `audit-consolidator` (merges reports into one verdict),
+`architecture-analyst` (system comprehension + onboarding docs + interview mode).
+
+**Store-release pipelines** (no alias): `ios-builder`, `android-builder` — full
+build/version-bump/quality-gate/signed-upload pipeline for TestFlight/Play,
+production submission only on explicit instruction.
 
 Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 
@@ -74,6 +81,7 @@ Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 |---|---|
 | backend-coordinator | borisenko |
 | frontend-coordinator | arturo |
+| mobile-coordinator | elias |
 | devops-coordinator | hinokuma |
 | dba-coordinator | ronaldo |
 | llm-coordinator | hermsdorff |
@@ -85,6 +93,10 @@ Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 | security-reviewer | leo-ely |
 | test-writer | ameer |
 | audit-consolidator | corradin |
+| architecture-analyst | analyst |
+| qa-tester | qa |
+
+`ios-builder` and `android-builder` have no alias — always invoke by full name.
 
 e.g. `borisenko, audit the orders service` works the same as naming the coordinator.
 
@@ -100,7 +112,7 @@ and `/implement`; plugin mode namespaces them `/engineos:audit`.)
 /audit dba src/orders       # one domain, scoped
 /implement backend add idempotency keys to the payments webhook
 ```
-`/audit` writes `docs/audits/<date>-<domain>.md` (verdict + root cause + plan).
+`/audit` writes `.engineos/audits/<date>-<domain>.md` (verdict + root cause + plan).
 `/implement` is spec-gated and closes with a change record.
 
 ---
@@ -119,7 +131,7 @@ to one:
 | cicd-specialist | `github` | falls back to repo workflow files |
 | audit-consolidator | `mcp-atlassian` | skips Jira context |
 
-Connect them per [`docs/ADOPTION.md`](docs/ADOPTION.md) §4 — env-var creds only,
+Connect them per [`ADOPTION.md`](ADOPTION.md) §4 — env-var creds only,
 read-only roles. Baseline config + `$verify` notes: `templates/mcp.template.json`.
 Check what's live: the leaf returns real findings instead of `UNKNOWN`.
 
@@ -136,6 +148,8 @@ These run on their own. Know what they do and how to respond:
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
 | `stop-verify` | when finishing | if it blocks: run typecheck + lint + tests, show output |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
+| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` |
+| `task-scale-advisor` | on your prompt | nothing — non-blocking nudge to fan out + pick the right model tier on big/spec/design prompts |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
 
@@ -145,7 +159,7 @@ Gates block **once** (never loop). A block means "do the thing, then finish."
 
 Multi-file changes and new features get a spec before code (a non-negotiable).
 - Created by the `brainstorming` → `writing-plans` flow, or `tlc-spec-driven`.
-- Stored in `docs/superpowers/specs/<date>-<topic>-design.md`.
+- Stored in `docs/specs/<date>-<topic>-design.md`.
 - Read the relevant spec before implementing; it carries the approved design + the
   verification plan.
 
@@ -153,7 +167,8 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 
 ## 7. Rules — the standards being enforced
 
-- **Always-on:** `rules/base.md`, `security.md`, `git.md`, `memory.md`.
+- **Always-on:** `rules/base.md`, `security.md`, `git.md`, `memory.md`,
+  `parallelism.md`, `models.md`.
 - **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
   `llm-apps.md`, `testing.md`, `data.md`, `observability.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.
@@ -170,6 +185,17 @@ verify                   → typecheck + lint + tests, output shown
 record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/DD/
 ```
 This is what the Stop gates enforce. Distil any durable decision into `.engineos/memory/`.
+
+---
+
+## Output artifact offer
+
+Once a request is delivered, expect a single follow-up question: which output
+artifact to produce next. Options are pruned to what fits the task —
+**scaffold** and **flowchart** (or **none**) can apply to anything; **reusable
+template** and **UI/UX design** are only offered for frontend/mobile work. Pick
+one, or say "none" to stop there; your pick becomes the next unit of work and
+goes back through the router.
 
 ---
 

@@ -13,7 +13,7 @@
 ## Composition
 - DO compose small functions/services; inheritance only for true is-a with shared invariants (rare).
 - DO keep data and behavior separate where simpler: plain data + functions over deep class hierarchies.
-- DON'T build plugin/strategy machinery before there are 2+ real implementations.
+- DON'T build plugin/strategy machinery before there are 3 real implementations (rule of three — see `base.md`).
 
 ## Configuration (12-factor)
 - DO read config from environment once at startup, validate it (fail fast on missing), expose typed config object.
@@ -28,7 +28,7 @@
 ## When to split
 - DO split a module when it has its own data, vocabulary, and rate of change.
 - DON'T split into services/packages for "cleanliness" — split for independent deploy, scaling, or team ownership.
-- Monolith-first. A modular monolith with clean boundaries beats premature microservices.
+- DO go monolith-first. A modular monolith with clean boundaries beats premature microservices.
 
 ## Scalability defaults
 - DO paginate every list endpoint from day one.

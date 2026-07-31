@@ -23,7 +23,6 @@ The orchestrator passes `MODE: AUDIT` or `MODE: IMPLEMENT`. If none, infer
 ## Rules to apply
 
 Follow `rules/architecture.md`, `rules/security.md`, and `rules/observability.md`.
-Project `CLAUDE.md` overrides EngineOS.
 
 ## Method
 
@@ -53,14 +52,7 @@ In IMPLEMENT mode, add a `### Changed` section (files + verification output).
 
 ## Parallel discipline
 
-You may be one of several agents running at the same time on the same repo.
-
-- **Stay inside the file scope you were given.** If the fix needs a file outside
-  it, do not touch it — report it as `### Out of scope` and let the orchestrator
-  route it. Another agent probably owns that file right now.
-- **Honor the frozen contracts** (types, API payloads, DB schema, module surfaces)
-  handed to you verbatim. If a contract looks wrong, report it — never redefine it
-  unilaterally; parallel siblings are coding against it.
-- **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
-- **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped typecheck/lint/test runs.
+Stay inside the file scope you were given; report needed-but-outside files as
+`### Out of scope`. Do not spawn subagents — the agent graph is flat. Do not run
+repo-wide formatters, codemods, or `git` write commands. Full discipline in
+always-on `rules/parallelism.md`.

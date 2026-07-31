@@ -1,6 +1,6 @@
 ---
 name: strategy
-description: Evidence-grounded strategic analysis in five modes — spot market opportunities before competitors, compress a skill into a minimum learning path, unblock a hard decision, close a positioning gap, or find hidden revenue in assets that already exist. Every claim is grounded in web research (dated sources) or in the invoking project's own code, docs, and git history. Use when asked about market trends/opportunity windows, "what should I learn and in what order", "I can't decide between X and Y", personal/product positioning and perceived authority, or monetizing what already exists.
+description: Evidence-grounded strategic analysis in five modes — spot market opportunities before competitors, compress a skill into a minimum learning path, unblock a hard decision, close a positioning gap, or find hidden revenue in assets that already exist. Every claim is grounded in web research (dated sources) or in the invoking project's own code, docs, and git history. Use when asked about market trends/opportunity windows, "what should I learn and in what order", "I can't decide between X and Y", personal/product positioning and perceived authority, or monetizing what already exists. Carve-out: technical technology/structure choices ("X vs Y" for tech) go to the `adr` skill.
 ---
 
 # Strategy
@@ -27,7 +27,8 @@ Rules for selection:
 - Multiple modes can match. Run all that apply — sequential modes share the grounding
   pass, so the second one is cheap.
 - **3+ modes requested, or one mode across several products/niches** → fan out per
-  `rules/parallelism.md`: freeze the grounding brief first (one shared evidence file),
+  `rules/parallelism.md` (EngineOS rules — resolved relative to EngineOS's `CLAUDE.md`,
+  the repo/plugin root, not the invoking project): freeze the grounding brief first (one shared evidence file),
   then dispatch one Agent per mode in a single message, disjoint output files.
 - Mode is ambiguous → run **decision** on the meta-question ("which of these problems is
   actually mine?"), then the mode it points to.
@@ -80,7 +81,7 @@ competitor, or tooling claim in the other three modes.
 ### C. Intake — fill, then ask once
 
 Each mode file lists its intake fields. Fill every field you can from A and B. Then ask
-the user — **one batched AskUserQuestion call, at most 5 questions** — only for facts that
+the user — **one batched question round, max 5 questions** — only for facts that
 cannot exist in a repo or on the web: hours available per week, revenue figures, audience
 size, personal goals, risk appetite, what they are afraid of.
 
@@ -108,10 +109,13 @@ The one sentence that changes what the reader does. No preamble.
 - UNKNOWN: <fields still unfilled, and how they would change the conclusion>
 
 ## Analysis
-<the mode's STEP 1–2 output, per its playbook>
+<the mode's STEP 1–3 output, per its playbook>
 
-## The one action
-<mode's final step: single action, deadline, and the observable signal that says it worked>
+## The deliverable
+<mode-specific — see the mode's playbook for the exact shape: action + deadline +
+observable signal for opportunity/positioning; the single deciding criterion for
+decision; the ranked top three for monetization; the costliest mistake to avoid
+for learning>
 
 ## What would falsify this
 The concrete observation that means this analysis is wrong and should be rerun.
@@ -125,8 +129,12 @@ Carried from the source playbooks and enforced across all modes:
    source or a file path. Missing evidence is written as `UNKNOWN`, never smoothed over.
 2. **Nothing already obvious.** If a trend is mainstream podcast material, it has no
    timing edge — cut it and find the one that is not yet.
-3. **One action, not a menu.** Each mode ends with a single next move under a deadline.
-   Five prioritized options is the paralysis the user came here to escape.
+3. **One action, not a menu — for the modes whose deliverable is a single action**
+   (opportunity, positioning). Each ends with a single next move under a deadline; five
+   prioritized options is the paralysis the user came here to escape. Designed exceptions:
+   **decision** ends in the single deciding criterion, not an action; **monetization**
+   ends in a ranked top three, not one; **learning** ends in the costliest mistake to
+   avoid, not a move to make — all three by design of their playbooks.
 4. **Respect the stated budget.** Never plan more hours, money, or audience than the
    intake reports. A plan that requires a bigger following than they have today is not
    a plan.

@@ -15,8 +15,10 @@ scope (paths/services/namespaces).
    Accept `ia` as a deprecated alias for `llm`. An unrecognized first token is
    NOT a domain — treat the whole argument string as the scope and use `all`.
 
-2. **Select agents** by domain (dispatch the coordinator always; add leaf
-   specialists when their domain is in scope and the relevant MCP is configured):
+2. **Select agents** by domain (always dispatch the coordinator and, when its
+   domain is in scope, every leaf specialist listed — even if its MCP looks
+   unreachable: an unconnected leaf self-reports `UNKNOWN` per the Rules below,
+   it does not get skipped upstream):
 
    | domain | agents to dispatch (parallel) |
    |---|---|
@@ -27,25 +29,35 @@ scope (paths/services/namespaces).
    | devops   | devops-coordinator, kubernetes-specialist, gcp-specialist, cicd-specialist |
    | llm      | llm-coordinator |
    | security | security-reviewer |
-   | all      | the six domain coordinators — backend, frontend, mobile, dba, devops, llm (add leaves only if scope names that domain) |
+   | all      | the six domain coordinators — backend, frontend, mobile, dba, devops, llm — plus security-reviewer (add leaves only if scope names that domain) |
 
 3. **Dispatch in parallel** via the Task tool — one message, multiple Task calls.
-   Give each agent: `MODE: AUDIT`, the scope, and the shared report format. They
-   run flat (subagents cannot spawn subagents); you are the only orchestrator.
+   Give each agent: `MODE: AUDIT`, the scope, `model: opus` (analysis/design
+   tier per `rules/models.md` — audit is judgment work, not mechanical), and the
+   shared report format. They run flat (subagents cannot spawn subagents); you
+   are the only orchestrator.
 
 4. **Consolidate**: dispatch `audit-consolidator` with all collected reports.
 
 5. **Write the report** to `.engineos/audits/<YYYY-MM-DD>-<domain>.md` in the
    target project (create `.engineos/audits/` if absent). Print the top-line STATUS.
 
+6. **Offer the output artifact** (per CLAUDE.md's Output artifact section): ask
+   once whether to produce a flowchart of the findings/remediation plan, scaffold
+   a fix for the top issue, or proceed without an additional artifact. Audit is
+   not a frontend/mobile intent, so do not offer the reusable-template or
+   UI/UX-design options.
+
 ## Rules
 
 - READ-ONLY: no agent may edit files or mutate infra/DB. State this in every
-  dispatch. **This is prompt-enforced, not tool-enforced** — the six domain
-  coordinators hold `Edit`/`Write` unconditionally because they are dual-mode, so
-  `MODE: AUDIT` is an instruction they can violate, not a sandbox. The MCP leaf
-  specialists are genuinely read-only (no `Edit`/`Write` in their tool grants).
-  If a coordinator writes during an audit, treat it as a defect and report it.
+  dispatch. **This is prompt-enforced, not tool-enforced for the six domain
+  coordinators** — they hold `Edit`/`Write` unconditionally because they are
+  dual-mode, so `MODE: AUDIT` is an instruction they can violate, not a sandbox.
+  The MCP leaf specialists carry no `Edit`/`Write` grant, but they DO hold
+  `Bash` — their read-only guarantee is also prompt-enforced (via their MCP
+  bindings and instructions), not a tool-level restriction. If any agent writes
+  or mutates state during an audit, treat it as a defect and report it.
 - If a leaf specialist's MCP is not connected, it returns `UNKNOWN` — surface that
   in the final report; do not silently drop the domain.
 - Keep dispatches scoped; don't audit the whole monorepo when a path was given.

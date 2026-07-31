@@ -17,7 +17,7 @@ Produce a clean, structured release page from commits/PRs. Emit markdown to past
    - `perf:`, `refactor:`, `docs:`, `chore:` → fold into a brief Other/Internal line, omit if noise.
 3. **Translate to user value:** each entry says what changed and why it matters to a consumer, not the raw commit subject. Drop internal churn.
 4. **Write the page** using the template below.
-5. **Persist:** write to `docs/release-notes/release-notes-<version>.md`. Skip the file only for local-only/yalc previews or when the user says not to persist — still emit the markdown.
+5. **Persist:** create the directory if absent (`mkdir -p docs/release-notes`) and write to `docs/release-notes/release-notes-<version>.md`. Skip the file only for local-only/yalc previews or when the user says not to persist — still emit the markdown.
 
 ## Template
 
@@ -52,3 +52,4 @@ What was broken and what now works.
 - Breaking changes lead and always include a migration step — a breaking change without a migration note is incomplete.
 - No emojis. Match the repo's existing release-notes style if `docs/release-notes/` already has entries.
 - Don't invent changes — every entry traces to a commit/PR. If the change set is empty, say so rather than padding.
+- Per-unit-of-work change records (`.engineos/changes/` → `.engineos/archived/`) are the `record-change` skill's job, not this one — release notes summarize a version, not a single change.

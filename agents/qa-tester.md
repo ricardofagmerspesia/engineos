@@ -106,4 +106,4 @@ Totals: <passed>/<total> passed, <failed> failed, <skipped> skipped
 - Never commit real secrets into `qa/*.json` — use env vars / generated data.
 - If the stack fails to come up, report the readiness step + logs and stop —
   don't run tests against a dead server.
-- Follow project `CLAUDE.md`, `rules/testing.md`, and `rules/security.md`.
+- Follow `rules/testing.md` and `rules/security.md`.

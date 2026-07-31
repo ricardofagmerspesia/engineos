@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# EngineOS PreToolUse(Edit|Write): route the upcoming change to the right rules,
-# skill, and specialist agent. NON-BLOCKING — injects guidance via
+# EngineOS PreToolUse(Edit|Write|NotebookEdit): route the upcoming change to the
+# right rules, skill, and specialist agent. NON-BLOCKING — injects guidance via
 # hookSpecificOutput.additionalContext (exit 0). Canonical mapping lives in
 # routing-map.sh (beside this file).
 #
@@ -13,10 +13,12 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
-FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
+FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 [ -z "$FILE" ] && exit 0
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/lib-common.sh
+. "$DIR/lib-common.sh"
 # shellcheck source=hooks/routing-map.sh
 . "$DIR/routing-map.sh"
 
@@ -25,31 +27,22 @@ route_excluded "$FILE" && exit 0
 
 GUIDE=$(route_for_path "$FILE")
 
-find_up() {  # find_up <start_dir> <name> ; echoes full path of first match up-tree
-  local d="$1" name="$2" prev=""
-  # `prev` guard: on a relative path dirname converges to "." and never reaches "/",
-  # which would spin forever. Same guard as post-edit-check.sh / stop-verify.sh.
-  while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
-    [ -e "$d/$name" ] && { echo "$d/$name"; return 0; }
-    prev="$d"; d=$(dirname "$d")
-  done
-  return 1
-}
-
 START=$(dirname "$FILE")
 
 # nearest project CLAUDE.md up-tree
 PROJ_NOTE=""
-if PROJ_CLAUDE=$(find_up "$START" CLAUDE.md); then
+if PROJ_CLAUDE=$(find_up_file "$START" CLAUDE.md); then
   PROJ_NOTE=" | follow project CLAUDE.md (project > EngineOS): $PROJ_CLAUDE"
 fi
 
 # soft .engineos/changes reminder: code edit with no active record
+# git_dir/repo_root are worktree-safe (git rev-parse), unlike a manual .git walk —
+# a linked worktree's ".git" is a file, not a directory, so string-gluing
+# "$repo/.git" breaks there.
 CHANGE_NOTE=""
 case "$FILE" in
   *.ts|*.tsx|*.js|*.jsx|*.py|*.go|*.rs|*.sql)
-    if GITDIR=$(find_up "$START" .git); then
-      REPO="${GITDIR%/.git}"
+    if REPO=$(repo_root "$START") && [ -n "$REPO" ]; then
       if [ -d "$REPO/.engineos/changes" ] && ! grep -lq '^status:[[:space:]]*active' "$REPO"/.engineos/changes/*.md 2>/dev/null; then
         CHANGE_NOTE=" | no active .engineos/changes record — open one (.engineos/changes/_template.md)"
       fi

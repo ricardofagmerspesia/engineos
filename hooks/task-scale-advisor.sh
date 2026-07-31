@@ -12,7 +12,7 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
-PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' | tr '[:upper:]' '[:lower:]')
+PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null | tr '[:upper:]' '[:lower:]')
 [ -z "$PROMPT" ] && exit 0
 
 has() { printf '%s' "$PROMPT" | grep -qE "$1"; }
@@ -23,7 +23,12 @@ ACTION='\b(add|build|create|implement|develop|refactor|migrate|port|mirror|rewri
 # (or an explicit breadth word like "all"/"across") signals parallelizable scale.
 SCALE='\b(all|every|entire|whole|across|full stack|fullstack|end.to.end|end2end|multiple|several|both|system.wide|codebase|monorepo|modules|services|endpoints|screens|pages|components|features|epic|milestone|phase|roadmap|suite)\b'
 SPEC='\b(spec|specification|prd|requirement[s]?|product brief|design doc|rfc|adr)\b'
-DESIGN='\b(architect|architecture|design|decompose|trade.?off|should we use)\b'
+# Bare "architect"/"architecture"/"design" fire on ordinary prose ("the button
+# design looks good") with zero work being requested. Strong signals carry their
+# own intent and stay standalone; the weak pair only counts alongside an
+# ACTION verb — same co-signal requirement the fan-out branch above already uses.
+DESIGN_STRONG='\b(decompose|trade.?off|should we use|adr)\b'
+DESIGN_WEAK='\b(architect|architecture|design)\b'
 
 NOTES=""
 
@@ -36,7 +41,7 @@ if has "$SPEC"; then
 }[engineos] spec/PRD authoring — rules/models.md: use the most-capable tier (model: fable). If the session model is lower, delegate the authoring to a subagent with that model."
 fi
 
-if has "$DESIGN"; then
+if has "$DESIGN_STRONG" || { has "$DESIGN_WEAK" && has "$ACTION"; }; then
   NOTES="${NOTES:+$NOTES
 }[engineos] design/architecture work — rules/models.md: design tier (model: opus) for the design pass, build tier (model: sonnet) for the code that follows."
 fi

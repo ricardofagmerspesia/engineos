@@ -4,9 +4,10 @@
 # Run: hooks/test-verify.sh
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-pass=0; fail=0
+pass=0; fail=0; skip=0
 ok() { pass=$((pass+1)); }
 no() { fail=$((fail+1)); echo "FAIL: $1"; }
+sk() { skip=$((skip+1)); echo "SKIP: $1"; }
 
 command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
@@ -28,6 +29,16 @@ make_transcript() {  # <dest_file> <abs_path_to_changed_file>
   # The hook greps "file_path" directly so both forms are extracted correctly.
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","tool_input":{"file_path":"%s"}}]}}\n' \
     "$FPATH" > "$DEST"
+}
+
+# ---------- helper: one JSONL line with BOTH a Read and an Edit tool_use ----------
+# make_mixed_transcript <dest_file> <read_path> <edit_path>
+make_mixed_transcript() {
+  jq -nc --arg r "$2" --arg e "$3" '
+    {type:"assistant", message:{content:[
+      {type:"tool_use", name:"Read", tool_input:{file_path:$r}},
+      {type:"tool_use", name:"Edit", tool_input:{file_path:$e}}
+    ]}}' > "$1"
 }
 
 # ---------- Case 1: No package.json — no block ----------
@@ -131,6 +142,63 @@ DEC=$(invoke "$T" "$TSCRIPT" false)
 rm -rf "$T" "$TSCRIPT"
 [ -z "$DEC" ] && ok || no "case8 read-only-no-block: expected empty decision for Read-only transcript, got '$DEC'"
 
+# ---------- Case 9: Read+Edit on ONE JSONL line, Read's package fails — no block ----------
+# A flat line-grep can't tell which tool_use a "file_path" belongs to on a line
+# that contains both a Read and an Edit block; the jq path must exclude the Read
+# file's package (failing) and only pick up the Edit file's package (passing).
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"test":"exit 0"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/edited.ts"
+mkdir -p "$T/pkgR/src"
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/pkgR/package.json"
+touch "$T/pkgR/src/readonly.ts"
+TSCRIPT=$(mktemp)
+make_mixed_transcript "$TSCRIPT" "$T/pkgR/src/readonly.ts" "$T/src/edited.ts"
+DEC=$(invoke "$T" "$TSCRIPT" false)
+rm -rf "$T" "$TSCRIPT"
+[ -z "$DEC" ] && ok || no "case9 mixed-read-edit-line: expected empty decision (Read's failing package excluded), got '$DEC'"
+
+# ---------- Case 10: no-jq PATH — stop_hook_active=true must not block ----------
+# Regression: the pre-fix no-jq extraction used a GNU-only sed BRE alternation
+# (\(true\|false\)) that yields empty on macOS/BSD sed, so ACTIVE was always
+# empty and the loop guard never fired — the hook could then run (and block on)
+# a failing-test package even when stop_hook_active was true. The fix uses
+# grep -E, which is portable. Build a jq-free PATH to exercise that fallback.
+NOJQ_BIN=$(mktemp -d)
+for _t in grep sed head bash cat dirname git node npm; do
+  _p=$(command -v "$_t" 2>/dev/null)
+  [ -n "$_p" ] && ln -s "$_p" "$NOJQ_BIN/$_t" 2>/dev/null || true
+done
+# Verify the sandbox itself before trusting its result (see test-layout.sh for
+# why: a dead symlink or an unusable git.exe would make this a false negative).
+# jq absence is checked via a freshly spawned process (env ... sh -c), not
+# `command -v` in this shell: bash hashes command paths on first lookup, and
+# this script already looked up jq (line 11) under the real PATH, so a plain
+# `PATH=... command -v jq` here would return the stale hashed path instead of
+# re-searching the restricted PATH.
+if PATH="$NOJQ_BIN:/bin" git --version >/dev/null 2>&1 \
+   && [ -n "$(PATH="$NOJQ_BIN:/bin" git --version 2>/dev/null)" ] \
+   && [ -x "$NOJQ_BIN/grep" ] && [ -x "$NOJQ_BIN/sed" ] \
+   && ! env PATH="$NOJQ_BIN:/bin" sh -c 'command -v jq' >/dev/null 2>&1; then
+  T=$(mktemp -d)
+  ( cd "$T" && PATH="$NOJQ_BIN:/bin" git init -q && PATH="$NOJQ_BIN:/bin" git commit -q --allow-empty -m init )
+  printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+  mkdir -p "$T/src"; touch "$T/src/x.ts"
+  TSCRIPT=$(mktemp)
+  make_transcript "$TSCRIPT" "$T/src/x.ts"
+  OUT=$(printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":true}' "$T" "$TSCRIPT" \
+    | PATH="$NOJQ_BIN:/bin" bash "$DIR/stop-verify.sh" 2>&1)
+  rm -rf "$T" "$TSCRIPT"
+  case "$OUT" in
+    *'"decision"'*) no "case10 no-jq-loop-guard: expected no block with stop_hook_active=true, got: $OUT" ;;
+    *) ok ;;
+  esac
+else
+  sk "case10 no-jq PATH sandbox unavailable (symlinks unusable here)"
+fi
+rm -rf "$NOJQ_BIN"
+
 echo "---"
-echo "pass=$pass fail=$fail"
+echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

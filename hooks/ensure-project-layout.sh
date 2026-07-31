@@ -24,6 +24,15 @@ fi
 ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$ROOT" ] || exit 0
 
+# Reap stale unrecorded-change gate flags (>7 days). The record-change skill clears
+# these per-session on completion; a crashed/abandoned session can otherwise leave
+# one behind indefinitely and block the Stop gate for good. Runs for every session,
+# including the engineos repo itself, ahead of the skip check below.
+GITDIR=$(cd "$CWD" 2>/dev/null && git rev-parse --absolute-git-dir 2>/dev/null) || GITDIR=""
+if [ -n "$GITDIR" ] && [ -d "$GITDIR" ]; then
+  find "$GITDIR" -maxdepth 1 -name 'ENGINEOS_UNRECORDED.*' -mtime +7 -exec rm -f {} + 2>/dev/null || true
+fi
+
 # Skip the engineos repo itself (it ships the manifest at its root).
 [ -f "$ROOT/hooks/layout-manifest.sh" ] && [ -f "$ROOT/install.sh" ] && exit 0
 
@@ -41,9 +50,10 @@ created=()
 for entry in "${LAYOUT_MANIFEST[@]}"; do
   dir="${entry%%|*}"; seeds="${entry#*|}"
   target="$ROOT/$dir"
-  [ -d "$target" ] && continue
-  mkdir -p "$target" 2>/dev/null || continue
-  created+=("$dir")
+  if [ ! -d "$target" ]; then
+    mkdir -p "$target" 2>/dev/null || continue
+    created+=("$dir")
+  fi
   IFS=',' read -ra pairs <<< "$seeds"
   for pair in "${pairs[@]}"; do
     src="${pair%%:*}"; dest="${pair#*:}"
@@ -54,6 +64,7 @@ for entry in "${LAYOUT_MANIFEST[@]}"; do
 done
 
 if [ "${#created[@]}" -gt 0 ]; then
-  IFS=', '; printf '[engineos] scaffolded standard layout: %s (review seeded READMEs)\n' "${created[*]}"
+  # subshell scopes IFS to this one printf — must not leak into the rest of the script
+  ( IFS=', '; printf '[engineos] scaffolded standard layout: %s (review seeded READMEs)\n' "${created[*]}" )
 fi
 exit 0

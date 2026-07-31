@@ -23,6 +23,16 @@ jobs:
             jq empty "$f" && echo "ok $f"
           done
 
+      - name: Agent-commands drift guard
+        run: |
+          bash scripts/gen-agent-commands.sh
+          if ! git diff --quiet -- commands/agents; then
+            echo "FAIL: commands/agents/ is out of sync with agents/ — run scripts/gen-agent-commands.sh and commit the result."
+            git diff -- commands/agents
+            exit 1
+          fi
+          echo "ok: commands/agents/ matches scripts/gen-agent-commands.sh output"
+
       - name: Routing hook tests
         run: bash hooks/test-route.sh
 

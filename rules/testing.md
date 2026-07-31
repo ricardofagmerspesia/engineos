@@ -28,6 +28,6 @@
 - DON'T mock what you own and can run (your own services, in-memory logic) — too many mocks = testing your mocks.
 
 ## Process
-- When implementing features/fixes, follow TDD via `superpowers:test-driven-development`: red → green → refactor.
+- Prefer TDD (`superpowers:test-driven-development`, red → green → refactor) for new features and fixes; backfilling tests for existing untested code is acceptable.
 - DO keep the suite fast enough to run on every change (unit suite <30s); slow tests get tagged and run in CI.
 - Flaky test = broken test. Fix or delete within the week; never retry-until-green.

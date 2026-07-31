@@ -74,8 +74,10 @@ EOF
 for f in "$AGENTS_DIR"/*.md; do
   name="$(frontmatter_value name "$f")"
   [ -n "$name" ] || { echo "skip (no name): $f" >&2; continue; }
-  # Alias: from description line "Alias: <slug> (invocable by this name)."
-  alias="$(grep -oiE 'Alias: [a-z0-9-]+' "$f" | head -1 | sed -E 's/[Aa]lias: //' || true)"
+  # Alias: from the frontmatter description's "Alias: <slug> (invocable by this
+  # name)." — restricted to the frontmatter block (between the first two `---`
+  # lines) so body prose can never be mistaken for an alias.
+  alias="$(sed -n '/^---$/,/^---$/p' "$f" | grep -oiE 'Alias: [a-z0-9-]+' | head -1 | sed -E 's/[Aa]lias: //' || true)"
   desc="Invoke the $name agent${alias:+ (alias $alias)}."
 
   emit "$name" "$name" "${alias:-$name}" "$desc"

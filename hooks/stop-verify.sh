@@ -5,15 +5,22 @@
 # genuine red (real lint/type/test failure).
 set -uo pipefail
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=hooks/lib-common.sh
+. "$DIR/lib-common.sh"
+
 INPUT=$(cat)
 
 # ---------- field extraction (jq optional) ----------
 if command -v jq >/dev/null 2>&1; then
-  ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')
-  TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty')
-  CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
+  ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
+  TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
+  CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 else
-  ACTIVE=$(printf '%s' "$INPUT" | sed -n 's/.*"stop_hook_active"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' | head -1)
+  # Portable extraction: the BRE alternation `\(true\|false\)` used previously is a
+  # GNU sed extension and yields empty on macOS/BSD sed, so ACTIVE was always empty
+  # and the loop guard below never fired. grep -E's alternation is POSIX-portable.
+  ACTIVE=$(printf '%s' "$INPUT" | grep -oE '"stop_hook_active"[[:space:]]*:[[:space:]]*(true|false)' 2>/dev/null | grep -oE '(true|false)$' | head -1)
   TRANSCRIPT=$(printf '%s' "$INPUT" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
   CWD=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
 fi
@@ -26,45 +33,40 @@ fi
 [ -n "${CWD:-}" ] || exit 0
 
 # ---------- resolve git root ----------
-ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
+ROOT=$(repo_root "$CWD") || exit 0
+[ -n "$ROOT" ] || exit 0
 
 # ---------- collect changed code files from transcript ----------
-# Scope to Edit/Write tool calls only — Read calls are excluded so that merely
-# reading a file doesn't pull its package into the test run.
-# JSONL: each tool call is one line that contains both "name":"Edit"|"Write" and
-# "file_path". Select matching lines first, then extract the path.
+# Scope to Edit/Write/NotebookEdit tool calls only — Read calls are excluded so
+# that merely reading a file doesn't pull its package into the test run.
+# Prefer jq: it parses the actual tool_use structure (name + input.file_path),
+# so a JSONL line that contains BOTH a Read and an Edit block can't leak the
+# Read path the way a flat line-grep would. Transcript is JSONL — jq reads a
+# stream of top-level JSON values from a file just fine, no need to slurp.
 # Note: harness transcripts use "tool_input" while real transcripts use "input";
-# extracting "file_path" directly handles both forms.
-FILES=$(grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write)"' "$TRANSCRIPT" 2>/dev/null \
-  | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx|py|go|rs)"' \
-  | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/' \
-  | sort -u) || true
+# the fallback (jq absent) greps "file_path" directly, which handles both forms.
+if command -v jq >/dev/null 2>&1; then
+  FILES=$(jq -r '
+      select(.type == "assistant")
+      | .message.content[]?
+      | select(.type == "tool_use")
+      | select(.name == "Edit" or .name == "Write" or .name == "NotebookEdit")
+      | (.input.file_path // .tool_input.file_path // empty)
+    ' "$TRANSCRIPT" 2>/dev/null \
+    | grep -E '\.(ts|tsx|js|jsx|py|go|rs)$' \
+    | sort -u) || true
+else
+  FILES=$(grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write|NotebookEdit)"' "$TRANSCRIPT" 2>/dev/null \
+    | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx|py|go|rs)"' \
+    | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/' \
+    | sort -u) || true
+fi
 [ -n "$FILES" ] || exit 0
 
-# ---------- helpers (copied verbatim from post-edit-check.sh style) ----------
-find_up() {  # find_up <start_dir> <filename...> ; echoes dir containing first match
-  local d="$1" prev=""; shift
-  while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
-    for f in "$@"; do [ -e "$d/$f" ] && { echo "$d"; return 0; }; done
-    prev="$d"; d=$(dirname "$d")
-  done
-  return 1
-}
+HAS_NX=0
+[ -f "$ROOT/nx.json" ] && HAS_NX=1
 
-has_script() {  # has_script <dir> <script>
-  command -v jq >/dev/null 2>&1 || { grep -q "\"$2\"" "$1/package.json" 2>/dev/null; return; }
-  [ -f "$1/package.json" ] && jq -e --arg s "$2" '.scripts[$s] // empty' "$1/package.json" >/dev/null 2>&1
-}
-
-# portable timeout: GNU timeout, gtimeout (brew coreutils), or no-op fallback
-if   command -v timeout  >/dev/null 2>&1; then TO() { timeout "$@"; }
-elif command -v gtimeout >/dev/null 2>&1; then TO() { gtimeout "$@"; }
-else                                          TO() { shift; "$@"; }; fi
-
-# runner: pnpm > yarn > npm, based on lockfile at root
-if   [ -f "$ROOT/pnpm-lock.yaml" ]; then RUN="pnpm run"; EXEC="pnpm exec"
-elif [ -f "$ROOT/yarn.lock" ];      then RUN="yarn run"; EXEC="yarn"
-else                                     RUN="npm run";  EXEC="npx --no-install"; fi
+runner_detect "$ROOT"
 
 # ---------- map files to unique package dirs ----------
 # Use newline-safe read loop so paths with spaces are handled correctly.
@@ -88,9 +90,6 @@ OUT=""
 # strip leading/trailing pipes into newline-delimited list; iterate with here-string
 # so FAILED/OUT mutations inside the loop survive (no subshell).
 PKG_LIST=$(printf '%s' "$PKG_DIRS" | tr '|' '\n' | grep -v '^$' | sort -u)
-
-HAS_NX=0
-[ -f "$ROOT/nx.json" ] && HAS_NX=1
 
 while IFS= read -r PKG_DIR; do
   [ -n "$PKG_DIR" ] || continue

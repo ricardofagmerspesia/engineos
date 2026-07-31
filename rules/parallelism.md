@@ -5,6 +5,10 @@ choice you justify, not a habit.
 
 ## Fan-out trigger
 
+**Independent units of work are the gate.** The counts below are heuristics: they
+tell you the work is probably decomposable, not that it is. Decompose first, then
+count the units that are actually independent.
+
 Fan out when **any** of these holds:
 
 - The task touches **>3 files** or **more than one domain** (backend/frontend/mobile/dba/devops/llm).
@@ -13,7 +17,9 @@ Fan out when **any** of these holds:
 - The work is **read-heavy exploration** of several independent areas.
 
 Do NOT fan out when: single file, fewer than 3 units of work, the goal is still
-vague (brainstorm first), or every step feeds the next one.
+vague (brainstorm first), or every step feeds the next one. **This list overrides
+the trigger above** — a task can hit a heuristic (say, 5 files) and still be
+sequential because the steps feed each other.
 
 ## Procedure
 
