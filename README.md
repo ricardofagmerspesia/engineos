@@ -50,6 +50,7 @@ and `settings.local.json` — this repo never touches it.
 | `skills/adr` | Decision records | Architecture choices |
 | `skills/eval-harness` | Scaffold golden sets, runners, LLM-judge | LLM feature without evals |
 | `skills/release-notes` | Structured release page from commits/PRs | Version bump / "write release notes" |
+| `skills/strategy` | Five strategist modes — market opportunity, learning path, blocked decision, positioning, hidden monetization — each grounded in dated web sources + this repo's code/docs/git history, persisted to `docs/strategy/` | Business/career strategy questions |
 | `agents/architecture-analyst.md` | System comprehension → code-grounded architecture + onboarding docs (`/analisy-architecture`); interactive gap-filling interview (`/talk-about-the-system`) | Documenting/understanding a system |
 | `agents/qa-tester.md` | Autonomous end-to-end API QA (alias `qa`): clean Docker up, endpoint-inventory JSON + Postman collection, headless Newman run of all endpoints/scenarios, pass/fail report | Full API regression / smoke QA |
 | `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |

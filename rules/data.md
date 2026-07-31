@@ -20,16 +20,16 @@ general "push slow work to background, paginate" principles live in
 ## Schema & access
 - DO index for the actual access pattern, not speculatively; verify with the query
   plan, not intuition.
-- DO use parameterized queries / ORM bindings only — never string-concatenate SQL
-  (see `security.md`).
+- Parameterized queries / ORM bindings only — `security.md` (always-on) owns this.
 - DO model state with explicit columns/enums, not overloaded nullable flags.
-- DON'T fetch unbounded result sets — paginate, and bound `IN (...)` list sizes.
-- DON'T introduce N+1 access; batch with bounded concurrency.
+- DO bound every `IN (...)` list size. (Pagination and the N+1/bounded-concurrency
+  rules are owned by `architecture.md`, loaded alongside this file on the DBA row —
+  this file adds only the SQL-specific bound.)
 
 ## Data lifecycle
 - DO define retention and deletion for every data class; PII gets the shortest
   viable retention.
 - DO keep seed/fixture data out of production migrations; seed via a separate,
   idempotent path.
-- DON'T store secrets or PII unencrypted; never log row contents containing PII
-  (see `security.md`).
+- DON'T store secrets or PII unencrypted at rest — this file owns encryption-at-rest
+  for stored data; keeping PII out of logs is `security.md`'s rule.

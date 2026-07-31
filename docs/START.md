@@ -41,6 +41,7 @@ explicitly by typing its name (Claude runs it via the Skill tool).
 | `nestjs-patterns` | Building NestJS backend code |
 | `react-patterns` | Building React/Next frontend code |
 | `llm-engineering` | Building prompts/agents/RAG/tools |
+| `strategy` | Business/career strategy: market opportunity, learning path, blocked decision, positioning, monetizing existing assets — grounded in web sources + this repo, written to `docs/strategy/` |
 
 Invoke explicitly: just say `record-change` or "use the eval-harness skill".
 Process skills from the `superpowers` plugin (`brainstorming`,

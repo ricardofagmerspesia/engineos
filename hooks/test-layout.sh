@@ -4,9 +4,10 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$DIR/.." && pwd)"
-pass=0; fail=0
+pass=0; fail=0; skip=0
 ok(){ pass=$((pass+1)); }
 no(){ fail=$((fail+1)); echo "FAIL: $1"; }
+sk(){ skip=$((skip+1)); echo "SKIP: $1"; }
 
 # --- manifest sources cleanly and is non-empty ---
 ( source "$DIR/layout-manifest.sh" && [ "${#LAYOUT_MANIFEST[@]}" -ge 6 ] ) \
@@ -54,12 +55,25 @@ for _t in git grep sed head bash cp mkdir dirname; do
   _p=$(command -v "$_t" 2>/dev/null)
   [ -f "$_p" ] && ln -s "$_p" "$NOJQ_BIN/$_t" 2>/dev/null || true
 done
-J=$(mktemp -d); ( cd "$J" && git init -q )
-OUT5=$(printf '{"cwd":"%s","session_id":"S1"}' "$J" | PATH="$NOJQ_BIN:/bin" bash "$DIR/ensure-project-layout.sh")
-[ -d "$J/docs/specs" ] && printf '%s' "$OUT5" | grep -q '^\[engineos\] scaffolded' \
-  && ok || no "no-jq fallback path did not scaffold"
-rm -rf "$J" "$NOJQ_BIN"
+# Environments without usable symlinks (Windows/Git Bash without Developer Mode)
+# cannot build the reduced PATH, which would make this assert a false negative.
+# Verify the sandbox itself before trusting its result.
+# Probe the sandbox by RUNNING git in it — on Windows a symlink to git.exe exists
+# and is executable but cannot load its sibling DLLs, so an -x test passes while
+# every git call silently produces nothing.
+if PATH="$NOJQ_BIN:/bin" git --version >/dev/null 2>&1 \
+   && [ -n "$(PATH="$NOJQ_BIN:/bin" git --version 2>/dev/null)" ] \
+   && [ -x "$NOJQ_BIN/grep" ] && [ -x "$NOJQ_BIN/sed" ]; then
+  J=$(mktemp -d); ( cd "$J" && git init -q )
+  OUT5=$(printf '{"cwd":"%s","session_id":"S1"}' "$J" | PATH="$NOJQ_BIN:/bin" bash "$DIR/ensure-project-layout.sh")
+  [ -d "$J/docs/specs" ] && printf '%s' "$OUT5" | grep -q '^\[engineos\] scaffolded' \
+    && ok || no "no-jq fallback path did not scaffold"
+  rm -rf "$J"
+else
+  sk "no-jq fallback — cannot build a jq-free PATH here (symlinks unavailable)"
+fi
+rm -rf "$NOJQ_BIN"
 unset NOJQ_BIN _t _p
 
-echo "---"; echo "pass=$pass fail=$fail"
+echo "---"; echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

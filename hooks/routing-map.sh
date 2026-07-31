@@ -52,19 +52,39 @@ route_for_path() {
       echo "rules/architecture.md | agent:devops-coordinator (kubernetes/gcp/cicd)"; return 0 ;;
   esac
 
+  # mobile (React Native) — MUST precede frontend: mobile screens are .tsx too, and
+  # they belong to mobile-coordinator, not frontend-coordinator.
+  case "/$f" in
+    */mobile/*|*/android/*|*/ios/*|*/react-native/*)
+      echo "rules/frontend.md+architecture.md+backend.md+testing.md (adapt to React Native) | agent:mobile-coordinator"; return 0 ;;
+  esac
+  case "$base" in
+    *.native.ts|*.native.tsx|*.native.js|*.native.jsx)
+      echo "rules/frontend.md+architecture.md+testing.md (adapt to React Native) | agent:mobile-coordinator"; return 0 ;;
+  esac
+
   # frontend
   case "$base" in
     *.tsx|*.jsx)
       echo "rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator"; return 0 ;;
   esac
+  # NOTE: */app/* is deliberately NOT matched here. It collides with backend `src/app/`
+  # (NestJS) and any non-Next `app/` dir, and adds nothing Next-specific that the
+  # .tsx/.jsx and *.css arms above don't already catch.
   case "$f" in
-    *.css|*.scss|*/components/*|*/app/*|*/pages/*)
+    *.css|*.scss|*/components/*|*/pages/*)
       echo "rules/frontend.md+architecture.md | skill:react-patterns | agent:frontend-coordinator"; return 0 ;;
   esac
 
-  # LLM / agent work
-  case "$f" in
-    *prompt*|*rag*|*eval*|*embedding*|*llm*)
+  # LLM / agent work — anchored to whole path segments and delimiter-bounded
+  # basenames. Unanchored globs mis-fired badly: "*rag*" caught sto|rag|e/ and
+  # pa|rag|raph/, "*eval*" caught |eval|uate.ts.
+  case "/$f" in
+    */prompt/*|*/prompts/*|*/rag/*|*/evals/*|*/eval/*|*/embeddings/*|*/llm/*)
+      echo "rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator"; return 0 ;;
+  esac
+  case "$base" in
+    prompt*|rag.*|embedding*|llm*|eval.*|evals.*|*.prompt.*|*.rag.*|*.embedding*|*.llm.*|*.eval.*|*.evals.*)
       echo "rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator"; return 0 ;;
   esac
 

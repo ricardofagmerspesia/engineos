@@ -30,6 +30,11 @@ check "architecture picks design tier" \
   "Should we use Kafka or SQS for this? design the flow" "model: opus"
 check "small edit stays quiet" \
   "fix the typo in the login label" ""
+# countable nouns are plural-only: one unit of work must not trip the fan-out advice
+check "single component stays quiet" \
+  "add a component for the user avatar" ""
+check "single service stays quiet" \
+  "create a service to send the welcome email" ""
 check "question stays quiet" \
   "what does this function return?" ""
 

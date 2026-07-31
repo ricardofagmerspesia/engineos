@@ -10,7 +10,8 @@ reference this instead of restating logging guidance.
   request → services → queue jobs → outbound calls. Generate at the edge if absent.
 - DO log at boundaries (request in/out, job start/end, external call) — not at
   every line. Log once, at the layer that can act.
-- DON'T log secrets, tokens, or PII. DON'T log-and-rethrow at every layer.
+- Secrets/tokens/PII never reach logs — `security.md` (always-on) owns that rule.
+  No log-and-rethrow at every layer — `base.md` (always-on) owns that one.
 
 ## Metrics & tracing
 - DO emit the four golden signals per service: latency, traffic, errors,

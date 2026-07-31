@@ -23,7 +23,11 @@
 - DO follow REST resource naming: plural nouns, nested only one level (`/orders/:id/items`).
 - DO paginate lists (default limit 20, max 100) and return total/cursor metadata.
 - DO version breaking changes (`/v2/...` or header) — never break existing consumers silently.
-- DO return structured errors: `{ statusCode, error, message, correlationId }` via a global exception filter.
+- DO return structured errors via a global exception filter, shaped
+  `{ statusCode, code, message, correlationId }` — where `code` is the stable
+  taxonomy value from `rules/observability.md` (`validation`, `auth`, `not_found`,
+  `conflict`, `rate_limited`, `dependency`, `internal`). `statusCode` is the HTTP
+  status it maps to; clients switch on `code`, never on prose in `message`.
 
 ## Async & jobs
 - DO use queues (Bull/BullMQ) for work >1s, retries with backoff, dead-letter handling.
@@ -38,4 +42,6 @@
 - DO validate env at boot via a `ConfigModule` schema — missing var crashes at
   startup, not at a 3am request. (The fail-fast-config principle is in `rules/architecture.md`.)
 - DO implement graceful shutdown (`enableShutdownHooks`) — drain queues, close DB pools.
-- DO add `/health` (liveness) and readiness checks for orchestrators.
+- Liveness/readiness endpoints are required by `observability.md` (loaded alongside this
+  file on the backend row). NestJS mechanism: `@nestjs/terminus` for `/health`, with
+  readiness reflecting real dependencies (DB, queue).
