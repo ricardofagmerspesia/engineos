@@ -1,0 +1,43 @@
+name: live-evals
+
+# Live-tier eval run (evals/RUBRIC.md). Deliberately NOT on push/pull_request —
+# it spends real tokens against a real model, so it is cost-gated to a weekly
+# schedule plus manual dispatch, and it does not block merges. It exists to
+# catch router-accuracy drift that the deterministic tier (scripts/run-evals.sh
+# in ci.yml, which runs on every PR) cannot see: the deterministic tier proves
+# the eval SET is well-formed, this proves the ROUTER still matches it.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Monday 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  live-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install the claude CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Live eval tier
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "SKIP: no ANTHROPIC_API_KEY secret configured for this repo — add one to enable this workflow."
+            exit 0
+          fi
+          ENGINEOS_EVAL_LIVE=1 bash scripts/run-evals.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "This workflow is observability, not a merge gate — a red run here" >> "$GITHUB_STEP_SUMMARY"
+          echo "means router accuracy drifted, not that a PR is blocked. Compare" >> "$GITHUB_STEP_SUMMARY"
+          echo "against evals/RUBRIC.md and consider a skills/retro pass if the" >> "$GITHUB_STEP_SUMMARY"
+          echo "same case keeps failing." >> "$GITHUB_STEP_SUMMARY"

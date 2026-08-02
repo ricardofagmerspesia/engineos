@@ -29,6 +29,11 @@ the thing it describes has moved.
    an expectation that violates CLAUDE.md's closure rule.
 6. Always-on rules are not listed in `must_not_load` — they are always loaded, so
    such an expectation could never pass.
+7. `expect_risk`, when present, is a real tier (`low` / `medium` / `high`) and is
+   **at or above** the `risk_floor` that `registries/routing.json` sets for every
+   expected domain. A case claiming a DBA change is low risk contradicts the
+   registry, and one of the two is wrong — the check forces that argument to
+   happen at authoring time rather than in production.
 
 ## Live tier (opt-in)
 

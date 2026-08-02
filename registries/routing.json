@@ -1,0 +1,114 @@
+{
+  "version": "1.0.0",
+  "description": "Machine-readable source of truth for EngineOS domain routing. CLAUDE.md's stack/domain table and hooks/routing-map.sh are both checked against this file by scripts/validate-engineos.sh. Precedence order here MUST match the order the arms appear in routing-map.sh — the hook emits exactly one route, first match wins.",
+  "precedence": [
+    "security",
+    "test",
+    "backend",
+    "dba",
+    "ios-release",
+    "android-release",
+    "devops",
+    "mobile",
+    "frontend",
+    "llm"
+  ],
+  "domains": [
+    {
+      "id": "security",
+      "title": "Security-sensitive files",
+      "rules": ["security"],
+      "skills": [],
+      "agent": "security-reviewer",
+      "risk_floor": "high",
+      "hook_guidance": "rules/security.md | agent:security-reviewer",
+      "note": "Cross-cutting, checked first. Delimiter-bounded so authors/ does not collide with auth/."
+    },
+    {
+      "id": "test",
+      "title": "Test files",
+      "rules": ["testing"],
+      "skills": [],
+      "agent": "test-writer",
+      "risk_floor": "low",
+      "hook_guidance": "rules/testing.md | agent:test-writer"
+    },
+    {
+      "id": "backend",
+      "title": "Backend (NestJS shapes)",
+      "rules": ["backend", "architecture", "data", "testing", "observability"],
+      "skills": ["nestjs-patterns"],
+      "agent": "backend-coordinator",
+      "risk_floor": "medium",
+      "hook_guidance": "rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator",
+      "note": "architecture and observability are closure targets of backend.md; data.md because the row's signals include migrations."
+    },
+    {
+      "id": "dba",
+      "title": "Data layer and migrations",
+      "rules": ["data", "architecture"],
+      "skills": [],
+      "agent": "dba-coordinator",
+      "risk_floor": "high",
+      "hook_guidance": "rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)",
+      "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves."
+    },
+    {
+      "id": "ios-release",
+      "title": "iOS build and release plumbing",
+      "rules": ["security"],
+      "skills": [],
+      "agent": "ios-builder",
+      "risk_floor": "high",
+      "hook_guidance": "rules/security.md (signing) | agent:ios-builder",
+      "note": "MUST precede mobile: matches only build/release files, so ordinary RN screens fall through."
+    },
+    {
+      "id": "android-release",
+      "title": "Android build and release plumbing",
+      "rules": ["security"],
+      "skills": [],
+      "agent": "android-builder",
+      "risk_floor": "high",
+      "hook_guidance": "rules/security.md (signing) | agent:android-builder"
+    },
+    {
+      "id": "devops",
+      "title": "DevOps and IaC",
+      "rules": ["architecture", "observability"],
+      "skills": [],
+      "agent": "devops-coordinator",
+      "risk_floor": "high",
+      "hook_guidance": "rules/architecture.md+observability.md | agent:devops-coordinator (kubernetes/gcp/cicd)",
+      "note": "High floor: infra config changes reach production by definition."
+    },
+    {
+      "id": "mobile",
+      "title": "Mobile (React Native)",
+      "rules": ["frontend", "architecture", "backend", "testing", "observability"],
+      "skills": ["react-patterns"],
+      "agent": "mobile-coordinator",
+      "risk_floor": "medium",
+      "hook_guidance": "rules/frontend.md+architecture.md+backend.md+testing.md+observability.md (adapt to React Native) | agent:mobile-coordinator",
+      "note": "MUST precede frontend: mobile screens are .tsx too. Skill react-patterns is adapted to React Native and is named in CLAUDE.md rather than the hook string."
+    },
+    {
+      "id": "frontend",
+      "title": "Frontend (React/Next)",
+      "rules": ["frontend", "architecture", "testing"],
+      "skills": ["react-patterns"],
+      "agent": "frontend-coordinator",
+      "risk_floor": "low",
+      "hook_guidance": "rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator"
+    },
+    {
+      "id": "llm",
+      "title": "LLM and agent work",
+      "rules": ["llm-apps"],
+      "skills": ["llm-engineering"],
+      "agent": "llm-coordinator",
+      "risk_floor": "medium",
+      "hook_guidance": "rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator"
+    }
+  ]
+}

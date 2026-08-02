@@ -65,6 +65,61 @@ case_ "emptied rule file is caught" \
       "empty documents" \
       ": > rules/testing.md"
 
+case_ "always-on rule pointing at a route-loaded rule is caught" \
+      "always-on rule points at a route-loaded rule" \
+      "printf '\nDefer to \`rules/frontend.md\`.\n' >> rules/context.md"
+
+case_ "registry guidance drifting from routing-map is caught" \
+      "registry guidance not found in routing-map.sh" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+for x in d['domains']:
+    if x['id']=='test': x['hook_guidance']='rules/testing.md | agent:ameer'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "registry rules[] disagreeing with its guidance string is caught" \
+      "registry rules/guidance mismatch" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+for x in d['domains']:
+    if x['id']=='frontend': x['rules'].remove('testing')
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "registry precedence out of map order is caught" \
+      "does not match domain order" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+d['precedence'][0], d['precedence'][1] = d['precedence'][1], d['precedence'][0]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a routing-map arm missing from the registry is caught" \
+      "routing-map.sh arms missing from the registry" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+d['domains']=[x for x in d['domains'] if x['id']!='llm']
+d['precedence']=[x for x in d['precedence'] if x!='llm']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "duplicate decision rule id is caught" \
+      "duplicate decision rule ids" \
+      "python3 -c \"
+import json
+p='registries/decision-rules.json'; d=json.load(open(p))
+d['rules'].append(dict(d['rules'][0]))
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "decision rule that requires nothing is caught" \
+      "decision rules with an empty then" \
+      "python3 -c \"
+import json
+p='registries/decision-rules.json'; d=json.load(open(p))
+d['rules'].append({'id':'rule-noop','priority':1,'when':{},'then':{}})
+json.dump(d,open(p,'w'),indent=2)\""
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

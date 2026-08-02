@@ -34,10 +34,14 @@ sequential because the steps feed each other.
 4. **Dispatch a whole wave in ONE message** — multiple Task/Agent calls in the same
    assistant turn. Sequential dispatch of independent agents is a defect.
 5. **Brief each agent** with: MODE (AUDIT|IMPLEMENT), exact file scope it owns,
-   the frozen contracts, the model per `rules/models.md`, its rules to follow, and
-   the output format expected back.
+   the frozen contracts, the model per `rules/models.md`, the risk tier and
+   autonomy ceiling per `rules/risk-autonomy.md`, its rules to follow, and the
+   return envelope expected back (`## Return format` in every agent file).
+   Context discipline for the brief: `rules/context.md`.
 6. **Integrate + verify** at each barrier: typecheck + lint + tests, output shown
-   (`superpowers:verification-before-completion`).
+   (`superpowers:verification-before-completion`). Write a handoff at every
+   barrier using `templates/handoff.md` — the next wave's agents cannot read this
+   conversation, and "continue where wave 1 left off" is not a brief.
 
 ## Hard rules
 
@@ -50,7 +54,32 @@ sequential because the steps feed each other.
 - **Announce the plan in one line** before dispatching:
   `[fanout] waves=<n> wave1=<agent:scope, agent:scope> model=<per-agent>`
 - **Report partial failure honestly.** If one agent fails, say which unit is
-  incomplete — never let a green summary hide a dead branch.
+  incomplete — never let a green summary hide a dead branch. The `status` field of
+  the return envelope is the mechanism: `BLOCKED` and `FAILED` are real answers.
+
+## Failure policy
+
+An agent that fails is a normal event with a defined response, not an improvisation.
+
+| Situation | Response |
+|---|---|
+| Transient failure (timeout, rate limit, flaky tool) | Retry once, same model |
+| Failed again, or returned `FAILED` with a substantive reason | Escalate one tier per `rules/models.md` and retry once. That is the last retry |
+| Failed at the escalated tier | Stop. Report the unit incomplete with what was tried |
+| Returned `BLOCKED` | Do not retry — the input is missing. Supply it or drop the unit |
+| Returned `DEGRADED` | Accept, but carry the caveat into the barrier report. Do not silently upgrade it to OK |
+
+**Never retry these — escalate to the human immediately, on the first occurrence:**
+security risk, possible data loss, an irreversible action whose gate is unclear,
+or ambiguity the agent could not resolve. Retrying an agent that is uncertain
+produces a more confident wrong answer, not a right one.
+
+**A failed unit blocks its wave's barrier.** Do not start the next wave around a
+hole. Either fix the unit, or re-plan the remaining waves with the hole explicit.
+
+**Bound the loop.** Two attempts per unit, one escalation, then a human. An agent
+retried until it succeeds has not succeeded — it has been sampled until it looked
+right.
 
 ## Choosing the fan-out mechanism
 

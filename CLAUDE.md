@@ -13,6 +13,9 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/memory.md
 @rules/parallelism.md
 @rules/models.md
+@rules/risk-autonomy.md
+@rules/context.md
+@rules/gates.md
 
 ## Router — classify before acting
 
@@ -20,7 +23,11 @@ Before any substantive task (anything that creates/modifies code, designs, or do
 classify the intent and load the matching rules/skills listed below using the Read tool
 (rules) and Skill tool (skills). Then announce in one line what was loaded:
 
-`[router] intent=<intent> loaded=<rules/skills>`
+`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills>`
+
+The `risk` and `autonomy` fields come from always-on `rules/risk-autonomy.md` and
+are classified BEFORE the first write. They set which gates apply
+(`rules/gates.md`) and what the work is permitted to do on its own.
 
 Rules for routing:
 - Multiple intents can match — load all that apply, in table order.
@@ -28,9 +35,10 @@ Rules for routing:
   (`backend.md` defers logging to `observability.md`, `data.md` defers SQL binding to
   `security.md`), every row that loads the first MUST also load the second — otherwise
   the deferred rule silently disappears. Always-on files (`base.md`, `security.md`,
-  `git.md`, …) are always available; they may point only at other always-on files or
-  at repo templates. Non-always-on files may point at always-on files or at files
-  loaded in the same row.
+  `git.md`, …) are always available; they may point only at other always-on files,
+  at repo templates, or at `registries/*.json`. Non-always-on files may point at
+  always-on files or at files loaded in the same row. `scripts/validate-engineos.sh`
+  checks both halves of this rule — it is enforced, not just stated.
 - Unknown intent → proceed with always-on rules only. Never block on routing.
 - Pure questions/explanations need no routing — answer directly.
 - Rules paths are relative to this file's directory.
@@ -39,7 +47,10 @@ Rules for routing:
   security, test) are mirrored deterministically by the `PreToolUse` hook
   `hooks/route-before-change.sh`. Its canonical path→domain map is
   `hooks/routing-map.sh` — that file is authoritative for file-pattern routing;
-  this table is the human mirror, keep them in sync. All other rows are
+  this table is the human mirror. **They no longer drift silently:**
+  `registries/routing.json` holds the structured facts (rules, skills, agent,
+  precedence, risk floor) and `scripts/validate-engineos.sh` fails CI if the
+  table, the hook map and the registry disagree. All other rows are
   request-driven and have no hook equivalent.
 - **Multi-match applies to this table only.** The hook emits exactly ONE route —
   first match wins, in this precedence chain: security → test → backend → dba →
@@ -47,10 +58,11 @@ Rules for routing:
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
 - **The hooks need `jq`.** Without it, `route-before-change.sh`,
-  `mark-unrecorded.sh`, `record-verify.sh`, and `task-scale-advisor.sh` exit 0
+  `mark-unrecorded.sh`, `record-verify.sh`, `task-scale-advisor.sh`, and
+  `gate-advisor.sh` exit 0
   silently — routing guidance and the change-record Stop gate simply do not fire.
   If you are not seeing `[router] …` context on edits, check `jq` before assuming
-  the routing is wrong. Those four are the only ones that go silent:
+  the routing is wrong. Those five are the only ones that go silent:
   `stop-verify.sh` and `post-edit-check.sh` degrade to grep/sed parsing and keep
   running, and `ensure-project-layout.sh` keeps running via a grep fallback.
 
@@ -78,6 +90,9 @@ Rules for routing:
 | Review / pre-merge ("review", "is this safe", PR URL) | skill `code-review` (external — provided by the Claude Code environment, not this repo); if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
 | Test writing ("write tests", "add coverage", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | Read `rules/llm-apps.md`; skill `eval-harness` |
+| Independent verification of high-risk work ("is this actually right", pre-release check on risk=high, release gate needs an independent pass) | `critic` agent (alias `vera`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens |
+| Handoff between agents, waves or sessions ("hand this off", wave barrier reached, session ending mid-task) | `templates/handoff.md` — objective, state, gate, risk, decisions, files, evidence, known failures, next step, resume commands. Never hand off with "continue where you left off" |
+| Continuous improvement ("run a retro", "what should we improve", same correction recurring, monthly cadence) | skill `retro` — mines `.engineos/archived/`, eval failures and integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR. Proposes only; a human merges |
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
 | Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: lint + typecheck + build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
 
@@ -112,7 +127,8 @@ Rules:
 1. Spec before code for any change touching >2 files or any new feature.
 2. Verification before "done": typecheck + lint + relevant tests, with output shown.
    The automated Stop-gate half covers JS/TS-family packages only; other stacks are
-   verified manually.
+   verified manually. This is the Validation gate of `rules/gates.md` — it is not
+   the Release gate, which additionally wants an owner and a rollback path.
 3. No secrets in code, config, or commits. Ever. See `rules/security.md`.
 4. Follow existing project conventions over these rules when they conflict —
    project `CLAUDE.md` > EngineOS > defaults.
@@ -132,3 +148,11 @@ Rules:
    serially is a defect, not a style choice.
 8. Offer the output artifact after every request per **Output artifact** above: options are
    filtered per the Output artifact table's conditions; offering a dead option is a defect.
+9. Classify risk before the first write, per always-on `rules/risk-autonomy.md`, and
+   never exceed the autonomy ceiling for that tier. The tier drives which gates apply
+   (`rules/gates.md`) and which requirements fire
+   (`registries/decision-rules.json`). A tier assigned after the fact to justify work
+   already done is not a classification.
+10. Public surface changes follow `docs/COMPATIBILITY.md`: rule paths, agent names,
+    aliases, command names, skill directories, hook contracts and the return envelope
+    are versioned surface. A rename is a deprecation with a window, never a silent `git mv`.
