@@ -39,11 +39,16 @@ and `settings.local.json` — this repo never touches it.
 
 | Path | What | When it fires |
 |---|---|---|
-| `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action |
-| `rules/base.md`, `security.md`, `git.md` | Always-on standards | Every session |
-| `rules/parallelism.md` | Fan-out doctrine: when to split work, contract freeze, waves, disjoint file scopes, one-message dispatch | Always on; enforced on big tasks |
-| `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `sonnet`, mechanical `haiku` — tier is the contract, model name is today's binding | Always on |
+| `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action, announcing `risk=`/`autonomy=` alongside the loaded rules |
+| `rules/base.md`, `security.md`, `git.md`, `memory.md` | Always-on standards | Every session |
+| `rules/risk-autonomy.md` | Risk tiers (low/medium/high) and autonomy ceilings (A0-A4) — classify before the first write; every other gate is proportional to this | Always on |
+| `rules/gates.md` | Named gates (discovery/design/implementation/validation/release) mapped to their enforcement mechanism, plus the validation ladder | Always on |
+| `rules/context.md` | Context-as-budget: never sweep the repo, load only what the route names, state what evidence was used | Always on |
+| `rules/parallelism.md` | Fan-out doctrine: when to split work, contract freeze, waves, disjoint file scopes, one-message dispatch, the failure/retry/escalation policy | Always on; enforced on big tasks |
+| `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `sonnet`, mechanical `haiku` — tier is the contract, model name is today's binding. Plus the budget degradation ladder (cache → reduce context → smaller model → defer → deny) | Always on |
 | `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Per-domain standards | Loaded by router per intent |
+| `registries/routing.json` | Machine-readable domain routing — rules, skill, agent, precedence, risk floor per domain; cross-checked against `CLAUDE.md` and `hooks/routing-map.sh` so the three cannot drift silently | Read by `scripts/validate-engineos.sh` |
+| `registries/decision-rules.json` | Gate requirements as data (`when → then require`), so a new requirement is a registry entry, not a constitutional amendment | Read by `hooks/gate-advisor.sh` and by the model per `rules/gates.md` |
 | `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
 | `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
@@ -54,6 +59,7 @@ and `settings.local.json` — this repo never touches it.
 | `agents/architecture-analyst.md` | System comprehension → code-grounded architecture + onboarding docs (`/analyze-architecture`); interactive gap-filling interview (`/talk-about-the-system`) | Documenting/understanding a system |
 | `agents/qa-tester.md` | Autonomous end-to-end API QA (alias `qa`): clean Docker up, endpoint-inventory JSON + Postman collection, headless Newman run of all endpoints/scenarios, pass/fail report | Full API regression / smoke QA |
 | `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |
+| `agents/critic.md` | Adversarial general-correctness review (read-only, alias `vera`) — tries to refute the claim that work is done, defaults to "not proven" | Required at risk=high per `rules/gates.md`; on explicit request |
 | `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
 | `agents/{backend,frontend,mobile,dba,devops,llm}-coordinator.md` | Domain specialists, dual-mode audit/implement, shared report format | Scoped domain analysis or changes |
 | `agents/{kubernetes,gcp,postgres,oracle,cicd}-specialist.md` | Read-only MCP-bound leaf specialists for deep audits | Dispatched by /engineos:audit or coordinators |
@@ -65,12 +71,17 @@ and `settings.local.json` — this repo never touches it.
 | `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/task-scale-advisor.sh` | Detects big-task / spec / design prompts and injects the fan-out + model-tier reminder (non-blocking) | UserPromptSubmit |
+| `hooks/gate-advisor.sh` | Matches the prompt against `registries/decision-rules.json` and injects which gate requirements fire, plus the autonomy ceiling on a risk=high match (non-blocking) | UserPromptSubmit |
 | `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |
 | `hooks/post-edit-check.sh` | Typecheck+lint changed package after every AI edit | PostToolUse Edit\|Write |
 | `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
 | `skills/record-change` | Finalize a change: mark done, register files+movements, `.engineos/changes/`→`.engineos/archived/` | After completing work |
+| `skills/retro` | Mines archived change records + eval/integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR — proposes only, never merges | "Run a retro", monthly cadence, a correction recurring |
+| `templates/handoff.md` | Structured handoff contract (objective, state, gate, decisions, files, evidence, next step) — the test: could the next executor resume from this file alone? | Every wave barrier (`rules/parallelism.md`), session boundaries |
+| `docs/COMPATIBILITY.md` | What counts as public surface (rule paths, agent names, aliases, commands, hook contracts), semver rules, deprecate→warn→remove window | Any rename or removal of public surface |
+| `templates/adapters/` | How the methodology maps onto Cursor, Codex and Copilot — what's enforced natively vs degrades to CI-only convention | Porting EngineOS to a non-Claude-Code tool |
 | `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (mcp-atlassian/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
 | `.engineos/changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
@@ -115,9 +126,11 @@ Fill in What / Why / Scope. Set `status: active`. Commit it with the work it tra
 **2. Finish a change → `.engineos/archived/`**
 Once the work is done and verified (typecheck + lint + tests shown):
 ```bash
-mkdir -p ".engineos/archived/<YYYY>/<MM>/<DD>" && git mv ".engineos/changes/<date>-<slug>.md" ".engineos/archived/<YYYY>/<MM>/<DD>/<date>-<slug>.md"
+mkdir -p ".engineos/archived/<YYYY>/<MM>/<domain>" && git mv ".engineos/changes/<date>-<slug>.md" ".engineos/archived/<YYYY>/<MM>/<domain>/<date>-<slug>.md"
 ```
-Set `status: done` and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
+Archives group by month + `domain:` from the record's front matter — no day
+folder; the exact date still lives in the filename prefix. Set `status: done`
+and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
 
 **3. Capture a lasting fact → `.engineos/memory/`**
 If the change leaves a durable takeaway (a decision, a convention, a gotcha),
@@ -131,7 +144,24 @@ where.
 ## Changing a standard
 
 Rules are code. Open a PR, team reviews, merge, everyone `git pull && ./install.sh`.
-No Slack-announcement standards.
+No Slack-announcement standards. Public surface (rule paths, agent names, aliases,
+commands, registries) follows `docs/COMPATIBILITY.md` — a rename is a deprecation
+with a window, never a silent `git mv`.
+
+Before merging any change to `rules/`, `agents/`, `skills/`, `commands/`,
+`registries/`, or `hooks/routing-map.sh`, run:
+```bash
+scripts/validate-engineos.sh   # 23 self-integrity checks
+scripts/run-evals.sh           # golden set for router + agent behaviour
+```
+CI runs both, plus `scripts/test-validate-engineos.sh` — 16 planted-breakage
+cases proving the validator actually catches what it claims to.
+
+`.github/workflows/live-evals.yml` runs the eval set's live tier weekly (manual
+dispatch also works) — real model calls, so it is cost-gated off the PR path
+and needs an `ANTHROPIC_API_KEY` repo secret. It measures router *accuracy*,
+which the PR-gating deterministic tier cannot: that tier only proves the eval
+set itself is well-formed.
 
 ## Security
 

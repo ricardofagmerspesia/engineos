@@ -19,7 +19,7 @@ jobs:
 
       - name: Validate JSON
         run: |
-          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json; do
+          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json; do
             jq empty "$f" && echo "ok $f"
           done
 
@@ -33,8 +33,20 @@ jobs:
           fi
           echo "ok: commands/agents/ matches scripts/gen-agent-commands.sh output"
 
+      - name: EngineOS integrity check
+        run: bash scripts/validate-engineos.sh
+
+      - name: Integrity check catches planted breakage
+        run: bash scripts/test-validate-engineos.sh
+
+      - name: Evals (deterministic tier)
+        run: bash scripts/run-evals.sh
+
       - name: Routing hook tests
         run: bash hooks/test-route.sh
+
+      - name: Gate advisor tests
+        run: bash hooks/test-gate-advisor.sh
 
       - name: Change-governance marker tests
         run: bash hooks/test-governance.sh

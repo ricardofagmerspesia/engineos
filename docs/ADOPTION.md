@@ -175,7 +175,7 @@ DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
 **Close every unit of work** with the record-change skill:
 ```
 record-change            # marks the .engineos/changes/ record done, registers files+movements,
-                         # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/DD/, clears the Stop flag
+                         # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/<domain>/, clears the Stop flag
 ```
 
 **Verification before "done"** is enforced: typecheck + lint + relevant tests, output

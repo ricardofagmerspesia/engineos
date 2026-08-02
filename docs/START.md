@@ -34,6 +34,7 @@ explicitly by typing its name (Claude runs it via the Skill tool).
 | Skill | Use it when |
 |---|---|
 | `record-change` | A unit of work is done — mark its record done, log files, archive it |
+| `retro` | Mine closed change records + eval/integrity failures for durable rule improvements (3+ occurrences required); proposes a PR, never merges |
 | `tlc-spec-driven` | Planning a feature/project (specify → design → tasks → execute) |
 | `adr` | Making an architecture decision worth recording |
 | `eval-harness` | An LLM feature has no evals yet |
@@ -55,7 +56,7 @@ relevant — let them.
 Agents run in their own context and report back. Dispatch with the Task tool, or
 say "use the `<name>` agent to …".
 
-EngineOS ships 18 agents total.
+EngineOS ships 19 agents total.
 
 **Domain coordinators** (dual-mode — AUDIT read-only, or IMPLEMENT writes):
 `backend-coordinator`, `frontend-coordinator`, `mobile-coordinator`,
@@ -65,7 +66,9 @@ EngineOS ships 18 agents total.
 `/audit`): `kubernetes-specialist`, `gcp-specialist`, `postgres-specialist`,
 `oracle-specialist`, `cicd-specialist`.
 
-**Reviewers / writers:** `security-reviewer` (adversarial, read-only),
+**Reviewers / writers:** `security-reviewer` (adversarial security lens,
+read-only), `critic` (adversarial general-correctness lens, read-only — tries to
+refute that work is done; required at risk=high per `rules/gates.md`),
 `test-writer`, `audit-consolidator` (merges reports into one verdict),
 `architecture-analyst` (system comprehension + onboarding docs + interview mode).
 
@@ -91,6 +94,7 @@ Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 | postgres-specialist | pereira |
 | cicd-specialist | gustavo |
 | security-reviewer | leo-ely |
+| critic | vera |
 | test-writer | ameer |
 | audit-consolidator | corradin |
 | architecture-analyst | analyst |
@@ -150,6 +154,7 @@ These run on their own. Know what they do and how to respond:
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
 | `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) |
 | `task-scale-advisor` | on your prompt | nothing — non-blocking nudge to fan out + pick the right model tier on big/spec/design prompts |
+| `gate-advisor` | on your prompt | nothing — non-blocking; read the matched decision rules and their required artifacts before claiming done |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
 
@@ -168,10 +173,13 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 ## 7. Rules — the standards being enforced
 
 - **Always-on:** `rules/base.md`, `security.md`, `git.md`, `memory.md`,
-  `parallelism.md`, `models.md`.
+  `parallelism.md`, `models.md`, `risk-autonomy.md`, `context.md`, `gates.md`.
 - **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
   `llm-apps.md`, `testing.md`, `data.md`, `observability.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.
+- Every substantive request now carries a **risk tier and autonomy ceiling**
+  (`risk-autonomy.md`) which sets which gates apply (`gates.md`) — see the
+  `[router] intent=… risk=… autonomy=… loaded=…` line.
 - **Project `CLAUDE.md` overrides EngineOS** where they conflict.
 
 ---
@@ -180,9 +188,11 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 
 ```
 open a record            → cp .engineos/changes/_template.md .engineos/changes/<date>-<slug>.md  (status: active)
-   ↓ do the work (routing + gates active)
-verify                   → typecheck + lint + tests, output shown
-record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/DD/
+   ↓ classify risk + autonomy (rules/risk-autonomy.md), which sets the gates that apply (rules/gates.md)
+   ↓ do the work (routing + gate-advisor active)
+verify                   → typecheck + lint + tests, output shown  (Validation gate)
+release-ready?           → named owner + rollback path + residual risks accepted (Release gate — required to ship)
+record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/<domain>/
 ```
 This is what the Stop gates enforce. Distil any durable decision into `.engineos/memory/`.
 
@@ -220,6 +230,9 @@ goes back through the router.
 | Plan a feature | `tlc-spec-driven` (or just describe it — brainstorming triggers) |
 | Record an architecture decision | `adr` skill |
 | Security-check a diff | `security-reviewer` agent |
+| Get an independent "is this actually done" check | `critic` agent (alias `vera`) — required at risk=high |
 | Add test coverage | `test-writer` agent |
+| Hand work off mid-task | `templates/handoff.md` — never just "continue where I left off" |
+| Learn from recent work / recurring corrections | `retro` skill |
 | Change a team standard | PR to the EngineOS repo (`CONTRIBUTING.md`) |
 | Know why a gate blocked me | §5 — verify or record, then finish |
