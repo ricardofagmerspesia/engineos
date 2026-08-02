@@ -33,6 +33,15 @@ jobs:
           fi
           echo "ok: commands/agents/ matches scripts/gen-agent-commands.sh output"
 
+      - name: EngineOS integrity check
+        run: bash scripts/validate-engineos.sh
+
+      - name: Integrity check catches planted breakage
+        run: bash scripts/test-validate-engineos.sh
+
+      - name: Evals (deterministic tier)
+        run: bash scripts/run-evals.sh
+
       - name: Routing hook tests
         run: bash hooks/test-route.sh
 
