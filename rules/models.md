@@ -39,3 +39,33 @@ it inline.
   a fully specified target.
 - **Never trade correctness for cost.** When in doubt, go up a tier.
 - State the model in the fan-out announcement so the choice is auditable.
+
+## Budget and degradation
+
+"Never trade correctness for cost" says what not to do; it does not say what to do
+when a budget actually binds. Improvising at that moment is how the trade happens
+by accident.
+
+**Degrade in this order.** Each rung is a gate, not an automatic step — check it
+before taking it, and if the check fails, move to the next rung rather than
+proceeding anyway:
+
+| Rung | Take it when | Do NOT take it when |
+|---|---|---|
+| 1. Cache | The same input was already computed and inputs are unchanged | The upstream changed, or freshness is part of the requirement |
+| 2. Reduce context | The dropped layers are `rules/context.md` layers 5–6 | It would drop layer 1–2, or the evidence the answer rests on |
+| 3. Smaller model | Work is mechanical with a fully specified target | Gates assume the stronger tier, or risk is medium+ per `rules/risk-autonomy.md` |
+| 4. Defer or batch | The result is not needed to unblock anything now | Something is blocked on it, or deferral hides a failure |
+| 5. Deny | Every rung above failed its check | — |
+
+When rung 5 is reached, say so and ask. A silent swap to a cheaper model on work
+whose gates assumed the stronger one is exactly the correctness-for-cost trade the
+rule above forbids — the trade is no better for being quiet.
+
+**Fan-out budgets.** A wave costs roughly (agents × context per agent). Before
+dispatching, sanity-check the wave against what the task is worth; if it does not
+fit, split into more waves rather than degrading every agent in one.
+
+Absolute limits (per-run, per-day, per-project) are project-specific and belong in
+the project's own `CLAUDE.md`, not here — EngineOS sets the ladder, the project
+sets the numbers.

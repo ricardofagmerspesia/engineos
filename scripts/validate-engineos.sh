@@ -94,6 +94,20 @@ else
   bad "router closure rule violated:$(printf '%b' "$violations")"
 fi
 
+# ------------------------- C5b: always-on files reference only always-on rules
+# CLAUDE.md: "Always-on files ... may point only at other always-on files, at repo
+# templates, or at registries/*.json." Enforced here rather than trusted.
+ao_viol=""
+for r in $ALWAYS_ON; do
+  for s in $RULE_NAMES; do
+    [ "$s" = "$r" ] && continue
+    is_always_on "$s" && continue
+    grep -qE "(rules/)?\`?${s}\.md" "rules/$r.md" 2>/dev/null && ao_viol="$ao_viol $r->$s"
+  done
+done
+[ -z "$ao_viol" ] && ok "always-on rules reference only always-on rules" \
+                  || bad "always-on rule points at a route-loaded rule:$ao_viol"
+
 # --------------------------------- C6/C7/C8: routing-map.sh targets all exist
 map=hooks/routing-map.sh
 missing_agents=""; missing_skills=""; missing_rules=""
@@ -146,6 +160,88 @@ for d in skills/*/; do
   [ -n "$dsc" ]   || bad_skill="$bad_skill $s(no-description)"
 done
 [ -z "$bad_skill" ] && ok "every skill has SKILL.md with matching name and a description" || bad "skill problems:$bad_skill"
+
+# ----------------------------------------------- C14: registries are coherent
+# The point of registries/routing.json is that the CLAUDE.md table, the hook map
+# and the registry can no longer drift apart in silence.
+if ! command -v jq >/dev/null 2>&1; then
+  bad "registry checks skipped — jq missing"
+else
+  reg_bad=""
+  for f in registries/*.json; do
+    jq empty "$f" >/dev/null 2>&1 || reg_bad="$reg_bad $f"
+  done
+  [ -z "$reg_bad" ] && ok "registries are valid JSON" || bad "malformed registries:$reg_bad"
+
+  R=registries/routing.json
+  if [ -f "$R" ]; then
+    # every hook_guidance in the registry is a string routing-map.sh actually emits
+    miss_g=""
+    while IFS= read -r g; do
+      grep -qF "echo \"$g\"" "$map" || miss_g="$miss_g [$g]"
+    done < <(jq -r '.domains[].hook_guidance' "$R")
+    [ -z "$miss_g" ] && ok "every registry hook_guidance is emitted by routing-map.sh" \
+                     || bad "registry guidance not found in routing-map.sh:$miss_g"
+
+    # and the reverse: no arm of routing-map.sh is missing from the registry
+    orphan=""
+    while IFS= read -r g; do
+      jq -e --arg g "$g" '.domains[] | select(.hook_guidance==$g)' "$R" >/dev/null 2>&1 \
+        || orphan="$orphan [$g]"
+    done < <(grep -oE 'echo "[^"]+"; return 0' "$map" | sed 's/^echo "//; s/"; return 0$//' | sort -u)
+    [ -z "$orphan" ] && ok "every routing-map.sh arm is declared in the registry" \
+                     || bad "routing-map.sh arms missing from the registry:$orphan"
+
+    # the rules list must agree with the rules named inside the guidance string
+    mism=""
+    while IFS= read -r id; do
+      declared=$(jq -r --arg i "$id" '.domains[] | select(.id==$i) | .rules[]' "$R" | sort | tr '\n' ' ')
+      g=$(jq -r --arg i "$id" '.domains[] | select(.id==$i) | .hook_guidance' "$R")
+      infrom=$(printf '%s' "$g" | grep -oE '(rules/|\+)[a-z0-9-]+\.md' | sed 's|^rules/||; s|^+||; s|\.md$||' | sort | tr '\n' ' ')
+      [ "$declared" = "$infrom" ] || mism="$mism $id(declared='$declared' guidance='$infrom')"
+    done < <(jq -r '.domains[].id' "$R")
+    [ -z "$mism" ] && ok "registry rules[] match the rules named in each hook_guidance" \
+                   || bad "registry rules/guidance mismatch:$mism"
+
+    # precedence must list every domain exactly once, in routing-map.sh arm order
+    p_reg=$(jq -r '.precedence | join(" ")' "$R")
+    p_dom=$(jq -r '[.domains[].id] | join(" ")' "$R")
+    [ "$p_reg" = "$p_dom" ] && ok "registry precedence covers every domain in map order" \
+      || bad "precedence '$p_reg' does not match domain order '$p_dom'"
+
+    # every named agent and skill resolves
+    ra=""
+    for a in $(jq -r '.domains[].agent' "$R" | sort -u); do [ -f "agents/$a.md" ] || ra="$ra $a"; done
+    for s in $(jq -r '.domains[].skills[]?' "$R" | sort -u); do [ -f "skills/$s/SKILL.md" ] || ra="$ra skill:$s"; done
+    for r in $(jq -r '.domains[].rules[]' "$R" | sort -u); do [ -f "rules/$r.md" ] || ra="$ra rule:$r"; done
+    [ -z "$ra" ] && ok "registry agents, skills and rules all exist" || bad "registry names missing targets:$ra"
+
+    # risk floors must be a known tier
+    rf=$(jq -r '.domains[] | select(.risk_floor|test("^(low|medium|high)$")|not) | .id' "$R")
+    [ -z "$rf" ] && ok "every registry domain declares a valid risk floor" || bad "invalid risk_floor on:$rf"
+  else
+    bad "registries/routing.json missing"
+  fi
+
+  D=registries/decision-rules.json
+  if [ -f "$D" ]; then
+    dupes=$(jq -r '[.rules[].id] | group_by(.) | map(select(length>1)) | flatten | join(" ")' "$D")
+    [ -z "$dupes" ] && ok "decision rule ids are unique" || bad "duplicate decision rule ids: $dupes"
+
+    empty_then=$(jq -r '.rules[] | select((.then.require // [] | length)==0 and (.then.prefer // "")=="") | .id' "$D")
+    [ -z "$empty_then" ] && ok "every decision rule requires or prefers something" \
+                         || bad "decision rules with an empty then:$empty_then"
+
+    # a signal that is not a valid ERE would silently never match in gate-advisor.sh
+    badsig=""
+    while IFS= read -r s; do
+      printf 'x' | grep -qE "$s" 2>/dev/null || [ $? -eq 1 ] || badsig="$badsig [$s]"
+    done < <(jq -r '.rules[].signals[]?' "$D")
+    [ -z "$badsig" ] && ok "every decision rule signal is a valid regex" || bad "invalid signals:$badsig"
+  else
+    bad "registries/decision-rules.json missing"
+  fi
+fi
 
 # ------------------------------------------------------------ C13: no empties
 empties=""

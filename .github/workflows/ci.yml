@@ -19,7 +19,7 @@ jobs:
 
       - name: Validate JSON
         run: |
-          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json; do
+          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json; do
             jq empty "$f" && echo "ok $f"
           done
 
@@ -44,6 +44,9 @@ jobs:
 
       - name: Routing hook tests
         run: bash hooks/test-route.sh
+
+      - name: Gate advisor tests
+        run: bash hooks/test-gate-advisor.sh
 
       - name: Change-governance marker tests
         run: bash hooks/test-governance.sh

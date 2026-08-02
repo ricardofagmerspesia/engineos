@@ -104,23 +104,56 @@ EngineOS is ahead of the source on parallelism, model assignment, and knowledge 
 
 Fifteen gaps, ordered by leverage. Each has a concrete EngineOS artifact.
 
-| # | Gap | EngineOS artifact | Effort | Risk |
-|---|---|---|---|---|
-| G1 | No risk tier / autonomy level | `rules/risk-autonomy.md` (always-on) | S | low |
-| G2 | Gate requirements are prose thresholds, not data | `registries/decision-rules.json` + hook | M | med |
-| G3 | Router table and routing map kept in sync by hand | `registries/routing.json` → generated table | M | med |
-| G4 | Zero routing/agent behavioural evals | `evals/` + CI runner | M | low |
-| G5 | No structured handoff between agents/sessions | `templates/handoff.md` + agent return contract | S | low |
-| G6 | Agents return free prose, not a schema | `## Return format` block in `agents/*.md` | S | low |
-| G7 | Gates unnamed; no design gate, no release gate | `rules/gates.md` | S | low |
-| G8 | No token/cost budget or degradation ladder | section in `rules/models.md` | S | low |
-| G9 | No context-engineering rule | `rules/context.md` (always-on) | S | low |
-| G10 | Archived change records never feed back | `skills/retro/SKILL.md` | M | low |
-| G11 | EngineOS's own corpus has no integrity test | `scripts/validate-engineos.sh` + CI | S | low |
-| G12 | No compatibility/deprecation policy for consumers | `docs/COMPATIBILITY.md` | S | low |
-| G13 | Adapters exist only for Cursor + GH Actions | `templates/adapters/` | M | low |
-| G14 | No generic adversarial critic pass | `agents/critic.md` + rule hook into G1 | M | med |
-| G15 | No failure policy for agent dispatch | section in `rules/parallelism.md` | S | low |
+All fifteen are now implemented. The "Shipped as" column records what actually
+landed, which in two cases differs from what was proposed — see the notes on G3
+and G13.
+
+| # | Gap | Shipped as | Status |
+|---|---|---|---|
+| G1 | No risk tier / autonomy level | `rules/risk-autonomy.md` (always-on), risk in the router line | done |
+| G2 | Gate requirements are prose thresholds, not data | `registries/decision-rules.json` + `hooks/gate-advisor.sh` | done |
+| G3 | Router table and routing map kept in sync by hand | `registries/routing.json` + 6 consistency checks — cross-check, **not** generation | done, adapted |
+| G4 | Zero routing/agent behavioural evals | `evals/` (33 + 16 cases) + `scripts/run-evals.sh` | done |
+| G5 | No structured handoff between agents/sessions | `templates/handoff.md`, required at wave barriers | done |
+| G6 | Agents return free prose, not a schema | `## Return format` in all 19 agents | done |
+| G7 | Gates unnamed; no design gate, no release gate | `rules/gates.md` (always-on) | done |
+| G8 | No token/cost budget or degradation ladder | "Budget and degradation" in `rules/models.md` | done |
+| G9 | No context-engineering rule | `rules/context.md` (always-on) | done |
+| G10 | Archived change records never feed back | `skills/retro/SKILL.md` | done |
+| G11 | EngineOS's own corpus has no integrity test | `scripts/validate-engineos.sh` (23 checks) | done |
+| G12 | No compatibility/deprecation policy for consumers | `docs/COMPATIBILITY.md` | done |
+| G13 | Adapters exist only for Cursor + GH Actions | `templates/adapters/` — 4 tools + enforcement matrix | done |
+| G14 | No generic adversarial critic pass | `agents/critic.md` (alias `vera`), gated on risk=high | done |
+| G15 | No failure policy for agent dispatch | "Failure policy" in `rules/parallelism.md` | done |
+
+### G3 — why cross-check instead of generation
+
+The plan below proposed generating both `hooks/routing-map.sh` and the CLAUDE.md
+table from the registry. Building it revealed that generation would be a
+regression on both ends:
+
+- `routing-map.sh` carries comments that are load-bearing knowledge — why
+  `authors/` must not collide with `auth/`, why `*/app/*` is deliberately
+  unmatched, why the store-release arms must precede mobile. A generator would
+  erase them, and the 38 routing tests exist precisely because those collisions
+  were found the hard way.
+- The CLAUDE.md Load column carries prose that no schema captures ("a more
+  specific matching row suppresses this one").
+
+What shipped instead: the registry holds the structured facts, and
+`scripts/validate-engineos.sh` enforces six-way agreement between registry, hook
+map and constitution — guidance strings match in both directions, `rules[]`
+matches the guidance string, precedence matches arm order, and every named agent,
+skill and rule resolves. Drift now fails CI, with nothing lost. Same problem
+solved, better.
+
+### G13 — scope note
+
+Four adapters shipped (Claude Code, Cursor, Codex, Copilot) rather than the
+source's seven. The three omitted (ChatGPT, Mastra, OpenAI Agents SDK) are not
+coding-agent harnesses that consume a repo constitution, so an adapter for them
+would document a workflow nobody runs. `templates/adapters/README.md` carries the
+enforcement matrix and the instructions for adding one.
 
 ### G1 — Risk tier and autonomy level
 

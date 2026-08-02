@@ -52,7 +52,10 @@ for f in "$INTENTS" "$AGENTS"; do
 done
 
 # --------------------------------------------------- intent case conformance
-bad_rule=""; bad_both=""; bad_closed=""; bad_alwayson=""; bad_fields=""
+bad_rule=""; bad_both=""; bad_closed=""; bad_alwayson=""; bad_fields=""; bad_risk=""
+
+# rank <tier> -> comparable integer. Defined once, outside the case loop.
+rank() { case "$1" in low) echo 1 ;; medium) echo 2 ;; high) echo 3 ;; *) echo 0 ;; esac; }
 while IFS= read -r line; do
   [ -z "$line" ] && continue
   id=$(printf '%s' "$line" | jq -r '.id // ""')
@@ -78,7 +81,26 @@ while IFS= read -r line; do
   for r in $mn; do
     is_always_on "$r" && bad_alwayson="$bad_alwayson $id->must_not_load:$r"
   done
+
+  # expect_risk is optional, but when present it must be a real tier and must not
+  # contradict the risk floor registries/routing.json sets for the expected domain.
+  er=$(printf '%s' "$line" | jq -r '.expect_risk // ""')
+  if [ -n "$er" ]; then
+    case "$er" in
+      low|medium|high) ;;
+      *) bad_risk="${bad_risk:-} $id(tier='$er')" ;;
+    esac
+    for dom in $(printf '%s' "$line" | jq -r '.expect_intents[]?'); do
+      floor=$(jq -r --arg d "$dom" '.domains[] | select(.id==$d) | .risk_floor // ""' registries/routing.json 2>/dev/null)
+      [ -z "$floor" ] && continue
+      [ "$(rank "$er")" -lt "$(rank "$floor")" ] && \
+        bad_risk="$bad_risk $id(expects '$er' but domain '$dom' floors at '$floor')"
+    done
+  fi
 done < "$INTENTS"
+
+[ -z "$bad_risk" ] && ok "expect_risk values are valid and respect registry risk floors" \
+                       || bad "risk expectation problems:$bad_risk"
 
 [ -z "$bad_fields"   ] && ok "every intent case has id, input and notes"                  || bad "cases missing required fields:$bad_fields"
 [ -z "$bad_rule"     ] && ok "every asserted rule exists in rules/"                        || bad "cases naming nonexistent rules:$bad_rule"
