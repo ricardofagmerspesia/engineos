@@ -8,8 +8,8 @@
     {
       "name": "engineos",
       "source": "./",
-      "description": "Shared AI engineering environment: router, rules, stack skills, subagents, quality-gate hooks.",
-      "version": "1.2.0",
+      "description": "Shared AI engineering environment: router, risk-tiered gates, rules, stack skills, subagents, quality-gate hooks.",
+      "version": "1.3.0",
       "author": { "name": "Ricardo Fagmer" }
     }
   ]

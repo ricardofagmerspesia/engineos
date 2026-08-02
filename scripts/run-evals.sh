@@ -149,7 +149,11 @@ else
     n_intent=$(printf '%s' "$line" | jq -r '.expect_intents | length')
 
     out=$(claude -p "$inp" 2>/dev/null)
-    router=$(printf '%s' "$out" | grep -m1 '^\[router\]' || true)
+    # NOT anchored to line-start: the model often wraps the announcement in a
+    # markdown code span ("`[router] intent=...`"), which a '^\[router\]'
+    # anchor misses even though the announcement is correctly present. Found by
+    # actually running the live tier once — see the change record.
+    router=$(printf '%s' "$out" | grep -m1 '\[router\]' || true)
 
     if [ "$n_intent" -eq 0 ]; then
       # Pure question: routing exemption. Emitting a router line is over-routing.
