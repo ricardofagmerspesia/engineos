@@ -27,10 +27,16 @@
     {
       "id": "document",
       "title": "Write and update documentation for the delivered feature",
-      "agent": null,
+      "agent": "docs-writer",
       "model_tier": "build",
-      "risk_floor": "low",
-      "note": "No dedicated kernel agent yet — bound to the main Claude Code loop directly at the build tier (docs written against an existing implementation, not a design decision)."
+      "risk_floor": "low"
+    },
+    {
+      "id": "security-review",
+      "title": "Adversarial security review of a change before it ships",
+      "agent": "security-reviewer",
+      "model_tier": "design",
+      "risk_floor": "high"
     }
   ]
 }

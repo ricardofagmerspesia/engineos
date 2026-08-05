@@ -131,6 +131,23 @@
       "capability_ids": []
     },
     {
+      "name": "docs-writer",
+      "alias": "tomasz",
+      "description": "Writes and updates documentation for work that already landed — READMEs, usage docs, endpoint and config references. Use when a delivered change leaves documentation stale, or when a headless workflow needs documentation as its own step rather than an afterthought. Documents what the code actually does, never what it was supposed to do. Alias: tomasz (invocable by this name).",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write"
+      ],
+      "model": "sonnet",
+      "model_tier": "build",
+      "capability_ids": [
+        "document"
+      ]
+    },
+    {
       "name": "frontend-coordinator",
       "alias": "arturo",
       "description": "Domain specialist for frontend work (React, Next.js, components, pages/app router, state, data fetching, forms, styling, performance, accessibility). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code) per the MODE given or inferred. Use for frontend-focused analysis or changes; follows EngineOS architecture/frontend/testing rules. Alias: arturo (invocable by this name).",
@@ -301,7 +318,9 @@
       ],
       "model": "opus",
       "model_tier": "design",
-      "capability_ids": []
+      "capability_ids": [
+        "security-review"
+      ]
     },
     {
       "name": "test-writer",
