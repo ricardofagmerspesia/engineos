@@ -49,6 +49,42 @@ check "validate rejects a line missing required fields" 1 $?
 
 rm -f "$tmp"
 
+# A flag with no value following it must hit usage(), not an unbound-variable
+# crash from `set -u` reading an absent $2.
+bash "$EJ" append /tmp/nonexistent-does-not-matter.jsonl --run-id >/dev/null 2>&1
+check "append rejects a flag given with no value, not a bash crash" 1 $?
+
+tmp=$(mktemp)
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --agent 'foo"bar' \
+  --model-tier build --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append accepts an agent value containing a double quote" 0 $?
+[ "$(jq -r '.agent' "$tmp")" = 'foo"bar' ] && { pass=$((pass+1)); printf 'ok   %s\n' "a quoted agent value round-trips unescaped"; } \
+  || { fail=$((fail+1)); printf 'FAIL a quoted agent value round-trips unescaped — got %s\n' "$(jq -r '.agent' "$tmp")"; }
+rm -f "$tmp"
+
+tmp=$(mktemp)
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build --status OK \
+  --tokens-in 1 --tokens-out 1 --duration-ms 1 --note 'foo\bar' >/dev/null 2>&1
+[ "$(jq -r '.note' "$tmp")" = 'foo\bar' ] && { pass=$((pass+1)); printf 'ok   %s\n' "a backslash in note is not reinterpreted as a JSON escape"; } \
+  || { fail=$((fail+1)); printf 'FAIL a backslash in note is not reinterpreted as a JSON escape — got %s\n' "$(jq -r '.note' "$tmp")"; }
+rm -f "$tmp"
+
+tmp=$(mktemp)
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build --status OK \
+  --tokens-in -5 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append rejects a negative tokens-in" 1 $?
+
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build --status OK \
+  --tokens-in 1.5 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append rejects a fractional tokens-in" 1 $?
+rm -f "$tmp"
+
+tmp=$(mktemp)
+printf '%s' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":-1,"tokens_out":1,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate checks the final line even with no trailing newline" 1 $?
+rm -f "$tmp"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

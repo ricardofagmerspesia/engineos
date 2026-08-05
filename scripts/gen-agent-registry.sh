@@ -23,8 +23,15 @@ command -v jq >/dev/null 2>&1 || { echo "jq required" >&2; exit 1; }
 [ -d "$AGENTS_DIR" ] || { echo "No agents dir at $AGENTS_DIR" >&2; exit 1; }
 [ -f "$CAPS_FILE" ] || { echo "No capabilities registry at $CAPS_FILE" >&2; exit 1; }
 
-frontmatter_value() { # field, file -> value (first match, after "field: ")
-  grep -m1 "^$1:" "$2" | sed "s/^$1: //"
+# field, file -> value (first match, after "field:" and any following spaces —
+# [[:space:]]* rather than a literal single space, so a frontmatter line typo'd
+# without the space after the colon still strips correctly instead of leaving
+# the "field:" prefix stuck to the value). `|| true`: under set -e + pipefail,
+# grep finding zero matches (a genuinely absent field, e.g. no tools: line)
+# would otherwise make this whole function call fatal via its command
+# substitution, before any caller gets a chance to treat "" as "field absent".
+frontmatter_value() {
+  grep -m1 "^$1:" "$2" | sed -E "s/^$1:[[:space:]]*//" || true
 }
 
 # rules/models.md's tier table — the one place this mapping is allowed to live
@@ -56,7 +63,7 @@ for f in "$AGENTS_DIR"/*.md; do
     --arg description "$desc" \
     --arg model "$model" \
     --arg model_tier "$tier" \
-    --argjson tools "$(printf '%s' "$tools" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$";""))')" \
+    --argjson tools "$(if [ -z "$tools" ]; then echo '[]'; else printf '%s' "$tools" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))'; fi)" \
     --argjson capability_ids "$capability_ids" \
     '{name: $name, alias: (if $alias == "" then null else $alias end), description: $description, tools: $tools, model: $model, model_tier: $model_tier, capability_ids: $capability_ids}')
   entries="$(printf '%s' "$entries" | jq --argjson e "$entry" '. + [$e]')"

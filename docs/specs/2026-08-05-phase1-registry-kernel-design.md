@@ -59,8 +59,10 @@ failed.
 - `registries/*.json` stay valid JSON (existing generic check in
   `scripts/validate-engineos.sh` already globs the directory).
 - New targeted check: every `capabilities.json` entry's `agent` (when non-null) names a
-  file that exists under `agents/`; every `model_tier` (bound or noted) is one of
-  `rules/models.md`'s four tier names.
+  file that exists under `agents/`; every `model_tier` (bound or noted) is the hyphenated
+  slug of one of `rules/models.md`'s four tier names (that file's own table cell reads
+  "most capable", two words; the registry identifier is "most-capable" — a space would
+  silently misbehave in a shell word-split comparison, so the slug form is canonical here).
 - New drift guard (mirrors the existing `commands/agents/` one in CI): regenerating
   `registries/agents.json` produces byte-identical output to what's committed.
 - `scripts/test-validate-engineos.sh` gains a planted-breakage case per new check

@@ -33,8 +33,15 @@ REMOVED=0
 KEPT_ORPHAN=0
 EXPECTED=$'\n'   # newline-delimited set of invoke names we own this run
 
-frontmatter_value() { # field, file -> value (first match, after "field: ")
-  grep -m1 "^$1:" "$2" | sed "s/^$1: //"
+# field, file -> value (first match, after "field:" and any following spaces —
+# [[:space:]]* rather than a literal single space, so a frontmatter line typo'd
+# without the space after the colon still strips correctly instead of leaving
+# the "field:" prefix stuck to the value). `|| true`: under set -e + pipefail,
+# grep finding zero matches (a genuinely absent field, e.g. no name: line)
+# would otherwise make this whole function call fatal via its command
+# substitution, before the caller's own "skip if empty" check runs.
+frontmatter_value() {
+  grep -m1 "^$1:" "$2" | sed -E "s/^$1:[[:space:]]*//" || true
 }
 
 is_generated() { # file -> 0 if it carries our marker (safe to overwrite/remove)

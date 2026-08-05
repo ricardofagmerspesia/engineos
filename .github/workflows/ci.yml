@@ -73,6 +73,9 @@ jobs:
       - name: Exec-journal schema tests
         run: bash scripts/test-exec-journal.sh
 
+      - name: Agent-registry generator tests
+        run: bash scripts/test-gen-agent-registry.sh
+
       - name: Secrets gate aborts on a planted secret
         run: |
           tmp=$(mktemp -d)
