@@ -120,6 +120,30 @@ p='registries/decision-rules.json'; d=json.load(open(p))
 d['rules'].append({'id':'rule-noop','priority':1,'when':{},'then':{}})
 json.dump(d,open(p,'w'),indent=2)\""
 
+case_ "capabilities.json binding a nonexistent agent is caught" \
+      "capabilities.json names missing agents" \
+      "sed -i.bak 's|\"backend-coordinator\"|\"ghost-writer\"|' registries/capabilities.json"
+
+case_ "capabilities.json with an invalid model tier is caught" \
+      "invalid model_tier on capability" \
+      "sed -i.bak 's|\"build\"|\"medium\"|' registries/capabilities.json"
+
+case_ "agents.json with an invalid model tier is caught" \
+      "invalid model_tier on agent" \
+      "python3 -c \"
+import json
+p='registries/agents.json'; d=json.load(open(p))
+d['agents'][0]['model_tier']='fast'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "agents.json naming a file that does not exist under agents/ is caught" \
+      "agents.json names missing agent files" \
+      "python3 -c \"
+import json
+p='registries/agents.json'; d=json.load(open(p))
+d['agents'][0]['name']='ghost-writer'
+json.dump(d,open(p,'w'),indent=2)\""
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

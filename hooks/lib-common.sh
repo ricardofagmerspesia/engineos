@@ -1,5 +1,7 @@
+#!/usr/bin/env bash
 # Shared helpers for EngineOS hooks. Sourced only — no independent execution,
-# so no shebang/exec bit (matches layout-manifest.sh treatment).
+# no exec bit. The shebang exists only so shellcheck (SC2148) knows the target
+# shell; it is never invoked directly. Matches layout-manifest.sh's header.
 #
 # Source with: . "$(dirname "${BASH_SOURCE[0]}")/lib-common.sh"
 

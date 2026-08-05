@@ -2,7 +2,7 @@
   "name": "engineos",
   "displayName": "EngineOS",
   "description": "Shared AI engineering environment: intent router, risk-tiered gates, decision registries, scalable-system rules, stack skills (NestJS/React/LLM), domain coordinator + reviewer + critic subagents, change-governance + quality-gate hooks.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": {
     "name": "Ricardo Fagmer",
     "url": "https://github.com/ricardofagmer"

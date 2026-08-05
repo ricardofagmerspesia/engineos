@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "description": "Workflow-capability -> agent binding, for consumers that resolve 'what handles this step' without reading agents/*.md directly (e.g. the ai-se-os headless runner). Distinct from routing.json: routing answers a file-path question at edit time; this answers an abstract-workflow-step question a hook never asks. model_tier is always one of rules/models.md's four tier names, never a raw model alias — a bound entry's tier is the reverse lookup of its agent's frontmatter model; a note entry's tier is what the main Claude Code loop should use in the agent's place. Read by scripts/validate-engineos.sh (agent exists, tier is valid) and scripts/gen-agent-commands.sh's sibling generator for registries/agents.json's capability_ids back-reference.",
+  "model_tiers": ["cheap", "build", "design", "most-capable"],
+  "capabilities": [
+    {
+      "id": "author-spec",
+      "title": "Turn an objective into a spec with acceptance criteria",
+      "agent": null,
+      "model_tier": "most-capable",
+      "risk_floor": "low",
+      "note": "No dedicated kernel agent yet — bound to the main Claude Code loop directly, per rules/models.md's spec-authoring row (most-capable tier). Superseded by T8 (engineer-spec-ia-pattern#15): contributing the product/spec agent proven in ai-se-os replaces this note with an agent binding."
+    },
+    {
+      "id": "implement",
+      "title": "Write code, tests, migrations and config against an existing spec/design",
+      "agent": "backend-coordinator",
+      "model_tier": "build",
+      "risk_floor": "medium"
+    },
+    {
+      "id": "validate",
+      "title": "Run and assert against the target repo's own lint/typecheck/test checks",
+      "agent": "test-writer",
+      "model_tier": "build",
+      "risk_floor": "low"
+    },
+    {
+      "id": "document",
+      "title": "Write and update documentation for the delivered feature",
+      "agent": null,
+      "model_tier": "build",
+      "risk_floor": "low",
+      "note": "No dedicated kernel agent yet — bound to the main Claude Code loop directly at the build tier (docs written against an existing implementation, not a design decision)."
+    }
+  ]
+}

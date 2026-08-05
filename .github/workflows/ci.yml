@@ -19,7 +19,7 @@ jobs:
 
       - name: Validate JSON
         run: |
-          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json; do
+          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json registries/capabilities.json registries/agents.json; do
             jq empty "$f" && echo "ok $f"
           done
 
@@ -32,6 +32,16 @@ jobs:
             exit 1
           fi
           echo "ok: commands/agents/ matches scripts/gen-agent-commands.sh output"
+
+      - name: Agent-registry drift guard
+        run: |
+          bash scripts/gen-agent-registry.sh
+          if ! git diff --quiet -- registries/agents.json; then
+            echo "FAIL: registries/agents.json is out of sync with agents/ — run scripts/gen-agent-registry.sh and commit the result."
+            git diff -- registries/agents.json
+            exit 1
+          fi
+          echo "ok: registries/agents.json matches scripts/gen-agent-registry.sh output"
 
       - name: EngineOS integrity check
         run: bash scripts/validate-engineos.sh
@@ -59,6 +69,9 @@ jobs:
 
       - name: Stop-gate verify tests
         run: bash hooks/test-verify.sh
+
+      - name: Exec-journal schema tests
+        run: bash scripts/test-exec-journal.sh
 
       - name: Secrets gate aborts on a planted secret
         run: |

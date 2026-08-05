@@ -241,6 +241,39 @@ else
   else
     bad "registries/decision-rules.json missing"
   fi
+
+  # ------------------------------------- C15: capability/agent registries
+  # registries/capabilities.json + registries/agents.json (Phase 1
+  # registry-kernel, docs/specs/2026-08-05-phase1-registry-kernel-design.md).
+  # JSON-validity is already covered by the registries/*.json loop above.
+  C=registries/capabilities.json
+  A=registries/agents.json
+  VALID_TIERS='^(cheap|build|design|most-capable)$'
+  if [ -f "$C" ]; then
+    ca=""
+    for a in $(jq -r '.capabilities[].agent | select(. != null)' "$C" | sort -u); do
+      [ -f "agents/$a.md" ] || ca="$ca $a"
+    done
+    [ -z "$ca" ] && ok "every capabilities.json agent binding resolves" || bad "capabilities.json names missing agents:$ca"
+
+    ct=$(jq -r --arg re "$VALID_TIERS" '.capabilities[] | select(.model_tier|test($re)|not) | .id' "$C")
+    [ -z "$ct" ] && ok "every capabilities.json entry declares a valid model tier" || bad "invalid model_tier on capability:$ct"
+  else
+    bad "registries/capabilities.json missing"
+  fi
+
+  if [ -f "$A" ]; then
+    at=$(jq -r --arg re "$VALID_TIERS" '.agents[] | select(.model_tier|test($re)|not) | .name' "$A")
+    [ -z "$at" ] && ok "every agents.json entry declares a valid model tier" || bad "invalid model_tier on agent:$at"
+
+    aa=""
+    for n in $(jq -r '.agents[].name' "$A"); do
+      [ -f "agents/$n.md" ] || aa="$aa $n"
+    done
+    [ -z "$aa" ] && ok "every agents.json entry resolves to a file under agents/" || bad "agents.json names missing agent files:$aa"
+  else
+    bad "registries/agents.json missing"
+  fi
 fi
 
 # ------------------------------------------------------------ C13: no empties
