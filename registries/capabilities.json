@@ -6,10 +6,9 @@
     {
       "id": "author-spec",
       "title": "Turn an objective into a spec with acceptance criteria",
-      "agent": null,
+      "agent": "product-spec",
       "model_tier": "most-capable",
-      "risk_floor": "low",
-      "note": "No dedicated kernel agent yet — bound to the main Claude Code loop directly, per rules/models.md's spec-authoring row (most-capable tier). Superseded by T8 (engineer-spec-ia-pattern#15): contributing the product/spec agent proven in ai-se-os replaces this note with an agent binding."
+      "risk_floor": "low"
     },
     {
       "id": "implement",
