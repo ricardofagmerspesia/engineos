@@ -215,6 +215,72 @@ case "$REASON_OUT" in
   *) no "case11 repair-bound-in-reason: expected 'fix attempts per check' and 'kernel.sh repair' in reason, got: $REASON_OUT" ;;
 esac
 
+# ---------- Case 12: P7 telemetry — red run writes a verify event ----------
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vsmoke1"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+TF="$T/.git/engineos-telemetry/vsmoke1.jsonl"
+if [ -f "$TF" ] && [ "$(jq -r '.event' "$TF")" = "verify" ] && [ "$(jq -r '.data.failed' "$TF")" = "true" ]; then
+  ok
+else
+  no "case12 red-run-writes-verify-event: file=$([ -f "$TF" ] && cat "$TF" || echo MISSING)"
+fi
+rm -rf "$T" "$TSCRIPT"
+
+# ---------- Case 13: a green run writes failed:false ----------
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"test":"exit 0"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vsmoke2"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+TF="$T/.git/engineos-telemetry/vsmoke2.jsonl"
+if [ -f "$TF" ] && [ "$(jq -r '.data.failed' "$TF")" = "false" ]; then
+  ok
+else
+  no "case13 green-run-writes-failed-false: file=$([ -f "$TF" ] && cat "$TF" || echo MISSING)"
+fi
+rm -rf "$T" "$TSCRIPT"
+
+# ---------- Case 14: the stop_hook_active re-entry writes no second line ----------
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vsmoke3"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":true,"session_id":"vsmoke3"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+TF="$T/.git/engineos-telemetry/vsmoke3.jsonl"
+LINES=$([ -f "$TF" ] && wc -l < "$TF" | tr -d ' ' || echo 0)
+[ "$LINES" = "1" ] && ok || no "case14 one-stop-cycle-logs-one-verify-event: got $LINES lines"
+rm -rf "$T" "$TSCRIPT"
+
+# ---------- Case 15: ENGINEOS_TELEMETRY=0 writes no file ----------
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vsmoke4"}' "$T" "$TSCRIPT" \
+  | ENGINEOS_TELEMETRY=0 bash "$DIR/stop-verify.sh" >/dev/null
+[ ! -e "$T/.git/engineos-telemetry" ] && ok || no "case15 ENGINEOS_TELEMETRY=0-writes-no-file"
+rm -rf "$T" "$TSCRIPT"
+
 echo "---"
 echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

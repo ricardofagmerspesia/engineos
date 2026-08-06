@@ -461,6 +461,62 @@ case_ "a domain dropped from the SKILL.md mirror or the killed README copy regro
       "change-record mirror problems" \
       "sed -i.bak 's|\`dba\`, ||' skills/record-change/SKILL.md && printf 'status: active\\n' >> .engineos/changes/README.md"
 
+# ---- C22: telemetry — policy + plumbing, never the event data (P7) ----
+
+case_ "the telemetry block deleted from policy.json is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+del d['telemetry']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "retention_days set to 0 is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['telemetry']['retention_days']=0
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "an invalid value_pattern ERE is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['telemetry']['value_pattern']='('
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "the route event's keys emptied is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+for e in d['telemetry']['events']:
+    if e['id']=='route': e['keys']=[]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a two-word string in the decision-rules sample is caught by the live canary" \
+      "telemetry canary failed" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+for e in d['telemetry']['events']:
+    if e['id']=='decision-rules': e['sample']['rules']=['two words']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "the telemetry.sh call removed from gate-advisor.sh is caught" \
+      "telemetry wiring problems" \
+      "sed -i.bak '/telemetry.sh/d' hooks/gate-advisor.sh"
+
+case_ "route-advisor's append reading \$PROMPT instead of \$TDATA is caught" \
+      "telemetry wiring problems" \
+      "sed -i.bak 's|--data \"\$TDATA\"|--data \"\$PROMPT\"|' hooks/route-advisor.sh"
+
+case_ "ensure-project-layout's registry read replaced with a hardcoded retention window is caught" \
+      "telemetry wiring problems" \
+      "sed -i.bak 's|-mtime \"+\$RET\"|-mtime \"+90\"|' hooks/ensure-project-layout.sh"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

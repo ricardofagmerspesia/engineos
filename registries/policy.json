@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism and retry policy. rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match — scripts/validate-engineos.sh's C16 checks extract their numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compare them against this file, so a future prose edit that diverges fails CI.",
   "risk": {
     "aggregation": "max",
@@ -187,6 +187,32 @@
     "never_repair": [
       "weaken-the-check",
       "behavior-change-required"
+    ]
+  },
+  "telemetry": {
+    "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/route-advisor.sh, hooks/gate-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",
+    "home": ".git/engineos-telemetry/<session_id>.jsonl",
+    "retention_days": 90,
+    "value_pattern": "^[A-Za-z0-9@_./:-]+$",
+    "events": [
+      {
+        "id": "route",
+        "written_by": "hooks/route-advisor.sh",
+        "keys": ["escalate", "reasons", "intents", "suppressed", "agents"],
+        "sample": {"escalate": true, "reasons": ["multi-agent-dispatch"], "intents": ["backend", "mobile"], "suppressed": ["new-feature"], "agents": ["backend-coordinator", "mobile-coordinator"]}
+      },
+      {
+        "id": "decision-rules",
+        "written_by": "hooks/gate-advisor.sh",
+        "keys": ["rules", "any_high"],
+        "sample": {"rules": ["rule-spec-threshold", "rule-verification"], "any_high": false}
+      },
+      {
+        "id": "verify",
+        "written_by": "hooks/stop-verify.sh",
+        "keys": ["failed", "targets"],
+        "sample": {"failed": true, "targets": ["apps/api"]}
+      }
     ]
   },
   "router": {

@@ -95,5 +95,58 @@ else
   fail=$((fail+1)); echo "FAIL: no-jq run — rc=$rc out=[$out], want rc=0 and no output"
 fi
 
+echo "-- P7 telemetry: route event writes --"
+
+ESC_PROMPT="add a paginated orders endpoint to the API and mirror the screen to mobile"
+ZERO_PROMPT="what time is it"
+
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1; mkdir -p "$T/.engineos"
+OUT=$(jq -nc --arg p "$ESC_PROMPT" --arg c "$T" --arg s "rasmoke1" '{prompt:$p, cwd:$c, session_id:$s}' | bash "$HOOK")
+TF="$T/.git/engineos-telemetry/rasmoke1.jsonl"
+if [ -f "$TF" ] && [ "$(wc -l < "$TF" | tr -d ' ')" = "1" ] \
+   && [ "$(jq -r '.event' "$TF")" = "route" ] \
+   && bash "$DIR/../scripts/telemetry.sh" validate "$TF" >/dev/null 2>&1; then
+  pass=$((pass+1)); echo "ok   route event written for an escalating prompt in an adopted repo"
+else
+  fail=$((fail+1)); echo "FAIL route event written for an escalating prompt — file=$([ -f "$TF" ] && cat "$TF" || echo MISSING)"
+fi
+CTX_UNCHANGED=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""')
+case "$CTX_UNCHANGED" in
+  *"route escalation"*) pass=$((pass+1)); echo "ok   stdout unchanged by the telemetry write" ;;
+  *) fail=$((fail+1)); echo "FAIL stdout unchanged by the telemetry write — got: $CTX_UNCHANGED" ;;
+esac
+rm -rf "$T"
+
+# Zero-match, no-scale prompt: still writes a route line (the denominator),
+# but produces NO additionalContext — the write happens before the silent exit.
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1; mkdir -p "$T/.engineos"
+OUT=$(jq -nc --arg p "$ZERO_PROMPT" --arg c "$T" --arg s "rasmoke2" '{prompt:$p, cwd:$c, session_id:$s}' | bash "$HOOK")
+TF="$T/.git/engineos-telemetry/rasmoke2.jsonl"
+CTX=$(ctx_of "$OUT")
+if [ -f "$TF" ] && [ "$(jq -r '.data.intents | length' "$TF")" = "0" ] && [ -z "$CTX" ]; then
+  pass=$((pass+1)); echo "ok   zero-match prompt writes a route line (the denominator) with no additionalContext"
+else
+  fail=$((fail+1)); echo "FAIL zero-match prompt route line — file=$([ -f "$TF" ] && cat "$TF" || echo MISSING) ctx=[$CTX]"
+fi
+rm -rf "$T"
+
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1; mkdir -p "$T/.engineos"
+ENGINEOS_TELEMETRY=0 bash -c "jq -nc --arg p '$ESC_PROMPT' --arg c '$T' --arg s rasmoke3 '{prompt:\$p, cwd:\$c, session_id:\$s}' | bash '$HOOK'" >/dev/null
+if [ ! -e "$T/.git/engineos-telemetry" ]; then
+  pass=$((pass+1)); echo "ok   ENGINEOS_TELEMETRY=0 writes no file"
+else
+  fail=$((fail+1)); echo "FAIL ENGINEOS_TELEMETRY=0 writes no file"
+fi
+rm -rf "$T"
+
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1  # no .engineos/ -> not adopted
+jq -nc --arg p "$ESC_PROMPT" --arg c "$T" --arg s "rasmoke4" '{prompt:$p, cwd:$c, session_id:$s}' | bash "$HOOK" >/dev/null
+if [ ! -e "$T/.git/engineos-telemetry" ]; then
+  pass=$((pass+1)); echo "ok   non-adopted repo (no .engineos/) writes no file"
+else
+  fail=$((fail+1)); echo "FAIL non-adopted repo writes no file"
+fi
+rm -rf "$T"
+
 echo "---"; echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

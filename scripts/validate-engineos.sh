@@ -877,6 +877,72 @@ else
   else
     bad "intents.json or .engineos/changes/_template.md missing — change-record checks skipped"
   fi
+
+  # ------------- C22: telemetry — policy + plumbing, never the event data (P7)
+  # Events live in .git/ on developer machines; a CI clone has none by
+  # construction, so this validates the registry and the wiring only.
+  # Spec: docs/specs/2026-08-06-decision-kernel-p7-telemetry.md
+  TSH=scripts/telemetry.sh
+  if [ -f "$PJ" ] && [ -x "$TSH" ]; then
+    # C22a: the telemetry block is well-formed
+    t_bad=""
+    ret=$(jq -r '.telemetry.retention_days // empty' "$PJ")
+    case "$ret" in ''|*[!0-9]*) t_bad="$t_bad retention_days-not-a-nonneg-integer" ;; *) [ "$ret" -ge 1 ] || t_bad="$t_bad retention_days-below-1" ;; esac
+    vpat=$(jq -r '.telemetry.value_pattern // empty' "$PJ")
+    { [ -n "$vpat" ] && printf x | grep -qE "$vpat" >/dev/null 2>&1; [ $? -le 1 ]; } \
+      || t_bad="$t_bad value_pattern-missing-or-invalid-ERE"
+    nev=$(jq -r '[.telemetry.events[]?] | length' "$PJ")
+    [ "${nev:-0}" -ge 1 ] || t_bad="$t_bad events-missing-or-empty"
+    dupev=$(jq -r '(.telemetry.events | map(.id) | length) - (.telemetry.events | map(.id) | unique | length)' "$PJ" 2>/dev/null)
+    [ "${dupev:-0}" -eq 0 ] || t_bad="$t_bad event-ids-have-duplicates"
+    while IFS=$'\t' read -r eid keys_n wb; do
+      [ "${keys_n:-0}" -ge 1 ] || t_bad="$t_bad [$eid:keys-missing-or-empty]"
+      [ -f "$wb" ] || t_bad="$t_bad [$eid:written_by-names-a-missing-file:$wb]"
+      skeys=$(jq -r --arg e "$eid" '[.telemetry.events[] | select(.id==$e) | .sample | keys[]?] - (.telemetry.events[] | select(.id==$e) | .keys) | length' "$PJ" 2>/dev/null)
+      [ "${skeys:-0}" -eq 0 ] || t_bad="$t_bad [$eid:sample-keys-not-a-subset-of-keys]"
+    done < <(jq -r '.telemetry.events[] | [.id, (.keys|length), .written_by] | @tsv' "$PJ")
+    [ -z "$t_bad" ] && ok "policy.json.telemetry is well-formed" \
+                     || bad "telemetry policy problems:$t_bad"
+
+    # C22b: the writer is live — behavioral canary against the running CLI
+    canary_bad=""
+    while IFS=$'\t' read -r eid sample; do
+      cf=$(mktemp)
+      bash "$TSH" append "$cf" --session canary --event "$eid" --data "$sample" --ts 2026-08-06T00:00:00Z >/dev/null 2>&1 \
+        && [ -s "$cf" ] && bash "$TSH" validate "$cf" >/dev/null 2>&1 \
+        || canary_bad="$canary_bad [$eid:sample-did-not-round-trip]"
+      rm -f "$cf"
+    done < <(jq -r '.telemetry.events[] | [.id, (.sample|tojson)] | @tsv' "$PJ")
+    cf=$(mktemp)
+    bash "$TSH" append "$cf" --session canary --event bogus-event --data '{}' >/dev/null 2>&1 \
+      && canary_bad="$canary_bad unknown-event-was-not-rejected"
+    bash "$TSH" append "$cf" --session canary --event route --data '{"intents":["two words"]}' >/dev/null 2>&1 \
+      && canary_bad="$canary_bad whitespace-value-was-not-rejected"
+    rm -f "$cf"
+    [ -z "$canary_bad" ] && ok "scripts/telemetry.sh round-trips every registry sample and rejects malformed data" \
+                          || bad "telemetry canary failed:$canary_bad"
+
+    # C22c: wiring — each written_by hook calls telemetry.sh with its event id,
+    # no hook's append invocation sources $PROMPT/$INPUT, no private retention
+    # copy, and both readers still mention the source.
+    w_bad=""
+    while IFS=$'\t' read -r eid wb; do
+      grep -q 'telemetry.sh' "$wb" || w_bad="$w_bad [$wb:does-not-call-telemetry.sh]"
+      grep -q -- "--event $eid" "$wb" || w_bad="$w_bad [$wb:missing-literal---event-$eid]"
+      grep -A2 'telemetry.sh" append' "$wb" | grep -qE '\$PROMPT|"\$INPUT"' \
+        && w_bad="$w_bad [$wb:append-invocation-references-prompt-text]"
+    done < <(jq -r '.telemetry.events[] | [.id, .written_by] | @tsv' "$PJ")
+    grep -q 'telemetry\.retention_days' hooks/ensure-project-layout.sh \
+      || w_bad="$w_bad ensure-project-layout.sh-does-not-read-the-registry-field"
+    grep -qE '\-mtime "\+[0-9]' hooks/ensure-project-layout.sh \
+      && w_bad="$w_bad ensure-project-layout.sh-has-a-hardcoded-retention-literal"
+    grep -q 'engineos-telemetry' skills/retro/SKILL.md || w_bad="$w_bad retro-SKILL.md-lost-the-telemetry-source"
+    grep -q 'engineos-telemetry' scripts/usage-report.sh || w_bad="$w_bad usage-report.sh-lost-the-telemetry-source"
+    [ -z "$w_bad" ] && ok "telemetry wiring is complete, private-copy-free and prompt-text-free" \
+                     || bad "telemetry wiring problems:$w_bad"
+  else
+    bad "policy.json or telemetry.sh missing — telemetry checks skipped"
+  fi
 fi
 
 # ------------------------------------------------------------ C13: no empties

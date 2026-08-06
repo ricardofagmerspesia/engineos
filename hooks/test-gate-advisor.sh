@@ -67,6 +67,44 @@ check "reading code stays silent"          "show me the order service" ""
 check "small fix stays silent"             "fix the typo in the readme" ""
 check "empty prompt stays silent"          "" ""
 
+# ---- P7 telemetry: decision-rules event writes ----
+MATCH_PROMPT="deploy the billing service to production"
+
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1; mkdir -p "$T/.engineos"
+OUT=$(jq -nc --arg p "$MATCH_PROMPT" --arg c "$T" --arg s "gasmoke1" '{prompt:$p, cwd:$c, session_id:$s}' | bash "$HOOK")
+TF="$T/.git/engineos-telemetry/gasmoke1.jsonl"
+if [ -f "$TF" ] && [ "$(wc -l < "$TF" | tr -d ' ')" = "1" ] \
+   && [ "$(jq -r '.event' "$TF")" = "decision-rules" ] \
+   && bash "$DIR/../scripts/telemetry.sh" validate "$TF" >/dev/null 2>&1; then
+  pass=$((pass+1)); echo "ok   decision-rules event written for a matching prompt in an adopted repo"
+else
+  fail=$((fail+1)); echo "FAIL decision-rules event written for a matching prompt — file=$([ -f "$TF" ] && cat "$TF" || echo MISSING)"
+fi
+CTX_UNCHANGED=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.additionalContext // ""')
+case "$CTX_UNCHANGED" in
+  *"rule-production-write"*) pass=$((pass+1)); echo "ok   stdout unchanged by the telemetry write" ;;
+  *) fail=$((fail+1)); echo "FAIL stdout unchanged by the telemetry write — got: $CTX_UNCHANGED" ;;
+esac
+rm -rf "$T"
+
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1; mkdir -p "$T/.engineos"
+ENGINEOS_TELEMETRY=0 bash -c "jq -nc --arg p '$MATCH_PROMPT' --arg c '$T' --arg s gasmoke2 '{prompt:\$p, cwd:\$c, session_id:\$s}' | bash '$HOOK'" >/dev/null
+if [ ! -e "$T/.git/engineos-telemetry" ]; then
+  pass=$((pass+1)); echo "ok   ENGINEOS_TELEMETRY=0 writes no file"
+else
+  fail=$((fail+1)); echo "FAIL ENGINEOS_TELEMETRY=0 writes no file"
+fi
+rm -rf "$T"
+
+T=$(mktemp -d); ( cd "$T" && git init -q ) >/dev/null 2>&1  # no .engineos/ -> not adopted
+jq -nc --arg p "$MATCH_PROMPT" --arg c "$T" --arg s "gasmoke3" '{prompt:$p, cwd:$c, session_id:$s}' | bash "$HOOK" >/dev/null
+if [ ! -e "$T/.git/engineos-telemetry" ]; then
+  pass=$((pass+1)); echo "ok   non-adopted repo (no .engineos/) writes no file"
+else
+  fail=$((fail+1)); echo "FAIL non-adopted repo writes no file"
+fi
+rm -rf "$T"
+
 echo
 printf 'pass=%d fail=%d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

@@ -16,6 +16,7 @@ if command -v jq >/dev/null 2>&1; then
   ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
   TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
   CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+  SID=$(printf '%s' "$INPUT" | jq -r '.session_id // "nosession"' 2>/dev/null)
 else
   # Portable extraction: the BRE alternation `\(true\|false\)` used previously is a
   # GNU sed extension and yields empty on macOS/BSD sed, so ACTIVE was always empty
@@ -154,6 +155,23 @@ ${STEP_OUT}"
 done <<< "$PKG_LIST"
 
 # ---------- decide ----------
+# telemetry (best-effort, never affects hook behavior). jq branch only —
+# telemetry.sh needs jq anyway, and this hook only runs verification once per
+# stop cycle (the loop guard above already exited on the second pass), so one
+# cycle logs one verify event, never two. Written regardless of red or green:
+# a green run is half the base-rate usage-report.sh's block count has lacked.
+if command -v jq >/dev/null 2>&1 && [ "${ENGINEOS_TELEMETRY:-}" != "0" ]; then
+  if TROOT=$(repo_root "$CWD") && [ -d "$TROOT/.engineos" ] && TGIT=$(git_dir "$CWD") && [ -n "$TGIT" ]; then
+    mkdir -p "$TGIT/engineos-telemetry" 2>/dev/null || true
+    TDATA=$(printf '%s\n' "$PKG_LIST" | grep -v '^$' \
+      | sed "s|^$ROOT/||; s|^$ROOT\$|.|" \
+      | jq -R . | jq -cs --argjson f "$([ "$FAILED" -eq 1 ] && echo true || echo false)" \
+        '{failed: $f, targets: .}')
+    "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
+      --session "$SID" --event verify --data "$TDATA" >/dev/null 2>&1 || true
+  fi
+fi
+
 if [ "$FAILED" -eq 1 ]; then
   # Strip leading newline(s) so the JSON reason starts with text, not a blank line.
   SUMMARY=$(printf '%s' "$OUT" | sed '/./,$!d' | head -80)

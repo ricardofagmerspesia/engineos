@@ -13,15 +13,34 @@
 # router block, docs/specs/2026-08-06-decision-kernel-p3-router-agent.md.
 set -uo pipefail
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=hooks/lib-common.sh
+. "$DIR/lib-common.sh"
+
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
 [ -z "$PROMPT" ] && exit 0
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULT=$("$DIR/../scripts/kernel.sh" route-escalate --prompt "$PROMPT" 2>/dev/null) || exit 0
 printf '%s' "$RESULT" | jq -e . >/dev/null 2>&1 || exit 0
+
+# telemetry (best-effort, never affects hook behavior). Written before the
+# zero-match early exit below: zero-match prompts are the denominator for
+# "which intents never fire" (registries/policy.json telemetry).
+SID=$(printf '%s' "$INPUT" | jq -r '.session_id // "nosession"' 2>/dev/null)
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+if [ "${ENGINEOS_TELEMETRY:-}" != "0" ] && [ -n "$CWD" ]; then
+  if TROOT=$(repo_root "$CWD") && [ -d "$TROOT/.engineos" ] && TGIT=$(git_dir "$CWD") && [ -n "$TGIT" ]; then
+    mkdir -p "$TGIT/engineos-telemetry" 2>/dev/null || true
+    TDATA=$(printf '%s' "$RESULT" | jq -c \
+      '{escalate: (.escalate // false), reasons, intents,
+        suppressed: [.suppressed[]?.id], agents}' 2>/dev/null)
+    "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
+      --session "$SID" --event route --data "$TDATA" >/dev/null 2>&1 || true
+  fi
+fi
 
 ESCALATE=$(printf '%s' "$RESULT" | jq -r '.escalate // false')
 NMATCH=$(printf '%s' "$RESULT" | jq -r '.intents | length')

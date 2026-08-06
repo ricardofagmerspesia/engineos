@@ -39,7 +39,12 @@ Also gather, when the repo has them:
   was changed rather than met;
 - integrity failures: anything `scripts/validate-engineos.sh` caught that a rule
   should have prevented;
-- `BLOCKED` / `FAILED` / `DEGRADED` statuses recorded in change records.
+- `BLOCKED` / `FAILED` / `DEGRADED` statuses recorded in change records;
+- kernel telemetry: `.git/engineos-telemetry/*.jsonl` (route, decision-rules
+  and verify events — ids and outcomes per session; see
+  `registries/policy.json` telemetry). Intents and rules that never fire are
+  prune evidence; repeated `verify failed` on the same target is a pattern
+  candidate.
 
 ### 2. Cluster, do not list
 

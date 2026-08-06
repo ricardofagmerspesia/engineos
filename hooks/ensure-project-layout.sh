@@ -33,6 +33,18 @@ if [ -n "$GITDIR" ] && [ -d "$GITDIR" ]; then
   find "$GITDIR" -maxdepth 1 -name 'ENGINEOS_UNRECORDED.*' -mtime +7 -exec rm -f {} + 2>/dev/null || true
 fi
 
+# Reap kernel-telemetry event files past their retention window (registries/
+# policy.json telemetry.retention_days — read at runtime, never hardcoded, so
+# a private-copy window can't drift from the registry). No jq -> no reap this
+# session; files persist until a jq-present session runs, never a stale
+# hardcoded window.
+if command -v jq >/dev/null 2>&1 && [ -n "$GITDIR" ] && [ -d "$GITDIR/engineos-telemetry" ]; then
+  RET=$(jq -r '.telemetry.retention_days // empty' "$REPO_DIR/registries/policy.json" 2>/dev/null)
+  case "$RET" in ''|*[!0-9]*) : ;; *)
+    find "$GITDIR/engineos-telemetry" -maxdepth 1 -name '*.jsonl' -mtime "+$RET" -exec rm -f {} + 2>/dev/null || true ;;
+  esac
+fi
+
 # Skip the engineos repo itself (it ships the manifest at its root).
 [ -f "$ROOT/hooks/layout-manifest.sh" ] && [ -f "$ROOT/install.sh" ] && exit 0
 

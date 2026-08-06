@@ -12,11 +12,13 @@
 # rules/gates.md, rules/risk-autonomy.md.
 set -uo pipefail
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=hooks/lib-common.sh
+. "$DIR/lib-common.sh"
+KERNEL="$DIR/../scripts/kernel.sh"
+
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
-
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KERNEL="$DIR/../scripts/kernel.sh"
 
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
 [ -z "$PROMPT" ] && exit 0
@@ -26,6 +28,21 @@ printf '%s' "$RESULT" | jq -e . >/dev/null 2>&1 || exit 0
 
 MATCH_COUNT=$(printf '%s' "$RESULT" | jq '.matches | length' 2>/dev/null)
 [ "${MATCH_COUNT:-0}" = "0" ] && exit 0
+
+# telemetry (best-effort, never affects hook behavior). Only real matches
+# log — the denominator is the route event stream (one per prompt), so a
+# second empty line per prompt here would be the same fact twice.
+SID=$(printf '%s' "$INPUT" | jq -r '.session_id // "nosession"' 2>/dev/null)
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+if [ "${ENGINEOS_TELEMETRY:-}" != "0" ] && [ -n "$CWD" ]; then
+  if TROOT=$(repo_root "$CWD") && [ -d "$TROOT/.engineos" ] && TGIT=$(git_dir "$CWD") && [ -n "$TGIT" ]; then
+    mkdir -p "$TGIT/engineos-telemetry" 2>/dev/null || true
+    TDATA=$(printf '%s' "$RESULT" | jq -c \
+      '{rules: [.matches[].id], any_high: (.any_high // false)}' 2>/dev/null)
+    "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
+      --session "$SID" --event decision-rules --data "$TDATA" >/dev/null 2>&1 || true
+  fi
+fi
 
 LINES=""
 while IFS=$'\t' read -r id req pref gate risk; do
