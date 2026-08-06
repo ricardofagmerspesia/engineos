@@ -10,6 +10,7 @@
 #   kernel.sh risk --signals <json>
 #   kernel.sh gates --risk <tier>
 #   kernel.sh retry --status <s> --attempt <n> [--situation <sit>]
+#   kernel.sh repair --check <id> --attempt <n> [--situation <sit>]
 #   kernel.sh capability <id>
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
@@ -228,6 +229,52 @@ cmd_retry() {
       fi ;;
     *) err "unknown status: $status (OK|DEGRADED|BLOCKED|FAILED)" ;;
   esac
+}
+
+cmd_repair() {
+  local check="" attempt="" situation=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --check) check="${2:-}"; shift 2 ;;
+      --attempt) attempt="${2:-}"; shift 2 ;;
+      --situation) situation="${2:-}"; shift 2 ;;
+      *) err "repair: unknown argument $1" ;;
+    esac
+  done
+  [ -n "$check" ] || err "repair requires --check"
+  need_reg policy.json
+  local P="$REG/policy.json"
+
+  jq -e --arg c "$check" '.repair.checks | index($c)' "$P" >/dev/null 2>&1 \
+    || err "unknown check: $check (must be one of policy.json.repair.checks)"
+
+  if [ -n "$situation" ]; then
+    if jq -e --arg s "$situation" '.repair.never_repair | index($s)' "$P" >/dev/null; then
+      jq -n --arg c "$check" --arg s "$situation" '{check: $c, action: "never-repair", reason: ("situation \($s) is on the never-repair list — a fix that weakens the check or changes behavior is not a fix; escalate to a human on the first occurrence")}'
+      return 0
+    fi
+    case "$situation" in
+      infra)
+        jq -n --arg c "$check" '{check: $c, action: "report-tooling-gap", reason: "the check could not run — that is a tooling gap, not a code defect; report it, consume no fix attempt (hooks/stop-verify.sh: never block on infra quirks)"}'
+        return 0 ;;
+      flaky)
+        jq -n --arg c "$check" '{check: $c, action: "fix-or-delete", reason: "green on re-run with no diff is a broken test, not a pass — fix or delete within the week, never retry-until-green (rules/testing.md)"}'
+        return 0 ;;
+      *) err "unknown situation: $situation" ;;
+    esac
+  fi
+
+  case "$attempt" in ''|*[!0-9]*) err "repair (red ladder) requires a numeric --attempt" ;; esac
+  local maxfix esc
+  maxfix=$(jq -r '.repair.max_fix_attempts_per_check' "$P")
+  esc=$(jq -r '.repair.escalations' "$P")
+  if [ "$attempt" -lt "$maxfix" ]; then
+    jq -n --arg c "$check" '{check: $c, action: "fix-same-tier", reason: "first red — fix and re-run the check at the same tier"}'
+  elif [ "$attempt" -lt "$((maxfix + esc))" ]; then
+    jq -n --arg c "$check" '{check: $c, action: "escalate-one-tier", reason: "the same check failed twice — escalate one model tier for the fix and re-run once; that is the last attempt (rules/models.md)"}'
+  else
+    jq -n --arg c "$check" '{check: $c, action: "stop-report-red", reason: "the bound is exhausted — stop, report the check red with what was tried; a loop continued past this point is sampling until it looks right, not fixing (rules/parallelism.md)"}'
+  fi
 }
 
 # ---------------------------------------------------------------- capability
@@ -468,6 +515,7 @@ case "$cmd" in
   risk)           cmd_risk "$@" ;;
   gates)          cmd_gates "$@" ;;
   retry)          cmd_retry "$@" ;;
+  repair)         cmd_repair "$@" ;;
   capability)     cmd_capability "$@" ;;
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;

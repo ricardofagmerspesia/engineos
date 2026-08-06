@@ -199,6 +199,22 @@ else
 fi
 rm -rf "$NOJQ_BIN"
 
+# ---------- Case 11: failing test with jq present — block reason states the repair bound (P5) ----------
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"
+touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+REASON_OUT=$(printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null)
+rm -rf "$T" "$TSCRIPT"
+case "$REASON_OUT" in
+  *"fix attempts per check"*"kernel.sh repair"*) ok ;;
+  *) no "case11 repair-bound-in-reason: expected 'fix attempts per check' and 'kernel.sh repair' in reason, got: $REASON_OUT" ;;
+esac
+
 echo "---"
 echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

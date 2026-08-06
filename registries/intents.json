@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Machine-readable source of truth for the EngineOS router. One entry per row of CLAUDE.md's '| Intent (signals) | Load |' table, which stays the human mirror. scripts/validate-engineos.sh (C16) checks this file against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/. Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
@@ -419,7 +419,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a fix loop until clean before reporting done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck/tests and on an unrecorded change record — and they cover the Validation gate only, never the Release gate."
+      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck/tests and on an unrecorded change record — and they cover the Validation gate only, never the Release gate."
     },
     {
       "id": "route-planning",

@@ -157,7 +157,15 @@ done <<< "$PKG_LIST"
 if [ "$FAILED" -eq 1 ]; then
   # Strip leading newline(s) so the JSON reason starts with text, not a blank line.
   SUMMARY=$(printf '%s' "$OUT" | sed '/./,$!d' | head -80)
-  REASON="EngineOS gate: verification failed. ${SUMMARY}"
+  BOUND=""
+  POLICY="$DIR/../registries/policy.json"
+  if command -v jq >/dev/null 2>&1 && [ -f "$POLICY" ]; then
+    MAXFIX=$(jq -r '.repair.max_fix_attempts_per_check // empty' "$POLICY" 2>/dev/null)
+    ESC=$(jq -r '.repair.escalations // empty' "$POLICY" 2>/dev/null)
+    [ -n "$MAXFIX" ] && [ -n "$ESC" ] && \
+      BOUND=" The fix loop is bounded: ${MAXFIX} fix attempts per check, ${ESC} model-tier escalation, then stop and report red — ask scripts/kernel.sh repair --check <id> --attempt <n> at each step (registries/policy.json repair)."
+  fi
+  REASON="EngineOS gate: verification failed.${BOUND} ${SUMMARY}"
   if command -v jq >/dev/null 2>&1; then
     jq -n --arg r "$REASON" '{decision: "block", reason: $r}'
   else

@@ -694,6 +694,79 @@ else
   else
     bad "intents.json or templates/handoff.md missing — handoff checks skipped"
   fi
+
+  # ------------- C20: check-level repair policy — data, ladder, mirrors (P5)
+  # The check-level fix loop's bound ("2 fix attempts, 1 escalation, then stop
+  # and report red") is data (policy.json.repair), answered by kernel.sh
+  # repair, and stated (never hardcoded) in the Stop-gate hook and the two
+  # prose homes that used to say only "until clean". Same discipline as
+  # C16-C19 applied to a fourth prose/data pair.
+  # Spec: docs/specs/2026-08-06-decision-kernel-p5-repair-loop.md
+  if [ -f "$PJ" ] && [ -x "$KSH" ]; then
+    # C20a: the repair block is well-formed
+    r_bad=""
+    nchecks=$(jq -r '[.repair.checks[]? | select(type=="string")] | length' "$PJ")
+    [ "${nchecks:-0}" -ge 1 ] || r_bad="$r_bad checks-missing-or-empty"
+    ndupe=$(jq -r '(.repair.checks | length) - (.repair.checks | unique | length)' "$PJ" 2>/dev/null)
+    [ "${ndupe:-0}" -eq 0 ] || r_bad="$r_bad checks-has-duplicates"
+    maxfix=$(jq -r '.repair.max_fix_attempts_per_check' "$PJ" 2>/dev/null)
+    case "$maxfix" in
+      ''|*[!0-9]*) r_bad="$r_bad max_fix_attempts_per_check-not-a-nonneg-integer"; maxfix="" ;;
+      *) [ "$maxfix" -ge 1 ] || r_bad="$r_bad max_fix_attempts_per_check-below-1" ;;
+    esac
+    esc=$(jq -r '.repair.escalations' "$PJ" 2>/dev/null)
+    case "$esc" in ''|*[!0-9]*) r_bad="$r_bad escalations-not-a-nonneg-integer"; esc="" ;; esac
+    sits=$(jq -r '[.repair.by_situation[]?.situation] | sort | join(",")' "$PJ" 2>/dev/null)
+    [ "$sits" = "flaky,infra,red" ] || r_bad="$r_bad by_situation-must-be-exactly-red-infra-flaky:$sits"
+    empty_resp=$(jq -r '[.repair.by_situation[]? | select((.response // "") == "")] | length' "$PJ" 2>/dev/null)
+    [ "${empty_resp:-0}" -eq 0 ] || r_bad="$r_bad by_situation-entry-with-empty-response"
+    nnr=$(jq -r '[.repair.never_repair[]? | select(type=="string")] | length' "$PJ" 2>/dev/null)
+    [ "${nnr:-0}" -ge 1 ] || r_bad="$r_bad never_repair-missing-or-empty"
+    [ -z "$r_bad" ] && ok "policy.json.repair is well-formed" \
+                     || bad "policy.json.repair problems:$r_bad"
+
+    # C20b: the ladder is live — behavioral canary against the running kernel,
+    # breakpoint computed from the registry, never hardcoded
+    canary_bad=""
+    if [ -n "$maxfix" ] && [ -n "$esc" ]; then
+      stop_attempt=$((maxfix + esc + 1))
+      got_action=$(bash "$KSH" repair --check lint --attempt "$stop_attempt" 2>/dev/null | jq -r '.action // empty')
+      [ "$got_action" = "stop-report-red" ] || canary_bad="$canary_bad ladder-did-not-stop-at-attempt-$stop_attempt(got=$got_action)"
+    else
+      canary_bad="$canary_bad cannot-compute-breakpoint-registry-fields-missing"
+    fi
+    got_never=$(bash "$KSH" repair --check lint --attempt 1 --situation weaken-the-check 2>/dev/null | jq -r '.action // empty')
+    [ "$got_never" = "never-repair" ] || canary_bad="$canary_bad never-repair-situation-did-not-win(got=$got_never)"
+    [ -z "$canary_bad" ] && ok "kernel.sh repair's ladder matches policy.json.repair's bound" \
+                          || bad "repair ladder canary failed:$canary_bad"
+
+    # C20c: the prose mirrors agree and "until clean" stays dead
+    c_bad=""
+    grep -qi 'until clean' CLAUDE.md 2>/dev/null && c_bad="$c_bad until-clean-in-CLAUDE.md"
+    grep -qi 'until clean' "$IJ" 2>/dev/null && c_bad="$c_bad until-clean-in-intents.json"
+    vrow=$(grep '^|' CLAUDE.md | grep -F 'kernel.sh repair' | head -1)
+    if [ -z "$vrow" ]; then
+      c_bad="$c_bad CLAUDE.md-has-no-verify-done-row-mentioning-kernel.sh-repair"
+    else
+      rownum=$(printf '%s' "$vrow" | sed -n 's/.*[^0-9]\([0-9][0-9]*\) fix attempts per check.*/\1/p')
+      [ -n "$rownum" ] && [ "$rownum" = "$maxfix" ] || c_bad="$c_bad CLAUDE.md-row-number($rownum)-disagrees-with-registry($maxfix)"
+    fi
+    vnote=$(jq -r '.intents[] | select(.id=="verify-done") | .note // ""' "$IJ" 2>/dev/null)
+    case "$vnote" in *"kernel.sh repair"*) ;; *) c_bad="$c_bad verify-done-note-lost-the-kernel.sh-repair-pointer" ;; esac
+    [ -z "$c_bad" ] && ok "the until-clean prose mirrors agree with policy.json.repair" \
+                     || bad "repair prose-mirror problems:$c_bad"
+
+    # C20d: the hook carries no private copy of the numbers — a shim, not a copy
+    h_bad=""
+    grep -q 'repair\.max_fix_attempts_per_check' hooks/stop-verify.sh 2>/dev/null \
+      || h_bad="$h_bad stop-verify.sh-does-not-read-the-registry-field"
+    grep -qE '[0-9]+ fix attempts' hooks/stop-verify.sh 2>/dev/null \
+      && h_bad="$h_bad stop-verify.sh-has-a-hardcoded-number-literal"
+    [ -z "$h_bad" ] && ok "hooks/stop-verify.sh reads the repair bound from the registry, not a private copy" \
+                     || bad "stop-verify.sh repair-wiring problems:$h_bad"
+  else
+    bad "policy.json or kernel.sh missing — repair checks skipped"
+  fi
 fi
 
 # ------------------------------------------------------------ C13: no empties

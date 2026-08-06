@@ -203,6 +203,42 @@ assert_eq "security-risk situation overrides OK -> never-retry" "$(jqval '.actio
 run retry --status FAILED --attempt 1 --situation security-risk
 assert_eq "security-risk situation overrides FAILED attempt1 -> never-retry" "$(jqval '.action')" "never-retry"
 
+# -------------------------------------------------------------------- repair
+
+echo "-- repair --"
+
+run repair --check lint --attempt 1
+assert_ok "repair lint attempt 1 exits 0"
+assert_eq "lint attempt 1 -> action" "$(jqval '.action')" "fix-same-tier"
+
+run repair --check lint --attempt 2
+assert_eq "lint attempt 2 -> action" "$(jqval '.action')" "escalate-one-tier"
+
+run repair --check lint --attempt 3
+assert_eq "lint attempt 3 -> action" "$(jqval '.action')" "stop-report-red"
+
+run repair --check test --situation infra
+assert_eq "test infra situation -> action" "$(jqval '.action')" "report-tooling-gap"
+
+run repair --check test --situation flaky
+assert_eq "test flaky situation -> action" "$(jqval '.action')" "fix-or-delete"
+
+# never-repair situations win regardless of attempt.
+run repair --check build --attempt 1 --situation weaken-the-check
+assert_eq "weaken-the-check situation overrides attempt1 -> never-repair" "$(jqval '.action')" "never-repair"
+
+run repair --check nonsense --attempt 1
+assert_err "unknown check errors"
+
+run repair --attempt 1
+assert_err "missing --check errors"
+
+run repair --check lint
+assert_err "ladder path missing --attempt errors"
+
+run repair --check lint --attempt 1 --situation nonsense
+assert_err "unknown situation errors"
+
 # --------------------------------------------------------------- capability
 
 echo "-- capability --"

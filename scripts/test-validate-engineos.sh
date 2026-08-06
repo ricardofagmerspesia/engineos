@@ -363,6 +363,52 @@ case_ "CLAUDE.md handoff row dropping a section name is caught" \
       "CLAUDE.md handoff row does not mirror" \
       "sed -i.bak 's| evidence, known failures| known failures|' CLAUDE.md"
 
+# ---- C20: check-level repair policy (P5) ----
+
+case_ "the repair block deleted from policy.json is caught" \
+      "policy.json.repair problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+del d['repair']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "max_fix_attempts_per_check set to 0 is caught" \
+      "policy.json.repair problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['repair']['max_fix_attempts_per_check']=0
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "an emptied never_repair array is caught" \
+      "policy.json.repair problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['repair']['never_repair']=[]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "the flaky entry dropped from by_situation is caught" \
+      "policy.json.repair problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['repair']['by_situation']=[s for s in d['repair']['by_situation'] if s['situation']!='flaky']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "the stop-report-red ladder literal broken in kernel.sh is caught" \
+      "repair ladder canary failed" \
+      "sed -i.bak 's|stop-report-red|stop-report|' scripts/kernel.sh"
+
+case_ "until clean reintroduced into the CLAUDE.md verify-done row is caught" \
+      "repair prose-mirror problems" \
+      "sed -i.bak 's|a bounded fix loop.*reports done\\.|fix loop until clean before reporting done.|' CLAUDE.md"
+
+case_ "the hook's registry read replaced with a hardcoded number is caught" \
+      "stop-verify.sh repair-wiring problems" \
+      "sed -i.bak 's|MAXFIX=\$(jq -r .\\{0,1\\}\\.repair\\.max_fix_attempts_per_check[^)]*)|MAXFIX=2|' hooks/stop-verify.sh"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1
