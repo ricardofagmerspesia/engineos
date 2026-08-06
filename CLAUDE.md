@@ -141,7 +141,6 @@ Rules:
    archived. The spec threshold is #1's — this rule does not impose a second, stricter one.
 6. Model assignment per `rules/models.md`: the tier is the contract, the model name is
    today's binding — rebind when a stronger model ships. Never trade correctness for cost.
-   The `fable` tier is dispatch-override-only — no agent declares it in frontmatter.
 7. Parallel by default per `rules/parallelism.md`: when work splits into independent
    units — that file owns the thresholds — freeze the shared contracts, then dispatch a
    whole wave of agents in ONE message over disjoint file scopes. Doing independent units

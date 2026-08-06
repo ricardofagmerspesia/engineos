@@ -1,0 +1,141 @@
+{
+  "version": "1.0.0",
+  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism and retry policy. rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match — scripts/validate-engineos.sh's C16 checks extract their numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compare them against this file, so a future prose edit that diverges fails CI.",
+  "risk": {
+    "aggregation": "max",
+    "inputs": [
+      {
+        "id": "reversibility",
+        "low": "Trivially undone, e.g. a git revert.",
+        "medium": "Undone with effort.",
+        "high": "Irreversible, or reversible only with data loss."
+      },
+      {
+        "id": "blast-radius",
+        "low": "One module, local only.",
+        "medium": "A service, one team's surface.",
+        "high": "Production, other teams, or external consumers."
+      },
+      {
+        "id": "data-sensitivity",
+        "low": "No real data.",
+        "medium": "Internal data.",
+        "high": "PII, credentials, financial, or clinical data."
+      },
+      {
+        "id": "contract-surface",
+        "low": "Private internals.",
+        "medium": "Internal module API.",
+        "high": "Public/published API, DB schema, or event payload."
+      },
+      {
+        "id": "spend",
+        "low": "Negligible.",
+        "medium": "Bounded and known.",
+        "high": "Unbounded, or committing real money."
+      }
+    ],
+    "high_floors": [
+      "destructive-ddl-dml",
+      "secret-rotation-or-exposure",
+      "auth-authz-changes",
+      "production-deploys",
+      "payments",
+      "acting-on-anothers-behalf"
+    ]
+  },
+  "autonomy": {
+    "levels": [
+      {
+        "id": "A0",
+        "permitted": "Explain only, no writes.",
+        "typical": "Question, teaching, second opinion."
+      },
+      {
+        "id": "A1",
+        "permitted": "Recommend, draft, or propose a diff — do not apply it.",
+        "typical": "Design proposal, audit finding, spec."
+      },
+      {
+        "id": "A2",
+        "permitted": "Apply reversible changes in the working tree.",
+        "typical": "Ordinary feature and fix work."
+      },
+      {
+        "id": "A3",
+        "permitted": "Apply, but a human gate precedes any external effect.",
+        "typical": "Migration, release, published content."
+      },
+      {
+        "id": "A4",
+        "permitted": "Bounded autonomous operation, monitored, with a kill switch.",
+        "typical": "Not currently granted in EngineOS."
+      }
+    ],
+    "ceiling_by_risk": { "low": "A2", "medium": "A3", "high": "A3" },
+    "high_with_thin_evidence": "A1",
+    "a4_granted": false
+  },
+  "gates": {
+    "ladder": ["discovery", "design", "implementation", "validation", "release"],
+    "by_risk": {
+      "low": {
+        "discovery": "skip",
+        "design": "skip",
+        "implementation": "required",
+        "validation": "required",
+        "release": "n/a-unless-ships"
+      },
+      "medium": {
+        "discovery": "if-problem-vague",
+        "design": "required-at-spec-threshold",
+        "implementation": "required",
+        "validation": "required",
+        "release": "required-if-ships"
+      },
+      "high": {
+        "discovery": "required",
+        "design": "required",
+        "implementation": "required",
+        "validation": "required-plus-critic",
+        "release": "required-plus-human-approval"
+      }
+    },
+    "spec_threshold": { "files_greater_than": 2, "or_any_new_feature": true }
+  },
+  "parallelism": {
+    "fanout_signals": {
+      "files_greater_than": 3,
+      "domains_greater_than": 1,
+      "independent_tasks_at_least": 3,
+      "sweep": true,
+      "read_heavy_exploration": true
+    },
+    "do_not_fanout": [
+      "single-file",
+      "fewer-than-3-units",
+      "goal-still-vague",
+      "every-step-feeds-the-next"
+    ],
+    "wave_concurrency_cap": 6,
+    "subagent_depth": 1,
+    "disjoint_file_scopes": true
+  },
+  "retry": {
+    "max_attempts_per_unit": 2,
+    "escalations": 1,
+    "by_situation": [
+      { "situation": "transient", "response": "retry-once-same-model" },
+      { "situation": "failed-again-or-substantive", "response": "escalate-one-tier-retry-once" },
+      { "situation": "failed-at-escalated-tier", "response": "stop-report-incomplete" },
+      { "situation": "returned-blocked", "response": "no-retry-supply-input-or-drop" },
+      { "situation": "returned-degraded", "response": "accept-carry-caveat" }
+    ],
+    "never_retry": [
+      "security-risk",
+      "possible-data-loss",
+      "irreversible-action-unclear-gate",
+      "unresolved-ambiguity"
+    ]
+  }
+}

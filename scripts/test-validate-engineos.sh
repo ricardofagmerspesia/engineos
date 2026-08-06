@@ -144,6 +144,115 @@ p='registries/agents.json'; d=json.load(open(p))
 d['agents'][0]['name']='ghost-writer'
 json.dump(d,open(p,'w'),indent=2)\""
 
+# ---- C16: decision-kernel registries (P1) ----
+
+case_ "models.json escalates_to chain break is caught" \
+      "escalates_to breaks the order" \
+      "python3 -c \"
+import json
+p='registries/models.json'; d=json.load(open(p))
+for t in d['tiers']:
+    if t['id']=='build': t['escalates_to']='cheap'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "models.json work_type with an unknown tier is caught" \
+      "work_types with unknown tier" \
+      "python3 -c \"
+import json
+p='registries/models.json'; d=json.load(open(p))
+d['work_types'][0]['tier']='turbo'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "moving ADR back off the most-capable tier without editing the prose is caught" \
+      "ADR row does not bind" \
+      "python3 -c \"
+import json
+p='registries/models.json'; d=json.load(open(p))
+for w in d['work_types']:
+    if w['id']=='adr': w['tier']='design'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "agent declaring a model models.json does not bind is caught" \
+      "agent frontmatter models unknown to models.json" \
+      "sed -i.bak 's|^model: fable\$|model: gpt|' agents/product-spec.md"
+
+case_ "duplicate intent id is caught" \
+      "duplicate intent ids" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+d['intents'].append(dict(d['intents'][0]))
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "hook-mirrored intent losing its domain FK is caught" \
+      "hook_mirrored/domain mismatch" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for i in d['intents']:
+    if i['id']=='backend': i.pop('domain', None)
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "mirrored intent rules drifting from routing.json is caught" \
+      "intent/routing mismatches" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for i in d['intents']:
+    if i['id']=='backend': i['rules'].remove('testing')
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a routing.json domain left unclaimed by intents is caught" \
+      "routing domains not claimed exactly once" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+d['intents']=[i for i in d['intents'] if i['id']!='android-release']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a CLAUDE.md router row added without a registry update is caught" \
+      "intent drift" \
+      "python3 - <<'EOF'
+import re
+p='CLAUDE.md'; s=open(p).read()
+anchor='| Claiming done / complete / fixed'
+row='| Fake new intent (made up) | nothing |\n'
+s=s.replace(anchor, row+anchor, 1)
+open(p,'w').write(s)
+EOF"
+
+case_ "policy.json wave cap drifting from the parallelism prose is caught" \
+      "wave cap drift" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['parallelism']['wave_concurrency_cap']=4
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "policy.json losing an autonomy level is caught" \
+      "autonomy levels" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['autonomy']['levels']=[l for l in d['autonomy']['levels'] if l['id']!='A4']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "policy.json gate matrix missing a gate for a tier is caught" \
+      "by_risk incomplete" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['gates']['by_risk']['medium'].pop('release')
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "spec threshold drifting between CLAUDE.md and policy.json is caught" \
+      "spec-threshold drift" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['gates']['spec_threshold']['files_greater_than']=5
+json.dump(d,open(p,'w'),indent=2)\""
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

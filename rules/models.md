@@ -7,15 +7,23 @@ second — but never pay for capability the task doesn't use.
 
 | Work | Tier | Model today |
 |---|---|---|
-| Spec, PRD, requirements, problem framing, brainstorming | **most capable** | `fable` |
-| Architecture, design, ADR, task decomposition, contract/interface design, fan-out planning | **design** | `opus` |
+| Spec, PRD, requirements, problem framing, brainstorming, ADR | **most capable** | `fable` |
+| Architecture, design, task decomposition, contract/interface design, fan-out planning | **design** | `opus` |
 | Hard debugging, adversarial/security review, cross-cutting refactor design | **design** | `opus` |
 | Writing code, tests, migrations, config — against an existing spec/design | **build** | `sonnet` |
+| Standards/spec code review against an existing diff | **build** | `sonnet` |
 | Mechanical: renames, boilerplate, file moves, formatting, simple lookups, summaries | **cheap** | `haiku` |
+
+Adversarial correctness review (`critic`) and security review (`security-reviewer`)
+stay design tier — the new code-review row above is the ordinary two-axis
+(standards + spec) review against an existing diff, not the adversarial pass.
 
 The tier is the contract; the model name is just today's binding. **"Most capable"
 is a role, not a name** — when a newer or stronger model ships, rebind the tier to
 it and update this table. Same when a model is retired.
+
+The machine-readable form of this table is `registries/models.json`;
+`scripts/validate-engineos.sh` fails when they disagree.
 
 ## How the model gets set
 
