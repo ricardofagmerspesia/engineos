@@ -6,6 +6,12 @@
 > **The test:** could the next executor resume from this file alone, with no
 > access to the chat history? If not, it is not a handoff. "Continue where you
 > left off" is not a handoff.
+>
+> The `##` headings and the `Gate:`/`Risk:` lines below are contract, not
+> suggestion: `registries/intents.json`'s `handoff` intent declares them
+> required, and `scripts/validate-engineos.sh` (C19) fails when template and
+> registry drift. Rename, add, or remove one only with a registry update in
+> the same commit.
 
 ## Objective
 

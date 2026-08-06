@@ -636,6 +636,64 @@ else
   else
     bad "kernel.sh, intents.json, capabilities.json or policy.json missing — router checks skipped"
   fi
+
+  # ------------- C19: handoff template <-> registry section contract (P4)
+  # The handoff intent's required-sections list is data (required_sections /
+  # required_fields); templates/handoff.md is the checked surface; the CLAUDE.md
+  # row is the checked human mirror. Same prose/data discipline as C16-C18.
+  # Spec: docs/specs/2026-08-06-decision-kernel-p4-handoff-frontmatter.md
+  TPL=templates/handoff.md
+  if [ -f "$IJ" ] && [ -f "$TPL" ]; then
+    # C19a: the contract is data, not prose — and the prose list stays dead
+    h_bad=""
+    nsec=$(jq -r '[.intents[] | select(.id=="handoff") | .required_sections[]? | select(type=="string")] | length' "$IJ")
+    nfld=$(jq -r '[.intents[] | select(.id=="handoff") | .required_fields[]? | select(type=="string")] | length' "$IJ")
+    [ "${nsec:-0}" -ge 1 ] || h_bad="$h_bad required_sections-missing-or-empty"
+    [ "${nfld:-0}" -ge 1 ] || h_bad="$h_bad required_fields-missing-or-empty"
+    jq -r '.intents[] | select(.id=="handoff") | .note // ""' "$IJ" \
+      | grep -qi 'required sections:' && h_bad="$h_bad note-still-carries-the-section-list"
+    [ -z "$h_bad" ] && ok "handoff intent carries required_sections/required_fields as data" \
+                     || bad "handoff intent required_sections problems:$h_bad"
+
+    # C19b: template <-> registry, both directions, exact-match headings
+    miss=""
+    while IFS= read -r s; do
+      grep -qxF "## $s" "$TPL" || miss="$miss [$s]"
+    done < <(jq -r '.intents[] | select(.id=="handoff") | .required_sections[]?' "$IJ")
+    [ -z "$miss" ] && ok "handoff template carries every registry-required section" \
+                   || bad "handoff template missing required sections:$miss"
+
+    fmiss=""
+    while IFS= read -r fld; do
+      grep -q "^${fld}:" "$TPL" || fmiss="$fmiss [$fld]"
+    done < <(jq -r '.intents[] | select(.id=="handoff") | .required_fields[]?' "$IJ")
+    [ -z "$fmiss" ] && ok "handoff template carries every registry-required field line" \
+                    || bad "handoff template missing required fields:$fmiss"
+
+    undecl=""
+    while IFS= read -r h; do
+      jq -e --arg h "$h" '.intents[] | select(.id=="handoff") | .required_sections | index($h)' "$IJ" >/dev/null 2>&1 \
+        || undecl="$undecl [$h]"
+    done < <(sed -n 's/^## //p' "$TPL")
+    [ -z "$undecl" ] && ok "every handoff template section is declared in the registry" \
+                     || bad "handoff template sections not declared in the registry:$undecl"
+
+    # C19c: CLAUDE.md handoff row mirrors the list (human mirror, checked)
+    hrow=$(grep '^|' CLAUDE.md | grep -F 'templates/handoff.md' | head -1 | tr '[:upper:]' '[:lower:]')
+    if [ -z "$hrow" ]; then
+      bad "CLAUDE.md has no router row loading templates/handoff.md"
+    else
+      m_bad=""
+      while IFS= read -r name; do
+        lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+        case "$hrow" in *"$lc"*) ;; *) m_bad="$m_bad [$name]" ;; esac
+      done < <(jq -r '.intents[] | select(.id=="handoff") | (.required_sections[]?, .required_fields[]?)' "$IJ")
+      [ -z "$m_bad" ] && ok "CLAUDE.md handoff row mirrors every required section and field" \
+                      || bad "CLAUDE.md handoff row does not mirror:$m_bad"
+    fi
+  else
+    bad "intents.json or templates/handoff.md missing — handoff checks skipped"
+  fi
 fi
 
 # ------------------------------------------------------------ C13: no empties

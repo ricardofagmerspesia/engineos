@@ -327,6 +327,42 @@ p='hooks/hooks.json'; d=json.load(open(p))
 d['hooks']['UserPromptSubmit'][0]['hooks'] = [h for h in d['hooks']['UserPromptSubmit'][0]['hooks'] if 'route-advisor' not in h['command']]
 json.dump(d,open(p,'w'),indent=2)\""
 
+# ---- C19: handoff template <-> registry section contract (P4) ----
+
+case_ "a required section removed from the handoff template is caught" \
+      "handoff template missing required sections" \
+      "sed -i.bak '/^## Evidence\$/d' templates/handoff.md"
+
+case_ "a registry-required section absent from the template is caught" \
+      "handoff template missing required sections" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for i in d['intents']:
+    if i['id']=='handoff': i['required_sections'].append('Ghost section')
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a template section added without a registry update is caught" \
+      "handoff template sections not declared in the registry" \
+      "printf '\\n## Scratch notes\\n\\n<anything>\\n' >> templates/handoff.md"
+
+case_ "the Gate field dropped from the handoff template is caught" \
+      "handoff template missing required fields" \
+      "sed -i.bak 's|^Gate:|Gato:|' templates/handoff.md"
+
+case_ "the section list reintroduced into the handoff note is caught" \
+      "handoff intent required_sections problems" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for i in d['intents']:
+    if i['id']=='handoff': i['note'] += ' Required sections: objective, state, evidence.'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "CLAUDE.md handoff row dropping a section name is caught" \
+      "CLAUDE.md handoff row does not mirror" \
+      "sed -i.bak 's| evidence, known failures| known failures|' CLAUDE.md"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

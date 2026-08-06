@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Machine-readable source of truth for the EngineOS router. One entry per row of CLAUDE.md's '| Intent (signals) | Load |' table, which stays the human mirror. scripts/validate-engineos.sh (C16) checks this file against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/. Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
@@ -364,7 +364,20 @@
       "model_tier": "cheap",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "The row's load target is templates/handoff.md — a repo template, which is neither a rule nor a skill and so has no field of its own here. Required sections: objective, state, gate, risk, decisions, files, evidence, known failures, next step, resume commands. Never hand off with 'continue where you left off'. Cheap tier: the template is filled from state that already exists."
+      "required_sections": [
+        "Objective",
+        "State",
+        "Done",
+        "Decisions",
+        "Files",
+        "Evidence",
+        "Known failures and open risks",
+        "Not done",
+        "Next step",
+        "Resume"
+      ],
+      "required_fields": ["Gate", "Risk"],
+      "note": "The row's load target is templates/handoff.md — a repo template, which is neither a rule nor a skill and so has no field of its own here. The section contract lives in required_sections/required_fields, validated against the template by scripts/validate-engineos.sh C19 — never restate the list here or anywhere else in prose except the CLAUDE.md row, which C19c checks. Never hand off with 'continue where you left off'. Cheap tier: the template is filled from state that already exists."
     },
     {
       "id": "retro",
