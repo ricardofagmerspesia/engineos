@@ -2,7 +2,9 @@
 # EngineOS PreToolUse(Edit|Write|NotebookEdit): route the upcoming change to the
 # right rules, skill, and specialist agent. NON-BLOCKING — injects guidance via
 # hookSpecificOutput.additionalContext (exit 0). Canonical mapping lives in
-# routing-map.sh (beside this file).
+# registries/routing.json, resolved by scripts/kernel.sh route-path — this hook
+# calls it once and reads both `excluded` and `hook_guidance` off the same
+# JSON answer.
 #
 # Permission flow: this hook does NOT set permissionDecision, so the user's normal
 # edit-permission prompt is preserved. NOTE: if a Claude Code version requires
@@ -19,13 +21,15 @@ FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=hooks/lib-common.sh
 . "$DIR/lib-common.sh"
-# shellcheck source=hooks/routing-map.sh
-. "$DIR/routing-map.sh"
+
+KERNEL="$DIR/../scripts/kernel.sh"
+ROUTE=$("$KERNEL" route-path "$FILE" 2>/dev/null) || ROUTE='{}'
 
 # excluded meta/scaffolding files get no routing at all
-route_excluded "$FILE" && exit 0
+EXCLUDED=$(printf '%s' "$ROUTE" | jq -r '.excluded // false' 2>/dev/null)
+[ "$EXCLUDED" = "true" ] && exit 0
 
-GUIDE=$(route_for_path "$FILE")
+GUIDE=$(printf '%s' "$ROUTE" | jq -r '.hook_guidance // empty' 2>/dev/null)
 
 START=$(dirname "$FILE")
 

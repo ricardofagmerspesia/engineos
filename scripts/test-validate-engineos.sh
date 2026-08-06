@@ -41,9 +41,14 @@ case_ "router row dropping a deferred rule is caught" \
       "router closure rule violated" \
       "sed -i.bak 's| + \`rules/observability.md\` (closure: \`backend.md\` defers to it)||' CLAUDE.md"
 
-case_ "routing-map naming a nonexistent agent is caught" \
-      "routing-map.sh names missing agents" \
-      "sed -i.bak 's|agent:test-writer|agent:ghost-writer|' hooks/routing-map.sh"
+case_ "guidance naming a nonexistent agent is caught" \
+      "hook_guidance names missing agents" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+for x in d['domains']:
+    if x['id']=='test': x['hook_guidance']=x['hook_guidance'].replace('agent:test-writer','agent:ghost-writer')
+json.dump(d,open(p,'w'),indent=2)\""
 
 case_ "agent whose frontmatter name drifts from filename is caught" \
       "agent frontmatter problems" \
@@ -69,13 +74,13 @@ case_ "always-on rule pointing at a route-loaded rule is caught" \
       "always-on rule points at a route-loaded rule" \
       "printf '\nDefer to \`rules/frontend.md\`.\n' >> rules/context.md"
 
-case_ "registry guidance drifting from routing-map is caught" \
-      "registry guidance not found in routing-map.sh" \
+case_ "a sample_path that routes to the wrong domain is caught" \
+      "sample_path routing failures" \
       "python3 -c \"
 import json
 p='registries/routing.json'; d=json.load(open(p))
 for x in d['domains']:
-    if x['id']=='test': x['hook_guidance']='rules/testing.md | agent:ameer'
+    if x['id']=='dba': x['sample_path']='/tmp/web/src/Button.tsx'
 json.dump(d,open(p,'w'),indent=2)\""
 
 case_ "registry rules[] disagreeing with its guidance string is caught" \
@@ -95,13 +100,34 @@ p='registries/routing.json'; d=json.load(open(p))
 d['precedence'][0], d['precedence'][1] = d['precedence'][1], d['precedence'][0]
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ "a routing-map arm missing from the registry is caught" \
-      "routing-map.sh arms missing from the registry" \
+case_ "a routing domain deleted out from under its intent FK is caught" \
+      "intent/routing mismatches" \
       "python3 -c \"
 import json
 p='registries/routing.json'; d=json.load(open(p))
 d['domains']=[x for x in d['domains'] if x['id']!='llm']
 d['precedence']=[x for x in d['precedence'] if x!='llm']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a domain with its match patterns emptied is caught" \
+      "routing domains missing patterns/sample" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+for x in d['domains']:
+    if x['id']=='frontend': x['match']={'paths':[],'basenames':[]}
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a guidance literal reintroduced into the routing-map shim is caught" \
+      "not a pure shim" \
+      "printf '\necho \"rules/ghost.md | agent:nobody\"\n' >> hooks/routing-map.sh"
+
+case_ "an invalid prompt_signals regex is caught" \
+      "prompt_signals problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['parallelism']['prompt_signals']['scale']='([unclosed'
 json.dump(d,open(p,'w'),indent=2)\""
 
 case_ "duplicate decision rule id is caught" \

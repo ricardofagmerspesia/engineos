@@ -108,22 +108,29 @@ done
 [ -z "$ao_viol" ] && ok "always-on rules reference only always-on rules" \
                   || bad "always-on rule points at a route-loaded rule:$ao_viol"
 
-# --------------------------------- C6/C7/C8: routing-map.sh targets all exist
+# ------------------- C6/C7/C8: guidance-string targets all exist (registry)
+# Pre-P2 these grepped hooks/routing-map.sh's echo literals; the map is now a
+# shim over kernel.sh and guidance lives ONLY in registries/routing.json —
+# so the same three checks read the registry's hook_guidance strings instead.
 map=hooks/routing-map.sh
+RJSON=registries/routing.json
 missing_agents=""; missing_skills=""; missing_rules=""
-for a in $(grep -oE 'agent:[a-z-]+' "$map" | sed 's/agent://' | sort -u); do
-  [ -f "agents/$a.md" ] || missing_agents="$missing_agents $a"
-done
-for s in $(grep -oE 'skill:[a-z-]+' "$map" | sed 's/skill://' | sort -u); do
-  [ -f "skills/$s/SKILL.md" ] || missing_skills="$missing_skills $s"
-done
-# routing-map writes chained rule lists: "rules/backend.md+architecture.md+data.md"
-for r in $(grep -oE '(rules/|\+)[a-z0-9-]+\.md' "$map" | sed 's|^rules/||; s|^+||; s|\.md$||' | sort -u); do
-  [ -f "rules/$r.md" ] || missing_rules="$missing_rules $r"
-done
-[ -z "$missing_agents" ] && ok "routing-map.sh agents all exist" || bad "routing-map.sh names missing agents:$missing_agents"
-[ -z "$missing_skills" ] && ok "routing-map.sh skills all exist" || bad "routing-map.sh names missing skills:$missing_skills"
-[ -z "$missing_rules"  ] && ok "routing-map.sh rules all exist"  || bad "routing-map.sh names missing rules:$missing_rules"
+if command -v jq >/dev/null 2>&1 && [ -f "$RJSON" ]; then
+  GUIDANCE=$(jq -r '.domains[].hook_guidance' "$RJSON")
+  for a in $(printf '%s' "$GUIDANCE" | grep -oE 'agent:[a-z-]+' | sed 's/agent://' | sort -u); do
+    [ -f "agents/$a.md" ] || missing_agents="$missing_agents $a"
+  done
+  for s in $(printf '%s' "$GUIDANCE" | grep -oE 'skill:[a-z-]+' | sed 's/skill://' | sort -u); do
+    [ -f "skills/$s/SKILL.md" ] || missing_skills="$missing_skills $s"
+  done
+  # guidance writes chained rule lists: "rules/backend.md+architecture.md+data.md"
+  for r in $(printf '%s' "$GUIDANCE" | grep -oE '(rules/|\+)[a-z0-9-]+\.md' | sed 's|^rules/||; s|^+||; s|\.md$||' | sort -u); do
+    [ -f "rules/$r.md" ] || missing_rules="$missing_rules $r"
+  done
+  [ -z "$missing_agents" ] && ok "guidance agents all exist" || bad "hook_guidance names missing agents:$missing_agents"
+  [ -z "$missing_skills" ] && ok "guidance skills all exist" || bad "hook_guidance names missing skills:$missing_skills"
+  [ -z "$missing_rules"  ] && ok "guidance rules all exist"  || bad "hook_guidance names missing rules:$missing_rules"
+fi
 
 # ------------------------------------------- C9/C10/C11: agent contract checks
 bad_fm=""; bad_ret=""; bad_cmd=""
@@ -175,22 +182,11 @@ else
 
   R=registries/routing.json
   if [ -f "$R" ]; then
-    # every hook_guidance in the registry is a string routing-map.sh actually emits
-    miss_g=""
-    while IFS= read -r g; do
-      grep -qF "echo \"$g\"" "$map" || miss_g="$miss_g [$g]"
-    done < <(jq -r '.domains[].hook_guidance' "$R")
-    [ -z "$miss_g" ] && ok "every registry hook_guidance is emitted by routing-map.sh" \
-                     || bad "registry guidance not found in routing-map.sh:$miss_g"
-
-    # and the reverse: no arm of routing-map.sh is missing from the registry
-    orphan=""
-    while IFS= read -r g; do
-      jq -e --arg g "$g" '.domains[] | select(.hook_guidance==$g)' "$R" >/dev/null 2>&1 \
-        || orphan="$orphan [$g]"
-    done < <(grep -oE 'echo "[^"]+"; return 0' "$map" | sed 's/^echo "//; s/"; return 0$//' | sort -u)
-    [ -z "$orphan" ] && ok "every routing-map.sh arm is declared in the registry" \
-                     || bad "routing-map.sh arms missing from the registry:$orphan"
+    # Pre-P2, two checks grepped routing-map.sh's echo literals against the
+    # registry. The map is a shim now — guidance is emitted FROM the registry
+    # via kernel.sh, so that drift class is structurally dead. Its successors
+    # are the C17 behavioral checks below (sample paths route correctly, the
+    # shim contains no literals).
 
     # the rules list must agree with the rules named inside the guidance string
     mism=""
@@ -481,6 +477,66 @@ else
       || bad "fan-out threshold drift: policy.json=$fan_reg vs rules/parallelism.md '>${fan_prose:-missing}'"
   else
     bad "registries/policy.json missing"
+  fi
+
+  # ------------------------ C17: kernel resolver + routing patterns (P2)
+  # scripts/kernel.sh is the one implementation of path->domain matching;
+  # routing.json carries the patterns and a self-validating sample_path per
+  # domain. These behavioral checks replace the pre-P2 string-grepping of
+  # routing-map.sh's case ladder (see C14 note above).
+  # Spec: docs/specs/2026-08-06-decision-kernel-p2-resolver-api.md
+  KSH=scripts/kernel.sh
+  if [ -f "$KSH" ] && [ -f "$R" ]; then
+    # C17a: every domain declares patterns and a sample fixture
+    m_bad=""
+    while IFS= read -r d; do
+      n=$(jq -r --arg d "$d" '.domains[] | select(.id==$d) | ((.match.paths // []) + (.match.basenames // [])) | length' "$R")
+      sp=$(jq -r --arg d "$d" '.domains[] | select(.id==$d) | .sample_path // empty' "$R")
+      [ "$n" -gt 0 ] || m_bad="$m_bad $d(no-patterns)"
+      [ -n "$sp" ]   || m_bad="$m_bad $d(no-sample)"
+    done < <(jq -r '.domains[].id' "$R")
+    [ -z "$m_bad" ] && ok "every routing domain declares match patterns and a sample_path" \
+                    || bad "routing domains missing patterns/sample:$m_bad"
+
+    # C17b: every sample_path actually routes to its own domain through the
+    # kernel — validates patterns AND precedence (a shadowed sample fails)
+    r_bad=""
+    while IFS=$'\t' read -r d sp; do
+      got=$(bash "$KSH" route-path "$sp" 2>/dev/null | jq -r '.domain // "null"')
+      [ "$got" = "$d" ] || r_bad="$r_bad $d(sample->'$got')"
+    done < <(jq -r '.domains[] | [.id, .sample_path] | @tsv' "$R")
+    [ -z "$r_bad" ] && ok "every domain sample_path routes to its own domain via kernel.sh" \
+                    || bad "sample_path routing failures:$r_bad"
+
+    # C17c: exclusions still exclude
+    excl=$(bash "$KSH" route-path "/tmp/some-repo/.engineos/changes/x.ts" 2>/dev/null | jq -r '.excluded')
+    excl2=$(bash "$KSH" route-path "/tmp/some-repo/README.md" 2>/dev/null | jq -r '.excluded')
+    [ "$excl" = "true" ] && [ "$excl2" = "true" ] \
+      && ok "kernel.sh route-path honors the excluded patterns" \
+      || bad "kernel.sh exclusion broken (.engineos=$excl, README.md=$excl2)"
+
+    # C17d: routing-map.sh is a shim — it calls the kernel and carries no
+    # guidance literal of its own (a reintroduced literal is a second source
+    # of truth, the exact drift P2 removed)
+    if grep -q 'kernel\.sh' "$map" && ! grep -q 'echo "rules/' "$map"; then
+      ok "routing-map.sh is a shim over kernel.sh (no guidance literals)"
+    else
+      bad "routing-map.sh is not a pure shim: must call kernel.sh and carry no 'echo \"rules/' literal"
+    fi
+
+    # C17e: prompt_signals EREs exist and are valid regexes (an invalid one
+    # would make kernel.sh scale silently mis-answer, same failure class as
+    # decision-rules signals)
+    ps_bad=""
+    for k in action scale spec design_strong design_weak; do
+      s=$(jq -r --arg k "$k" '.parallelism.prompt_signals[$k] // empty' "$PJ")
+      if [ -z "$s" ]; then ps_bad="$ps_bad $k(missing)"; continue; fi
+      printf 'x' | grep -qE "$s" 2>/dev/null || [ $? -eq 1 ] || ps_bad="$ps_bad $k(invalid)"
+    done
+    [ -z "$ps_bad" ] && ok "policy.json prompt_signals present and valid EREs" \
+                     || bad "policy.json prompt_signals problems:$ps_bad"
+  else
+    bad "scripts/kernel.sh or registries/routing.json missing — kernel checks skipped"
   fi
 fi
 

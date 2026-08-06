@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism and retry policy. rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match — scripts/validate-engineos.sh's C16 checks extract their numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compare them against this file, so a future prose edit that diverges fails CI.",
   "risk": {
     "aggregation": "max",
@@ -72,12 +72,22 @@
         "typical": "Not currently granted in EngineOS."
       }
     ],
-    "ceiling_by_risk": { "low": "A2", "medium": "A3", "high": "A3" },
+    "ceiling_by_risk": {
+      "low": "A2",
+      "medium": "A3",
+      "high": "A3"
+    },
     "high_with_thin_evidence": "A1",
     "a4_granted": false
   },
   "gates": {
-    "ladder": ["discovery", "design", "implementation", "validation", "release"],
+    "ladder": [
+      "discovery",
+      "design",
+      "implementation",
+      "validation",
+      "release"
+    ],
     "by_risk": {
       "low": {
         "discovery": "skip",
@@ -101,7 +111,10 @@
         "release": "required-plus-human-approval"
       }
     },
-    "spec_threshold": { "files_greater_than": 2, "or_any_new_feature": true }
+    "spec_threshold": {
+      "files_greater_than": 2,
+      "or_any_new_feature": true
+    }
   },
   "parallelism": {
     "fanout_signals": {
@@ -119,17 +132,40 @@
     ],
     "wave_concurrency_cap": 6,
     "subagent_depth": 1,
-    "disjoint_file_scopes": true
+    "disjoint_file_scopes": true,
+    "prompt_signals": {
+      "note": "Prompt-classification EREs for kernel.sh scale (was hardcoded in hooks/task-scale-advisor.sh). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
+      "action": "\\b(add|build|create|implement|develop|refactor|migrate|port|mirror|rewrite|redesign|extract|split|backfill|integrate|scaffold|modernize)\\b",
+      "scale": "\\b(all|every|entire|whole|across|full stack|fullstack|end.to.end|end2end|multiple|several|both|system.wide|codebase|monorepo|modules|services|endpoints|screens|pages|components|features|epic|milestone|phase|roadmap|suite)\\b",
+      "spec": "\\b(spec|specification|prd|requirement[s]?|product brief|design doc|rfc|adr)\\b",
+      "design_strong": "\\b(decompose|trade.?off|should we use|adr)\\b",
+      "design_weak": "\\b(architect|architecture|design)\\b"
+    }
   },
   "retry": {
     "max_attempts_per_unit": 2,
     "escalations": 1,
     "by_situation": [
-      { "situation": "transient", "response": "retry-once-same-model" },
-      { "situation": "failed-again-or-substantive", "response": "escalate-one-tier-retry-once" },
-      { "situation": "failed-at-escalated-tier", "response": "stop-report-incomplete" },
-      { "situation": "returned-blocked", "response": "no-retry-supply-input-or-drop" },
-      { "situation": "returned-degraded", "response": "accept-carry-caveat" }
+      {
+        "situation": "transient",
+        "response": "retry-once-same-model"
+      },
+      {
+        "situation": "failed-again-or-substantive",
+        "response": "escalate-one-tier-retry-once"
+      },
+      {
+        "situation": "failed-at-escalated-tier",
+        "response": "stop-report-incomplete"
+      },
+      {
+        "situation": "returned-blocked",
+        "response": "no-retry-supply-input-or-drop"
+      },
+      {
+        "situation": "returned-degraded",
+        "response": "accept-carry-caveat"
+      }
     ],
     "never_retry": [
       "security-risk",
