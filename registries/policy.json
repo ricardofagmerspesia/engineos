@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
-  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism and retry policy. rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match — scripts/validate-engineos.sh's C16 checks extract their numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compare them against this file, so a future prose edit that diverges fails CI.",
+  "version": "1.4.1",
+  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop and telemetry policy — nine blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry — so a future prose edit or block change that diverges fails CI.",
   "risk": {
     "aggregation": "max",
     "inputs": [

@@ -44,17 +44,18 @@ Rules for routing:
 - Rules paths are relative to this file's directory.
 - After the work is delivered, offer the output artifact — see **Output artifact** below.
 - The **stack/domain rows** below (backend, frontend, mobile, LLM, DBA, DevOps,
-  security, test) are mirrored deterministically by the `PreToolUse` hook
-  `hooks/route-before-change.sh`. Its canonical path→domain map is
-  `hooks/routing-map.sh` — that file is authoritative for file-pattern routing;
-  this table is the human mirror. **They no longer drift silently:**
-  `registries/routing.json` holds the structured facts (rules, skills, agent,
-  precedence, risk floor) and `scripts/validate-engineos.sh` fails CI if the
-  table, the hook map and the registry disagree. All other rows are
-  request-driven and have no hook equivalent.
+  security, test, and the mobile store-release split) are mirrored
+  deterministically by the `PreToolUse` hook `hooks/route-before-change.sh`.
+  The canonical path→domain map is `registries/routing.json` (`match`/
+  `excluded` globs), resolved by `scripts/kernel.sh route-path`;
+  `hooks/routing-map.sh` is a compatibility shim kept only for its function
+  contracts — it carries no routing data of its own. This table is the human
+  mirror of the **registry**. **They no longer drift silently:**
+  `scripts/validate-engineos.sh` fails CI if the table and the registry
+  disagree. All other rows are request-driven and have no hook equivalent.
 - **Multi-match applies to this table only.** The hook emits exactly ONE route —
   first match wins, in this precedence chain: security → test → backend → dba →
-  devops → mobile → frontend → llm. When you route from the table yourself, load
+  ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
 - **The hooks need `jq`.** Without it, `route-before-change.sh`,

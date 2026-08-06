@@ -4,8 +4,10 @@
 # CLAUDE.md states several invariants and enforces them by human diligence:
 #   - "A row's load list must be closed" (deferred rules must travel together);
 #   - "this table is the human mirror, keep them in sync" (router vs routing-map.sh);
-#   - "The hooks need jq" (four hooks no-op silently without it).
-# Every one of those is checkable. This script checks them.
+#   - "The hooks need jq" (six hooks no-op silently without it).
+# Every one of those is checkable. This script checks them, plus the
+# decision-kernel era's own checks (C16-C23): registries, kernel.sh, the
+# router agent, handoff and change-record contracts, repair and telemetry.
 #
 # Run: scripts/validate-engineos.sh     Exit: 0 all clear, 1 any violation.
 set -uo pipefail
@@ -199,7 +201,7 @@ else
     [ -z "$mism" ] && ok "registry rules[] match the rules named in each hook_guidance" \
                    || bad "registry rules/guidance mismatch:$mism"
 
-    # precedence must list every domain exactly once, in routing-map.sh arm order
+    # precedence must list every domain exactly once, in the registry's own domain order
     p_reg=$(jq -r '.precedence | join(" ")' "$R")
     p_dom=$(jq -r '[.domains[].id] | join(" ")' "$R")
     [ "$p_reg" = "$p_dom" ] && ok "registry precedence covers every domain in map order" \
@@ -942,6 +944,40 @@ else
                      || bad "telemetry wiring problems:$w_bad"
   else
     bad "policy.json or telemetry.sh missing — telemetry checks skipped"
+  fi
+
+  # ------------- C23: constitution preamble mirrors (P8, epic close)
+  # CLAUDE.md's routing preamble and docs/COMPATIBILITY.md's always-on
+  # enumeration are prose surfaces no earlier C-check reads. Same discipline
+  # applied one layer out: the registry/import list is truth, the sentence is
+  # the checked mirror.
+  # Spec: docs/specs/2026-08-06-decision-kernel-p8-contradiction-cleanup.md
+  if [ -f "$R" ]; then
+    # C23a: the precedence-chain sentence names every routing.json domain,
+    # in registry order
+    c_bad=""
+    chain=$(grep -A1 'in this precedence chain:' CLAUDE.md 2>/dev/null | tr '\n' ' ' | tr -s ' ' \
+      | sed -n 's/.*precedence chain: \(.*\)\. When you route.*/\1/p')
+    reg_chain=$(jq -r '.precedence | join(" → ")' "$R")
+    [ -n "$chain" ] && [ "$chain" = "$reg_chain" ] \
+      || c_bad="$c_bad precedence-sentence-disagrees-with-registry(got=[$chain] want=[$reg_chain])"
+
+    # C23b: every CLAUDE.md always-on @rules/ import is named in
+    # COMPATIBILITY.md's always-on enumeration
+    while IFS= read -r rf; do
+      bn=$(basename "$rf")
+      grep -q "$bn\`" docs/COMPATIBILITY.md 2>/dev/null \
+        || c_bad="$c_bad [$bn:missing-from-COMPATIBILITY.md-always-on-list]"
+    done < <(grep -oE '^@rules/[a-z-]+\.md' CLAUDE.md | sed 's/^@//')
+    [ -z "$c_bad" ] && ok "CLAUDE.md's precedence sentence and always-on mirror agree with the registry" \
+                     || bad "constitution preamble mirror problems:$c_bad"
+
+    # C23c: the retired routing-map.sh authority claim stays dead
+    grep -qi 'authoritative for file-pattern routing' CLAUDE.md 2>/dev/null \
+      && bad "CLAUDE.md reintroduced the retired routing-map.sh authority claim" \
+      || ok "CLAUDE.md does not reintroduce the retired routing-map.sh authority claim"
+  else
+    bad "registries/routing.json missing — constitution preamble checks skipped"
   fi
 fi
 

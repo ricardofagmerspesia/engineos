@@ -517,6 +517,20 @@ case_ "ensure-project-layout's registry read replaced with a hardcoded retention
       "telemetry wiring problems" \
       "sed -i.bak 's|-mtime \"+\$RET\"|-mtime \"+90\"|' hooks/ensure-project-layout.sh"
 
+# ---- C23: constitution preamble mirrors (P8, epic close) ----
+
+case_ "a reordered precedence domain in CLAUDE.md's sentence is caught" \
+      "constitution preamble mirror problems" \
+      "sed -i.bak 's|security → test → backend|test → security → backend|' CLAUDE.md"
+
+case_ "gates.md dropped from COMPATIBILITY.md's always-on enumeration is caught" \
+      "constitution preamble mirror problems" \
+      "sed -i.bak 's|\`gates.md\`) load|) load|' docs/COMPATIBILITY.md"
+
+case_ "the retired routing-map.sh authority claim restored in CLAUDE.md is caught" \
+      "reintroduced the retired routing-map.sh authority claim" \
+      "sed -i.bak 's|is a compatibility shim kept only for its function|is authoritative for file-pattern routing; it is a shim kept only for its function|' CLAUDE.md"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

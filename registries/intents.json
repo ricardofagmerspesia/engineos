@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "description": "Machine-readable source of truth for the EngineOS router. One entry per row of CLAUDE.md's '| Intent (signals) | Load |' table, which stays the human mirror. scripts/validate-engineos.sh (C16) checks this file against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/. Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
+  "version": "1.3.1",
+  "description": "Machine-readable source of truth for the EngineOS router. 29 entries for CLAUDE.md's 28 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
     {
