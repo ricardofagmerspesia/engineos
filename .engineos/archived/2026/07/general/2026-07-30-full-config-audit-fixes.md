@@ -4,6 +4,7 @@ status: done
 owner: Ricardo Fagmer
 spec: n/a — audit-driven corrective changes; the audit findings (5 parallel auditors over rules/, agents/, skills/, hooks/, router+packaging) serve as the spec
 domain: general
+completed: 2026-07-30
 ---
 
 ## What
@@ -24,7 +25,8 @@ block forever on macOS, `record-change` wiped every session's gate flag, skills
 restated rules they claimed not to restate (one with a divergent error envelope),
 and docs/commands referenced paths and inventories that no longer existed.
 
-## Scope (by layer)
+## Scope
+By layer:
 - `CLAUDE.md` + `rules/*` — router rows fixed/merged/added (record-change row; merged
   verification rows; deleted redundant multi-domain row), Output-artifact recursion and
   pure-question exemption rules, non-negotiables dedup, single-owner rule dedup,

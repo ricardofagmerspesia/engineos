@@ -409,6 +409,58 @@ case_ "the hook's registry read replaced with a hardcoded number is caught" \
       "stop-verify.sh repair-wiring problems" \
       "sed -i.bak 's|MAXFIX=\$(jq -r .\\{0,1\\}\\.repair\\.max_fix_attempts_per_check[^)]*)|MAXFIX=2|' hooks/stop-verify.sh"
 
+# ---- C21: change-record contract — template, archive, mirrors (P6) ----
+
+case_ "a required section removed from the change template is caught" \
+      "change template missing required sections" \
+      "sed -i.bak '/^## Verification\$/d' .engineos/changes/_template.md"
+
+case_ "a template section added without a registry update is caught" \
+      "change template sections not declared" \
+      "printf '\\n## Scratch\\n\\n<x>\\n' >> .engineos/changes/_template.md"
+
+case_ "a registry-required section absent from the template is caught" \
+      "change template missing required sections" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for i in d['intents']:
+    if i['id']=='record-change': i['required_sections'].append('Ghost section')
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "an invalid spec_exempt_pattern ERE is caught" \
+      "record-change contract problems" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for i in d['intents']:
+    if i['id']=='record-change': i['archive_contract']['spec_exempt_pattern']='('
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "an archived record's spec link pointing at a nonexistent file is caught" \
+      "archived spec-link problems" \
+      "sed -i.bak 's|^spec: docs/specs/2026-08-06-decision-kernel-p5-repair-loop.md|spec: docs/specs/ghost.md|' .engineos/archived/2026/08/general/2026-08-06-decision-kernel-p5-repair-loop.md"
+
+case_ "an archived record's n/a exemption stripped of its reason is caught" \
+      "archived spec-link problems" \
+      "sed -i.bak 's|^spec: n/a — .*|spec: n/a|' .engineos/archived/2026/07/general/2026-07-30-full-config-audit-fixes.md"
+
+case_ "an archived record losing its completed date is caught" \
+      "archived change-record problems" \
+      "sed -i.bak '/^completed: 2026-08-06\$/d' .engineos/archived/2026/08/general/2026-08-06-decision-kernel-p4-handoff-frontmatter.md"
+
+case_ "an unresolved checklist item in an archived record is caught" \
+      "archived change-record problems" \
+      "printf -- '- [ ] leftover\\n' >> .engineos/archived/2026/08/general/2026-08-06-decision-kernel-p3-router-agent.md"
+
+case_ "an archived record's domain drifting off the enum is caught" \
+      "archived change-record problems" \
+      "sed -i.bak 's|^domain: general|domain: platform|' .engineos/archived/2026/08/general/2026-08-06-decision-kernel-p2-resolver-api.md"
+
+case_ "a domain dropped from the SKILL.md mirror or the killed README copy regrowing is caught" \
+      "change-record mirror problems" \
+      "sed -i.bak 's|\`dba\`, ||' skills/record-change/SKILL.md && printf 'status: active\\n' >> .engineos/changes/README.md"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

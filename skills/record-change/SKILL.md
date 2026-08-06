@@ -25,7 +25,10 @@ Track each step in the session's task list, in order.
    CLAUDE.md non-negotiable #1: any change touching **>2 files** or any **new
    feature**. Check the record's `## Scope` (or `git diff --stat HEAD`) against
    that threshold.
-   - Below it: no spec link is required — skip to step 3.
+   - Below it: set `spec:` to the literal escape form `n/a — <reason>` (e.g.
+     `n/a — single-file rule edit, below the >2-file spec threshold`) so the
+     archive check (`validate-engineos.sh` C21) can tell a deliberate
+     exemption from a forgotten link, then continue to step 3.
    - At or above it: read the record's `spec:` front-matter field and verify that
      file exists under `docs/specs/`. If it is missing or the field is empty, the
      change is not ready to archive — write the spec first (brainstorm →
@@ -44,6 +47,8 @@ Track each step in the session's task list, in order.
    ```
    List the touched files and any `git mv` / renames. If the work spanned commits,
    add `git log --oneline <base>..HEAD`. Paste the actual output, not a paraphrase.
+   (The section is scaffolded by `_template.md`; records completed from
+   2026-08-06 on must carry it — C21 checks the archive.)
 
 5. **Mark done.** Only after `## What was made` is written and `## Checklist` is fully resolved:
    set front matter `status: done` and add `completed: <YYYY-MM-DD>`

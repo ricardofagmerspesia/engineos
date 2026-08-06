@@ -767,6 +767,116 @@ else
   else
     bad "policy.json or kernel.sh missing — repair checks skipped"
   fi
+
+  # ------------- C21: change-record contract — template, archive, mirrors (P6)
+  # The change record is where delivered work claims conformance with its spec
+  # (spec: link, verification evidence, registered diff). Schema is data on the
+  # record-change intent; _template.md is the checked scaffold; archived
+  # instances are the checked claims; the prose homes are checked mirrors.
+  # Spec: docs/specs/2026-08-06-decision-kernel-p6-spec-conformance.md
+  CT=.engineos/changes/_template.md
+  if [ -f "$IJ" ] && [ -f "$CT" ]; then
+    RC='.intents[] | select(.id=="record-change")'
+
+    # C21a: the contract is data and well-formed
+    a_bad=""
+    nsec=$(jq -r "[$RC | .required_sections[]? | select(type==\"string\")] | length" "$IJ")
+    nfld=$(jq -r "[$RC | .required_fields[]?   | select(type==\"string\")] | length" "$IJ")
+    [ "${nsec:-0}" -ge 1 ] || a_bad="$a_bad required_sections-missing-or-empty"
+    [ "${nfld:-0}" -ge 1 ] || a_bad="$a_bad required_fields-missing-or-empty"
+    ndom=$(jq -r "[$RC | .archive_contract.domains[]? | select(type==\"string\")] | length" "$IJ")
+    [ "${ndom:-0}" -ge 1 ] || a_bad="$a_bad archive_contract.domains-missing-or-empty"
+    dupdom=$(jq -r "($RC | .archive_contract.domains // [] | length) - ($RC | .archive_contract.domains // [] | unique | length)" "$IJ")
+    [ "${dupdom:-0}" -eq 0 ] || a_bad="$a_bad domains-has-duplicates"
+    for dkey in grandfathered_before "instance_sections_since.date"; do
+      dval=$(jq -r "$RC | .archive_contract.$dkey // empty" "$IJ")
+      case "$dval" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) a_bad="$a_bad $dkey-not-a-date" ;; esac
+    done
+    sxp=$(jq -r "$RC | .archive_contract.spec_exempt_pattern // empty" "$IJ")
+    { [ -n "$sxp" ] && printf x | grep -qE "$sxp" >/dev/null 2>&1; [ $? -le 1 ]; } \
+      || a_bad="$a_bad spec_exempt_pattern-missing-or-invalid-ERE"
+    # every instance section (both lists) is declared in required_sections
+    while IFS= read -r s; do
+      jq -e --arg s "$s" "$RC | .required_sections | index(\$s)" "$IJ" >/dev/null 2>&1 \
+        || a_bad="$a_bad instance-section-not-in-required_sections:[$s]"
+    done < <(jq -r "$RC | (.archive_contract.instance_sections[]?, .archive_contract.instance_sections_since.sections[]?)" "$IJ")
+    [ -z "$a_bad" ] && ok "record-change intent carries the change-record contract as data" \
+                     || bad "record-change contract problems:$a_bad"
+
+    # C21b: template <-> registry, both directions (P4 C19b pattern)
+    miss=""
+    while IFS= read -r s; do grep -qx "## $s" "$CT" || miss="$miss [$s]"; done \
+      < <(jq -r "$RC | .required_sections[]?" "$IJ")
+    [ -z "$miss" ] && ok "change template carries every registry-required section" \
+                   || bad "change template missing required sections:$miss"
+    fmiss=""
+    while IFS= read -r f; do grep -q "^${f}:" "$CT" || fmiss="$fmiss [$f]"; done \
+      < <(jq -r "$RC | .required_fields[]?" "$IJ")
+    [ -z "$fmiss" ] && ok "change template carries every registry-required field line" \
+                    || bad "change template missing required fields:$fmiss"
+    undecl=""
+    while IFS= read -r h; do
+      jq -e --arg h "$h" "$RC | .required_sections | index(\$h)" "$IJ" >/dev/null 2>&1 \
+        || undecl="$undecl [$h]"
+    done < <(sed -n 's/^## //p' "$CT")
+    [ -z "$undecl" ] && ok "every change template section is declared in the registry" \
+                     || bad "change template sections not declared in the registry:$undecl"
+
+    # C21c + C21d: every checked-era archived record is a well-formed claim
+    # with a resolvable spec link (or the explicit n/a escape)
+    GF=$(jq -r "$RC | .archive_contract.grandfathered_before" "$IJ")
+    SINCE=$(jq -r "$RC | .archive_contract.instance_sections_since.date" "$IJ")
+    PFX=$(jq -r "$RC | .archive_contract.spec_path_prefix" "$IJ")
+    i_bad=""; s_bad=""
+    while IFS= read -r rec; do
+      comp=$(sed -n 's/^completed: //p' "$rec" | head -1)
+      nm=$(sed -n 's/^name: //p' "$rec" | head -1)
+      gate="${comp:-${nm:0:10}}"
+      [ "$gate" \< "$GF" ] && continue                      # grandfathered (Decision 4)
+      base=$(basename "$rec" .md)
+      st=$(sed -n 's/^status: //p' "$rec" | head -1)
+      dom=$(sed -n 's/^domain: //p' "$rec" | head -1)
+      [ "$st" = "done" ]                          || i_bad="$i_bad [$base:status=$st]"
+      case "$comp" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) i_bad="$i_bad [$base:completed-missing-or-malformed]" ;; esac
+      [ "$nm" = "$base" ]                         || i_bad="$i_bad [$base:name-drifts-from-filename]"
+      jq -e --arg d "$dom" "$RC | .archive_contract.domains | index(\$d)" "$IJ" >/dev/null 2>&1 \
+                                                  || i_bad="$i_bad [$base:domain-not-in-enum:$dom]"
+      want=".engineos/archived/${comp:0:4}/${comp:5:2}/${dom}/${base}.md"
+      [ "$rec" = "$want" ]                        || i_bad="$i_bad [$base:filed-at-wrong-path]"
+      grep -q '^- \[ \]' "$rec"                   && i_bad="$i_bad [$base:unresolved-checklist-item]"
+      while IFS= read -r s; do grep -qx "## $s" "$rec" || i_bad="$i_bad [$base:missing-section:$s]"; done \
+        < <(jq -r "$RC | .archive_contract.instance_sections[]?" "$IJ")
+      if [ ! "$comp" \< "$SINCE" ]; then
+        while IFS= read -r s; do grep -qx "## $s" "$rec" || i_bad="$i_bad [$base:missing-section:$s]"; done \
+          < <(jq -r "$RC | .archive_contract.instance_sections_since.sections[]?" "$IJ")
+      fi
+      spec=$(sed -n 's/^spec: //p' "$rec" | head -1)
+      if [ -z "$spec" ]; then s_bad="$s_bad [$base:spec-field-missing-or-empty]"
+      elif printf '%s' "$spec" | grep -qE "$sxp"; then :   # explicit, reasoned exemption
+      else
+        case "$spec" in "$PFX"*) [ -s "$spec" ] || s_bad="$s_bad [$base:spec-file-missing-or-empty:$spec]" ;;
+                        *) s_bad="$s_bad [$base:spec-not-under-$PFX:$spec]" ;; esac
+      fi
+    done < <(find .engineos/archived -name '*.md' ! -name README.md | sort)
+    [ -z "$i_bad" ] && ok "every checked-era archived change record is a well-formed done claim" \
+                    || bad "archived change-record problems:$i_bad"
+    [ -z "$s_bad" ] && ok "every checked-era archived record's spec link resolves (or is an explicit n/a exemption)" \
+                    || bad "archived spec-link problems:$s_bad"
+
+    # C21e: prose mirrors agree and the killed duplicate stays dead
+    m_bad=""
+    for home in skills/record-change/SKILL.md .engineos/archived/README.md .engineos/changes/_template.md; do
+      while IFS= read -r d; do
+        grep -q "$d" "$home" || m_bad="$m_bad [$home-missing-domain:$d]"
+      done < <(jq -r "$RC | .archive_contract.domains[]?" "$IJ")
+    done
+    grep -qx 'status: active' .engineos/changes/README.md 2>/dev/null \
+      && m_bad="$m_bad [changes/README.md-regrew-the-inline-schema-copy]"
+    [ -z "$m_bad" ] && ok "change-record prose mirrors agree with the registry" \
+                     || bad "change-record mirror problems:$m_bad"
+  else
+    bad "intents.json or .engineos/changes/_template.md missing — change-record checks skipped"
+  fi
 fi
 
 # ------------------------------------------------------------ C13: no empties

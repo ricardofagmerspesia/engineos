@@ -2,7 +2,7 @@
 name: <YYYY-MM-DD>-<short-kebab-slug>
 status: active
 owner: <name>
-spec: docs/specs/<YYYY-MM-DD>-<slug>-design.md
+spec: docs/specs/<YYYY-MM-DD>-<slug>-design.md   # below non-negotiable #1's threshold, use: n/a — <reason>
 domain: <backend|frontend|mobile|dba|llm|devops|security|test|docs|general>
 ---
 
@@ -24,6 +24,9 @@ domain: <backend|frontend|mobile|dba|llm|devops|security|test|docs|general>
 
 ## Verification
 <how it was checked: typecheck, lint, tests, manual>
+
+## Changes registered
+<filled on completion: the real diff — paste `git status --short` / `git diff --stat HEAD`, renames, and `git log --oneline <base>..HEAD` when the work spanned commits>
 
 ## Notes
 <decisions, gotchas, links — [[memory-slug]] for durable takeaways>
