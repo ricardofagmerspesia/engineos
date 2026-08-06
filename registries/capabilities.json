@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Workflow-capability -> agent binding, for consumers that resolve 'what handles this step' without reading agents/*.md directly (e.g. the ai-se-os headless runner). Distinct from routing.json: routing answers a file-path question at edit time; this answers an abstract-workflow-step question a hook never asks. model_tier is always a hyphenated slug of one of rules/models.md's four tier names (that file's own table cell reads 'most capable', two words — this registry's identifier form is 'most-capable'), never a raw model alias — a bound entry's tier is the reverse lookup of its agent's frontmatter model; a note entry's tier is what the main Claude Code loop should use in the agent's place. Read by scripts/validate-engineos.sh (agent exists, tier is valid) and scripts/gen-agent-commands.sh's sibling generator for registries/agents.json's capability_ids back-reference.",
   "model_tiers": ["cheap", "build", "design", "most-capable"],
   "capabilities": [
@@ -37,6 +37,13 @@
       "agent": "security-reviewer",
       "model_tier": "design",
       "risk_floor": "high"
+    },
+    {
+      "id": "route",
+      "title": "Resolve a request into a dispatch plan — intents, rules, agents with disjoint file scopes, risk, gates, waves",
+      "agent": "router",
+      "model_tier": "design",
+      "risk_floor": "low"
     }
   ]
 }

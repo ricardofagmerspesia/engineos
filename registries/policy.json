@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism and retry policy. rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match — scripts/validate-engineos.sh's C16 checks extract their numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compare them against this file, so a future prose edit that diverges fails CI.",
   "risk": {
     "aggregation": "max",
@@ -172,6 +172,23 @@
       "possible-data-loss",
       "irreversible-action-unclear-gate",
       "unresolved-ambiguity"
+    ]
+  },
+  "router": {
+    "note": "Escalation policy for the P3 router agent: when the deterministic kernel answer is not enough and a model must produce a dispatch plan. Read by scripts/kernel.sh route-escalate; the fixtures are asserted by validate-engineos.sh C18e and scripts/test-kernel.sh.",
+    "agent": "router",
+    "capability": "route",
+    "reasons": ["multi-agent-dispatch", "unrouted-scale", "requires-dispatch-plan"],
+    "escalate_when": {
+      "multi_agent_intents_min": 2,
+      "unrouted_scale_signals": ["big_task", "design_work"]
+    },
+    "fixtures": [
+      {"prompt": "add a paginated orders endpoint to the API and mirror the screen to mobile", "escalate": true,  "reasons": ["multi-agent-dispatch"]},
+      {"prompt": "migrate all services to the new logging format across all packages",         "escalate": true,  "reasons": ["unrouted-scale"]},
+      {"prompt": "backfill the tenant column",                                                 "escalate": true,  "reasons": ["requires-dispatch-plan"]},
+      {"prompt": "build the ios release and upload to TestFlight",                             "escalate": false, "reasons": []},
+      {"prompt": "why does the login handler fail with a 500",                                 "escalate": false, "reasons": []}
     ]
   }
 }

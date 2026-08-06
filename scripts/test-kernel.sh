@@ -314,6 +314,78 @@ run scale --prompt "the button design looks good"
 assert_ok "scale weak-design prompt exits 0"
 assert_eq "weak design signal without action verb -> design_work false" "$(jqval '.design_work')" "false"
 
+# --------------------------------------------------------------- route-escalate
+# Spec: docs/specs/2026-08-06-decision-kernel-p3-router-agent.md, "Test surface"
+
+echo "-- route-escalate --"
+
+# Every policy.json.router.fixtures entry, looped from the registry — a new
+# fixture is covered automatically, no hardcoding.
+while IFS=$'\t' read -r prompt want_esc want_reasons; do
+  run route-escalate --prompt "$prompt"
+  assert_ok "route-escalate fixture exits 0: $prompt"
+  assert_eq "fixture escalate: $prompt" "$(jqval '.escalate')" "$want_esc"
+  got_reasons=$(printf '%s' "$OUT" | jq -c '.reasons | sort' 2>/dev/null)
+  want_sorted=$(printf '%s' "$want_reasons" | jq -c 'sort')
+  assert_eq "fixture reasons: $prompt" "$got_reasons" "$want_sorted"
+done < <(jq -r '.router.fixtures[] | [.prompt, .escalate, (.reasons|tojson)] | @tsv' "$REG/policy.json")
+
+# Suppression: a suppressible fallback (new-feature) drops when a more
+# specific stack row also matches.
+run route-escalate --prompt "add a paginated orders endpoint to the API and mirror the screen to mobile"
+assert_ok "suppression (new-feature) prompt exits 0"
+assert_eq "suppressible new-feature drops, backend+mobile survive" \
+  "$(jqval '.intents | sort | join(",")')" "backend,mobile"
+assert_eq "new-feature recorded as suppressed by more-specific-match" \
+  "$(jqval '[.suppressed[] | select(.id=="new-feature") | .by][0]')" "more-specific-match"
+
+# Suppression: mobile is suppressed_by ios-release/android-release when a
+# store-release row also matches (raw matches verified: mobile, ios-release).
+run route-escalate --prompt "publish to App Store the iOS app screen"
+assert_ok "suppression (mobile/ios-release) prompt exits 0"
+assert_eq "mobile suppressed, ios-release survives" "$(jqval '.intents | join(",")')" "ios-release"
+assert_eq "mobile recorded as suppressed by ios-release" \
+  "$(jqval '[.suppressed[] | select(.id=="mobile") | .by][0]')" "ios-release"
+
+# Aggregation: model_tier/risk_floor are max-by-lookup over surviving intents,
+# never a naive last-match or first-match.
+run route-escalate --prompt "add a paginated orders endpoint to the API and mirror the screen to mobile"
+assert_ok "aggregation prompt exits 0"
+BT=$(jqval '.model_tier'); BF=$(jqval '.risk_floor')
+[ -n "$BT" ] && [ "$BT" != "null" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: model_tier aggregated (non-null) — got '$BT'"; }
+[ -n "$BF" ] && [ "$BF" != "null" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: risk_floor aggregated (non-null) — got '$BF'"; }
+
+run route-escalate --prompt "why does the login handler fail with a 500"
+assert_eq "no matched intent -> model_tier null" "$(jqval '.model_tier')" "null"
+assert_eq "no matched intent -> risk_floor null" "$(jqval '.risk_floor')" "null"
+
+# Non-triggers stay non-triggers.
+# NOTE: "migration" (singular) is deliberately avoided here — it is one of
+# big-sweep's own signals (P1 data; a known noisy overlap the P3 spec already
+# flags), so a prompt containing it also matches big-sweep and escalates via
+# requires-dispatch-plan. "query perf" is dba-only and signal-clean.
+run route-escalate --prompt "improve query perf on the orders table"
+assert_ok "dba-only prompt exits 0"
+assert_eq "dba-only prompt resolves to exactly dba" "$(jqval '.intents | join(",")')" "dba"
+assert_eq "single intent naming 3 leaf agents does NOT escalate" "$(jqval '.escalate')" "false"
+
+run route-escalate --prompt "build the ios release and upload to TestFlight"
+assert_eq "divergent tier/floor across suppressed matches is not a trigger" "$(jqval '.escalate')" "false"
+
+# Errors: fail-closed, not silently ignored.
+run route-escalate
+assert_err "route-escalate with no --prompt errors"
+
+run route-escalate --bogus x
+assert_err "route-escalate with unknown argument errors"
+
+cp "$REG/policy.json" /tmp/test-kernel-policy-bak.json
+jq 'del(.router)' /tmp/test-kernel-policy-bak.json > "$REG/policy.json"
+run route-escalate --prompt "add a feature"
+assert_err "route-escalate with no router policy block errors (fail-closed)"
+cp /tmp/test-kernel-policy-bak.json "$REG/policy.json"
+rm -f /tmp/test-kernel-policy-bak.json
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

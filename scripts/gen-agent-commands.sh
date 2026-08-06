@@ -59,6 +59,9 @@ emit() { # invoke_name, agent_name, alias, description
     return
   fi
 
+  local alias_suffix=""
+  [ -n "$alias" ] && alias_suffix=" (alias \`$alias\`)"
+
   cat > "$out" <<EOF
 ---
 description: $desc
@@ -67,7 +70,7 @@ allowed-tools: Task
 ---
 $MARKER
 
-Dispatch the \`$agent\` agent (alias \`$alias\`) via the Task tool, passing
+Dispatch the \`$agent\` agent${alias_suffix} via the Task tool, passing
 \`\$ARGUMENTS\` as its prompt. If \`\$ARGUMENTS\` is empty, ask the user what they
 want the agent to do before dispatching.
 
@@ -87,7 +90,7 @@ for f in "$AGENTS_DIR"/*.md; do
   alias="$(sed -n '/^---$/,/^---$/p' "$f" | grep -oiE 'Alias: [a-z0-9-]+' | head -1 | sed -E 's/[Aa]lias: //' || true)"
   desc="Invoke the $name agent${alias:+ (alias $alias)}."
 
-  emit "$name" "$name" "${alias:-$name}" "$desc"
+  emit "$name" "$name" "$alias" "$desc"
   if [ -n "$alias" ] && [ "$alias" != "$name" ]; then
     emit "$alias" "$name" "$alias" "$desc"
   fi

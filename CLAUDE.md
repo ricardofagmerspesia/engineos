@@ -58,11 +58,11 @@ Rules for routing:
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
 - **The hooks need `jq`.** Without it, `route-before-change.sh`,
-  `mark-unrecorded.sh`, `record-verify.sh`, `task-scale-advisor.sh`, and
-  `gate-advisor.sh` exit 0
+  `mark-unrecorded.sh`, `record-verify.sh`, `task-scale-advisor.sh`,
+  `gate-advisor.sh`, and `route-advisor.sh` exit 0
   silently — routing guidance and the change-record Stop gate simply do not fire.
   If you are not seeing `[router] …` context on edits, check `jq` before assuming
-  the routing is wrong. Those five are the only ones that go silent:
+  the routing is wrong. Those six are the only ones that go silent:
   `stop-verify.sh` and `post-edit-check.sh` degrade to grep/sed parsing and keep
   running, and `ensure-project-layout.sh` keeps running via a grep fallback.
 
@@ -94,6 +94,7 @@ Rules for routing:
 | Handoff between agents, waves or sessions ("hand this off", wave barrier reached, session ending mid-task) | `templates/handoff.md` — objective, state, gate, risk, decisions, files, evidence, known failures, next step, resume commands. Never hand off with "continue where you left off" |
 | Continuous improvement ("run a retro", "what should we improve", same correction recurring, monthly cadence) | skill `retro` — mines `.engineos/archived/`, eval failures and integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR. Proposes only; a human merges |
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
+| Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs `scripts/kernel.sh route-escalate` and `risk` FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no agent is dispatched at all |
 | Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: lint + typecheck + build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
 
 ## Output artifact — offer after every request

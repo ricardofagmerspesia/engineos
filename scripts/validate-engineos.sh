@@ -27,7 +27,7 @@ echo "== EngineOS integrity =="
 
 # ---------------------------------------------------------------- C1: tooling
 if command -v jq >/dev/null 2>&1; then
-  ok "jq present (route-before-change, mark-unrecorded, record-verify, task-scale-advisor need it)"
+  ok "jq present (route-before-change, mark-unrecorded, record-verify, task-scale-advisor, route-advisor need it)"
 else
   bad "jq missing — those four hooks will exit 0 silently and routing/change-record gates will not fire"
 fi
@@ -537,6 +537,104 @@ else
                      || bad "policy.json prompt_signals problems:$ps_bad"
   else
     bad "scripts/kernel.sh or registries/routing.json missing — kernel checks skipped"
+  fi
+
+  # ---------------------------- C18: router agent wiring (P3)
+  # scripts/kernel.sh route-escalate decides when the deterministic path is
+  # not enough and a model (agents/router.md) must produce a dispatch plan.
+  # Spec: docs/specs/2026-08-06-decision-kernel-p3-router-agent.md
+  ROUTER_MD=agents/router.md
+  ROUTE_ADVISOR=hooks/route-advisor.sh
+  HOOKS_JSON=hooks/hooks.json
+  if [ -f "$KSH" ] && [ -f "$IJ" ] && [ -f "$C" ] && [ -f "$PJ" ]; then
+    # C18a: capability binding — pinned specifically, not just "some valid tier"
+    ra=$(jq -r '.capabilities[] | select(.id=="route") | .agent' "$C")
+    rt=$(jq -r '.capabilities[] | select(.id=="route") | .model_tier' "$C")
+    if [ "$ra" = "router" ] && [ "$rt" = "design" ] && [ -f "$ROUTER_MD" ]; then
+      bound=$(bash "$KSH" capability route 2>/dev/null | jq -r '.bound')
+      kmodel=$(bash "$KSH" capability route 2>/dev/null | jq -r '.model')
+      fmodel=$(sed -n 's/^model: *//p' "$ROUTER_MD" | head -1)
+      if [ "$bound" = "true" ] && [ "$kmodel" = "$fmodel" ]; then
+        ok "route capability is bound to router (design/$fmodel)"
+      else
+        bad "route capability binding broken (bound=$bound, kernel model=$kmodel, agent frontmatter model=$fmodel)"
+      fi
+    else
+      bad "route capability is not bound to agent=router/model_tier=design"
+    fi
+
+    # C18b: the agent actually calls the kernel — grep-checkable proxy for
+    # "reasons only about the residue"
+    if [ -f "$ROUTER_MD" ]; then
+      kb_bad=""
+      for lit in "kernel.sh route-escalate" "kernel.sh risk" "kernel.sh gates" "kernel.sh waves" "kernel.sh model"; do
+        grep -qF "$lit" "$ROUTER_MD" || kb_bad="$kb_bad [$lit]"
+      done
+      [ -z "$kb_bad" ] && ok "agents/router.md calls every required kernel subcommand" \
+                       || bad "router does not call the kernel for:$kb_bad"
+
+      # C18c: read-only planner by tool absence, not by prompt discipline
+      tools_line=$(sed -n 's/^tools: *//p' "$ROUTER_MD" | head -1)
+      if printf '%s' "$tools_line" | grep -q 'Bash' \
+         && ! printf '%s' "$tools_line" | grep -qE 'Edit|Write|Task'; then
+        ok "router must not hold Edit/Write/Task — tools: $tools_line"
+      else
+        bad "router must not hold Edit/Write/Task (read-only-planner contract): $tools_line"
+      fi
+    else
+      bad "agents/router.md missing"
+    fi
+
+    # C18d: suppression data integrity
+    sup_bad=""
+    unknown=$(jq -r '[.intents[].id] as $ids | [.intents[] | .suppressed_by[]? | select(. as $s | $ids | index($s) | not)] | unique | join(",")' "$IJ")
+    [ -n "$unknown" ] && sup_bad="$sup_bad unknown-target:$unknown"
+    selfref=$(jq -r '[.intents[] | select(.suppressed_by != null) | .id as $iid | select(.suppressed_by | index($iid)) | $iid] | join(",")' "$IJ")
+    [ -n "$selfref" ] && sup_bad="$sup_bad self-reference:$selfref"
+    # 2-cycle (and self, already caught above): A suppressed_by B and B suppressed_by A.
+    # `.id as $iid` binds the inner id BEFORE piping into index() — piping
+    # $e.sb into index(.id) directly rebinds `.` to $e.sb itself and throws
+    # "cannot index array with string id", the same footgun class P3-U2 found.
+    twocycle=$(jq -r '
+      [.intents[] | select(.suppressed_by != null) | {id, sb: .suppressed_by}] as $edges
+      | [ $edges[] as $e | $edges[] | .id as $iid
+          | select($iid != $e.id) | select(.sb | index($e.id)) | select($e.sb | index($iid)) | $e.id ]
+      | unique | join(",")' "$IJ")
+    [ -n "$twocycle" ] && sup_bad="$sup_bad cycle:$twocycle"
+    nonsupp=$(jq -r '[.intents[] | select(.suppressible != true)] | length' "$IJ")
+    [ "$nonsupp" -lt 1 ] && sup_bad="$sup_bad all-intents-suppressible"
+    hasdispatch=$(jq -r '[.intents[] | select(.requires_dispatch_plan == true)] | length' "$IJ")
+    [ "$hasdispatch" -lt 1 ] && sup_bad="$sup_bad no-requires_dispatch_plan-intent"
+    booltype_bad=$(jq -r '[.intents[] | select((.suppressible != null and (.suppressible|type)!="boolean") or (.requires_dispatch_plan != null and (.requires_dispatch_plan|type)!="boolean")) | .id] | join(",")' "$IJ")
+    [ -n "$booltype_bad" ] && sup_bad="$sup_bad non-boolean:$booltype_bad"
+    [ -z "$sup_bad" ] && ok "intents.json suppression data is internally consistent" \
+                       || bad "suppression data problems:$sup_bad"
+
+    # C18e: behavioral, fixture-driven — same self-validating pattern as
+    # routing.json's sample_path (C17b)
+    rf_bad=""
+    while IFS=$'\t' read -r prompt want_esc want_reasons; do
+      got=$(bash "$KSH" route-escalate --prompt "$prompt" 2>/dev/null)
+      got_esc=$(printf '%s' "$got" | jq -r '.escalate')
+      got_reasons=$(printf '%s' "$got" | jq -c '.reasons | sort')
+      want_reasons_sorted=$(printf '%s' "$want_reasons" | jq -c 'sort')
+      if [ "$got_esc" != "$want_esc" ] || [ "$got_reasons" != "$want_reasons_sorted" ]; then
+        rf_bad="$rf_bad [$prompt](got esc=$got_esc reasons=$got_reasons)"
+      fi
+    done < <(jq -r '.router.fixtures[] | [.prompt, .escalate, (.reasons|tojson)] | @tsv' "$PJ")
+    [ -z "$rf_bad" ] && ok "every policy.json.router.fixtures entry matches kernel.sh route-escalate" \
+                     || bad "route-escalate fixture mismatches:$rf_bad"
+
+    # C18f: hook registration
+    if [ -x "$ROUTE_ADVISOR" ] \
+       && jq -e '[.hooks.UserPromptSubmit[].hooks[]?.command] | any(test("route-advisor"))' "$HOOKS_JSON" >/dev/null 2>&1 \
+       && grep -q 'route-escalate' "$ROUTE_ADVISOR" 2>/dev/null; then
+      ok "hooks/route-advisor.sh is executable, registered, and calls route-escalate"
+    else
+      bad "route-advisor.sh registration/wiring incomplete"
+    fi
+  else
+    bad "kernel.sh, intents.json, capabilities.json or policy.json missing — router checks skipped"
   fi
 fi
 

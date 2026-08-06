@@ -14,6 +14,7 @@
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
 #   kernel.sh scale --prompt <text>
+#   kernel.sh route-escalate --prompt <text>
 #
 # Exit: 0 success (a null/no-match answer IS an answer), 1 error. Errors are
 # {"error": "..."} on stdout so callers parse a single stream. jq is REQUIRED —
@@ -361,6 +362,102 @@ cmd_scale() {
     '{big_task: $b, spec_authoring: $sp, design_work: $d}'
 }
 
+# ------------------------------------------------------------- route-escalate
+# The condition under which a dispatch plan is needed, per frozen contract 1 of
+# docs/specs/2026-08-06-decision-kernel-p3-router-agent.md. Reuses
+# cmd_route_intent's matching and cmd_scale's classification (one
+# implementation, not two kept in sync), then applies a single, deterministic
+# pass of suppression resolution over the raw matched set before aggregating
+# model_tier/risk_floor (max by lookup, never a reason to escalate on their
+# own) and checking the three trigger reasons. Thresholds and the reason
+# vocabulary come from policy.json.router — never hardcoded — and its absence
+# is a fail-closed error: a resolver that silently defaults its own policy is
+# worse than one that stops.
+cmd_route_escalate() {
+  local prompt=""
+  while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "route-escalate: unknown argument $1" ;; esac; done
+  [ -n "$prompt" ] || err "route-escalate requires --prompt <text>"
+  need_reg intents.json; need_reg policy.json; need_reg models.json
+  local I="$REG/intents.json" P="$REG/policy.json" M="$REG/models.json"
+
+  jq -e '.router' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no router block — route-escalate cannot resolve its own policy without it"
+
+  local raw rc scale
+  raw=$(cmd_route_intent "$prompt"); rc=$?
+  [ $rc -eq 0 ] || { printf '%s\n' "$raw"; exit 1; }
+  scale=$(cmd_scale --prompt "$prompt"); rc=$?
+  [ $rc -eq 0 ] || { printf '%s\n' "$scale"; exit 1; }
+
+  jq -n --argjson raw "$raw" --argjson scale "$scale" \
+    --slurpfile intents "$I" --slurpfile pol "$P" --slurpfile mod "$M" '
+    ($raw.matches | map(.id)) as $ids
+    # Re-read suppressible/suppressed_by/requires_dispatch_plan from
+    # intents.json directly — route-intent output is P2 public surface and
+    # stays byte-identical, so it never carries these P3-only fields.
+    | ($intents[0].intents
+       | map(select(.id as $i | $ids | index($i) != null))
+       | map({id, agents: (.agents // []), model_tier: (.model_tier // null),
+              risk_floor: (.risk_floor // null),
+              suppressible: (.suppressible == true),
+              suppressed_by: (.suppressed_by // []),
+              requires_dispatch_plan: (.requires_dispatch_plan == true)})
+      ) as $matched
+    | ($matched | any(.suppressible | not)) as $has_non_suppressible
+    # Single pass, never transitive: drop I when (I.suppressible AND some
+    # matched intent is not suppressible) OR (some id in I.suppressed_by is
+    # in the raw matched set).
+    | ( $matched
+        | map(
+            if .suppressible and $has_non_suppressible then
+              . + {drop: true, by: "more-specific-match"}
+            else
+              (.suppressed_by | map(select(. as $sid | $ids | index($sid) != null))) as $by_hits
+              | if ($by_hits | length) > 0
+                  then . + {drop: true, by: $by_hits[0]}
+                  else . + {drop: false, by: null}
+                end
+            end)
+      ) as $decided
+    | ($decided | map(select(.drop)) | map({id, by})) as $suppressed
+    | ($decided | map(select(.drop | not))) as $surviving
+    | ($surviving | map(.id)) as $surv_ids
+    | ($mod[0].escalation_order) as $tier_order
+    | ( $surviving | map(select(.model_tier != null)) | map(.model_tier)
+        | if length == 0 then null
+          else (map(. as $t | $tier_order | index($t)) | max) as $mi | $tier_order[$mi]
+          end
+      ) as $model_tier
+    | (["low", "medium", "high"]) as $risk_order
+    | ( $surviving | map(select(.risk_floor != null)) | map(.risk_floor)
+        | if length == 0 then null
+          else (map(. as $r | $risk_order | index($r)) | max) as $mi | $risk_order[$mi]
+          end
+      ) as $risk_floor
+    | (reduce ($surviving | map(.agents[]?) | .[]) as $a ([]; if index($a) then . else . + [$a] end)) as $agents
+    | ($surviving | map(select((.agents // []) | length > 0)) | length) as $n_agent_intents
+    | ($pol[0].router.escalate_when.multi_agent_intents_min) as $multi_min
+    | ($pol[0].router.escalate_when.unrouted_scale_signals) as $uscale
+    | ($ids | length == 0) as $zero_raw
+    | ($uscale | any(. as $s | $scale[$s] == true)) as $scale_hit
+    | ($surviving | any(.requires_dispatch_plan)) as $has_dispatch_plan
+    | { "multi-agent-dispatch": ($n_agent_intents >= $multi_min),
+        "unrouted-scale": ($zero_raw and $scale_hit),
+        "requires-dispatch-plan": $has_dispatch_plan
+      } as $reason_bools
+    | ($pol[0].router.reasons | map(select($reason_bools[.]))) as $reasons
+    | { escalate: (($reasons | length) > 0),
+        reasons: $reasons,
+        intents: $surv_ids,
+        suppressed: $suppressed,
+        agents: $agents,
+        model_tier: $model_tier,
+        risk_floor: $risk_floor,
+        scale: $scale,
+        ambiguous: $raw.ambiguous
+      }'
+}
+
 # ---------------------------------------------------------------- dispatcher
 cmd="${1:-}"
 [ -n "$cmd" ] && shift
@@ -375,5 +472,6 @@ case "$cmd" in
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|capability|waves|decision-rules|scale} ..." ;;
+  route-escalate) cmd_route_escalate "$@" ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|capability|waves|decision-rules|scale|route-escalate} ..." ;;
 esac

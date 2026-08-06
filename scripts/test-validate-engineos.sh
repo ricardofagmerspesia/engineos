@@ -279,6 +279,54 @@ p='registries/policy.json'; d=json.load(open(p))
 d['gates']['spec_threshold']['files_greater_than']=5
 json.dump(d,open(p,'w'),indent=2)\""
 
+# ---- C18: router agent wiring (P3) ----
+
+case_ "route capability repointed at a nonexistent agent is caught" \
+      "capabilities.json names missing agents" \
+      "sed -i.bak 's|\"agent\": \"router\"|\"agent\": \"ghost-router\"|' registries/capabilities.json"
+
+case_ "route capability model_tier downgraded off design is caught" \
+      "route capability" \
+      "python3 -c \"
+import json
+p='registries/capabilities.json'; d=json.load(open(p))
+for c in d['capabilities']:
+    if c['id']=='route': c['model_tier']='build'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "router agent losing a required kernel call is caught" \
+      "router does not call the kernel" \
+      "sed -i.bak 's|kernel.sh waves|kernel.sh wavez|g' agents/router.md"
+
+case_ "router agent gaining Write is caught" \
+      "router must not hold" \
+      "sed -i.bak 's|^tools: Read, Grep, Glob, Bash\$|tools: Read, Grep, Glob, Bash, Write|' agents/router.md"
+
+case_ "a self-referencing suppressed_by is caught" \
+      "suppression data problems" \
+      "python3 -c \"
+import json
+p='registries/intents.json'; d=json.load(open(p))
+for x in d['intents']:
+    if x['id']=='route-planning': x['suppressed_by']=['route-planning']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "a flipped router fixture expectation is caught" \
+      "route-escalate fixture" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['router']['fixtures'][0]['escalate'] = not d['router']['fixtures'][0]['escalate']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ "route-advisor.sh removed from hooks.json is caught" \
+      "route-advisor" \
+      "python3 -c \"
+import json
+p='hooks/hooks.json'; d=json.load(open(p))
+d['hooks']['UserPromptSubmit'][0]['hooks'] = [h for h in d['hooks']['UserPromptSubmit'][0]['hooks'] if 'route-advisor' not in h['command']]
+json.dump(d,open(p,'w'),indent=2)\""
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

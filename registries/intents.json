@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Machine-readable source of truth for the EngineOS router. One entry per row of CLAUDE.md's '| Intent (signals) | Load |' table, which stays the human mirror. scripts/validate-engineos.sh (C16) checks this file against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/. Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
@@ -15,7 +15,8 @@
       "model_tier": null,
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. brainstorming first, then writing-plans for spec/design/tasks, then whichever stack rows also match — so this row names no rules of its own. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the brainstorm/plan flow and to the matched stack rows."
+      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. brainstorming first, then writing-plans for spec/design/tasks, then whichever stack rows also match — so this row names no rules of its own. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the brainstorm/plan flow and to the matched stack rows.",
+      "suppressible": true
     },
     {
       "id": "big-sweep",
@@ -29,7 +30,8 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Both named rules are already always-on; the row names them to make the fan-out obligation explicit. Fan out via /engineos:implement <domain> <task> for changes, /engineos:audit for analysis, or N Task calls in ONE message over disjoint scopes. /engineos:implement dispatch is spec-gated. Tier is design: the row's primary work is fan-out planning and task decomposition, not the changes themselves."
+      "note": "Both named rules are already always-on; the row names them to make the fan-out obligation explicit. Fan out via /engineos:implement <domain> <task> for changes, /engineos:audit for analysis, or N Task calls in ONE message over disjoint scopes. /engineos:implement dispatch is spec-gated. Tier is design: the row's primary work is fan-out planning and task decomposition, not the changes themselves.",
+      "requires_dispatch_plan": true
     },
     {
       "id": "bug",
@@ -88,7 +90,8 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "mobile",
-      "note": "Store build/publish requests belong to ios-release / android-release, not here. Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. All of them are adapted the mobile way: frontend.md for component/state patterns, backend.md for the API-consumption parts, observability.md as backend.md's closure target; react-patterns is adapted to React Native. mobile-coordinator (alias elias) covers greenfield mobile features and web->mobile mirroring, treats the web frontend as read-only reference when mirroring, and writes only in the mobile tree — never API/backend, web frontend, or DevOps."
+      "note": "Store build/publish requests belong to ios-release / android-release, not here. Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. All of them are adapted the mobile way: frontend.md for component/state patterns, backend.md for the API-consumption parts, observability.md as backend.md's closure target; react-patterns is adapted to React Native. mobile-coordinator (alias elias) covers greenfield mobile features and web->mobile mirroring, treats the web frontend as read-only reference when mirroring, and writes only in the mobile tree — never API/backend, web frontend, or DevOps.",
+      "suppressed_by": ["ios-release", "android-release"]
     },
     {
       "id": "ios-release",
@@ -404,6 +407,27 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a fix loop until clean before reporting done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck/tests and on an unrecorded change record — and they cover the Validation gate only, never the Release gate."
+    },
+    {
+      "id": "route-planning",
+      "title": "Ambiguous or multi-agent request needing a dispatch plan",
+      "signals": [
+        "route this",
+        "who should do this",
+        "which agents",
+        "dispatch plan",
+        "how should we split this"
+      ],
+      "rules": [],
+      "skills": [],
+      "agents": ["router"],
+      "commands": ["/engineos:route"],
+      "mcp": [],
+      "model_tier": "design",
+      "risk_floor": null,
+      "hook_mirrored": false,
+      "requires_dispatch_plan": true,
+      "note": "The router agent runs scripts/kernel.sh route-escalate and risk FIRST and reasons only about the residue: intent tiebreaks the notes do not settle mechanically, scope decomposition against real files, and wave grouping. It returns a dispatch plan; it never dispatches and never edits. Tier is design per registries/models.json work type architecture, which covers task decomposition and fan-out planning. The deterministic path needs no agent at all — hooks/route-advisor.sh emits the kernel's answer directly when route-escalate reports escalate=false."
     }
   ]
 }
