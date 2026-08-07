@@ -521,5 +521,5 @@ case "$cmd" in
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|capability|waves|decision-rules|scale|route-escalate} ..." ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|capability|waves|decision-rules|scale|route-escalate} ..." ;;
 esac
