@@ -1,9 +1,10 @@
 ---
 name: 2026-08-07-kernel-bound-state-tiers
-status: active
-owner: Ricardo Fagmer
+status: done
+owner: ricardo
 spec: n/a — one defect found while demonstrating the system, fixed in the two files that hold it; below non-negotiable #1's threshold
 domain: general
+completed: 2026-08-07
 ---
 
 ## What
