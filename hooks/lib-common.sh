@@ -72,6 +72,29 @@ runner_detect() {
   else                                     RUN="npm run";  EXEC="npx --no-install"; fi
 }
 
+# ensure_modern_node -> best-effort PATH fix, then echoes the resolved node
+# major version (0 if none). Hooks inherit the launching app's PATH, which can
+# resolve an ancient node (observed: an nvm v16 bin dir stacked FIRST on a
+# PATH accumulated across years of nvm switches) — under it, npm-run tooling
+# dies on missing runtime APIs (structuredClone, util.styleText) and the Stop
+# gate misreads that infra gap as a red check. If PATH's node is <20 and an
+# nvm default alias exists, prepend that version's bin. Callers decide what
+# to do with the returned major (stop-verify skips as infra below 18).
+ensure_modern_node() {
+  local major def nvm_bin
+  major=$(node -v 2>/dev/null | sed 's/^v//; s/\..*//')
+  if [ "${major:-0}" -lt 20 ] && [ -f "$HOME/.nvm/alias/default" ]; then
+    def=$(cat "$HOME/.nvm/alias/default" 2>/dev/null)
+    nvm_bin=$(ls -d "$HOME/.nvm/versions/node/v${def}"*/bin 2>/dev/null | tail -1)
+    if [ -n "$nvm_bin" ] && [ -x "$nvm_bin/node" ]; then
+      PATH="$nvm_bin:$PATH"
+      export PATH
+      major=$(node -v 2>/dev/null | sed 's/^v//; s/\..*//')
+    fi
+  fi
+  echo "${major:-0}"
+}
+
 # git_dir <cwd> -> echoes the absolute .git dir for cwd. Uses `git rev-parse`
 # (not string-gluing "$repo/.git") so linked worktrees — whose .git is a file,
 # not a directory — resolve correctly.

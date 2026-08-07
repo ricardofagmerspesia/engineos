@@ -281,6 +281,24 @@ printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id"
 [ ! -e "$T/.git/engineos-telemetry" ] && ok || no "case15 ENGINEOS_TELEMETRY=0-writes-no-file"
 rm -rf "$T" "$TSCRIPT"
 
+# ---------- Case 16: ancient node with no nvm rescue — infra skip, no block ----------
+# The hook inherits the launcher's PATH; a v16-first PATH must skip verification
+# (structuredClone missing — tooling cannot start) instead of blocking on it.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+OLDBIN=$(mktemp -d)
+printf '#!/bin/sh\necho v16.17.0\n' > "$OLDBIN/node"; chmod +x "$OLDBIN/node"
+FAKEHOME=$(mktemp -d)   # no .nvm — the rescue is unavailable
+DEC=$(printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"nodesmoke"}' "$T" "$TSCRIPT" \
+  | HOME="$FAKEHOME" PATH="$OLDBIN:$PATH" bash "$DIR/stop-verify.sh" 2>/dev/null \
+  | jq -r '.decision // empty' 2>/dev/null)
+rm -rf "$T" "$TSCRIPT" "$OLDBIN" "$FAKEHOME"
+[ -z "$DEC" ] && ok || no "case16 ancient-node-infra-skip: expected no block, got '$DEC'"
+
 echo "---"
 echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

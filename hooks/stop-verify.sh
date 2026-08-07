@@ -70,6 +70,13 @@ fi
 HAS_NX=0
 [ -f "$ROOT/nx.json" ] && HAS_NX=1
 
+# A runtime too old to run the toolchain is an infra gap, not a genuine red —
+# this hook's own charter. Try the nvm default first; if node is still <18
+# (no structuredClone — ESLint 9 and vitest cannot start), skip verification
+# entirely rather than blocking on failures no code edit can fix.
+NODE_MAJOR=$(ensure_modern_node)
+[ "${NODE_MAJOR:-0}" -lt 18 ] && exit 0
+
 runner_detect "$ROOT"
 
 # ---------- map files to unique package dirs ----------
