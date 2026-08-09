@@ -80,14 +80,34 @@ else
   fi
 fi
 
-# ---------- 4. Symlink skills ----------
+# ---------- 4. Symlink helper ----------
+# MSYS/Git Bash: `ln -sfn` fails with "Not a directory" when LINK_NAME already
+# exists as a symlink to a directory — it follows the link instead of replacing
+# it. Compare + rm + ln -s is portable. Glob sources may carry a trailing slash.
+link_idempotent() {
+  local src="$1" dest="$2"
+  src="${src%/}"
+  if [ -L "$dest" ]; then
+    local cur
+    cur="$(readlink "$dest" 2>/dev/null || true)"
+    cur="${cur%/}"
+    if [ "$cur" = "$src" ]; then
+      return 0
+    fi
+    rm -f "$dest"
+  elif [ -e "$dest" ]; then
+    return 1
+  fi
+  ln -s "$src" "$dest"
+}
+
+# ---------- 4a. Symlink skills ----------
 mkdir -p "$CLAUDE_DIR/skills"
 for skill in "$REPO_DIR"/skills/*/; do
   [ -d "$skill" ] || continue   # empty glob guard (no nullglob on bash 3.2)
   name=$(basename "$skill")
   target="$CLAUDE_DIR/skills/$name"
-  if [ -L "$target" ] || [ ! -e "$target" ]; then
-    ln -sfn "$skill" "$target"
+  if link_idempotent "$skill" "$target"; then
     echo "skill linked: $name"
   else
     warn "skip: $target exists and is not a symlink (local skill with same name?)"
@@ -100,8 +120,7 @@ for agent in "$REPO_DIR"/agents/*.md; do
   [ -e "$agent" ] || continue   # empty glob guard
   name=$(basename "$agent")
   target="$CLAUDE_DIR/agents/$name"
-  if [ -L "$target" ] || [ ! -e "$target" ]; then
-    ln -sfn "$agent" "$target"
+  if link_idempotent "$agent" "$target"; then
     echo "agent linked: ${name%.md}"
   else
     warn "skip: $target exists and is not a symlink"
@@ -120,8 +139,7 @@ if [ -d "$REPO_DIR/commands" ]; then
     [ -e "$cmd" ] || continue   # empty glob guard
     name=$(basename "$cmd")
     target="$CLAUDE_DIR/commands/$name"
-    if [ -L "$target" ] || [ ! -e "$target" ]; then
-      ln -sfn "$cmd" "$target"
+    if link_idempotent "$cmd" "$target"; then
       echo "command linked: /${name%.md}"
     else
       warn "skip: $target exists and is not a symlink"
