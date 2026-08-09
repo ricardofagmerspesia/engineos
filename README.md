@@ -85,7 +85,7 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/task-scale-advisor.sh` | Detects big-task / spec / design prompts and injects the fan-out + model-tier reminder (non-blocking) | UserPromptSubmit |
 | `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |
-| `hooks/post-edit-check.sh` | Typecheck+lint changed package after every AI edit | PostToolUse Edit\|Write |
+| `hooks/post-edit-check.sh` | Per-edit typecheck+lint — retired from default wiring (verification runs once at Stop); kept on disk as opt-in | not wired (opt-in) |
 | `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but nothing verified | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |

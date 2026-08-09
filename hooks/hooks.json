@@ -31,6 +31,15 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/route-before-change.sh"
           }
         ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/announce-agent-dispatch.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -40,10 +49,15 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/mark-unrecorded.sh"
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-edit-check.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/announce-agent-return.sh"
           }
         ]
       }

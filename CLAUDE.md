@@ -13,14 +13,16 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/memory.md
 @rules/parallelism.md
 @rules/models.md
+@rules/subagents.md
 
 ## Router — classify before acting
 
 Before any substantive task (anything that creates/modifies code, designs, or docs),
 classify the intent and load the matching rules/skills listed below using the Read tool
-(rules) and Skill tool (skills). Then announce in one line what was loaded:
+(rules) and Skill tool (skills), and dispatch the agents the matched rows name.
+Then announce in one line what was loaded:
 
-`[router] intent=<intent> loaded=<rules/skills>`
+`[router] intent=<intent> loaded=<rules/skills> agent=<agents dispatched|none>`
 
 Rules for routing:
 - Multiple intents can match — load all that apply, in table order.
@@ -31,6 +33,9 @@ Rules for routing:
   `git.md`, …) are always available and never point outward; only non-always-on files
   point, and only at always-on files or at files loaded in the same row.
 - Unknown intent → proceed with always-on rules only. Never block on routing.
+- **A row that names an agent means dispatch it**, not "mention it". Doing the
+  work inline when a row names `agent:<x>` is a defect — see `rules/subagents.md`
+  for dispatch and for the green, line-broken announcement format every agent gets.
 - Pure questions/explanations need no routing — answer directly.
 - Rules paths are relative to this file's directory.
 - After the work is delivered, offer the output artifact — see **Output artifact** below.
@@ -102,7 +107,11 @@ Rules:
 ## Non-negotiables (apply regardless of routing)
 
 1. Spec before code for any change touching >2 files or any new feature.
-2. Verification before "done": typecheck + lint + relevant tests, with output shown.
+2. Verification at task finalization, before "done": typecheck + lint + relevant tests
+   run ONCE, after the last unit of work is integrated, with output shown. Never
+   mid-task — no per-edit, per-file, or per-wave test runs stalling the build loop
+   (`rules/testing.md` "Verification timing"). Deferring the gate to the end makes it
+   more mandatory there, not optional: red means fix loop until green.
 3. No secrets in code, config, or commits. Ever. See `rules/security.md`.
 4. Follow existing project conventions over these rules when they conflict —
    project `CLAUDE.md` > EngineOS > defaults.
@@ -116,10 +125,18 @@ Rules:
    the build tier (`sonnet`), mechanical work on the cheap tier (`haiku`). The tier is the
    contract, the model name is today's binding — rebind when a stronger model ships.
    Never trade correctness for cost.
-7. Parallel by default per `rules/parallelism.md`: when work splits into independent
-   units (>3 files, >1 domain, ≥3 unblocked tasks, any sweep), freeze the shared
-   contracts, then dispatch a whole wave of agents in ONE message over disjoint file
-   scopes. Doing independent units serially is a defect, not a style choice.
-8. Offer the output artifact after every request per **Output artifact** above: scaffold,
+7. Decompose and distribute per `rules/parallelism.md`: every substantive task starts
+   as a task list, and every task without an in-flight dependency goes to a sub-agent —
+   freeze the shared contracts, then dispatch the whole wave in ONE message over
+   disjoint file scopes. The orchestrator handles contracts, dispatch, integration,
+   and the final verification gate; doing distributable tasks inline or serially is
+   a defect, not a style choice.
+8. Sub-agents per `rules/subagents.md`: when a router row names an agent, that agent
+   is dispatched — inlining the work instead is a defect. Every dispatch and every
+   return is announced in a green `diff`-fenced block on its own line, blank line
+   above and below, one line per agent, so which agent is working is always visible.
+   This file is the standing user request for sub-agent use; a harness that waits to
+   be asked has been asked here.
+9. Offer the output artifact after every request per **Output artifact** above: scaffold,
    flowchart, and "no artifact" are eligible for any task; reusable template and UI/UX design
    only for frontend and mobile intents. Options that don't fit the task are not offered.

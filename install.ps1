@@ -242,7 +242,6 @@ function New-HookCommand([string]$ScriptPath) {
 }
 
 $hookPaths = @{
-    post   = ToUnixPath (Join-Path $hooksDir 'post-edit-check.sh')
     stop   = ToUnixPath (Join-Path $hooksDir 'stop-verify.sh')
     route  = ToUnixPath (Join-Path $hooksDir 'route-before-change.sh')
     mark   = ToUnixPath (Join-Path $hooksDir 'mark-unrecorded.sh')
@@ -308,7 +307,9 @@ Remove-EngineOSHooks $settingsObj (ToUnixPath $hooksDir)
 
 Add-HookEntry $settingsObj 'PreToolUse'       'Edit|Write' (New-HookCommand $hookPaths.route)
 Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.mark)
-Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.post)
+# per-edit gate (post-edit-check.sh) retired: verification runs once at Stop
+# (rules/testing.md "Verification timing"); Remove-EngineOSHooks above already
+# strips any previously installed entry for it.
 Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.stop)
 Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.record)
 Add-HookEntry $settingsObj 'SessionStart'     ''           (New-HookCommand $hookPaths.ensure)

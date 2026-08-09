@@ -1,19 +1,25 @@
 # Parallel Execution Rules — always on
 
-Big work fans out. Parallel is the default for independent work; sequential is a
-choice you justify, not a habit.
+Every substantive task starts as a task list and gets distributed. Parallel is
+the default; sequential is a choice you justify, not a habit. One agent grinding
+through a list alone is a defect when the list could have been split.
 
-## Fan-out trigger
+## Decompose-and-distribute — the default
 
-Fan out when **any** of these holds:
+For ANY substantive task (anything that creates or modifies code, config, or
+docs beyond a single small edit):
 
-- The task touches **>3 files** or **more than one domain** (backend/frontend/mobile/dba/devops/llm).
-- The spec/plan has **≥3 tasks with no dependency between them**.
-- The work is a **sweep**: rename/migrate/refactor across many call sites, audit across modules, test backfill across files.
-- The work is **read-heavy exploration** of several independent areas.
+1. **Create the task list first** — break the request into named tasks (TaskCreate
+   or the plan's task list) before writing any code.
+2. **Distribute among agents always** — every task that doesn't depend on another
+   in-flight task goes to a sub-agent. Two independent tasks = two agents in one
+   message, not one agent doing both.
+3. The orchestrator's job is contracts, dispatch, integration, and the final
+   verification gate — not doing the tasks inline.
 
-Do NOT fan out when: single file, fewer than 3 units of work, the goal is still
-vague (brainstorm first), or every step feeds the next one.
+Do NOT fan out only when: pure question/explanation, a single-line mechanical
+edit, the goal is still vague (brainstorm first), or every step genuinely feeds
+the next one (inherently serial chain — say so explicitly).
 
 ## Procedure
 
@@ -24,14 +30,19 @@ vague (brainstorm first), or every step feeds the next one.
    see `rules/models.md`) and written down BEFORE any fan-out. Parallel agents
    consume contracts; they never negotiate them mid-flight.
 3. **Group into waves** by dependency. Inside a wave: parallel. Between waves: a
-   barrier — integrate and verify before the next wave starts.
+   barrier — integrate before the next wave starts.
 4. **Dispatch a whole wave in ONE message** — multiple Task/Agent calls in the same
    assistant turn. Sequential dispatch of independent agents is a defect.
 5. **Brief each agent** with: MODE (AUDIT|IMPLEMENT), exact file scope it owns,
    the frozen contracts, the model per `rules/models.md`, its rules to follow, and
-   the output format expected back.
-6. **Integrate + verify** at each barrier: typecheck + lint + tests, output shown
-   (`superpowers:verification-before-completion`).
+   the output format expected back. Tell IMPLEMENT agents NOT to run the test
+   suite themselves — they write code and tests; execution belongs to the final
+   gate (`rules/testing.md` "Verification timing").
+6. **Integrate** at each barrier: wire the pieces, resolve contract drift, keep
+   moving. **Verify once at the FINAL barrier**: typecheck + lint + tests, output
+   shown (`superpowers:verification-before-completion`). Intermediate barriers do
+   not run the suite — mid-task verification stalls the pipeline
+   (`rules/testing.md` "Verification timing").
 
 ## Hard rules
 

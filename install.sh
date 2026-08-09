@@ -127,10 +127,17 @@ if command -v jq >/dev/null 2>&1; then
       | (if ([.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length) == 0
          then .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}]
          else . end);
+    # removal: strip cmd wherever a previous install added it, dropping emptied entries
+    def drop($event; $cmd):
+      .hooks[$event] //= []
+      | .hooks[$event] |= (map(.hooks |= map(select(.command != $cmd)))
+                           | map(select((.hooks | length) > 0)));
     .hooks //= {}
     | add("PreToolUse";  "Edit|Write"; $route)
     | add("PostToolUse"; "Edit|Write"; $mark)
-    | add("PostToolUse"; "Edit|Write"; $post)
+    # per-edit gate retired: verification runs once at Stop (rules/testing.md
+    # "Verification timing") — drop stale wiring from earlier installs
+    | drop("PostToolUse"; $post)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)
@@ -155,7 +162,6 @@ if command -v jq >/dev/null 2>&1; then
 else
   warn "jq not found — add hooks manually to $SETTINGS:"
   warn "  PreToolUse  matcher 'Edit|Write' -> $REPO_DIR/hooks/route-before-change.sh"
-  warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/post-edit-check.sh"
   warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/mark-unrecorded.sh"
   warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"

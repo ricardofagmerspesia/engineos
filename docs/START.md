@@ -132,7 +132,6 @@ These run on their own. Know what they do and how to respond:
 | Hook | Fires | What you do |
 |---|---|---|
 | `route-before-change` | before each edit | nothing — read the injected `[router]` line; follow it |
-| `post-edit-check` | after each edit | nothing — fix any typecheck/lint failure it surfaces |
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
 | `stop-verify` | when finishing | if it blocks: run typecheck + lint + tests, show output |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |

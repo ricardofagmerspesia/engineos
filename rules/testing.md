@@ -27,7 +27,25 @@
 - DO mock at architectural boundaries only (external APIs, clock, random, queues).
 - DON'T mock what you own and can run (your own services, in-memory logic) — too many mocks = testing your mocks.
 
+## Verification timing — test at finalization, not mid-flight
+- DO run the full verification pass (lint + typecheck + tests) ONCE, at task
+  finalization — after the last unit of work is integrated, before claiming done
+  (`superpowers:verification-before-completion`). The `Stop` hook
+  (`hooks/stop-verify.sh`) is the automated gate for exactly this moment.
+- DON'T block the build loop with verification mid-task: no test/typecheck run per
+  edit, per file, or per intermediate step. Write freely; verify at the end.
+- DON'T ship without the final pass either — deferring verification to the end
+  makes it MORE mandatory there, not optional. Red at the gate means a fix loop
+  until green, with output shown.
+- Wave barriers (`rules/parallelism.md`) integrate contracts; they do not each run
+  the full suite. Only the FINAL barrier of a task runs verification.
+- Exception: a bug fix's regression test may be run in isolation to confirm the
+  failure is captured — one targeted test file, not the suite.
+
 ## Process
-- When implementing features/fixes, follow TDD via `superpowers:test-driven-development`: red → green → refactor.
-- DO keep the suite fast enough to run on every change (unit suite <30s); slow tests get tagged and run in CI.
+- When implementing features/fixes, write tests alongside the code
+  (`superpowers:test-driven-development` for the design discipline), but defer
+  suite execution to task finalization per **Verification timing** above.
+- DO keep the suite fast (unit suite <30s) so the finalization gate stays cheap;
+  slow tests get tagged and run in CI.
 - Flaky test = broken test. Fix or delete within the week; never retry-until-green.
