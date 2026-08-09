@@ -180,9 +180,10 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 
 ## 7. Rules — the standards being enforced
 
-- **Always-on:** `rules/base.md`, `security.md`, `git.md`, `memory.md`.
+- **Always-on:** `rules/base.md`, `security.md`, `git.md`, `parallelism.md`,
+  `models.md`, `subagents.md`.
 - **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
-  `llm-apps.md`, `testing.md`, `data.md`, `observability.md`.
+  `llm-apps.md`, `testing.md`, `data.md`, `observability.md`, `memory.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.
 - **Project `CLAUDE.md` overrides EngineOS** where they conflict.
 

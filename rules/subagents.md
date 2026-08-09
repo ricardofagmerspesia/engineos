@@ -51,17 +51,5 @@ On return:
 tier each agent runs at. This file decides that the agent runs and that the user
 can see it. All three apply together.
 
-## Enforcement backstop (Claude Code)
-
-This announcement rule used to be prose-only, and prose-only rules drift — dispatches
-were happening silently with no banner. `hooks/hooks.json` now wires
-`PreToolUse`/`PostToolUse` matchers on `Agent|Task` to `hooks/announce-agent-dispatch.sh`
-and `hooks/announce-agent-return.sh`, the same pattern `route-before-change.sh` uses to
-backstop file-routing on `Edit|Write`. Each hook re-injects the exact banner format as
-`additionalContext` right at dispatch/return time, so the model is reminded in the
-moment instead of relying on having read this file once. Smoke test:
-`hooks/test-agent-announce.sh`.
-
-Cursor has no hook system and no EngineOS agent registry, so there is no equivalent
-backstop there — `.cursor/rules/subagent-dispatch.mdc` mirrors this convention
-prompt-only, best-effort.
+Enforced at the hook level, not by prose alone: `hooks/announce-agent-dispatch.sh` and
+`announce-agent-return.sh` re-inject the banner at dispatch/return time. See README.
