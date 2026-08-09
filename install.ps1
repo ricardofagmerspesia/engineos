@@ -83,18 +83,38 @@ if (Test-Path $Settings) {
 }
 
 # ---------- 3. Import EngineOS constitution into global CLAUDE.md ----------
+# Absolute @.../CLAUDE.md lines are installer-managed and refreshed on re-run
+# (repo moved, reclone, bash vs PowerShell path form). Personal prose and
+# relative @imports are left untouched.
 New-Item -ItemType Directory -Force -Path $ClaudeDir | Out-Null
 $ImportLine = "@$RepoDir\CLAUDE.md"
 $ClaudeMdPath = Join-Path $ClaudeDir 'CLAUDE.md'
 if (-not (Test-Path $ClaudeMdPath)) {
     New-Item -ItemType File -Path $ClaudeMdPath | Out-Null
 }
-$claudeContent = Get-Content $ClaudeMdPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-if ($claudeContent -and $claudeContent.Contains($ImportLine)) {
-    Write-Host "CLAUDE.md import already present."
+$claudeLines = @(Get-Content $ClaudeMdPath -Encoding UTF8 -ErrorAction SilentlyContinue)
+$importRe = '^@\S+[/\\]CLAUDE\.md\s*$'
+$managed = @($claudeLines | Where-Object { $_ -match $importRe })
+$alreadyCurrent = ($managed.Count -eq 1) -and ($managed[0] -eq $ImportLine)
+if ($alreadyCurrent) {
+    Write-Host "CLAUDE.md import already up to date."
 } else {
-    Add-Content -Path $ClaudeMdPath -Value "`n$ImportLine" -Encoding UTF8
-    Write-Green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+    $kept = @($claudeLines | Where-Object { $_ -notmatch $importRe })
+    # drop trailing blank lines so we don't accumulate empties across re-runs
+    while ($kept.Count -gt 0 -and [string]::IsNullOrWhiteSpace($kept[-1])) {
+        $kept = $kept[0..($kept.Count - 2)]
+    }
+    if ($kept.Count -gt 0) {
+        $newContent = ($kept -join "`n") + "`n`n" + $ImportLine + "`n"
+    } else {
+        $newContent = $ImportLine + "`n"
+    }
+    Set-Content -Path $ClaudeMdPath -Value $newContent -Encoding UTF8 -NoNewline
+    if ($managed.Count -gt 0) {
+        Write-Green "Updated EngineOS import in ~/.claude/CLAUDE.md -> $ImportLine"
+    } else {
+        Write-Green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+    }
 }
 
 # ---------- Helper: create a symlink/junction idempotently ----------

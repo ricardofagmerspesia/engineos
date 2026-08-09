@@ -21,8 +21,9 @@ If none is given, infer: a question or "review/analyze" → AUDIT; an explicit t
 
 ## Rules to apply
 
-Follow `rules/architecture.md`, `rules/backend.md`, `rules/testing.md`, and the
-`nestjs-patterns` skill conventions. Project `CLAUDE.md` overrides EngineOS.
+Follow `rules/architecture.md`, `rules/backend.md`, `rules/testing.md` (tests are
+opt-in — see "Tests are opt-in" in that file), and the `nestjs-patterns` skill
+conventions. Project `CLAUDE.md` overrides EngineOS.
 
 ## Method
 
@@ -32,7 +33,9 @@ Follow `rules/architecture.md`, `rules/backend.md`, `rules/testing.md`, and the
    authz, parameterized queries, pagination, background jobs for slow work,
    typed domain errors, no secrets in logs.
 3. AUDIT: collect findings with evidence. IMPLEMENT: make the smallest correct
-   change; add/adjust tests; run typecheck + lint + relevant tests and show output.
+   change; verify with lint + typecheck and show output. Write or run tests only
+   when the dispatch brief marks them in scope (`rules/testing.md` "Tests are
+   opt-in") — otherwise state `[tests] skipped — not requested`.
 
 ## Output (shared specialist format)
 
@@ -63,4 +66,7 @@ You may be one of several agents running at the same time on the same repo.
   unilaterally; parallel siblings are coding against it.
 - **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
 - **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped typecheck/lint/test runs.
+  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
+  add tests to that run only if they were marked in scope for this dispatch
+  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
+  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).

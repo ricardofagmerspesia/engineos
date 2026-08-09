@@ -1,10 +1,66 @@
 # Testing Rules
 
-## What must be tested (P0 — no merge without)
+## Tests are opt-in — the default is NO tests
+
+EngineOS does not write tests and does not run test suites unless asked. Test
+work is real work: it gets requested, scoped, and paid for like any other task,
+never smuggled into every change. Automatic test authoring and reflexive suite
+runs were the main thing stalling the build loop; they are gone.
+
+**Tests are ON for a task only when one of these holds:**
+- The user asks — "write tests", "add coverage", "integration tests for X",
+  "E2E", "TDD this", "run the suite".
+- The project's own `CLAUDE.md` requires tests for the area being touched
+  (project conventions beat EngineOS defaults).
+- A test agent is dispatched on purpose: `test-writer` (alias `ameer`) or
+  `qa-tester` (alias `qa`).
+- The user named a release/merge gate that includes tests.
+
+**Otherwise: write no tests, run no suite.** State the omission in one line so it
+is never silent:
+
+`[tests] skipped — not requested`
+
+- DON'T author "just a couple of quick tests" beside a feature nobody asked to
+  test, and don't scaffold a test file "for later".
+- DON'T run the suite to "check nothing broke". Lint, typecheck, and the user's
+  own review carry that load by default.
+- DON'T delete, skip, `.only`, or weaken EXISTING tests to make a gate pass. Code
+  you didn't touch keeps its tests. If a change genuinely invalidates a test, say
+  so and ask — never silently neutralize it.
+- Bug fixes: a regression test is RECOMMENDED, not automatic. Offer it in one
+  line ("this fix ships without a regression test — want one?") and move on
+  unless the user takes it up.
+- When in doubt, ask before writing tests — never write them and ask after.
+
+## Verification timing — lint + typecheck at finalization
+
+- The finalization gate is **lint + typecheck**, run ONCE, after the last unit of
+  work is integrated, with output shown
+  (`superpowers:verification-before-completion`). The `Stop` hook
+  (`hooks/stop-verify.sh`) automates exactly this.
+- Tests join that gate ONLY when tests were ON for the task per the section
+  above. Then they run once, at the same moment — never per edit, per file, or
+  per wave.
+- `ENGINEOS_VERIFY_TESTS=1` forces tests back into the Stop gate for a team,
+  project, or session that wants them there unconditionally.
+- Never mid-task: no test/typecheck run per edit or per intermediate step. Write
+  freely; verify at the end.
+- Narrowing the gate makes what remains MORE mandatory, not optional. Red means a
+  fix loop until green, with output shown.
+- Wave barriers (`rules/parallelism.md`) integrate contracts; only the FINAL
+  barrier verifies.
+
+---
+
+Everything below is craft guidance for **when tests are ON**. None of it is a
+trigger to write tests.
+
+## What to cover first (when asked for coverage without a named target)
 - Business logic: calculations, state transitions, domain rules.
 - Trust boundaries: input validation, authz checks.
-- Bug fixes: every fix ships with a test that fails without the fix.
 - Public contracts: API response shapes, exported library functions.
+- The specific bug, when writing a regression test: it must fail without the fix.
 
 ## What not to test
 - Framework internals, ORMs, third-party libs.
@@ -14,6 +70,8 @@
 ## Pyramid
 - Many fast unit tests (pure logic, no I/O) → fewer integration tests (module + real DB via testcontainers or API + mocked externals) → few E2E happy-path tests.
 - DON'T invert it: an E2E-heavy suite is slow, flaky, and pins implementation.
+- When the user asks specifically for **integration tests**, build those and stop
+  there — don't backfill a unit layer they didn't ask for.
 
 ## Writing tests
 - DO follow Arrange-Act-Assert; one behavior per test.
@@ -27,25 +85,9 @@
 - DO mock at architectural boundaries only (external APIs, clock, random, queues).
 - DON'T mock what you own and can run (your own services, in-memory logic) — too many mocks = testing your mocks.
 
-## Verification timing — test at finalization, not mid-flight
-- DO run the full verification pass (lint + typecheck + tests) ONCE, at task
-  finalization — after the last unit of work is integrated, before claiming done
-  (`superpowers:verification-before-completion`). The `Stop` hook
-  (`hooks/stop-verify.sh`) is the automated gate for exactly this moment.
-- DON'T block the build loop with verification mid-task: no test/typecheck run per
-  edit, per file, or per intermediate step. Write freely; verify at the end.
-- DON'T ship without the final pass either — deferring verification to the end
-  makes it MORE mandatory there, not optional. Red at the gate means a fix loop
-  until green, with output shown.
-- Wave barriers (`rules/parallelism.md`) integrate contracts; they do not each run
-  the full suite. Only the FINAL barrier of a task runs verification.
-- Exception: a bug fix's regression test may be run in isolation to confirm the
-  failure is captured — one targeted test file, not the suite.
-
 ## Process
-- When implementing features/fixes, write tests alongside the code
-  (`superpowers:test-driven-development` for the design discipline), but defer
-  suite execution to task finalization per **Verification timing** above.
-- DO keep the suite fast (unit suite <30s) so the finalization gate stays cheap;
-  slow tests get tagged and run in CI.
+- `superpowers:test-driven-development` is the discipline to follow when the user
+  asks for TDD or for tests up front — not a default mode for every feature.
+- DO keep the suite fast (unit suite <30s) so that running it, when asked, stays cheap.
 - Flaky test = broken test. Fix or delete within the week; never retry-until-green.
+- Run tests when they are ON at finalization only, per **Verification timing**.

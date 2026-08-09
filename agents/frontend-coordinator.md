@@ -20,8 +20,9 @@ request (analyze → AUDIT; "add/fix/build" → IMPLEMENT).
 
 ## Rules to apply
 
-Follow `rules/architecture.md`, `rules/frontend.md`, `rules/testing.md`, and the
-`react-patterns` skill. Project `CLAUDE.md` overrides EngineOS.
+Follow `rules/architecture.md`, `rules/frontend.md`, `rules/testing.md` (tests are
+opt-in — see "Tests are opt-in" in that file), and the `react-patterns` skill.
+Project `CLAUDE.md` overrides EngineOS.
 
 ## Method
 
@@ -30,8 +31,10 @@ Follow `rules/architecture.md`, `rules/frontend.md`, `rules/testing.md`, and the
 2. Check: server/client component boundaries, accessibility (roles, labels,
    keyboard, contrast), no untrusted HTML injection, memoization where it pays,
    form validation, bundle/perf hygiene.
-3. AUDIT: findings with evidence. IMPLEMENT: smallest correct change, adjust
-   tests, run typecheck + lint + relevant tests, show output.
+3. AUDIT: findings with evidence. IMPLEMENT: smallest correct change; verify with
+   lint + typecheck, show output. Adjust or run tests only when the dispatch
+   brief marks them in scope (`rules/testing.md` "Tests are opt-in") —
+   otherwise state `[tests] skipped — not requested`.
 
 ## Output (shared specialist format)
 
@@ -61,4 +64,7 @@ You may be one of several agents running at the same time on the same repo.
   unilaterally; parallel siblings are coding against it.
 - **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
 - **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped typecheck/lint/test runs.
+  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
+  add tests to that run only if they were marked in scope for this dispatch
+  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
+  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).

@@ -33,6 +33,13 @@ Rules for routing:
   `git.md`, …) are always available and never point outward; only non-always-on files
   point, and only at always-on files or at files loaded in the same row.
 - Unknown intent → proceed with always-on rules only. Never block on routing.
+- **Bypass short-circuits everything below.** When `/engineos:bypass` is on, the
+  `UserPromptSubmit` hook injects `[engineos] BYPASS ACTIVE` on every turn. On seeing
+  it: skip this table, emit no `[router]` line, dispatch no agents, skip the spec gate,
+  the change record, and the output-artifact offer — and open your reply with
+  `[engineos] bypassed` so the user knows the guardrails are down. The rule files stay
+  in context (nothing can unload a `CLAUDE.md` import); treat them as not applicable.
+  The bypass expires at the next SessionStart.
 - **A row that names an agent means dispatch it**, not "mention it". Doing the
   work inline when a row names `agent:<x>` is a defect — see `rules/subagents.md`
   for dispatch and for the green, line-broken announcement format every agent gets.
@@ -78,10 +85,10 @@ Rules for routing:
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
 | Business / career strategy — market opportunity ("where is this market going", "before competitors"), skill learning path ("what do I learn, in what order"), blocked non-technical decision ("X or Y and I can't decide"), positioning & perceived authority, monetizing existing assets | skill `strategy` — five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to `docs/strategy/`. Technical "X vs Y" stays with `adr`; `strategy` handles business/career/positioning decisions |
 | Review / pre-merge ("review", "is this safe", PR URL) | code-review skill; if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
-| Test writing ("write tests", "add coverage", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets |
+| Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets. This row IS the opt-in path — tests get written/run here, on request, never implicitly by other rows |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | skill `eval-harness` |
 | Claiming done / complete / fixed | `superpowers:verification-before-completion` — evidence before assertion, always |
-| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | `superpowers:verification-before-completion` — lint + typecheck + build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
+| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | `superpowers:verification-before-completion` — lint + typecheck + build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck by default, tests only when ON per `rules/testing.md`, and on an unrecorded change record |
 
 ## Output artifact — offer after every request
 
@@ -107,11 +114,13 @@ Rules:
 ## Non-negotiables (apply regardless of routing)
 
 1. Spec before code for any change touching >2 files or any new feature.
-2. Verification at task finalization, before "done": typecheck + lint + relevant tests
-   run ONCE, after the last unit of work is integrated, with output shown. Never
-   mid-task — no per-edit, per-file, or per-wave test runs stalling the build loop
-   (`rules/testing.md` "Verification timing"). Deferring the gate to the end makes it
-   more mandatory there, not optional: red means fix loop until green.
+2. Verification at task finalization, before "done": lint + typecheck run ONCE,
+   after the last unit of work is integrated, with output shown. Tests join that
+   gate only when they were ON for the task per `rules/testing.md` "Tests are
+   opt-in". Never mid-task — no per-edit, per-file, or per-wave runs stalling the
+   build loop (`rules/testing.md` "Verification timing"). Deferring the gate to
+   the end makes it more mandatory there, not optional: red means fix loop until
+   green.
 3. No secrets in code, config, or commits. Ever. See `rules/security.md`.
 4. Follow existing project conventions over these rules when they conflict —
    project `CLAUDE.md` > EngineOS > defaults.

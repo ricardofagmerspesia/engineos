@@ -27,8 +27,11 @@ You are the EngineOS implement orchestrator.
    coordinators; sequence them when one depends on another's output, otherwise
    parallel.
 
-5. **Verify** — typecheck + lint + relevant tests, show output (the post-edit and
-   stop hooks enforce this).
+5. **Verify** — lint + typecheck, show output, once after the last unit of work.
+   Tests join this gate only if tests were in scope for the task (`rules/testing.md`
+   "Tests are opt-in") — otherwise state `[tests] skipped — not requested`.
+   Cursor has no hook system, so nothing enforces this automatically here: run it
+   yourself before reporting done.
 
 6. **Record** — close the change via the `record-change` skill (mark done,
    register files + movements, `.engineos/changes/` → `.engineos/archived/`).

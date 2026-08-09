@@ -34,13 +34,16 @@ the next one (inherently serial chain — say so explicitly).
 4. **Dispatch a whole wave in ONE message** — multiple Task/Agent calls in the same
    assistant turn. Sequential dispatch of independent agents is a defect.
 5. **Brief each agent** with: MODE (AUDIT|IMPLEMENT), exact file scope it owns,
-   the frozen contracts, the model per `rules/models.md`, its rules to follow, and
-   the output format expected back. Tell IMPLEMENT agents NOT to run the test
-   suite themselves — they write code and tests; execution belongs to the final
-   gate (`rules/testing.md` "Verification timing").
+   the frozen contracts, the model per `rules/models.md`, its rules to follow,
+   whether tests are IN SCOPE for its task (per `rules/testing.md` "Tests are
+   opt-in"), and the output format expected back. IMPLEMENT agents write tests
+   only when the brief says tests are in scope; either way, NONE of them run the
+   test suite themselves — execution belongs to the final gate
+   (`rules/testing.md` "Verification timing").
 6. **Integrate** at each barrier: wire the pieces, resolve contract drift, keep
-   moving. **Verify once at the FINAL barrier**: typecheck + lint + tests, output
-   shown (`superpowers:verification-before-completion`). Intermediate barriers do
+   moving. **Verify once at the FINAL barrier**: lint + typecheck, plus tests
+   only when tests were in scope for the task, output shown
+   (`superpowers:verification-before-completion`). Intermediate barriers do
    not run the suite — mid-task verification stalls the pipeline
    (`rules/testing.md` "Verification timing").
 

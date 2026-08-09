@@ -67,8 +67,11 @@ internal testing / beta" → BETA; "release / production / roll out" → RELEASE
    the explicit version passed in — never guess a bump.
 4. **Dependencies.** `npm ci` (or yarn/pnpm per lockfile); let Gradle resolve
    the rest during build.
-5. **Quality gates.** Typecheck + lint + tests per project config. A red gate
-   stops the pipeline — report the failure, do not ship around it.
+5. **Quality gates.** Lint + typecheck + the project's configured test gate. A
+   store submission is a release gate, which is one of the cases that turns tests
+   ON (`rules/testing.md` "Tests are opt-in") — run them here even though ordinary
+   changes do not. A red gate stops the pipeline: report the failure, do not ship
+   around it.
 6. **Build.** `./gradlew bundleRelease` — signed AAB (Play requires AAB, not
    APK) with R8/minify per project config; copy to `build/android/`. Keep
    `mapping.txt` for step 7. Build an APK only if explicitly asked for direct

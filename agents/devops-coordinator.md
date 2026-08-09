@@ -33,7 +33,10 @@ Project `CLAUDE.md` overrides EngineOS.
    rollback path, the four golden signals wired (latency/traffic/errors/
    saturation), supply-chain (unpinned `npx -y`/`uvx`).
 3. AUDIT: findings with evidence. IMPLEMENT: smallest correct change, validated by
-   the relevant linter/plan/dry-run, with output shown.
+   the relevant linter/plan/dry-run; verify with lint + typecheck, output shown.
+   Write or run tests only when the dispatch brief marks them in scope
+   (`rules/testing.md` "Tests are opt-in") — otherwise state
+   `[tests] skipped — not requested`.
 
 ## Output (shared specialist format)
 
@@ -63,4 +66,7 @@ You may be one of several agents running at the same time on the same repo.
   unilaterally; parallel siblings are coding against it.
 - **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
 - **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped typecheck/lint/test runs.
+  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
+  add tests to that run only if they were marked in scope for this dispatch
+  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
+  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).

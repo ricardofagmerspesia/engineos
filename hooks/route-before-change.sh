@@ -13,10 +13,14 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
+DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=hooks/bypass.sh
+. "$DIR/bypass.sh"
+engineos_bypass_active_for_payload "$INPUT" && exit 0
+
 FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
 [ -z "$FILE" ] && exit 0
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=hooks/routing-map.sh
 . "$DIR/routing-map.sh"
 

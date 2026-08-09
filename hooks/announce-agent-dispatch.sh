@@ -9,6 +9,10 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
+# shellcheck source=hooks/bypass.sh
+. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+engineos_bypass_active_for_payload "$INPUT" && exit 0
+
 TYPE=$(printf '%s' "$INPUT" | jq -r '.tool_input.subagent_type // .tool_input.agentType // "general-purpose"')
 DESC=$(printf '%s' "$INPUT" | jq -r '.tool_input.description // empty')
 

@@ -11,6 +11,10 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
+# shellcheck source=hooks/bypass.sh
+. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+engineos_bypass_active_for_payload "$INPUT" && exit 0
+
 # already blocked once this stop cycle -> let it through
 ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')
 [ "$ACTIVE" = "true" ] && exit 0

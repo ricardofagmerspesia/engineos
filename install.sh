@@ -46,14 +46,38 @@ if [ -f "$SETTINGS" ] && grep -Elq "$SECRET_PATTERNS" "$SETTINGS" >/dev/null 2>&
 fi
 
 # ---------- 3. Import EngineOS constitution into global CLAUDE.md ----------
+# Absolute @.../CLAUDE.md lines are installer-managed and refreshed on re-run
+# (repo moved, reclone, bash vs PowerShell path form). Personal prose and
+# relative @imports are left untouched.
 mkdir -p "$CLAUDE_DIR"
 IMPORT_LINE="@$REPO_DIR/CLAUDE.md"
-touch "$CLAUDE_DIR/CLAUDE.md"
-if grep -qF "$IMPORT_LINE" "$CLAUDE_DIR/CLAUDE.md"; then
-  echo "CLAUDE.md import already present."
+CLAUDE_MD="$CLAUDE_DIR/CLAUDE.md"
+IMPORT_RE='^@[^[:space:]]+[/\\]CLAUDE\.md[[:space:]]*$'
+touch "$CLAUDE_MD"
+
+managed="$(grep -E "$IMPORT_RE" "$CLAUDE_MD" 2>/dev/null || true)"
+if [ -n "$managed" ] && [ "$(printf '%s\n' "$managed" | grep -c .)" -eq 1 ] \
+   && printf '%s\n' "$managed" | grep -qF "$IMPORT_LINE"; then
+  echo "CLAUDE.md import already up to date."
 else
-  printf '\n%s\n' "$IMPORT_LINE" >> "$CLAUDE_DIR/CLAUDE.md"
-  green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+  tmp="$(mktemp)"
+  grep -vE "$IMPORT_RE" "$CLAUDE_MD" > "$tmp" 2>/dev/null || true
+  # drop trailing blank lines so we don't accumulate empties across re-runs
+  if [ -s "$tmp" ]; then
+    # portable strip of trailing blank lines (no GNU sed -i assumed)
+    cleaned="$(mktemp)"
+    awk 'NF { while (blank--) print ""; blank=0; print; next } { blank++ }' "$tmp" > "$cleaned"
+    mv "$cleaned" "$tmp"
+    printf '\n%s\n' "$IMPORT_LINE" >> "$tmp"
+  else
+    printf '%s\n' "$IMPORT_LINE" > "$tmp"
+  fi
+  mv "$tmp" "$CLAUDE_MD"
+  if [ -n "$managed" ]; then
+    green "Updated EngineOS import in ~/.claude/CLAUDE.md -> $IMPORT_LINE"
+  else
+    green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+  fi
 fi
 
 # ---------- 4. Symlink skills ----------

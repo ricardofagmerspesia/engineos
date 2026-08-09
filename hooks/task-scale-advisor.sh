@@ -12,6 +12,17 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
+# Bypass switch. Every other hook goes silent; this one speaks instead. A
+# governance system that is off must SAY it is off on every turn, or the user
+# forgets and reads unguarded work as guarded.
+# shellcheck source=hooks/bypass.sh
+. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+if engineos_bypass_active_for_payload "$INPUT"; then
+  jq -n --arg c "[engineos] BYPASS ACTIVE — routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness's own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run \`/engineos:bypass off\` to restore EngineOS." \
+    '{hookSpecificOutput:{hookEventName:"UserPromptSubmit", additionalContext:$c}}'
+  exit 0
+fi
+
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' | tr '[:upper:]' '[:lower:]')
 [ -z "$PROMPT" ] && exit 0
 

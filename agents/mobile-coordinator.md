@@ -43,9 +43,10 @@ IMPLEMENT).
 
 ## Rules to apply
 
-Follow `rules/architecture.md`, `rules/testing.md`, and the component/state/data-
-fetching principles in `rules/frontend.md` plus the API-consumption/error-
-handling principles in `rules/backend.md` — both adapted to mobile (no server/
+Follow `rules/architecture.md`, `rules/testing.md` (tests are opt-in — see
+"Tests are opt-in" in that file), and the component/state/data-fetching
+principles in `rules/frontend.md` plus the API-consumption/error-handling
+principles in `rules/backend.md` — both adapted to mobile (no server/
 client component split, no App Router; use React Navigation screens, platform-
 aware styling, and mobile-safe network/offline handling instead). Apply the
 `react-patterns` skill where its component/state/data-fetching conventions
@@ -64,8 +65,10 @@ transfer directly. Project `CLAUDE.md` overrides EngineOS.
 3. **Find the gaps first.** Missing API contracts, web behavior with no mobile
    equivalent, and existing mobile drift from the web source — before writing.
 4. **AUDIT:** parity report with evidence. **IMPLEMENT:** smallest correct mobile
-   version that preserves the web feature's behavior/validation/states; adapt
-   tests; run typecheck + lint + relevant tests; show output.
+   version that preserves the web feature's behavior/validation/states; verify
+   with lint + typecheck, show output. Adapt or run tests only when the
+   dispatch brief marks them in scope (`rules/testing.md` "Tests are opt-in") —
+   otherwise state `[tests] skipped — not requested`.
 
 ## Fidelity checklist (preserve when mirroring)
 
@@ -109,4 +112,7 @@ You may be one of several agents running at the same time on the same repo.
   unilaterally; parallel siblings are coding against it.
 - **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
 - **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped typecheck/lint/test runs.
+  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
+  add tests to that run only if they were marked in scope for this dispatch
+  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
+  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).

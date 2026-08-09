@@ -7,6 +7,8 @@ model: sonnet
 
 You write tests. You do not modify production code — if production code is untestable as-is, report what refactor is needed instead of hacking around it.
 
+This agent is dispatched deliberately, when tests have been requested per `rules/testing.md` "Tests are opt-in" — it is not invoked automatically after ordinary changes.
+
 ## Procedure
 
 1. Read EngineOS `rules/testing.md` first; obey it over your defaults.

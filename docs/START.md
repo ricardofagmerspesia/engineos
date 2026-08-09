@@ -103,6 +103,22 @@ and `/implement`; plugin mode namespaces them `/engineos:audit`.)
 `/audit` writes `docs/audits/<date>-<domain>.md` (verdict + root cause + plan).
 `/implement` is spec-gated and closes with a change record.
 
+**Escape hatch — `/bypass`.** Some work isn't worth the constitution: a throwaway
+script, a one-line spike, someone else's repo you're just poking at.
+
+```
+/bypass              # EngineOS off — no routing, no agents, no spec gate, no Stop gates
+/bypass status       # active | bypassed
+/bypass off          # back on
+```
+This is not a polite request to ignore the rules — it writes a marker file into the
+repo's git dir that every hook checks, so the gates genuinely stop firing. Two
+things stay true while it's on: the assistant tells you `[engineos] bypassed` on
+every turn (a silent bypass is the dangerous one), and the marker is deleted at the
+next SessionStart, so a bypass you forget about expires into gates-ON rather than
+persisting. Secrets hygiene and confirmation before destructive actions are not
+EngineOS rules and do not switch off.
+
 ---
 
 ## 4. MCPs — what powers the leaf specialists
@@ -133,10 +149,22 @@ These run on their own. Know what they do and how to respond:
 |---|---|---|
 | `route-before-change` | before each edit | nothing — read the injected `[router]` line; follow it |
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
-| `stop-verify` | when finishing | if it blocks: run typecheck + lint + tests, show output |
+| `stop-verify` | when finishing | if it blocks: run lint + typecheck, show output. Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
+
+Every hook in this table checks the bypass marker first and exits early when it is
+set — see `/bypass` in §3. That is the only supported way to silence them; editing
+`settings.json` to unwire a hook takes it off for good, not for one task.
+
+**Tests are opt-in, not automatic.** EngineOS writes no tests and runs no test
+suite unless you ask for them ("write tests", "add coverage", "TDD this", "run
+the suite"), your project's `CLAUDE.md` requires them, a test agent
+(`test-writer` / `qa-tester`) was dispatched on purpose, or you named a
+release/merge gate that includes tests. Otherwise the finalization gate is
+**lint + typecheck only** — see `rules/testing.md` for the full policy, and set
+`ENGINEOS_VERIFY_TESTS=1` to force tests back into the Stop gate unconditionally.
 
 ---
 
@@ -165,7 +193,7 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 ```
 open a record            → cp .engineos/changes/_template.md .engineos/changes/<date>-<slug>.md  (status: active)
    ↓ do the work (routing + gates active)
-verify                   → typecheck + lint + tests, output shown
+verify                   → lint + typecheck, output shown (tests too, only if in scope)
 record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/DD/
 ```
 This is what the Stop gates enforce. Distil any durable decision into `.engineos/memory/`.
@@ -179,7 +207,8 @@ This is what the Stop gates enforce. Distil any durable decision into `.engineos
 3. For >2 files / a new feature, brainstorming + a spec come first — go with it.
 4. Open a `.engineos/changes/` record.
 5. Implement (or `/implement backend ...`). Each edit gets routed guidance.
-6. Verify — show typecheck/lint/test output.
+6. Verify — show lint/typecheck output (add test output only if tests were
+   requested for this change).
 7. `record-change` to close and archive. Done.
 
 ## Cheat sheet — "I want to… → do…"
@@ -196,3 +225,4 @@ This is what the Stop gates enforce. Distil any durable decision into `.engineos
 | Add test coverage | `test-writer` agent |
 | Change a team standard | PR to the EngineOS repo (`CONTRIBUTING.md`) |
 | Know why a gate blocked me | §5 — verify or record, then finish |
+| Turn EngineOS off for one task | `/bypass` — and `/bypass off` when you're done |

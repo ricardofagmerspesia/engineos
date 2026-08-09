@@ -45,10 +45,14 @@ domain(s) from it rather than failing.
    (`sonnet` for code, `haiku` for mechanical units, `opus` when the unit still
    carries design risk). Same coordinator may be dispatched N times over different
    scopes — that is the normal way to parallelize inside one domain.
-   Between waves: integrate, then barrier-verify before the next wave.
+   Between waves: integrate only — intermediate barriers do not verify
+   (`rules/parallelism.md`); the gate in step 7 is the single verification point.
 
-7. **Verify** — typecheck + lint + relevant tests, show output (the post-edit and
-   stop hooks enforce this). Report any unit that failed by name; never let a green
+7. **Verify** — lint + typecheck, show output. Tests join this gate only if
+   tests were in scope for the task (`rules/testing.md` "Tests are opt-in") —
+   otherwise state `[tests] skipped — not requested`. The `Stop` hook
+   (`hooks/stop-verify.sh`) enforces this gate; there is no per-edit hook in
+   default wiring. Report any unit that failed by name; never let a green
    summary cover an incomplete unit.
 
 8. **Record** — close the change via the `record-change` skill (mark done,

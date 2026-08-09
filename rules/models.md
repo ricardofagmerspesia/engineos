@@ -17,6 +17,11 @@ The tier is the contract; the model name is just today's binding. **"Most capabl
 is a role, not a name** — when a newer or stronger model ships, rebind the tier to
 it and update this table. Same when a model is retired.
 
+The "tests" in the build-tier row is a tier assignment, not a mandate: tests get
+written only when they're in scope for the task per `rules/testing.md` ("Tests
+are opt-in"). When they are in scope, they're built on the same `sonnet` tier as
+the rest of the code.
+
 ## How the model gets set
 
 1. **Agent frontmatter** `model:` — the agent's default tier.

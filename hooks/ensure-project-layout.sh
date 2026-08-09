@@ -20,6 +20,14 @@ else
 fi
 [ -n "$CWD" ] || exit 0
 
+# Expire any bypass left over from a previous session. Done BEFORE the git and
+# engineos-repo skips below, so a forgotten bypass always dies at the next
+# session start — including inside the engineos repo itself, which those skips
+# would otherwise exempt. A bypass never outlives the session that asked for it.
+# shellcheck source=hooks/bypass.sh
+. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+if BYPASS_MARKER=$(engineos_bypass_marker "$CWD"); then rm -f "$BYPASS_MARKER"; fi
+
 # Resolve project root; bail silently if not a git work tree.
 ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -n "$ROOT" ] || exit 0

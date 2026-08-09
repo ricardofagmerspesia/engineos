@@ -31,7 +31,10 @@ lifecycle). Project `CLAUDE.md` overrides EngineOS.
    indexing for the access pattern, N+1 and full-scan risks, parameterized
    queries, PII handling.
 3. AUDIT: findings with evidence (query plans where relevant). IMPLEMENT: smallest
-   correct migration/query, with the down/rollback path, and verification output.
+   correct migration/query, with the down/rollback path; verify with lint +
+   typecheck, show output. Write or run tests only when the dispatch brief
+   marks them in scope (`rules/testing.md` "Tests are opt-in") — otherwise
+   state `[tests] skipped — not requested`.
 
 ## Output (shared specialist format)
 
@@ -61,4 +64,7 @@ You may be one of several agents running at the same time on the same repo.
   unilaterally; parallel siblings are coding against it.
 - **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
 - **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped typecheck/lint/test runs.
+  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
+  add tests to that run only if they were marked in scope for this dispatch
+  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
+  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).
