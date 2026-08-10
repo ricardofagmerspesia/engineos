@@ -10,8 +10,32 @@ route and stop.
 
 ## Steps
 
-1. Run `scripts/kernel.sh route-escalate --prompt "$ARGUMENTS"` and print the
-   kernel's answer as one line.
+1. Resolve the EngineOS install root — `${CLAUDE_PLUGIN_ROOT}` in plugin mode,
+   the engineos repo otherwise, since this command runs with the target project
+   as cwd and a bare relative `scripts/…` path there exits 127:
+
+   ```bash
+   ENGINEOS_ROOT=""
+   for cand in "${CLAUDE_PLUGIN_ROOT:-}" $(readlink "$HOME"/.claude/commands/*.md 2>/dev/null); do
+     d=$(cd "$(dirname "$cand")" 2>/dev/null && pwd) || continue
+     while [ "$d" != "/" ]; do
+       [ -x "$d/scripts/kernel.sh" ] && { ENGINEOS_ROOT="$d"; break 2; }
+       d=$(dirname "$d")
+     done
+   done
+   echo "$ENGINEOS_ROOT"
+   ```
+
+   The symlink branch works because `install.sh` links every command file back
+   into the checkout, so any one of them leads home; the upward walk makes it
+   independent of nesting depth, and foreign commands are skipped because only a
+   directory holding `scripts/kernel.sh` is accepted. It reads no personal
+   configuration.
+
+   Then run `"$ENGINEOS_ROOT"/scripts/kernel.sh route-escalate --prompt "$ARGUMENTS"`
+   and print the kernel's answer as one line, substituting the printed root
+   (shell state does not survive between Bash calls). If the loop prints
+   nothing, report that the kernel is unreachable from this project and stop.
 2. Dispatch the `router` agent via the Task tool with `model: opus`, passing
    `$ARGUMENTS` as the request. **Explicit invocation always dispatches**, even
    when `escalate` is `false` — the user asked for a plan, and the fast path in

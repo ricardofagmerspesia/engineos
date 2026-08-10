@@ -34,14 +34,35 @@ command -v jq >/dev/null 2>&1 || { printf '{"error":"jq is required — the kern
 
 need_reg() { [ -f "$REG/$1" ] || err "registry missing: registries/$1"; }
 
+# require_positional <subcommand> <what> "$@" -> validates that exactly one
+# non-flag positional argument was given, or errors. Call it DIRECTLY, never in
+# a command substitution: err exits, and inside $(...) that would kill only the
+# subshell while the caller carried on with an empty value.
+#
+# The three positional subcommands used to accept `--prompt "..."` silently:
+# bash bound "--prompt" to $1 and discarded the real argument, so route-intent
+# answered about the literal string "--prompt" — which contains the LLM intent
+# signal "prompt" — and exited 0. A resolver returning a confident wrong answer
+# is worse than one that refuses, and the flag shape is plausible precisely
+# because route-escalate/scale/decision-rules do take --prompt. A path that
+# genuinely starts with "-" stays reachable as ./-name.
+require_positional() {
+  local cmd="$1" what="$2"; shift 2
+  [ $# -gt 0 ] && [ -n "$1" ] || err "$cmd requires $what"
+  case "$1" in
+    -*) err "$cmd takes $what as a positional argument, not a flag (got $1)" ;;
+  esac
+  [ $# -eq 1 ] || err "$cmd takes exactly one argument, got $#"
+}
+
 # ---------------------------------------------------------------- route-path
 # First exclusion wins; then domains in precedence order, first matching glob
 # wins — the same first-match-wins semantics as the case ladder this replaces
 # (hooks/routing-map.sh, now a shim over this). Glob matching uses bash case
 # with unquoted pattern expansion: the same engine, patterns now registry data.
 cmd_route_path() {
-  local f="${1:-}"
-  [ -n "$f" ] || err "route-path requires a file path"
+  require_positional route-path "a file path" "$@"
+  local f="$1"
   need_reg routing.json
   local R="$REG/routing.json"
   local base="${f##*/}" norm="/$f"
@@ -92,8 +113,8 @@ cmd_route_path() {
 # ambiguity handling beyond zero-match is Phase 3's router agent, which reads
 # each intent's note.
 cmd_route_intent() {
-  local text="${1:-}"
-  [ -n "$text" ] || err "route-intent requires the request text"
+  require_positional route-intent "the request text" "$@"
+  local text="$1"
   need_reg intents.json
   local I="$REG/intents.json"
   local lower id sig esc matched=""
@@ -279,8 +300,8 @@ cmd_repair() {
 
 # ---------------------------------------------------------------- capability
 cmd_capability() {
-  local id="${1:-}"
-  [ -n "$id" ] || err "capability requires an id"
+  require_positional capability "an id" "$@"
+  local id="$1"
   need_reg capabilities.json; need_reg models.json
   local C="$REG/capabilities.json" M="$REG/models.json"
   jq -e --arg i "$id" '.capabilities[] | select(.id==$i)' "$C" >/dev/null \

@@ -225,11 +225,12 @@
       "unrouted_scale_signals": ["big_task", "design_work"]
     },
     "fixtures": [
-      {"prompt": "add a paginated orders endpoint to the API and mirror the screen to mobile", "escalate": true,  "reasons": ["multi-agent-dispatch"]},
-      {"prompt": "migrate all services to the new logging format across all packages",         "escalate": true,  "reasons": ["unrouted-scale"]},
-      {"prompt": "backfill the tenant column",                                                 "escalate": true,  "reasons": ["requires-dispatch-plan"]},
-      {"prompt": "build the ios release and upload to TestFlight",                             "escalate": false, "reasons": []},
-      {"prompt": "why does the login handler fail with a 500",                                 "escalate": false, "reasons": []}
+      {"prompt": "add a paginated orders endpoint to the API and mirror the screen to mobile", "escalate": true,  "reasons": ["multi-agent-dispatch"],    "intents": ["backend", "mobile"]},
+      {"prompt": "migrate all services to the new logging format across all packages",         "escalate": true,  "reasons": ["requires-dispatch-plan"], "intents": ["big-sweep"]},
+      {"prompt": "modernize all services",                                                     "escalate": true,  "reasons": ["unrouted-scale"],          "intents": []},
+      {"prompt": "backfill the tenant column",                                                 "escalate": true,  "reasons": ["requires-dispatch-plan"], "intents": ["big-sweep"]},
+      {"prompt": "build the ios release and upload to TestFlight",                             "escalate": false, "reasons": [],                          "intents": ["ios-release"]},
+      {"prompt": "why does the login handler fail with a 500",                                 "escalate": false, "reasons": [],                          "intents": ["bug"]}
     ]
   }
 }

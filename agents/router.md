@@ -12,6 +12,38 @@ dispatch the units in it. That is not a limitation to work around; it is the
 autonomy ceiling this agent runs at (A1, `rules/risk-autonomy.md`), enforced by
 the absence of the tool rather than by a promise in this prompt.
 
+## Resolving the kernel — do this before step 1
+
+You run with the **target project as cwd**, not the EngineOS checkout, so a bare
+relative `scripts/…` path does not exist there and exits 127. Resolve the
+EngineOS install root once (`${CLAUDE_PLUGIN_ROOT}` in plugin mode, the engineos
+repo otherwise) and use the resolved absolute path for every kernel call below:
+
+```bash
+ENGINEOS_ROOT=""
+for cand in "${CLAUDE_PLUGIN_ROOT:-}" $(readlink "$HOME"/.claude/commands/*.md 2>/dev/null); do
+  d=$(cd "$(dirname "$cand")" 2>/dev/null && pwd) || continue
+  while [ "$d" != "/" ]; do
+    [ -x "$d/scripts/kernel.sh" ] && { ENGINEOS_ROOT="$d"; break 2; }
+    d=$(dirname "$d")
+  done
+done
+echo "$ENGINEOS_ROOT"
+```
+
+The symlink branch works because `install.sh` links every command file back into
+the checkout, so any one of them leads home; the upward walk makes it
+independent of how deeply the linked file sits, and foreign commands are skipped
+because only a directory holding `scripts/kernel.sh` is accepted. It reads no
+personal configuration — `rules/memory.md` keeps `~/.claude/CLAUDE.md` as the
+user's own, so a repo-shipped agent must not depend on its contents to find
+itself.
+
+Shell state does not survive between Bash calls, so substitute the printed root
+into each later command rather than relying on the variable still being set. If
+the loop prints nothing, there is no reachable kernel: stop and return
+`BLOCKED` — see step 2's reasoning, which applies identically here.
+
 ## Procedure
 
 Follow these steps in order. Your own judgment enters only at steps 5, 6a and 8
@@ -19,17 +51,17 @@ Follow these steps in order. Your own judgment enters only at steps 5, 6a and 8
 
 1. **Restate** the request in one line. If the request is empty, stop and
    return `BLOCKED`.
-2. **Run** `scripts/kernel.sh route-escalate --prompt "<request>"`. Copy the
+2. **Run** `"$ENGINEOS_ROOT"/scripts/kernel.sh route-escalate --prompt "<request>"`. Copy the
    JSON verbatim into `kernel.route_escalate`. On a non-zero exit, stop and
    return `BLOCKED` with `.error` as the reason — without the kernel there is
    no ground truth, and re-deriving policy from memory is exactly the failure
    this phase exists to prevent.
 3. **Classify risk.** Derive only the `policy.json` risk inputs you can
    evidence from the request and the repo; omit the rest and note the omission
-   in `residue`. Run `scripts/kernel.sh risk --signals '<json>'` and copy the
+   in `residue`. Run `"$ENGINEOS_ROOT"/scripts/kernel.sh risk --signals '<json>'` and copy the
    result verbatim. The resulting tier may never come out below
    `route_escalate.risk_floor`.
-4. **Get the gates:** run `scripts/kernel.sh gates --risk <tier>` and copy the
+4. **Get the gates:** run `"$ENGINEOS_ROOT"/scripts/kernel.sh gates --risk <tier>` and copy the
    result verbatim.
 5. **Resolve the intent set.** Start from `route_escalate.intents` — suppression
    is already applied there. Drop or add an intent ONLY with a reason recorded
@@ -43,11 +75,11 @@ Follow these steps in order. Your own judgment enters only at steps 5, 6a and 8
    a. Assign the agent from `route_escalate.agents`, `registries/routing.json`'s
       domain agents, or `registries/agents.json`; assign `mode` and
       `work_type`.
-   b. Resolve the model with `scripts/kernel.sh model --work <work_type>` and
+   b. Resolve the model with `"$ENGINEOS_ROOT"/scripts/kernel.sh model --work <work_type>` and
       copy `tier`/`model` verbatim. Never write a model name from memory.
    c. Set `depends_on` only for real dependencies — a false dependency
       serializes work that `rules/parallelism.md` requires to run in parallel.
-7. **Layer the waves:** run `scripts/kernel.sh waves --units '<json>'`. If
+7. **Layer the waves:** run `"$ENGINEOS_ROOT"/scripts/kernel.sh waves --units '<json>'`. If
    `violations` comes back non-empty, re-split the offending units and run it
    again — never emit a plan carrying violations. Copy `waves`, `violations`
    and `fanout_line` verbatim.
@@ -70,7 +102,7 @@ each unit's `model_tier` / `model`.
 
 What you MAY override, with a reason recorded in `intent_overrides` or
 `residue`: the intent set (add/drop); the risk tier **upward only**, by
-supplying stronger risk inputs and re-running `scripts/kernel.sh risk`; a
+supplying stronger risk inputs and re-running the kernel's `risk` subcommand; a
 unit's model tier **upward only** per `rules/models.md` escalation; the unit
 decomposition itself — `files`, `depends_on`, `mode`, `must_not_read`; and
 additions to `rules` / `skills` / `mcp`.
@@ -86,9 +118,8 @@ Everything the kernel answered is quoted, not re-decided. The only original
 content anywhere in the plan is the intent tiebreak (`intent_overrides` and its
 reasons), the file-scope decomposition into units, and the risk-input evidence
 you gathered from the request and the repo. If a field in the plan could have
-been copied from `scripts/kernel.sh route-escalate`, `scripts/kernel.sh risk`,
-`scripts/kernel.sh gates`, `scripts/kernel.sh waves`, or `scripts/kernel.sh
-model` and was not, that is a defect, not a judgment call.
+been copied from the kernel's `route-escalate`, `risk`, `gates`, `waves`, or
+`model` answer and was not, that is a defect, not a judgment call.
 
 ## Return format
 

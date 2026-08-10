@@ -21,7 +21,7 @@
     {
       "id": "big-sweep",
       "title": "Big / multi-domain / sweep work",
-      "signals": [">3 files", ">1 domain", "≥3 independent tasks", "across all X", "migration", "backfill"],
+      "signals": ["across all", "across every", "migration", "backfill"],
       "rules": ["parallelism", "models"],
       "skills": ["superpowers:dispatching-parallel-agents", "superpowers:subagent-driven-development"],
       "agents": [],
@@ -36,7 +36,7 @@
     {
       "id": "bug",
       "title": "Bug / unexpected behavior",
-      "signals": ["broken", "fails", "error pasted", "why does X happen"],
+      "signals": ["broken", "fails", "failing", "why does", "does nothing"],
       "rules": [],
       "skills": ["superpowers:systematic-debugging"],
       "agents": [],
@@ -200,7 +200,7 @@
     {
       "id": "interview-gaps",
       "title": "Fill doc gaps by interview",
-      "signals": ["interview me about the system", "ask me about how X works", "resolve open hypotheses"],
+      "signals": ["interview me about the system", "ask me about", "resolve open hypotheses"],
       "rules": [],
       "skills": [],
       "agents": ["architecture-analyst"],
@@ -228,7 +228,7 @@
     {
       "id": "audit",
       "title": "Multi-domain audit / system health check",
-      "signals": ["audit", "analyze the system", "what's broken across X"],
+      "signals": ["audit", "analyze the system", "what's broken", "what is broken"],
       "rules": [],
       "skills": [],
       "agents": [],
@@ -256,7 +256,7 @@
     {
       "id": "adr",
       "title": "Architecture decision",
-      "signals": ["should we use X or Y", "how should we structure"],
+      "signals": ["should we use", "how should we structure"],
       "rules": [],
       "skills": ["adr"],
       "agents": [],
@@ -270,7 +270,7 @@
     {
       "id": "release-notes",
       "title": "Release notes",
-      "signals": ["write release notes", "document version X.Y.Z", "what changed in this release", "version bump"],
+      "signals": ["write release notes", "document version", "what changed in this release", "version bump"],
       "rules": [],
       "skills": ["release-notes"],
       "agents": [],
@@ -284,7 +284,7 @@
     {
       "id": "strategy",
       "title": "Business / career strategy",
-      "signals": ["where is this market going", "before competitors", "what do I learn, in what order", "X or Y and I can't decide", "positioning & perceived authority", "monetizing existing assets"],
+      "signals": ["where is this market going", "before competitors", "what do I learn, in what order", "and I can't decide", "and I cannot decide", "positioning", "monetizing existing assets"],
       "rules": [],
       "skills": ["strategy"],
       "agents": [],

@@ -23,6 +23,16 @@ check() {
   fi
 }
 
+# check_absent <desc> <prompt> <substring that must NOT appear>
+check_absent() {
+  local desc="$1" prompt="$2" nope="$3" ctx
+  ctx=$(jq -nc --arg p "$prompt" '{prompt:$p}' | bash "$HOOK" | jq -r '.hookSpecificOutput.additionalContext // ""')
+  case "$ctx" in
+    *"$nope"*) fail=$((fail+1)); echo "FAIL: $desc — did not want '$nope' in: [$ctx]" ;;
+    *) pass=$((pass+1)) ;;
+  esac
+}
+
 # check_risk <desc> <prompt> — asserts the high-risk autonomy note is attached
 check_risk() {
   local desc="$1" prompt="$2" ctx
@@ -55,6 +65,27 @@ check "rewrite fires the large change rule" \
       "rewrite the scheduler" "rule-large-change"
 check "fine-tuning fires the volatile knowledge rule" \
       "should we fine-tune a model for this?" "rule-volatile-knowledge"
+
+# Field labels on the per-rule line. Asserting the rule id fires says nothing about
+# WHICH field each value was printed as: a collapsed optional field still names the
+# right rule while labelling its gate a preference and dropping risk. Both prompts
+# below match exactly one rule, and neither rule defines `prefer`, so any "prefer:"
+# here is a shifted field rather than registry content.
+check "production-write labels gate and risk in their own slots" \
+      "deploy the billing service to production" \
+      "rule-production-write — require: explicit-approval, rollback-plan, audit-log [gate: release] [risk: high]"
+check_absent "production-write never labels its gate a preference" \
+      "deploy the billing service to production" "prefer:"
+check "destructive DDL labels risk with no gate of its own" \
+      "drop the legacy_id column from users" \
+      "rule-destructive-ddl — require: two-phase-deploy, explicit-confirmation, down-path-or-documented-irreversibility [risk: high]"
+check_absent "destructive DDL never labels its risk a preference" \
+      "drop the legacy_id column from users" "prefer:"
+# The mirror case: a rule that really does define `prefer` must still print it, so a
+# fix cannot pass by dropping the field instead of keeping it in its slot.
+check "a rule that defines prefer still prints the prefer label" \
+      "should we fine-tune a model for this?" \
+      "rule-volatile-knowledge — require: retrieval-evaluation, freshness-policy — prefer: retrieval-over-fine-tuning"
 
 check_risk "production deploy attaches the A3 ceiling" \
       "deploy the billing service to production"

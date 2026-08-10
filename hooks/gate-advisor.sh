@@ -45,7 +45,15 @@ if [ "${ENGINEOS_TELEMETRY:-}" != "0" ] && [ -n "$CWD" ]; then
 fi
 
 LINES=""
-while IFS=$'\t' read -r id req pref gate risk; do
+# WHY the delimiter is 0x1f rather than the tab @tsv emits: tab is IFS whitespace,
+# so bash collapses the run of two tabs an absent optional field produces, shifting
+# every later value one slot left. A rule with no `prefer` would print its gate as a
+# preference and lose risk silently. 0x1f is not IFS whitespace, so an empty field
+# keeps its slot. @tsv is kept because it escapes any tab or newline inside a value,
+# which is what makes the substitution below safe: after @tsv the only remaining raw
+# tab bytes are delimiters.
+SEP=$(printf '\037')
+while IFS="$SEP" read -r id req pref gate risk; do
   [ -z "$id" ] && continue
   line="  - $id"
   [ -n "$req" ]   && line="$line — require: $req"
@@ -57,7 +65,7 @@ while IFS=$'\t' read -r id req pref gate risk; do
 done < <(printf '%s' "$RESULT" | jq -r '
   .matches[]
   | [.id, ((.require // []) | join(", ")), (.prefer // ""), (.gate // ""), (.risk // "")]
-  | @tsv')
+  | @tsv' | tr '\011' '\037')
 
 [ -z "$LINES" ] && exit 0
 

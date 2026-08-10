@@ -163,8 +163,13 @@ if command -v jq >/dev/null 2>&1; then
   RECORD="$REPO_DIR/hooks/record-verify.sh"
   ENSURE="$REPO_DIR/hooks/ensure-project-layout.sh"
   SCALE="$REPO_DIR/hooks/task-scale-advisor.sh"
+  GATE="$REPO_DIR/hooks/gate-advisor.sh"
+  ROUTEADV="$REPO_DIR/hooks/route-advisor.sh"
 
-  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" '
+  # This list MUST stay equal to hooks/hooks.json's (plugin mode). A hook wired
+  # in only one install mode never fires for half the userbase — which is how
+  # gate-advisor.sh and route-advisor.sh were dead for every symlink install.
+  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" --arg gate "$GATE" --arg routeadv "$ROUTEADV" '
     # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
     def add($event; $matcher; $cmd):
       .hooks[$event] //= []
@@ -179,6 +184,8 @@ if command -v jq >/dev/null 2>&1; then
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)
     | add("UserPromptSubmit"; "";      $scale)
+    | add("UserPromptSubmit"; "";      $gate)
+    | add("UserPromptSubmit"; "";      $routeadv)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
 
@@ -205,6 +212,8 @@ else
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
   warn "  SessionStart -> $REPO_DIR/hooks/ensure-project-layout.sh"
   warn "  UserPromptSubmit -> $REPO_DIR/hooks/task-scale-advisor.sh"
+  warn "  UserPromptSubmit -> $REPO_DIR/hooks/gate-advisor.sh"
+  warn "  UserPromptSubmit -> $REPO_DIR/hooks/route-advisor.sh"
 fi
 
 # ---------- 6. MCP reminder ----------

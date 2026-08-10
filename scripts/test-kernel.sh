@@ -391,9 +391,21 @@ BT=$(jqval '.model_tier'); BF=$(jqval '.risk_floor')
 [ -n "$BT" ] && [ "$BT" != "null" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: model_tier aggregated (non-null) — got '$BT'"; }
 [ -n "$BF" ] && [ "$BF" != "null" ] && pass=$((pass+1)) || { fail=$((fail+1)); echo "FAIL: risk_floor aggregated (non-null) — got '$BF'"; }
 
-run route-escalate --prompt "why does the login handler fail with a 500"
+# A deliberately meaningless string, not a realistic prompt. This case exists to
+# prove the zero-intent branch aggregates to null, and a realistic prompt would
+# make it vacuous the moment routing improves — which is exactly what happened
+# to its predecessor: it used "why does the login handler fail with a 500" and
+# passed only because the bug intent's signal was the dead placeholder
+# "why does X happen". The prompt that used to prove "no match" is asserted
+# below, matching, as the regression guard against that signal dying again.
+run route-escalate --prompt "zzqq wibble frobnicate"
 assert_eq "no matched intent -> model_tier null" "$(jqval '.model_tier')" "null"
 assert_eq "no matched intent -> risk_floor null" "$(jqval '.risk_floor')" "null"
+assert_eq "no matched intent -> intents empty" "$(jqvalc '.intents')" "[]"
+
+run route-escalate --prompt "why does the login handler fail with a 500"
+assert_eq "a real bug report resolves the bug intent" "$(jqvalc '.intents')" '["bug"]'
+assert_eq "a real bug report carries the bug intent tier" "$(jqval '.model_tier')" "design"
 
 # Non-triggers stay non-triggers.
 # NOTE: "migration" (singular) is deliberately avoided here — it is one of
@@ -421,6 +433,49 @@ run route-escalate --prompt "add a feature"
 assert_err "route-escalate with no router policy block errors (fail-closed)"
 cp /tmp/test-kernel-policy-bak.json "$REG/policy.json"
 rm -f /tmp/test-kernel-policy-bak.json
+
+# ---------------------------------------------- positional subcommands fail closed
+# The three positional subcommands used to accept a flag SILENTLY: bash bound
+# "--prompt" to $1 and the real argument was discarded, so route-intent answered
+# about the literal string "--prompt" (which contains the LLM signal "prompt")
+# and exited 0. A resolver that returns a confident wrong answer is worse than
+# one that refuses, and the flag shape is plausible because route-escalate,
+# scale and decision-rules all legitimately take --prompt.
+
+for sub in route-path route-intent capability; do
+  run "$sub" --prompt "audit the system"
+  assert_err "$sub rejects a --prompt flag instead of routing on the literal string"
+
+  run "$sub" -x
+  assert_err "$sub rejects any leading-dash argument"
+
+  run "$sub"
+  assert_err "$sub with no argument errors"
+
+  run "$sub" one two
+  assert_err "$sub rejects a second positional argument"
+done
+
+# Assert the GUARD fired, not merely that something errored — any other failure
+# would also satisfy assert_err above while leaving the fail-open path intact.
+# Without the guard this returned {"matches":[{"id":"llm",...}]} and rc=0,
+# because "prompt" is one of that intent's signals.
+run route-intent --prompt "audit the system"
+FLAGGED=no; case "$(jqval '.error')" in *"not a flag"*) FLAGGED=yes ;; esac
+assert_eq "route-intent's error names the offending flag" "$FLAGGED" "yes"
+assert_eq "route-intent computed no matches at all when given a flag" \
+  "$(printf '%s' "$OUT" | jq -r 'has("matches")')" "false"
+
+# The correct positional form is untouched.
+run route-intent "audit the system"
+assert_ok "route-intent still answers the positional form"
+assert_eq "route-intent positional form resolves audit" "$(jqvalc '[.matches[].id]')" '["audit"]'
+
+run route-path apps/api/src/orders/orders.service.ts
+assert_eq "route-path still answers the positional form" "$(jqval '.domain')" "backend"
+
+run capability implement
+assert_eq "capability still answers the positional form" "$(jqval '.agent')" "backend-coordinator"
 
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"

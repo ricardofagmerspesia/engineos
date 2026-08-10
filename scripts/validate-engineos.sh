@@ -372,6 +372,21 @@ else
     [ -z "$ir" ] && ok "intents.json rules, skills and agents all resolve" \
                  || bad "intents.json names missing targets:$ir"
 
+    # Signals are matched as LITERAL phrases by kernel.sh route-intent, so a
+    # signal carrying documentation metasyntax can never fire. Ten such signals
+    # were copied verbatim out of CLAUDE.md's human-readable router table --
+    # "should we use X or Y", "why does X happen", ">3 files" -- and silently
+    # made seven intents unroutable. The table may keep its placeholders; the
+    # registry is a matching engine and may not. Bare X/Y/N stand for
+    # placeholders; > and the comparison glyph mark threshold notation, which
+    # belongs in parallelism.fanout_signals, not in a phrase list.
+    ms_bad=$(jq -r '
+      [ .intents[] | .id as $i | (.signals // [])[]
+        | select(test("\\b[XYN]\\b") or test(">") or test("≥"))
+        | "\($i):\(.)" ] | join(" ")' "$IJ")
+    [ -z "$ms_bad" ] && ok "no intents.json signal carries placeholder metasyntax" \
+                     || bad "unmatchable signals (placeholder metasyntax):$ms_bad"
+
     # hook_mirrored <=> domain, both directions
     hm_bad=$(jq -r '[.intents[] | select((.hook_mirrored == true) != (has("domain") and .domain != null)) | .id] | join(" ")' "$IJ")
     [ -z "$hm_bad" ] && ok "hook_mirrored and domain agree on every intent" \
@@ -614,16 +629,23 @@ else
 
     # C18e: behavioral, fixture-driven — same self-validating pattern as
     # routing.json's sample_path (C17b)
+    # `intents` is asserted alongside escalate/reasons because escalate=false
+    # plus reasons=[] is ALSO what total routing failure looks like: the bug
+    # fixture passed for years while matching zero intents, so the check could
+    # not tell correct non-escalation from a router that resolved nothing.
     rf_bad=""
-    while IFS=$'\t' read -r prompt want_esc want_reasons; do
+    while IFS=$'\t' read -r prompt want_esc want_reasons want_intents; do
       got=$(bash "$KSH" route-escalate --prompt "$prompt" 2>/dev/null)
       got_esc=$(printf '%s' "$got" | jq -r '.escalate')
       got_reasons=$(printf '%s' "$got" | jq -c '.reasons | sort')
+      got_intents=$(printf '%s' "$got" | jq -c '.intents | sort')
       want_reasons_sorted=$(printf '%s' "$want_reasons" | jq -c 'sort')
-      if [ "$got_esc" != "$want_esc" ] || [ "$got_reasons" != "$want_reasons_sorted" ]; then
-        rf_bad="$rf_bad [$prompt](got esc=$got_esc reasons=$got_reasons)"
+      want_intents_sorted=$(printf '%s' "$want_intents" | jq -c 'sort')
+      if [ "$got_esc" != "$want_esc" ] || [ "$got_reasons" != "$want_reasons_sorted" ] \
+         || [ "$got_intents" != "$want_intents_sorted" ]; then
+        rf_bad="$rf_bad [$prompt](got esc=$got_esc reasons=$got_reasons intents=$got_intents)"
       fi
-    done < <(jq -r '.router.fixtures[] | [.prompt, .escalate, (.reasons|tojson)] | @tsv' "$PJ")
+    done < <(jq -r '.router.fixtures[] | [.prompt, .escalate, (.reasons|tojson), (.intents|tojson)] | @tsv' "$PJ")
     [ -z "$rf_bad" ] && ok "every policy.json.router.fixtures entry matches kernel.sh route-escalate" \
                      || bad "route-escalate fixture mismatches:$rf_bad"
 
