@@ -240,18 +240,11 @@ foreach ($dir in @($skillsDest, $agentsDest, $commandsDest)) {
 }
 
 # ---------- 5. Merge hooks into settings.json ----------
-# Hook scripts are .sh files. On Windows they need Git Bash or WSL (with a distro).
-# This installer's own JSON merge doesn't call jq, but every hook script it wires up
-# does (route-before-change.sh, mark-unrecorded.sh, record-verify.sh,
-# task-scale-advisor.sh) — without jq on PATH those hooks exit 0 silently, so
-# routing guidance and the change-record Stop gate simply never fire.
-if (Get-Command jq -ErrorAction SilentlyContinue) {
-    Write-Host "jq found: $(jq --version)"
-} else {
-    Write-Warn "jq not found on PATH. The routing and change-record hooks silently no-op without it."
-    Write-Warn "Install it (e.g. 'winget install jqlang.jq', or via Git Bash/WSL: 'apt install jq') and re-run."
-}
-
+# Hook scripts are bash. On Windows they MUST be invoked through Git Bash's
+# bash.exe: a bare `...\foo.sh` command is resolved by the .sh file association,
+# which Git for Windows points at git-bash.exe -- a mintty *terminal launcher*.
+# That pops a visible console window on every single hook fire (every prompt,
+# every edit, every stop). bash.exe is a plain console binary and stays invisible.
 if (-not (Test-Path $Settings)) { '{}' | Set-Content $Settings -Encoding UTF8 }
 if (-not (Test-Path "$Settings.engineos.bak")) {
     Copy-Item $Settings "$Settings.engineos.bak"
@@ -261,6 +254,37 @@ $hooksDir = Join-Path $RepoDir 'hooks'
 
 # Use forward-slash paths so Claude Code (cross-platform) handles them uniformly
 function ToUnixPath($p) { $p -replace '\\', '/' }
+
+# Locate Git Bash's bash.exe. Never fall back to a bare `bash`: on Windows that
+# resolves to C:\Windows\System32\bash.exe (WSL), which cannot read C:/... paths.
+function Resolve-GitBash {
+    $candidates = @()
+    try {
+        # git.exe lives at <root>\cmd\git.exe -> bash.exe at <root>\bin\bash.exe
+        $gitRoot = Split-Path -Parent (Split-Path -Parent (Get-Command git -ErrorAction Stop).Source)
+        $candidates += (Join-Path $gitRoot 'bin\bash.exe')
+        $candidates += (Join-Path $gitRoot 'usr\bin\bash.exe')
+    } catch {}
+    $candidates += (Join-Path $env:ProgramFiles 'Git\bin\bash.exe')
+    if (${env:ProgramFiles(x86)}) {
+        $candidates += (Join-Path ${env:ProgramFiles(x86)} 'Git\bin\bash.exe')
+    }
+    $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe')
+
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path $candidate -PathType Leaf)) { return (ToUnixPath $candidate) }
+    }
+    return $null
+}
+
+$BashExe = Resolve-GitBash
+
+# A hook command: quoted interpreter + quoted script, or the bare script when no
+# Git Bash was found (broken either way at that point, but no silent path change).
+function New-HookCommand([string]$ScriptPath) {
+    if ($BashExe) { return '"{0}" "{1}"' -f $BashExe, $ScriptPath }
+    return $ScriptPath
+}
 
 $hookPaths = @{
     post   = ToUnixPath (Join-Path $hooksDir 'post-edit-check.sh')
@@ -301,16 +325,49 @@ function Add-HookEntry {
     }
 }
 
-Add-HookEntry $settingsObj 'PreToolUse'       'Edit|Write' $hookPaths.route
-Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' $hookPaths.mark
-Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' $hookPaths.post
-Add-HookEntry $settingsObj 'Stop'             ''           $hookPaths.stop
-Add-HookEntry $settingsObj 'Stop'             ''           $hookPaths.record
-Add-HookEntry $settingsObj 'SessionStart'     ''           $hookPaths.ensure
-Add-HookEntry $settingsObj 'UserPromptSubmit' ''           $hookPaths.scale
+# Drop every previously installed EngineOS hook entry before re-adding, so an
+# earlier install's bare-`.sh` command (the terminal-window spawner) is replaced
+# rather than left firing alongside the wrapped one.
+function Remove-EngineOSHooks {
+    param($SettingsObj, [string]$HooksDirUnix)
+
+    foreach ($event in @('PreToolUse', 'PostToolUse', 'Stop', 'SessionStart', 'UserPromptSubmit')) {
+        if (-not (Get-Member -InputObject $SettingsObj.hooks -Name $event -MemberType NoteProperty)) { continue }
+
+        $kept = @()
+        foreach ($entry in @($SettingsObj.hooks.$event)) {
+            # Compare slash-normalized so both C:/... and C:\... forms are caught.
+            $inner = @($entry.hooks) | Where-Object {
+                -not ($_.command -and ($_.command -replace '\\', '/').Contains("$HooksDirUnix/"))
+            }
+            if ($inner.Count -gt 0) {
+                $entry.hooks = @($inner)
+                $kept += $entry
+            }
+        }
+        $SettingsObj.hooks.$event = @($kept)
+    }
+}
+
+Remove-EngineOSHooks $settingsObj (ToUnixPath $hooksDir)
+
+Add-HookEntry $settingsObj 'PreToolUse'       'Edit|Write' (New-HookCommand $hookPaths.route)
+Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.mark)
+Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.post)
+Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.stop)
+Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.record)
+Add-HookEntry $settingsObj 'SessionStart'     ''           (New-HookCommand $hookPaths.ensure)
+Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.scale)
 
 $settingsObj | ConvertTo-Json -Depth 20 | Set-Content $Settings -Encoding UTF8
 Write-Green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
+if ($BashExe) {
+    Write-Host "  hooks run through: $BashExe (no terminal windows)"
+} else {
+    Write-Warn "  Git Bash not found -- hooks registered as bare .sh paths. Windows will"
+    Write-Warn "  hand those to git-bash.exe and pop a terminal window on every hook fire."
+    Write-Warn "  Install Git for Windows, then re-run this script: https://git-scm.com/download/win"
+}
 
 # ---------- 5b. Shared permission allowlist ----------
 $permsTemplate = Join-Path $RepoDir 'templates\permissions.template.json'
@@ -334,12 +391,29 @@ if (Test-Path $permsTemplate) {
     Write-Warn "permissions template missing ($permsTemplate) — skipped allowlist merge."
 }
 
-# ---------- 6. Hook warning for Windows ----------
+# ---------- 6. Hook prerequisites for Windows ----------
 Write-Host ""
-Write-Warn "NOTE (Windows): Hook scripts are .sh files and require Git Bash or WSL with a Linux"
-Write-Warn "distro to execute. Install one of:"
-Write-Warn "  - Git for Windows (includes Git Bash): https://git-scm.com/download/win"
-Write-Warn "  - WSL + Ubuntu: wsl --install  (then re-open a WSL terminal and re-run install.sh)"
+Write-Warn "NOTE (Windows): hook scripts are bash and run through Git Bash's bash.exe."
+Write-Warn "  - Git for Windows (provides bash.exe): https://git-scm.com/download/win"
+Write-Warn "  - WSL is NOT a substitute here: the hook commands carry C:/... paths, which"
+Write-Warn "    WSL's bash cannot resolve."
+
+# jq is the hard dependency of every hook that parses tool input. Without it they
+# all `exit 0` silently -- routing guidance and the Stop gate just never fire.
+$jqFound = $false
+if ($BashExe) {
+    & $BashExe -lc 'command -v jq >/dev/null 2>&1' 2>$null
+    $jqFound = ($LASTEXITCODE -eq 0)
+} elseif (Get-Command jq -ErrorAction SilentlyContinue) {
+    $jqFound = $true
+}
+if ($jqFound) {
+    Write-Green "jq found -- hooks will parse tool input."
+} else {
+    Write-Warn "jq NOT found on the hook PATH. Every hook that parses tool input exits 0"
+    Write-Warn "silently: no [router] guidance, no change-record Stop gate. Install it:"
+    Write-Warn "  winget install jqlang.jq    (then restart Claude Code)"
+}
 
 # ---------- 7. MCP reminder ----------
 Write-Host ""

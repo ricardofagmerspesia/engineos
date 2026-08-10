@@ -19,6 +19,9 @@ git clone git@github.com:ricardofagmer/engineer-spec-ia-pattern.git ~/projects/e
 cd ~/projects/engineos && ./install.sh
 ```
 
+On Windows, run `install.ps1` instead (PowerShell) — same steps, plus it wires the
+hooks through Git Bash's `bash.exe`. See [Windows](#windows) below.
+
 **B. Plugin (skills + agents + hooks only — no constitution import, no permissions):**
 ```
 /plugin marketplace add ricardofagmer/engineer-spec-ia-pattern
@@ -34,6 +37,24 @@ Mode A is idempotent — re-run after every `git pull`. The installer:
 
 Personal stuff (output style, personal hooks, keys) stays in your own `~/.claude/CLAUDE.md`
 and `settings.local.json` — this repo never touches it.
+
+### Windows
+
+Use `install.ps1` (mode A). Two Windows-specific facts:
+
+- **Hooks are invoked as `"<git>/bin/bash.exe" "<hook>.sh"`, never as a bare `.sh` path.**
+  Windows resolves a bare `.sh` through its file association, which Git for Windows
+  points at `git-bash.exe` — a *terminal launcher*. That opens a visible Git Bash
+  window on every hook fire: every prompt, every edit, every stop. `bash.exe` is a
+  plain console binary and stays invisible. `install.ps1` locates it and wraps the
+  commands; re-run it if you see terminal windows appearing.
+  WSL's `bash` is not a substitute — it cannot resolve the `C:/...` paths in the
+  hook commands.
+- **`jq` is required.** Without it every hook that parses tool input exits 0
+  silently: no `[router]` guidance, no change-record Stop gate. `winget install jqlang.jq`.
+
+Mode B (plugin) registers the hooks as bare `${CLAUDE_PLUGIN_ROOT}/hooks/*.sh` paths,
+which hits the terminal-window behaviour above. On Windows, prefer mode A.
 
 ## What's inside
 
