@@ -13,6 +13,7 @@ Where knowledge lives. One home per fact — duplication drifts.
 | Project rule deltas (longer-form) | Project `docs/rules/` | PR to project |
 | Change records (what was made, per unit of work) | Project `.engineos/changes/` → `.engineos/archived/` when closed | `record-change` skill |
 | Audit reports (system health findings) | Project `.engineos/audits/` | `/engineos:audit` |
+| Skill/rule friction observations (improvement backlog) | Project `.engineos/skill-observations/` | `task-observer` skill (writes); `retro` (consumes) |
 | Strategy analyses (market, career, positioning) | Project `docs/strategy/` | `strategy` skill |
 | Release notes | Project `docs/release-notes/` | `release-notes` skill |
 | Personal preferences (style, tools, workflow) | Your `~/.claude/CLAUDE.md` + Claude memory | Yours alone |
@@ -21,6 +22,7 @@ Where knowledge lives. One home per fact — duplication drifts.
 ## Placement & promotion
 
 - DO promote: a personal note you've repeated to Claude 3 times → project CLAUDE.md; a project convention a second project adopts → EngineOS rules.
+- DO log skill/rule friction the moment it surfaces (`task-observer` skill) — a rule violated mid-task, a correction revealing a gap, a dead section. Don't wait for the retro; by then the signal is gone.
 - DO record decisions when made (`adr` skill), not when someone asks "why" six months later.
 - DON'T put team standards in personal memory — invisible to the team, dies with your machine.
 - DON'T put volatile facts (current sprint, WIP state) in any CLAUDE.md — they rot. Tracker or session only.

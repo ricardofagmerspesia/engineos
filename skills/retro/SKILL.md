@@ -35,6 +35,10 @@ ran, what the `## Notes` section flagged, and any checklist item struck through
 rather than ticked.
 
 Also gather, when the repo has them:
+- OPEN skill observations: `.engineos/skill-observations/log.md`, written
+  continuously by the `task-observer` skill. Each OPEN entry is an
+  occurrence for clustering — three on the same skill/rule qualify as a
+  pattern, same threshold as change-record evidence;
 - eval failures: `scripts/run-evals.sh` output, and any case whose expectation
   was changed rather than met;
 - integrity failures: anything `scripts/validate-engineos.sh` caught that a rule
@@ -112,7 +116,17 @@ failed has not been shown to fix anything.
 - Open a PR per `rules/git.md` — under 400 lines, self-reviewed, CI green.
 - Do not merge. The whole point is that a human decides which lessons become law.
 
-### 7. Record the window
+### 7. Resolve consumed observations
+
+For every observation from `.engineos/skill-observations/log.md` that fed a
+proposal, update its status in place: `ACTIONED (YYYY-MM-DD) — proposal
+<title>` when a proposal covers it, `DECLINED (YYYY-MM-DD) — <reason>` when
+triaged out. Follow the task-observer skill's log-write safety rules
+(line-anchored status edits, header-count invariant). Entries left OPEN roll
+into the next retro; task-observer's archival-on-write moves resolved ones
+out later.
+
+### 8. Record the window
 
 Note the date range covered in the change record's `## Notes`, so the next retro
 knows where to start and records are not mined twice.
