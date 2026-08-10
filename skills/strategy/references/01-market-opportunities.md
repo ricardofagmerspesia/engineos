@@ -56,6 +56,13 @@ A single action, executable inside 7 days with the resources named in the intake
 starts occupying the space before it becomes obvious. Include the observable signal that
 tells them it worked.
 
+## Absolute rule
+
+**No claim without a date, no opportunity without a trigger.** Every movement,
+competitor gap, and timing signal carries a source and a date; an opportunity named
+without a competitor gap or timing signal behind it is not an opportunity, it is a
+guess.
+
 ## Rules
 
 - **No mainstream trend.** If it is already a podcast topic, a conference keynote track, or

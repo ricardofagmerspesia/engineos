@@ -194,6 +194,51 @@ if (Test-Path $commandsSrc) {
     }
 }
 
+# ---------- 4d. Link rules + patterns ----------
+# Agents/skills reference these by relative path (rules/*.md, patterns/*) — without
+# them installed alongside skills/agents/commands, those references resolve to
+# nothing on an installed machine.
+$rulesDest = Join-Path $ClaudeDir 'rules'
+New-Item -ItemType Directory -Force -Path $rulesDest | Out-Null
+$rulesSrc = Join-Path $RepoDir 'rules'
+if (Test-Path $rulesSrc) {
+    Get-ChildItem $rulesSrc -Filter '*.md' | ForEach-Object {
+        $target = Join-Path $rulesDest $_.Name
+        if (New-Link -Target $target -Value $_.FullName -IsDir $false) {
+            Write-Host "rule linked: $($_.Name)"
+        }
+    }
+}
+
+$patternsDest = Join-Path $ClaudeDir 'patterns'
+New-Item -ItemType Directory -Force -Path $patternsDest | Out-Null
+$patternsSrc = Join-Path $RepoDir 'patterns'
+if (Test-Path $patternsSrc) {
+    Get-ChildItem $patternsSrc | ForEach-Object {
+        $target = Join-Path $patternsDest $_.Name
+        if (New-Link -Target $target -Value $_.FullName -IsDir $_.PSIsContainer) {
+            Write-Host "pattern linked: $($_.Name)"
+        }
+    }
+}
+
+# ---------- 4e. Prune dangling links ----------
+# A rename in the repo (e.g. patterns/1-Analisys -> patterns/1-Analysis.md) otherwise
+# leaves a stale link whose target no longer exists — a slash command or reference
+# that still "exists" but silently resolves to nothing. Sweep the directories we
+# manage and drop any link/junction pointing at a target that no longer exists.
+foreach ($dir in @($skillsDest, $agentsDest, $commandsDest)) {
+    if (-not $dir -or -not (Test-Path $dir)) { continue }
+    Get-ChildItem $dir -Force | Where-Object {
+        $_.LinkType -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
+    } | ForEach-Object {
+        if (-not (Test-Path $_.FullName)) {
+            Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
+            Write-Host "pruned dangling link: $($_.Name)"
+        }
+    }
+}
+
 # ---------- 5. Merge hooks into settings.json ----------
 # Hook scripts are bash. On Windows they MUST be invoked through Git Bash's
 # bash.exe: a bare `...\foo.sh` command is resolved by the .sh file association,

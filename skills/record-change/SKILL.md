@@ -11,7 +11,7 @@ clears the `ENGINEOS_UNRECORDED` flag the Stop gate checks.
 
 ## Steps
 
-Create a TodoWrite item per step and do them in order.
+Track each step in the session's task list, in order.
 
 1. **Locate the active record.** Find the `.engineos/changes/*.md` whose front matter has
    `status: active`. If more than one, pick the one matching the work just done.
@@ -21,10 +21,18 @@ Create a TodoWrite item per step and do them in order.
    `devops`, `security`, `test`, `docs`, or `general` (no single domain fits) —
    required to build the archive path in step 6.
 
-2. **Confirm the spec exists.** Read the record's `spec:` front-matter field and
-   verify that file exists under `docs/specs/`. If it is missing or the field is
-   empty, the change is not ready to archive — write the spec first (brainstorm →
-   `docs/specs/<YYYY-MM-DD>-<slug>-design.md`), set `spec:`, then continue.
+2. **Confirm the spec exists, when required.** The spec-before-code threshold is
+   CLAUDE.md non-negotiable #1: any change touching **>2 files** or any **new
+   feature**. Check the record's `## Scope` (or `git diff --stat HEAD`) against
+   that threshold.
+   - Below it: set `spec:` to the literal escape form `n/a — <reason>` (e.g.
+     `n/a — single-file rule edit, below the >2-file spec threshold`) so the
+     archive check (`validate-engineos.sh` C21) can tell a deliberate
+     exemption from a forgotten link, then continue to step 3.
+   - At or above it: read the record's `spec:` front-matter field and verify that
+     file exists under `docs/specs/`. If it is missing or the field is empty, the
+     change is not ready to archive — write the spec first (brainstorm →
+     `docs/specs/<YYYY-MM-DD>-<slug>-design.md`), set `spec:`, then continue.
 
 3. **Describe what was made.** Fill `## What was made` with a concrete, past-tense
    account of what actually landed (not intentions), and resolve `## Checklist` —
@@ -39,6 +47,8 @@ Create a TodoWrite item per step and do them in order.
    ```
    List the touched files and any `git mv` / renames. If the work spanned commits,
    add `git log --oneline <base>..HEAD`. Paste the actual output, not a paraphrase.
+   (The section is scaffolded by `_template.md`; records completed from
+   2026-08-06 on must carry it — C21 checks the archive.)
 
 5. **Mark done.** Only after `## What was made` is written and `## Checklist` is fully resolved:
    set front matter `status: done` and add `completed: <YYYY-MM-DD>`
@@ -56,8 +66,13 @@ Create a TodoWrite item per step and do them in order.
    git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}/<file>.md"
    ```
 
-7. **Clear the flag.** Tell the Stop gate the work is recorded (clears the
-   session-scoped marker(s); the glob also clears any legacy unsuffixed flag):
+7. **Clear the flag.** Tell the Stop gate the work is recorded — clear only the
+   current session's marker:
+   ```bash
+   rm -f "$(git rev-parse --absolute-git-dir)/ENGINEOS_UNRECORDED.${CLAUDE_SESSION_ID:-}"
+   ```
+   If `CLAUDE_SESSION_ID` is unset in this environment, fall back to the glob
+   (also clears any legacy unsuffixed flag):
    ```bash
    rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
    ```

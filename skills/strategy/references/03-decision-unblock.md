@@ -60,7 +60,7 @@ Define the **one** criterion that should govern the decision. One sentence. No a
 no "it depends", no compound criteria joined by "and". Applying it to the options must
 produce an unambiguous answer — if it does not, the criterion is not sharp enough yet.
 
-## Rule
+## Absolute rule
 
 **Do not tell the user what to do. Show them what they are avoiding seeing.** The
 deliverable is the criterion and the blind spot, not a recommendation. If the criterion

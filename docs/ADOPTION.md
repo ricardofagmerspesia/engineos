@@ -38,7 +38,7 @@ What it does (idempotent — re-run after every `git pull`):
 Verify:
 ```bash
 ls ~/.claude/agents ~/.claude/commands        # coordinators, specialists, /audit, /implement
-jq '.hooks | keys' ~/.claude/settings.json    # PreToolUse, PostToolUse, Stop
+jq '.hooks | keys' ~/.claude/settings.json    # PreToolUse, PostToolUse, Stop, SessionStart, UserPromptSubmit
 ```
 **Restart Claude Code** so the hooks load in new sessions.
 
@@ -68,20 +68,23 @@ Verify: open a Claude session in `<project>` and confirm it reads the file.
 ## 3. Enable the change-tracking lifecycle in the project
 
 All EngineOS change-tracking state lives under a **single hidden folder**,
-`.engineos/`, so it doesn't clutter the project root. Create it once:
+`.engineos/`, so it doesn't clutter the project root. Scaffolding is **opt-in**
+so the hook never dirties repos that haven't adopted EngineOS: run
+`mkdir .engineos` in the project (or set `ENGINEOS_SCAFFOLD=1`), then **open a
+Claude Code session in `<project>`** and the `SessionStart` hook
+(`ensure-project-layout.sh`) creates anything missing —
+`.engineos/{changes,archived,memory}` plus `docs/{specs,prds,rules}` — non-blocking,
+safe to run every session. `ENGINEOS_SCAFFOLD=0` disables it entirely. `memory/` is part of the standard layout, not optional;
+it's where durable, team-shared decisions get distilled (`rules/memory.md`).
+`.engineos/audits/` is created separately, by `/audit`, on first use.
 
-```bash
-cd <project>
-mkdir -p .engineos/changes .engineos/archived
-cp ~/projects/engineos/.engineos/changes/_template.md .engineos/changes/_template.md
-cp ~/projects/engineos/.engineos/changes/README.md    .engineos/changes/README.md
-cp ~/projects/engineos/.engineos/archived/README.md   .engineos/archived/README.md
-# optional: .engineos/memory/ for durable decisions; .engineos/audits/ is created by /audit
-```
-Commit these. Now: open a `.engineos/changes/<date>-<slug>.md` when you start work,
-close it with the `record-change` skill when done (Step 7).
+Commit the scaffolded folders (with their `README.md`/`_template.md`, copied from
+this repo's `.engineos/`) once they appear. Now: open a
+`.engineos/changes/<date>-<slug>.md` when you start work, close it with the
+`record-change` skill when done (Step 7).
 
-Verify: `ls .engineos/changes/` shows the template + README.
+Verify: `ls .engineos/changes/ .engineos/archived/ .engineos/memory/ docs/specs/ docs/prds/ docs/rules/`
+all exist after your first session in the project.
 
 ---
 
@@ -151,7 +154,9 @@ If a Stop block loops or never fires, see Troubleshooting.
 ## 7. Daily workflow
 
 **Routing is automatic.** Editing `*.controller.ts` injects backend rules +
-`nestjs-patterns` + `backend-coordinator`; `*.tsx` injects frontend; `*.sql` injects
+`nestjs-patterns` + `backend-coordinator`; `*.tsx` injects frontend; a `.tsx`
+under `mobile/`, `android/`, `ios/`, or `react-native/` injects mobile instead
+(checked before the frontend pattern) + `mobile-coordinator`; `*.sql` injects
 DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
 
 **Audit the system** (read-only, fans out + consolidates):
@@ -170,7 +175,7 @@ DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
 **Close every unit of work** with the record-change skill:
 ```
 record-change            # marks the .engineos/changes/ record done, registers files+movements,
-                         # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/DD/, clears the Stop flag
+                         # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/<domain>/, clears the Stop flag
 ```
 
 **Verification before "done"** is enforced: typecheck + lint + relevant tests, output
@@ -205,7 +210,7 @@ Rules are code. Don't edit your local copy — open a PR to the EngineOS repo
 | Capability | How to use |
 |---|---|
 | Per-edit rule/specialist routing | automatic (PreToolUse hook) |
-| Domain analysis or change | `backend/frontend/dba/devops/llm`-coordinator agents |
+| Domain analysis or change | `backend/frontend/mobile/dba/devops/llm`-coordinator agents |
 | Multi-domain read-only audit | `/audit <domain\|all> [scope]` |
 | Coordinated multi-domain change | `/implement <domain> <task>` |
 | Deep MCP-backed inspection | leaf specialists (auto-dispatched by `/audit`) |

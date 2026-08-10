@@ -28,9 +28,9 @@ printf '' | grep -E "$SECRET_PATTERNS" >/dev/null 2>&1
 [ "$?" -ge 2 ] && { set -e; red "ABORT: secrets-gate pattern failed to compile. Failing closed."; exit 1; }
 
 if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  SECRET_HITS=$( cd "$REPO_DIR" && git ls-files -z | grep -zv '^install\.sh$' | xargs -0 grep -IlE "$SECRET_PATTERNS" 2>/dev/null )
+  SECRET_HITS=$( cd "$REPO_DIR" && git ls-files -z | grep -zvE '^install\.(sh|ps1)$' | xargs -0 grep -IlE "$SECRET_PATTERNS" 2>/dev/null )
 else
-  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh 2>/dev/null)
+  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh --exclude=install.ps1 2>/dev/null)
 fi
 set -e
 if [ -n "$SECRET_HITS" ]; then
@@ -105,6 +105,50 @@ if [ -d "$REPO_DIR/commands" ]; then
   done
 fi
 
+# ---------- 4d. Symlink rules + patterns ----------
+# Agents/skills reference these by relative path (rules/*.md, patterns/*) — without
+# them installed alongside skills/agents/commands, those references resolve to
+# nothing on an installed machine.
+mkdir -p "$CLAUDE_DIR/rules"
+for rule in "$REPO_DIR"/rules/*.md; do
+  [ -e "$rule" ] || continue   # empty glob guard
+  name=$(basename "$rule")
+  target="$CLAUDE_DIR/rules/$name"
+  if [ -L "$target" ] || [ ! -e "$target" ]; then
+    ln -sfn "$rule" "$target"
+    echo "rule linked: $name"
+  else
+    warn "skip: $target exists and is not a symlink"
+  fi
+done
+
+mkdir -p "$CLAUDE_DIR/patterns"
+for pattern in "$REPO_DIR"/patterns/*; do
+  [ -e "$pattern" ] || continue   # empty glob guard
+  name=$(basename "$pattern")
+  target="$CLAUDE_DIR/patterns/$name"
+  if [ -L "$target" ] || [ ! -e "$target" ]; then
+    ln -sfn "$pattern" "$target"
+    echo "pattern linked: $name"
+  else
+    warn "skip: $target exists and is not a symlink"
+  fi
+done
+
+# ---------- 4e. Prune dangling symlinks ----------
+# A rename in the repo (e.g. commands/analisy-architecture.md -> analyze-architecture.md)
+# otherwise leaves a stale symlink whose target no longer exists — a slash command
+# that still "exists" in ~/.claude/commands but silently 404s. Sweep the directories
+# we manage and drop any symlink pointing at nothing.
+for dir in "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$CLAUDE_DIR/commands"; do
+  [ -d "$dir" ] || continue
+  while IFS= read -r -d '' link; do
+    [ -e "$link" ] && continue   # target resolves, keep it
+    rm -f "$link"
+    echo "pruned dangling link: ${link#"$CLAUDE_DIR/"}"
+  done < <(find "$dir" -maxdepth 1 -type l -print0)
+done
+
 # ---------- 5. Hooks: merge into settings.json (requires jq) ----------
 chmod +x "$REPO_DIR"/hooks/*.sh
 if command -v jq >/dev/null 2>&1; then
@@ -119,8 +163,13 @@ if command -v jq >/dev/null 2>&1; then
   RECORD="$REPO_DIR/hooks/record-verify.sh"
   ENSURE="$REPO_DIR/hooks/ensure-project-layout.sh"
   SCALE="$REPO_DIR/hooks/task-scale-advisor.sh"
+  GATE="$REPO_DIR/hooks/gate-advisor.sh"
+  ROUTEADV="$REPO_DIR/hooks/route-advisor.sh"
 
-  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" '
+  # This list MUST stay equal to hooks/hooks.json's (plugin mode). A hook wired
+  # in only one install mode never fires for half the userbase — which is how
+  # gate-advisor.sh and route-advisor.sh were dead for every symlink install.
+  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" --arg gate "$GATE" --arg routeadv "$ROUTEADV" '
     # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
     def add($event; $matcher; $cmd):
       .hooks[$event] //= []
@@ -135,6 +184,8 @@ if command -v jq >/dev/null 2>&1; then
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)
     | add("UserPromptSubmit"; "";      $scale)
+    | add("UserPromptSubmit"; "";      $gate)
+    | add("UserPromptSubmit"; "";      $routeadv)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
 
@@ -161,6 +212,8 @@ else
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
   warn "  SessionStart -> $REPO_DIR/hooks/ensure-project-layout.sh"
   warn "  UserPromptSubmit -> $REPO_DIR/hooks/task-scale-advisor.sh"
+  warn "  UserPromptSubmit -> $REPO_DIR/hooks/gate-advisor.sh"
+  warn "  UserPromptSubmit -> $REPO_DIR/hooks/route-advisor.sh"
 fi
 
 # ---------- 6. MCP reminder ----------

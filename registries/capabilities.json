@@ -1,0 +1,49 @@
+{
+  "version": "1.1.0",
+  "description": "Workflow-capability -> agent binding, for consumers that resolve 'what handles this step' without reading agents/*.md directly (e.g. the ai-se-os headless runner). Distinct from routing.json: routing answers a file-path question at edit time; this answers an abstract-workflow-step question a hook never asks. model_tier is always a hyphenated slug of one of rules/models.md's four tier names (that file's own table cell reads 'most capable', two words — this registry's identifier form is 'most-capable'), never a raw model alias — a bound entry's tier is the reverse lookup of its agent's frontmatter model; a note entry's tier is what the main Claude Code loop should use in the agent's place. Read by scripts/validate-engineos.sh (agent exists, tier is valid) and scripts/gen-agent-commands.sh's sibling generator for registries/agents.json's capability_ids back-reference.",
+  "model_tiers": ["cheap", "build", "design", "most-capable"],
+  "capabilities": [
+    {
+      "id": "author-spec",
+      "title": "Turn an objective into a spec with acceptance criteria",
+      "agent": "product-spec",
+      "model_tier": "most-capable",
+      "risk_floor": "low"
+    },
+    {
+      "id": "implement",
+      "title": "Write code, tests, migrations and config against an existing spec/design",
+      "agent": "backend-coordinator",
+      "model_tier": "build",
+      "risk_floor": "medium"
+    },
+    {
+      "id": "validate",
+      "title": "Run and assert against the target repo's own lint/typecheck/test checks",
+      "agent": "test-writer",
+      "model_tier": "build",
+      "risk_floor": "low"
+    },
+    {
+      "id": "document",
+      "title": "Write and update documentation for the delivered feature",
+      "agent": "docs-writer",
+      "model_tier": "build",
+      "risk_floor": "low"
+    },
+    {
+      "id": "security-review",
+      "title": "Adversarial security review of a change before it ships",
+      "agent": "security-reviewer",
+      "model_tier": "design",
+      "risk_floor": "high"
+    },
+    {
+      "id": "route",
+      "title": "Resolve a request into a dispatch plan — intents, rules, agents with disjoint file scopes, risk, gates, waves",
+      "agent": "router",
+      "model_tier": "design",
+      "risk_floor": "low"
+    }
+  ]
+}

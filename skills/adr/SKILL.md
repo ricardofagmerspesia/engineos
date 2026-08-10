@@ -1,6 +1,6 @@
 ---
 name: adr
-description: Write or update Architecture Decision Records. Use when an architectural choice is being made or discussed — technology selection (X vs Y), structural decisions, cross-cutting conventions — so the decision and its reasoning get recorded, not just chatted.
+description: Write or update Architecture Decision Records. Use when an architectural choice is being made or discussed — technology selection (X vs Y), structural decisions, cross-cutting conventions — so the decision and its reasoning get recorded, not just chatted. Carve-out: business/career/positioning decisions go to the `strategy` skill.
 ---
 
 # ADR — Architecture Decision Records
@@ -17,7 +17,7 @@ NOT for: trivial choices, code-level decisions a comment covers, decisions alrea
 
 ## Procedure
 
-1. Check `docs/adr/` for existing/related ADRs first — supersede explicitly, don't contradict silently.
+1. Check `docs/adr/` for existing/related ADRs first (create the directory if absent: `mkdir -p docs/adr`) — supersede explicitly, don't contradict silently.
 2. Genuinely weigh ≥2 options. If only one option was considered, it's documentation, not a decision — say so.
 3. Write the record (template below). Keep it ≤1 page.
 4. Status starts `proposed`; flips to `accepted` after team review (PR approval = acceptance).

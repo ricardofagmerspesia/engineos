@@ -37,6 +37,17 @@ check "single service stays quiet" \
   "create a service to send the welcome email" ""
 check "question stays quiet" \
   "what does this function return?" ""
+# bare "design"/"architecture" alone (no action verb, no strong signal) must not
+# claim the design tier — regression: it used to fire on ordinary prose like this
+check "bare design word stays quiet" \
+  "the button design looks good to me" ""
+check "bare architecture word stays quiet" \
+  "the architecture diagram in the doc is outdated" ""
+# strong design signals still fire standalone, without needing an action verb
+check "decompose alone picks design tier" \
+  "let's decompose this into smaller pieces" "model: opus"
+check "adr alone picks design tier" \
+  "we should write an adr for this" "model: opus"
 
 echo "task-scale-advisor: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -6,7 +6,7 @@
 - DON'T inject repositories into controllers — controllers know services only.
 
 ## Validation & DTOs
-- DO validate every external input with class-validator DTOs (or zod pipes) at the controller edge.
+- DO validate every external input with class-validator DTOs (or zod pipes) at the controller edge. (`rules/security.md` owns the boundary-validation rule; this is the NestJS mechanism for it.)
 - DO use separate DTOs for input and output — never expose ORM entities in responses.
 - DO make every endpoint declare both a request DTO and a response DTO; never return an untyped service result.
 - DO make boundary DTOs classes, not interfaces/type aliases (decorators need a class). Use `@ValidateNested()` + `@Type()` for nested objects.
@@ -16,21 +16,20 @@
 ## Services & data access
 - DO put data access behind repository providers; services orchestrate, repositories query.
 - DO wrap multi-write operations in transactions; the transaction boundary lives in the service, not repository.
-- DO make webhook/queue handlers idempotent (dedupe key or upsert).
+- DO make webhook/queue handlers idempotent via a dedupe key or upsert. (The idempotency principle lives in `rules/architecture.md`; this is the mechanism.)
 - DON'T leak ORM query builders out of repositories.
 
 ## API design
 - DO follow REST resource naming: plural nouns, nested only one level (`/orders/:id/items`).
-- DO paginate lists (default limit 20, max 100) and return total/cursor metadata.
+- DO give `rules/architecture.md`'s paginate-every-list rule concrete numbers here: default limit 20, max 100, and return total/cursor metadata.
 - DO version breaking changes (`/v2/...` or header) — never break existing consumers silently.
 - DO return structured errors via a global exception filter, shaped
   `{ statusCode, code, message, correlationId }` — where `code` is the stable
-  taxonomy value from `rules/observability.md` (`validation`, `auth`, `not_found`,
-  `conflict`, `rate_limited`, `dependency`, `internal`). `statusCode` is the HTTP
+  taxonomy value defined in `rules/observability.md`. `statusCode` is the HTTP
   status it maps to; clients switch on `code`, never on prose in `message`.
 
 ## Async & jobs
-- DO use queues (Bull/BullMQ) for work >1s, retries with backoff, dead-letter handling.
+- DO use queues (Bull/BullMQ) for the slow work `rules/architecture.md` says belongs in the background, with retries + backoff and dead-letter handling.
 - DO set concurrency limits on workers; unbounded `Promise.all` over user-sized arrays is a DoS on yourself.
 
 ## Observability
