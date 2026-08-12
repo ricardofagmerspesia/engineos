@@ -33,23 +33,25 @@ is never silent:
   unless the user takes it up.
 - When in doubt, ask before writing tests — never write them and ask after.
 
-## Verification timing — lint + typecheck at finalization
+## The final gate
 
-- The finalization gate is **lint + typecheck**, run ONCE, after the last unit of
-  work is integrated, with output shown
-  (`superpowers:verification-before-completion`). The `Stop` hook
-  (`hooks/stop-verify.sh`) automates exactly this.
-- Tests join that gate ONLY when tests were ON for the task per the section
+**The final gate** is EngineOS's single verification point: lint + typecheck, run
+ONCE, after the last unit of work is integrated, with output shown
+(`superpowers:verification-before-completion`). This is the only place the gate is
+defined — every other document names it and stops. The `Stop` hook
+(`hooks/stop-verify.sh`) automates it.
+
+- Tests join the gate ONLY when tests were ON for the task per the section
   above. Then they run once, at the same moment — never per edit, per file, or
   per wave.
-- `ENGINEOS_VERIFY_TESTS=1` forces tests back into the Stop gate for a team,
-  project, or session that wants them there unconditionally.
+- `ENGINEOS_VERIFY_TESTS=1` forces tests into the gate unconditionally, for a team,
+  project, or session that wants them there.
 - Never mid-task: no test/typecheck run per edit or per intermediate step. Write
   freely; verify at the end.
 - Narrowing the gate makes what remains MORE mandatory, not optional. Red means a
   fix loop until green, with output shown.
-- Wave barriers (`rules/parallelism.md`) integrate contracts; only the FINAL
-  barrier verifies.
+- Wave barriers (`rules/parallelism.md`) integrate contracts; the gate runs at the
+  last barrier only.
 
 ---
 
@@ -90,4 +92,4 @@ trigger to write tests.
   asks for TDD or for tests up front — not a default mode for every feature.
 - DO keep the suite fast (unit suite <30s) so that running it, when asked, stays cheap.
 - Flaky test = broken test. Fix or delete within the week; never retry-until-green.
-- Run tests when they are ON at finalization only, per **Verification timing**.
+- Run tests when they are ON at the final gate only.

@@ -1,6 +1,6 @@
 ---
 name: architecture-analyst
-description: System-comprehension + onboarding-docs specialist. Analyzes a codebase (modules, files, dependencies, patterns) and produces standardized, code-grounded architecture documentation for new developers, then can interview the human to fill the gaps docs alone can't cover. Two entry commands — `/analisy-architecture` (autonomous analysis + docs) and `/talk-about-the-system` (interactive interview). Uses `patterns/1-Analisys` and `patterns/2-Interview-brainstorm.md`. Alias: analyst (invocable by this name).
+description: System-comprehension and onboarding-docs specialist. Branches: `/analisy-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: analyst.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 ---

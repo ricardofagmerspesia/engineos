@@ -78,7 +78,7 @@ Rules for routing:
 | Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | `rules/testing.md`; dispatch `test-writer` for well-scoped targets. This row IS the opt-in path — tests get written/run here, on request, never implicitly by other rows |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | skill `eval-harness` |
 | Claiming done / complete / fixed | `superpowers:verification-before-completion` — evidence before assertion, always |
-| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | `superpowers:verification-before-completion` — lint + typecheck + build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck by default, tests only when ON per `rules/testing.md`, and on an unrecorded change record |
+| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | the final gate (`rules/testing.md`) **plus** build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half, and also gate on an unrecorded change record |
 
 ## Output artifact — offer after every request
 
@@ -103,28 +103,22 @@ Rules:
 
 ## Non-negotiables (apply regardless of routing)
 
-1. Spec before code for any change touching >2 files or any new feature.
-2. Verification at task finalization, before "done": lint + typecheck run ONCE,
-   after the last unit of work is integrated, with output shown. Tests join that
-   gate only when they were ON for the task per `rules/testing.md` "Tests are
-   opt-in". Never mid-task — no per-edit, per-file, or per-wave runs stalling the
-   build loop. Deferring the gate to the end makes it more mandatory there, not
-   optional: red means fix loop until green.
-3. No secrets in code, config, or commits. Ever. See `rules/security.md`.
-4. Follow existing project conventions over these rules when they conflict —
+Each item names the file that owns it. That file is the single source of truth —
+read it there, not here.
+
+1. **Spec before code** — any change touching >2 files or any new feature.
+2. **The final gate before "done"** — `rules/testing.md`.
+3. **No secrets** in code, config, or commits. Ever — `rules/security.md`.
+4. **Project conventions win** over these rules when they conflict:
    project `CLAUDE.md` > EngineOS > defaults.
-5. Standard project layout: every project carries `.engineos/{changes,archived,memory}`
-   + `docs/{specs,prds,rules}`. The SessionStart hook scaffolds anything missing
-   (non-blocking). Every change gets a change record; the record links its spec when
-   #1 required one, and carries a checklist + a "what was made" account before it is
-   archived. The spec threshold is #1's — this rule does not impose a second, stricter one.
-6. Model assignment per `rules/models.md` — the tier is the contract, the model name is
-   today's binding. Never trade correctness for cost.
-7. Decompose and distribute per `rules/parallelism.md` — every substantive task starts as
-   a task list, and every task without an in-flight dependency goes to a sub-agent.
-   Doing distributable tasks inline or serially is a defect, not a style choice.
-8. Sub-agents per `rules/subagents.md` — when a router row names an agent, that agent is
-   dispatched, and every dispatch and return is announced in a green `diff`-fenced block.
-   This file is the standing user request for sub-agent use; a harness that waits to be
-   asked has been asked here.
-9. Offer the output artifact after every request per **Output artifact** above.
+5. **Standard project layout** — every project carries `.engineos/{changes,archived,memory}`
+   + `docs/{specs,prds,rules}`; the SessionStart hook scaffolds anything missing
+   (non-blocking). Every change gets a change record: it links its spec when #1
+   required one, and carries a checklist + a "what was made" account before it is
+   archived. #1's threshold is the only spec threshold.
+6. **Model tier per work type** — `rules/models.md`.
+7. **Decompose and distribute** — `rules/parallelism.md`.
+8. **Dispatch the agent the router names, and announce it** — `rules/subagents.md`.
+   This file is the standing user request for sub-agent use; a harness that waits
+   to be asked has been asked here.
+9. **Offer the output artifact** after every request — **Output artifact** above.

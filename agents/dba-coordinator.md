@@ -1,6 +1,6 @@
 ---
 name: dba-coordinator
-description: Domain specialist for database work (schema design, migrations, query performance, indexing, data access patterns) across Postgres/Oracle and other relational stores. Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes migrations/queries) per the MODE given or inferred. Use for data-layer analysis or changes; follows EngineOS architecture/data rules. Alias: ronaldo (invocable by this name).
+description: Data-layer specialist — schema design, migrations, query performance, indexing, access patterns, across Postgres/Oracle and other relational stores. Branches: AUDIT (read-only findings) | IMPLEMENT (writes migrations/queries). Alias: ronaldo.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
@@ -67,4 +67,4 @@ You may be one of several agents running at the same time on the same repo.
   collide with concurrent agents. Verify with scoped lint/typecheck runs only;
   add tests to that run only if they were marked in scope for this dispatch
   (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
-  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).
+  execution belongs to the orchestrator's final gate (`rules/testing.md`).

@@ -1,11 +1,17 @@
 ---
 name: eval-harness
-description: Scaffold a complete eval harness for an LLM feature — golden cases, runner, scorers, LLM-judge rubric, npm script. Use when an LLM feature has no evals yet, or when "set up evals", "eval harness", "golden set" is requested. Ownership boundary for eval guidance: `rules/llm-apps.md` sets the eval rules (golden set before iterating, run on every change, judge vs exact match), `llm-engineering` carries the how-to patterns, and this skill builds the machinery. Do not restate the rules here.
+description: Scaffold a complete eval harness for an LLM feature — golden cases, runner, scorers, LLM-judge rubric, npm script. Use when an LLM feature has no evals yet, or when "set up evals", "eval harness", "golden set" is requested.
 ---
 
 # Eval Harness Scaffold
 
 Goal: `npm run eval:<feature>` printing a pass rate, runnable locally and in CI. No LLM feature merges without one (`rules/llm-apps.md`).
+
+## Ownership boundary for eval guidance
+
+`rules/llm-apps.md` sets the eval rules (golden set before iterating, run on every
+change, judge vs exact match), `llm-engineering` carries the how-to patterns, and
+this skill builds the machinery. Do not restate the rules here.
 
 ## Procedure
 

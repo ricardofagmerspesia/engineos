@@ -33,7 +33,7 @@ agent per line, never inline in a paragraph.
 On return:
 
 ```diff
-+ [agent] borisenko -> done | 3 files | lint+typecheck green
++ [agent] borisenko -> done | 3 files | final gate green
 ```
 
 - DO use the alias when the agent has one (`borisenko`, `arturo`, `elias`, …),

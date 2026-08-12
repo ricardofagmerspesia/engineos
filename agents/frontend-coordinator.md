@@ -1,6 +1,6 @@
 ---
 name: frontend-coordinator
-description: Domain specialist for frontend work (React, Next.js, components, pages/app router, state, data fetching, forms, styling, performance, accessibility). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code) per the MODE given or inferred. Use for frontend-focused analysis or changes; follows EngineOS architecture/frontend/testing rules. Alias: arturo (invocable by this name).
+description: Frontend specialist — React/Next components, pages/app router, state, data fetching, forms, styling, performance, accessibility. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: arturo.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
@@ -31,10 +31,8 @@ Project `CLAUDE.md` overrides EngineOS.
 2. Check: server/client component boundaries, accessibility (roles, labels,
    keyboard, contrast), no untrusted HTML injection, memoization where it pays,
    form validation, bundle/perf hygiene.
-3. AUDIT: findings with evidence. IMPLEMENT: smallest correct change; verify with
-   lint + typecheck, show output. Adjust or run tests only when the dispatch
-   brief marks them in scope (`rules/testing.md` "Tests are opt-in") —
-   otherwise state `[tests] skipped — not requested`.
+3. AUDIT: findings with evidence. IMPLEMENT: smallest correct change, verified
+   with scoped lint/typecheck.
 
 ## Output (shared specialist format)
 
@@ -67,4 +65,4 @@ You may be one of several agents running at the same time on the same repo.
   collide with concurrent agents. Verify with scoped lint/typecheck runs only;
   add tests to that run only if they were marked in scope for this dispatch
   (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
-  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).
+  execution belongs to the orchestrator's final gate (`rules/testing.md`).

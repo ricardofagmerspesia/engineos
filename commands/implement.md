@@ -48,12 +48,9 @@ domain(s) from it rather than failing.
    Between waves: integrate only — intermediate barriers do not verify
    (`rules/parallelism.md`); the gate in step 7 is the single verification point.
 
-7. **Verify** — lint + typecheck, show output. Tests join this gate only if
-   tests were in scope for the task (`rules/testing.md` "Tests are opt-in") —
-   otherwise state `[tests] skipped — not requested`. The `Stop` hook
-   (`hooks/stop-verify.sh`) enforces this gate; there is no per-edit hook in
-   default wiring. Report any unit that failed by name; never let a green
-   summary cover an incomplete unit.
+7. **Run the final gate** (`rules/testing.md`). When tests were not in scope,
+   state `[tests] skipped — not requested`. Report any unit that failed by name;
+   never let a green summary cover an incomplete unit.
 
 8. **Record** — close the change via the `record-change` skill (mark done,
    register files + movements, `.engineos/changes/` → `.engineos/archived/`).

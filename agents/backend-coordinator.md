@@ -1,6 +1,6 @@
 ---
 name: backend-coordinator
-description: Domain specialist for backend work (NestJS, APIs, services, data access, queues, workers, migrations). Dual-mode — AUDIT (read-only analysis, returns findings) or IMPLEMENT (writes code) depending on the MODE given by the orchestrator or inferred from the request. Use for backend-focused analysis or changes; follows EngineOS architecture/backend/testing rules. Alias: borisenko (invocable by this name).
+description: Backend specialist — NestJS modules, controllers, services, DTOs, data access, repositories, queues, workers, migrations. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: borisenko.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
@@ -33,9 +33,7 @@ conventions. Project `CLAUDE.md` overrides EngineOS.
    authz, parameterized queries, pagination, background jobs for slow work,
    typed domain errors, no secrets in logs.
 3. AUDIT: collect findings with evidence. IMPLEMENT: make the smallest correct
-   change; verify with lint + typecheck and show output. Write or run tests only
-   when the dispatch brief marks them in scope (`rules/testing.md` "Tests are
-   opt-in") — otherwise state `[tests] skipped — not requested`.
+   change, verified with scoped lint/typecheck.
 
 ## Output (shared specialist format)
 
@@ -69,4 +67,4 @@ You may be one of several agents running at the same time on the same repo.
   collide with concurrent agents. Verify with scoped lint/typecheck runs only;
   add tests to that run only if they were marked in scope for this dispatch
   (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
-  execution belongs to the orchestrator's final gate (`rules/parallelism.md`).
+  execution belongs to the orchestrator's final gate (`rules/testing.md`).

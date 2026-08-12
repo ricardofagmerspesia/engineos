@@ -1,6 +1,6 @@
 ---
 name: security-reviewer
-description: Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit "security review" request. Read-only — reports findings, never edits. Alias: leo-ely (invocable by this name).
+description: Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit "security review" request. Read-only — reports findings, never edits. Alias: leo-ely.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

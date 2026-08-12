@@ -39,13 +39,11 @@ the next one (inherently serial chain — say so explicitly).
    opt-in"), and the output format expected back. IMPLEMENT agents write tests
    only when the brief says tests are in scope; either way, NONE of them run the
    test suite themselves — execution belongs to the final gate
-   (`rules/testing.md` "Verification timing").
+   (`rules/testing.md`).
 6. **Integrate** at each barrier: wire the pieces, resolve contract drift, keep
-   moving. **Verify once at the FINAL barrier**: lint + typecheck, plus tests
-   only when tests were in scope for the task, output shown
-   (`superpowers:verification-before-completion`). Intermediate barriers do
-   not run the suite — mid-task verification stalls the pipeline
-   (`rules/testing.md` "Verification timing").
+   moving. **Run the final gate at the LAST barrier only** (`rules/testing.md`).
+   Intermediate barriers integrate; they do not verify — mid-task verification
+   stalls the pipeline.
 
 ## Hard rules
 
