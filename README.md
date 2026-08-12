@@ -92,6 +92,7 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but scoped lint+typecheck weren't run; tests are opt-in (`rules/testing.md`) and join the gate only when `ENGINEOS_VERIFY_TESTS=1` or the task had tests in scope | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
+| `hooks/test-docs.sh` + `docs-ledger.sh` | Probes the prose layer the hook tests can't reach: dangling `rules/`/agent/skill pointers, orphaned agents, `commands/agents/` drift from the roster, router-table ↔ `routing-map.sh` parity, router-row closure, and single-source-of-truth budgets. Known debt is declared in the ledger with a reason and a retirement path — visible, defended, and red on the next instance. Not a hook; run `hooks/test-docs.sh` | Test (manual / CI) |
 | `skills/record-change` | Finalize a change: mark done, register files+movements, `.engineos/changes/`→`.engineos/archived/` | After completing work |
 | `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (mcp-atlassian/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
