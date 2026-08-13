@@ -39,7 +39,7 @@ While the switch is on, also drop the prompt-side conventions:
 - **No spec gate and no change record.** Non-negotiables 1 and 5 are off.
 - **No output-artifact offer.** Answer the request and stop.
 - **No verification gate.** Non-negotiable 2 is off; run lint/typecheck only if
-  the user asks. Tests were already opt-in (`rules/testing.md`).
+  the user asks. Tests were already opt-in (`rules/verification.md`).
 
 ## What bypass does NOT turn off
 

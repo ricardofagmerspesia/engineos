@@ -3,8 +3,8 @@
 # Verification runs ONCE at task finalization via the Stop hooks (stop-verify.sh);
 # a blocking check after every Edit/Write stalled the build loop, so this hook was
 # unwired from hooks.json (see .engineos change record
-# 2026-08-08-verify-at-end-distribute-always + rules/testing.md "Verification
-# timing"). Teams that want per-edit gating back can
+# 2026-08-08-verify-at-end-distribute-always + rules/verification.md "The final
+# gate"). Teams that want per-edit gating back can
 # re-add it under PostToolUse(Edit|Write) in hooks/hooks.json.
 # Tool-aware: detects biome/eslint for lint, nx/package-script for typecheck,
 # pnpm/yarn/npm for the runner. Scopes to the changed package, not the whole repo.

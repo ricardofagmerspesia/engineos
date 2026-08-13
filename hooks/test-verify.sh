@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Test harness for hooks/stop-verify.sh.
 # Drives the REAL hook with npm-only temp repos (no pnpm-lock.yaml / yarn.lock).
-# Tests are opt-in in the gate itself (rules/testing.md "Tests are opt-in"): the
+# Tests are opt-in in the gate itself (rules/verification.md "Tests are opt-in"): the
 # default TARGETS list is "lint typecheck" and ENGINEOS_VERIFY_TESTS=1 is what
 # folds "test" back in. Cases below invoke() with an explicit env value so both
 # states are covered instead of relying on whatever leaked into this shell.
@@ -46,7 +46,7 @@ rm -rf "$T" "$TSCRIPT"
 [ -z "$DEC" ] && ok || no "case1 no-package.json: expected empty decision, got '$DEC'"
 
 # ---------- Case 2: Failing test, tests NOT opted in (default) — no block ----------
-# rules/testing.md "Tests are opt-in": with ENGINEOS_VERIFY_TESTS unset, "test"
+# rules/verification.md "Tests are opt-in": with ENGINEOS_VERIFY_TESTS unset, "test"
 # is not in the default TARGETS list, so a package whose only script is a
 # failing test must not block the gate.
 T=$(mktemp -d)

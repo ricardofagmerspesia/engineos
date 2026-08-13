@@ -35,13 +35,13 @@ the next one (inherently serial chain — say so explicitly).
    assistant turn. Sequential dispatch of independent agents is a defect.
 5. **Brief each agent** with: MODE (AUDIT|IMPLEMENT), exact file scope it owns,
    the frozen contracts, the model per `rules/models.md`, its rules to follow,
-   whether tests are IN SCOPE for its task (per `rules/testing.md` "Tests are
+   whether tests are IN SCOPE for its task (per `rules/verification.md` "Tests are
    opt-in"), and the output format expected back. IMPLEMENT agents write tests
    only when the brief says tests are in scope; either way, NONE of them run the
    test suite themselves — execution belongs to the final gate
-   (`rules/testing.md`).
+   (`rules/verification.md`).
 6. **Integrate** at each barrier: wire the pieces, resolve contract drift, keep
-   moving. **Run the final gate at the LAST barrier only** (`rules/testing.md`).
+   moving. **Run the final gate at the LAST barrier only** (`rules/verification.md`).
    Intermediate barriers integrate; they do not verify — mid-task verification
    stalls the pipeline.
 

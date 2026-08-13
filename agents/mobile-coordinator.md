@@ -30,27 +30,23 @@ the web app as your reference; you build in the mobile app.
 - If mirroring requires an API that does not exist or must change, state the
   exact contract needed and stop — do not implement the backend side yourself.
 
-## Mode
+## Dispatch contract
 
-The orchestrator passes `MODE: AUDIT` or `MODE: IMPLEMENT`. If none, infer from
-the request (parity/gap analysis → AUDIT; "mirror/port/build X on mobile" →
-IMPLEMENT).
-
-- **AUDIT** — read-only parity report: which web features exist, are missing, or
-  have drifted on mobile, with the gap for each. No writes.
-- **IMPLEMENT** — build the mobile mirror of the target feature, then state what
-  changed + how verified.
+Your mode, file scope, frozen contracts, and what a dispatched agent may run:
+`rules/subagents.md`. In this domain: AUDIT is a read-only parity report — which
+web features exist, are missing, or have drifted on mobile, with the gap for each;
+IMPLEMENT builds the mobile mirror of the target feature. The scope boundary above
+holds in both modes, and verification is scoped lint/typecheck only.
 
 ## Rules to apply
 
-Follow `rules/architecture.md`, `rules/testing.md` (tests are opt-in — see
-"Tests are opt-in" in that file), and the component/state/data-fetching
+Follow `rules/architecture.md` and the component/state/data-fetching
 principles in `rules/frontend.md` plus the API-consumption/error-handling
 principles in `rules/backend.md` — both adapted to mobile (no server/
 client component split, no App Router; use React Navigation screens, platform-
 aware styling, and mobile-safe network/offline handling instead). Apply the
 `react-patterns` skill where its component/state/data-fetching conventions
-transfer directly. Project `CLAUDE.md` overrides EngineOS.
+transfer directly.
 
 ## Method
 
@@ -97,20 +93,3 @@ In IMPLEMENT mode, add a `### Changed` section (files + verification output).
 If work was blocked by an out-of-scope dependency (missing API, needed web change,
 infra), add a `### Blocked` section naming which coordinator owns the missing piece.
 </content>
-
-## Parallel discipline
-
-You may be one of several agents running at the same time on the same repo.
-
-- **Stay inside the file scope you were given.** If the fix needs a file outside
-  it, do not touch it — report it as `### Out of scope` and let the orchestrator
-  route it. Another agent probably owns that file right now.
-- **Honor the frozen contracts** (types, API payloads, DB schema, module surfaces)
-  handed to you verbatim. If a contract looks wrong, report it — never redefine it
-  unilaterally; parallel siblings are coding against it.
-- **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
-- **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
-  add tests to that run only if they were marked in scope for this dispatch
-  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
-  execution belongs to the orchestrator's final gate (`rules/testing.md`).

@@ -45,6 +45,26 @@ On return:
 - DON'T bury an agent name in a sentence, and DON'T batch several agents onto one
   line. Which agent is working must be readable without parsing prose.
 
+## If you are the dispatched agent
+
+The brief names your mode. `MODE: AUDIT` is read-only — inspect, gather evidence,
+report, edit nothing. `MODE: IMPLEMENT` makes the change, then states what it
+changed and how it verified. Absent a mode, infer one: a question or
+"review/analyze" reads as AUDIT, an explicit task as IMPLEMENT.
+
+You are probably one of several agents on this repo right now, so:
+
+- **Stay inside the file scope you were given** — report anything outside it as
+  `### Out of scope` for the orchestrator to route. Another agent likely owns it.
+- **Honor the frozen contracts** (types, API payloads, DB schema, module
+  surfaces) verbatim. Report a contract that looks wrong; never redefine one
+  unilaterally, since siblings are coding against it.
+- **Verify with scoped lint/typecheck only.** Repo-wide formatters, codemods and
+  `git` writes collide with concurrent agents. Tests join that run only when the
+  brief marked them in scope (`rules/verification.md` "Tests are opt-in"); the
+  full suite and the final gate belong to the orchestrator.
+- **Project `CLAUDE.md` outranks EngineOS** wherever the two conflict.
+
 ## Relation to the router
 
 `rules/parallelism.md` decides how the work splits. `rules/models.md` decides the

@@ -163,7 +163,7 @@ suite unless you ask for them ("write tests", "add coverage", "TDD this", "run
 the suite"), your project's `CLAUDE.md` requires them, a test agent
 (`test-writer` / `qa-tester`) was dispatched on purpose, or you named a
 release/merge gate that includes tests. Otherwise the finalization gate is
-**lint + typecheck only** — see `rules/testing.md` for the full policy, and set
+**lint + typecheck only** — see `rules/verification.md` for the full policy, and set
 `ENGINEOS_VERIFY_TESTS=1` to force tests back into the Stop gate unconditionally.
 
 ---
@@ -181,9 +181,10 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 ## 7. Rules — the standards being enforced
 
 - **Always-on:** `rules/base.md`, `security.md`, `git.md`, `parallelism.md`,
-  `models.md`, `subagents.md`.
+  `models.md`, `subagents.md`, `verification.md`.
 - **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
-  `llm-apps.md`, `testing.md`, `data.md`, `observability.md`, `memory.md`.
+  `llm-apps.md`, `testing.md` (test craft, loaded when tests are on), `data.md`,
+  `observability.md`, `memory.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.
 - **Project `CLAUDE.md` overrides EngineOS** where they conflict.
 

@@ -177,8 +177,8 @@ if command -v jq >/dev/null 2>&1; then
     .hooks //= {}
     | add("PreToolUse";  "Edit|Write"; $route)
     | add("PostToolUse"; "Edit|Write"; $mark)
-    # per-edit gate retired: verification runs once at Stop (rules/testing.md
-    # "Verification timing") — drop stale wiring from earlier installs
+    # per-edit gate retired: verification runs once at Stop (rules/verification.md
+    # "The final gate") — drop stale wiring from earlier installs
     | drop("PostToolUse"; $post)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)

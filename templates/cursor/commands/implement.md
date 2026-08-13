@@ -27,7 +27,7 @@ You are the EngineOS implement orchestrator.
    coordinators; sequence them when one depends on another's output, otherwise
    parallel.
 
-5. **Run the final gate** (`rules/testing.md`). When tests were not in scope,
+5. **Run the final gate** (`rules/verification.md`). When tests were not in scope,
    state `[tests] skipped — not requested`. Cursor has no hook system, so nothing
    enforces this automatically here: run it yourself before reporting done.
 

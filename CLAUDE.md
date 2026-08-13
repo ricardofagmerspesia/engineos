@@ -13,6 +13,7 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/parallelism.md
 @rules/models.md
 @rules/subagents.md
+@rules/verification.md
 
 ## Router — classify before acting
 
@@ -78,7 +79,7 @@ Rules for routing:
 | Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | `rules/testing.md`; dispatch `test-writer` for well-scoped targets. This row IS the opt-in path — tests get written/run here, on request, never implicitly by other rows |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | skill `eval-harness` |
 | Claiming done / complete / fixed | `superpowers:verification-before-completion` — evidence before assertion, always |
-| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | the final gate (`rules/testing.md`) **plus** build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half, and also gate on an unrecorded change record |
+| Spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `specs/archive/` or `.engineos/archived/`) | the final gate (`rules/verification.md`) **plus** build + API/Web startup check, output shown; fix loop until clean before reporting done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half, and also gate on an unrecorded change record |
 
 ## Output artifact — offer after every request
 
@@ -107,7 +108,7 @@ Each item names the file that owns it. That file is the single source of truth �
 read it there, not here.
 
 1. **Spec before code** — any change touching >2 files or any new feature.
-2. **The final gate before "done"** — `rules/testing.md`.
+2. **The final gate before "done"** — `rules/verification.md`.
 3. **No secrets** in code, config, or commits. Ever — `rules/security.md`.
 4. **Project conventions win** over these rules when they conflict:
    project `CLAUDE.md` > EngineOS > defaults.

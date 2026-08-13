@@ -181,7 +181,7 @@ after the last unit of work. The Stop gates make this non-optional.
 ("write tests", "add coverage", "integration tests", "TDD this"), your project's
 `CLAUDE.md` requires them, or a test agent (`test-writer` / `qa-tester`) is
 dispatched on purpose. When they are off, the session says so in one line:
-`[tests] skipped — not requested`. Full policy: `rules/testing.md`. Set
+`[tests] skipped — not requested`. Full policy: `rules/verification.md`. Set
 `ENGINEOS_VERIFY_TESTS=1` to force tests into the Stop gate unconditionally.
 
 ---

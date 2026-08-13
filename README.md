@@ -90,7 +90,7 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `hooks/announce-agent-dispatch.sh` + `announce-agent-return.sh` | Backstop for the green agent banner in `rules/subagents.md`. The rule was prose-only and drifted — dispatches happened silently. These re-inject the exact banner format as `additionalContext` at dispatch/return time, the same pattern `route-before-change.sh` uses for file routing. Smoke test: `hooks/test-agent-announce.sh`. Cursor has no hook system and no agent registry, so `.cursor/rules/subagent-dispatch.mdc` mirrors the convention prompt-only, best-effort | PreToolUse / PostToolUse `Agent\|Task` |
 | `hooks/post-edit-check.sh` | Per-edit typecheck+lint — retired from default wiring (verification runs once at Stop); kept on disk as opt-in | not wired (opt-in) |
 | `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
-| `hooks/stop-verify.sh` | Blocks "done" once if code changed but scoped lint+typecheck weren't run; tests are opt-in (`rules/testing.md`) and join the gate only when `ENGINEOS_VERIFY_TESTS=1` or the task had tests in scope | Stop |
+| `hooks/stop-verify.sh` | Blocks "done" once if code changed but scoped lint+typecheck weren't run; tests are opt-in (`rules/verification.md`) and join the gate only when `ENGINEOS_VERIFY_TESTS=1` or the task had tests in scope | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
 | `hooks/test-docs.sh` + `docs-ledger.sh` | Probes the prose layer the hook tests can't reach: dangling `rules/`/agent/skill pointers, orphaned agents, `commands/agents/` drift from the roster, router-table ↔ `routing-map.sh` parity, router-row closure, and single-source-of-truth budgets. Known debt is declared in the ledger with a reason and a retirement path — visible, defended, and red on the next instance. Not a hook; run `hooks/test-docs.sh` | Test (manual / CI) |
 | `skills/record-change` | Finalize a change: mark done, register files+movements, `.engineos/changes/`→`.engineos/archived/` | After completing work |
@@ -136,7 +136,7 @@ cp .engineos/changes/_template.md ".engineos/changes/$(date +%F)-<slug>.md"   # 
 Fill in What / Why / Scope. Set `status: active`. Commit it with the work it tracks.
 
 **2. Finish a change → `.engineos/archived/`**
-Once the work is done and verified (lint + typecheck shown, plus tests only when they were in scope for the task — see `rules/testing.md`):
+Once the work is done and verified (lint + typecheck shown, plus tests only when they were in scope for the task — see `rules/verification.md`):
 ```bash
 mkdir -p ".engineos/archived/<YYYY>/<MM>/<DD>" && git mv ".engineos/changes/<date>-<slug>.md" ".engineos/archived/<YYYY>/<MM>/<DD>/<date>-<slug>.md"
 ```

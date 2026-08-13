@@ -9,26 +9,36 @@
 
 # Rule stems imported by the "Always-on rules" section of CLAUDE.md. These are in
 # context on every turn, so any row may rely on them without loading them.
-ENGINEOS_ALWAYS_ON="base security git parallelism models subagents"
+ENGINEOS_ALWAYS_ON="base security git parallelism models subagents verification"
 
 # Accepted closure gaps: "<from>|<to>|<reason>". Pair-scoped, not row-scoped —
 # one always-on outward pointer explains the same gap in every router row.
 # Retiring an entry means fixing the underlying gap, then deleting the line.
-ENGINEOS_CLOSURE_EXCEPTIONS='
-parallelism|testing|Steps 5-6 name the final gate, which rules/testing.md defines. Retire by splitting testing.md into an always-on policy half and a disclosed craft half.
-models|testing|The build-tier row qualifies its test assignment against "Tests are opt-in", which rules/testing.md owns. Same retirement as above.
-'
+# Empty by design since 2026-08-12: the two gaps this ledger shipped with were
+# both parallelism/models -> testing, retired by splitting the policy half of
+# rules/testing.md into always-on rules/verification.md.
+ENGINEOS_CLOSURE_EXCEPTIONS=''
 
 # Single-source-of-truth budgets: "<phrase>|<max-files>|<owner-file-or-dash>".
 # A ratchet — budgets only move down. Coming in under budget passes and prints a
-# note telling you to tighten the number. Use "-" when the concept has no single
-# owner yet; that itself is debt.
+# note telling you to tighten the number. Counts are grep-literal, so a citation
+# wrapped across two lines does not register; re-flowing a paragraph can raise a
+# count without adding a site.
+#
+# Budget 0 is the floor: a retired phrasing whose meaning now lives in exactly one
+# always-on place under different words. It must not come back anywhere — which is
+# why these two keep no owner file.
+#   Do not spawn subagents            -> rules/parallelism.md states the flat graph
+#                                        orchestrator-side; coordinators are granted
+#                                        no Task tool, so the ban was a no-op there.
+#   Project `CLAUDE.md` overrides ...  -> CLAUDE.md non-negotiable #4, plus
+#                                        rules/subagents.md for dispatched agents.
 ENGINEOS_MARKER_BUDGETS='
-lint + typecheck|1|rules/testing.md
-Tests are opt-in|9|rules/testing.md
-MODE: AUDIT|8|-
-Do not spawn subagents|6|-
-Project `CLAUDE.md` overrides EngineOS|6|-
+lint + typecheck|1|rules/verification.md
+Tests are opt-in|6|rules/verification.md
+MODE: AUDIT|3|rules/subagents.md
+Do not spawn subagents|0|-
+Project `CLAUDE.md` overrides EngineOS|0|-
 '
 
 # Skills referenced by name that live outside this repo (plugins, host skills).

@@ -48,7 +48,7 @@ domain(s) from it rather than failing.
    Between waves: integrate only — intermediate barriers do not verify
    (`rules/parallelism.md`); the gate in step 7 is the single verification point.
 
-7. **Run the final gate** (`rules/testing.md`). When tests were not in scope,
+7. **Run the final gate** (`rules/verification.md`). When tests were not in scope,
    state `[tests] skipped — not requested`. Report any unit that failed by name;
    never let a green summary cover an incomplete unit.
 

@@ -9,20 +9,17 @@ You are the EngineOS frontend domain coordinator. You own client-side concerns:
 React/Next components, the App Router, state and data fetching, forms, styling and
 the design system, performance, and accessibility.
 
-## Mode
+## Dispatch contract
 
-The orchestrator passes `MODE: AUDIT` or `MODE: IMPLEMENT`. If none, infer from the
-request (analyze → AUDIT; "add/fix/build" → IMPLEMENT).
-
-- **AUDIT** — read-only, report only.
-- **IMPLEMENT** — make the change per the rules, then state what changed + how
-  verified.
+Your mode, file scope, frozen contracts, and what a dispatched agent may run:
+`rules/subagents.md`. Two limits bite hardest here — edit nothing outside the
+scope you were given, and verify with scoped lint/typecheck only, never a
+repo-wide formatter, codemod, or `git` write.
 
 ## Rules to apply
 
-Follow `rules/architecture.md`, `rules/frontend.md`, `rules/testing.md` (tests are
-opt-in — see "Tests are opt-in" in that file), and the `react-patterns` skill.
-Project `CLAUDE.md` overrides EngineOS.
+Follow `rules/architecture.md`, `rules/frontend.md`, and the `react-patterns`
+skill.
 
 ## Method
 
@@ -49,20 +46,3 @@ Project `CLAUDE.md` overrides EngineOS.
 ```
 
 In IMPLEMENT mode, add a `### Changed` section (files + verification output).
-
-## Parallel discipline
-
-You may be one of several agents running at the same time on the same repo.
-
-- **Stay inside the file scope you were given.** If the fix needs a file outside
-  it, do not touch it — report it as `### Out of scope` and let the orchestrator
-  route it. Another agent probably owns that file right now.
-- **Honor the frozen contracts** (types, API payloads, DB schema, module surfaces)
-  handed to you verbatim. If a contract looks wrong, report it — never redefine it
-  unilaterally; parallel siblings are coding against it.
-- **Do not spawn subagents.** The agent graph is flat; only the orchestrator fans out.
-- **Do not run repo-wide formatters, codemods, or `git` write commands** — they
-  collide with concurrent agents. Verify with scoped lint/typecheck runs only;
-  add tests to that run only if they were marked in scope for this dispatch
-  (`rules/testing.md` "Tests are opt-in"). You do not run the full suite —
-  execution belongs to the orchestrator's final gate (`rules/testing.md`).

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # EngineOS Stop hook: runs scoped lint + typecheck for packages changed this
 # session and blocks finishing if any fail.
-# Tests are opt-in, not part of the default gate — see rules/testing.md
+# Tests are opt-in, not part of the default gate — see rules/verification.md
 # "Tests are opt-in". Set ENGINEOS_VERIFY_TESTS=1 to fold the test target/script
 # back into this gate (any other value, or unset, skips it).
 # No-op when there is nothing to run. Never blocks on infra quirks — only on
@@ -103,7 +103,7 @@ HAS_NX=0
 [ -f "$ROOT/nx.json" ] && HAS_NX=1
 
 # ---------- verification target list ----------
-# Tests are opt-in per rules/testing.md "Tests are opt-in": lint + typecheck run
+# Tests are opt-in per rules/verification.md "Tests are opt-in": lint + typecheck run
 # by default, test only joins when the environment explicitly asks for it back.
 TARGETS="lint typecheck"
 [ "${ENGINEOS_VERIFY_TESTS:-}" = "1" ] && TARGETS="lint typecheck test"
