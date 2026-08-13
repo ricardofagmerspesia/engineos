@@ -49,7 +49,7 @@ fi
 
 if has "$DESIGN"; then
   NOTES="${NOTES:+$NOTES
-}[engineos] design/architecture work — rules/models.md: design tier (model: opus) for the design pass, build tier (model: sonnet) for the code that follows."
+}[engineos] design/architecture work — rules/models.md: design tier (model: opus) for the design pass, build tier (model: opus) for the code that follows."
 fi
 
 [ -z "$NOTES" ] && exit 0

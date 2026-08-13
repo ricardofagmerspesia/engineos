@@ -27,7 +27,7 @@ green, separated from surrounding prose by a blank line above and below — one
 agent per line, never inline in a paragraph.
 
 ```diff
-+ [agent] borisenko (backend-coordinator) | model: sonnet | mode: IMPLEMENT | scope: src/orders/**
++ [agent] borisenko (backend-coordinator) | model: opus | mode: IMPLEMENT | scope: src/orders/**
 ```
 
 On return:

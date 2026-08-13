@@ -63,7 +63,7 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action |
 | `rules/base.md`, `security.md`, `git.md` | Always-on standards | Every session |
 | `rules/parallelism.md` | Fan-out doctrine: when to split work, contract freeze, waves, disjoint file scopes, one-message dispatch | Always on; enforced on big tasks |
-| `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `sonnet`, mechanical `haiku` — tier is the contract, model name is today's binding | Always on |
+| `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `opus`, mechanical `haiku` — tier is the contract, model name is today's binding | Always on |
 | `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Per-domain standards | Loaded by router per intent |
 | `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
