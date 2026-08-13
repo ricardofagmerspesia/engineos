@@ -207,11 +207,13 @@ if command -v jq >/dev/null 2>&1; then
   SCALE="$REPO_DIR/hooks/task-scale-advisor.sh"
   GATE="$REPO_DIR/hooks/gate-advisor.sh"
   ROUTEADV="$REPO_DIR/hooks/route-advisor.sh"
+  ANNOUNCE="$REPO_DIR/hooks/announce-agent-dispatch.sh"
+  ANNRET="$REPO_DIR/hooks/announce-agent-return.sh"
 
   # This list MUST stay equal to hooks/hooks.json's (plugin mode). A hook wired
   # in only one install mode never fires for half the userbase — which is how
   # gate-advisor.sh and route-advisor.sh were dead for every symlink install.
-  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" --arg gate "$GATE" --arg routeadv "$ROUTEADV" '
+  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" --arg gate "$GATE" --arg routeadv "$ROUTEADV" --arg announce "$ANNOUNCE" --arg annret "$ANNRET" '
     # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
     def add($event; $matcher; $cmd):
       .hooks[$event] //= []
@@ -225,7 +227,9 @@ if command -v jq >/dev/null 2>&1; then
                            | map(select((.hooks | length) > 0)));
     .hooks //= {}
     | add("PreToolUse";  "Edit|Write"; $route)
+    | add("PreToolUse";  "Agent|Task"; $announce)
     | add("PostToolUse"; "Edit|Write"; $mark)
+    | add("PostToolUse"; "Agent|Task"; $annret)
     # per-edit gate retired: verification runs once at Stop (rules/verification.md
     # "The final gate") — drop stale wiring from earlier installs
     | drop("PostToolUse"; $post)
@@ -255,7 +259,9 @@ if command -v jq >/dev/null 2>&1; then
 else
   warn "jq not found — add hooks manually to $SETTINGS:"
   warn "  PreToolUse  matcher 'Edit|Write' -> $REPO_DIR/hooks/route-before-change.sh"
+  warn "  PreToolUse  matcher 'Agent|Task' -> $REPO_DIR/hooks/announce-agent-dispatch.sh"
   warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/mark-unrecorded.sh"
+  warn "  PostToolUse matcher 'Agent|Task' -> $REPO_DIR/hooks/announce-agent-return.sh"
   warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
   warn "  SessionStart -> $REPO_DIR/hooks/ensure-project-layout.sh"

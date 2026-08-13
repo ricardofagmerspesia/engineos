@@ -313,6 +313,10 @@ $hookPaths = @{
     record = ToUnixPath (Join-Path $hooksDir 'record-verify.sh')
     ensure = ToUnixPath (Join-Path $hooksDir 'ensure-project-layout.sh')
     scale  = ToUnixPath (Join-Path $hooksDir 'task-scale-advisor.sh')
+    gate   = ToUnixPath (Join-Path $hooksDir 'gate-advisor.sh')
+    routeadv = ToUnixPath (Join-Path $hooksDir 'route-advisor.sh')
+    announce = ToUnixPath (Join-Path $hooksDir 'announce-agent-dispatch.sh')
+    annret   = ToUnixPath (Join-Path $hooksDir 'announce-agent-return.sh')
 }
 
 $settingsObj = Get-Content $Settings -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -371,7 +375,9 @@ function Remove-EngineOSHooks {
 Remove-EngineOSHooks $settingsObj (ToUnixPath $hooksDir)
 
 Add-HookEntry $settingsObj 'PreToolUse'       'Edit|Write' (New-HookCommand $hookPaths.route)
+Add-HookEntry $settingsObj 'PreToolUse'       'Agent|Task' (New-HookCommand $hookPaths.announce)
 Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.mark)
+Add-HookEntry $settingsObj 'PostToolUse'      'Agent|Task' (New-HookCommand $hookPaths.annret)
 # per-edit gate (post-edit-check.sh) retired: verification runs once at Stop
 # (rules/testing.md "Verification timing"); Remove-EngineOSHooks above already
 # strips any previously installed entry for it.
@@ -379,6 +385,8 @@ Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hoo
 Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.record)
 Add-HookEntry $settingsObj 'SessionStart'     ''           (New-HookCommand $hookPaths.ensure)
 Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.scale)
+Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.gate)
+Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.routeadv)
 
 $settingsObj | ConvertTo-Json -Depth 20 | Set-Content $Settings -Encoding UTF8
 Write-Green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."

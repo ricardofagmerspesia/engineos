@@ -1,6 +1,7 @@
 ---
 name: 2026-08-10-task-observer-skill
 status: done
+completed: 2026-08-10
 owner: Ricardo Fagmer
 spec: docs/specs/2026-08-10-task-observer-skill-design.md
 domain: general
