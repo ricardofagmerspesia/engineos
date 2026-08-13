@@ -18,6 +18,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DIR/lib-common.sh"
 
 INPUT=$(cat)
+# shellcheck source=hooks/bypass.sh
+. "$DIR/bypass.sh"
+engineos_bypass_active_for_payload "$INPUT" && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)

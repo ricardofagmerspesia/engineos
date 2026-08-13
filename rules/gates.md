@@ -1,19 +1,20 @@
 # Gates
 
-Five gates from problem to production. Each names the EngineOS mechanism that
-enforces it, so a gate is never just an intention. Which gates apply is a function
-of the risk tier from always-on `rules/risk-autonomy.md` — not every change walks
-the whole ladder.
+Five gates from problem to production. Each names its mechanism and honest
+enforcement strength: **blocking** prevents a transition, **checked** can fail CI,
+**advisory** emits guidance, and **conventional** relies on an executor or human.
+Which gates apply is a function of the risk tier from always-on
+`rules/risk-autonomy.md` — not every change walks the whole ladder.
 
 ## The ladder
 
-| Gate | Question it answers | Enforced by |
-|---|---|---|
-| Discovery | Is this the right problem, stated testably? | `superpowers:brainstorming`; `docs/prds/` |
-| Design | Do we know how, and did we record why? | `superpowers:writing-plans` → `docs/specs/`; `adr` skill; `registries/decision-rules.json` |
-| Implementation | Is the change being built correctly, in small steps? | `hooks/route-before-change.sh`, `hooks/post-edit-check.sh`, the stack rules |
-| Validation | Is there evidence it works? | `hooks/stop-verify.sh`, `superpowers:verification-before-completion`, and the testing rules the route loaded |
-| Release | Can it be operated, and undone? | `skills/release-notes`, this file's release checklist |
+| Gate | Question it answers | Mechanism | Strength |
+|---|---|---|---|
+| Discovery | Is this the right problem, stated testably? | `superpowers:brainstorming`; `docs/prds/` | conventional procedure |
+| Design | Do we know how, and did we record why? | `docs/specs/`; `adr`; decision rules; `/implement` spec gate | blocking in `/implement` when triggered; otherwise advisory |
+| Implementation | Is the change being built correctly, in bounded scope? | `hooks/route-before-change.sh`; routed stack rules | advisory |
+| Validation | Is there evidence it works? | `rules/verification.md`; `hooks/stop-verify.sh` | blocking once in Claude Code; checked in CI elsewhere |
+| Release | Can it be operated, and undone? | `skills/release-notes`; this file's release checklist | human gate; otherwise conventional |
 
 ## Which gates apply
 
@@ -39,12 +40,14 @@ threshold is irrelevant — you write the design either way.
 
 ## Validation ladder
 
-Validation is not one event. Promote through it; do not skip rungs on the excuse
+Validation is not one event. `rules/verification.md` owns which checks are in
+scope. Promote through the selected rungs rather than skipping one on the excuse
 that a later rung will catch it.
 
-1. **Local** — typecheck, lint, unit tests. Fast enough to run on every change.
-2. **Integration** — module against a real dependency (DB via testcontainers, API
-   with mocked externals).
+1. **Local** — typecheck and lint; unit tests when tests are in scope. Run once at
+   the final gate, not after every edit.
+2. **Integration** — when the contract or release risk requires it, run the module
+   against a real dependency (DB via testcontainers, API with mocked externals).
 3. **Pre-production** — the real deployment shape, real config, seeded data.
 4. **Production** — canary or staged rollout with the rollback trigger defined
    BEFORE traffic arrives, not discovered during the incident.

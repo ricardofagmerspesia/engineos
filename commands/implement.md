@@ -42,14 +42,15 @@ domain(s) from it rather than failing.
 6. **Dispatch each wave in ONE message** — multiple Task calls in the same turn,
    max ~6 per wave. Each dispatch carries: `MODE: IMPLEMENT`, the unit's task, the
    exact file scope it owns exclusively, the frozen contracts, and its model
-   (`sonnet` for code, `haiku` for mechanical units, `opus` when the unit still
-   carries design risk). Same coordinator may be dispatched N times over different
+   (`opus` for code and for units that still carry design risk, `haiku` for
+   mechanical units). Same coordinator may be dispatched N times over different
    scopes — that is the normal way to parallelize inside one domain.
-   Between waves: integrate, then barrier-verify before the next wave.
+   Between waves: integrate only — intermediate barriers do not verify
+   (`rules/parallelism.md`); the gate in step 7 is the single verification point.
 
-7. **Verify** — typecheck + lint + relevant tests, show output (the post-edit and
-   stop hooks enforce this). Report any unit that failed by name; never let a green
-   summary cover an incomplete unit.
+7. **Run the final gate** (`rules/verification.md`). When tests were not in scope,
+   state `[tests] skipped — not requested`. Report any unit that failed by name;
+   never let a green summary cover an incomplete unit.
 
 8. **Record** — close the change via the `record-change` skill (mark done,
    register files + movements, `.engineos/changes/` → `.engineos/archived/`).

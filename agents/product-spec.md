@@ -1,6 +1,6 @@
 ---
 name: product-spec
-description: Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: mariana (invocable by this name).
+description: Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: mariana.
 tools: Read, Grep, Glob, Write
 model: fable
 ---

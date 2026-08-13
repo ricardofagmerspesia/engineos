@@ -110,9 +110,9 @@ Acceptance criteria:
 - [ ] Each MCP documented in `README` with one-line "when it's used".
 
 **R5. Hooks (quality gates)**
-- `PostToolUse(Edit|Write)` on `.ts/.tsx` → typecheck + eslint of changed package, async, surfaces failures to Claude.
 - Keep existing `PreToolUse(Bash)` RTK rewrite.
-- `Stop` hook → if code was edited this session and tests never ran, remind/block "done".
+- `Stop` hook → if code was edited this session and scoped lint + typecheck never ran, remind/block "done". Tests join the gate only when they were in scope for the task or `ENGINEOS_VERIFY_TESTS=1` is set (`rules/verification.md` "Tests are opt-in").
+- No per-edit verification hook: gating after every `Edit|Write` stalled the build loop, so verification runs once at `Stop`. `hooks/post-edit-check.sh` stays on disk as an opt-in for teams that want it back.
 
 Acceptance criteria:
 - [ ] Hook failures are fed back to Claude (not silently logged).

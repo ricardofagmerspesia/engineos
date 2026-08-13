@@ -1,0 +1,5 @@
+# Shell scripts (hooks, install.sh, scripts/) execute in POSIX bash on every
+# platform; a CR before the newline breaks backslash line-continuations and
+# mangles output. Force LF so core.autocrlf=true on Windows cannot rewrite
+# them to CRLF at checkout.
+*.sh text eol=lf

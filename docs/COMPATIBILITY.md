@@ -61,9 +61,10 @@ repo maintainers own it collectively — which in practice means any change need
 review from someone who did not write it.
 
 Changes to the always-on set (`rules/base.md`, `security.md`, `git.md`,
-`memory.md`, `parallelism.md`, `models.md`, `risk-autonomy.md`, `context.md`,
-`gates.md`) load into every session in every consuming project. They get the
-highest review bar and are never batched with unrelated work.
+`memory.md`, `parallelism.md`, `models.md`, `subagents.md`, `verification.md`,
+`risk-autonomy.md`, `context.md`, `gates.md`) load into every session in every
+consuming project. They get the highest review bar and are never batched with
+unrelated work.
 
 ## Consumer guidance
 

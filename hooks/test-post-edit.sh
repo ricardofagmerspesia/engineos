@@ -3,6 +3,10 @@
 # npm-only package dirs (no pnpm-lock.yaml / yarn.lock, no nx.json).
 # Run: hooks/test-post-edit.sh
 set -uo pipefail
+# Isolate from the operator's bypass switches: a machine-wide pause must never make
+# this suite go quiet and report green (hooks/bypass.sh).
+export ENGINEOS_BYPASS_FLAG=/nonexistent/engineos.bypass
+unset ENGINEOS_BYPASS
 DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$DIR/post-edit-check.sh"
 pass=0; fail=0

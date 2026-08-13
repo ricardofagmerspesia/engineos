@@ -10,9 +10,11 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/base.md
 @rules/security.md
 @rules/git.md
-@rules/memory.md
 @rules/parallelism.md
 @rules/models.md
+@rules/memory.md
+@rules/subagents.md
+@rules/verification.md
 @rules/risk-autonomy.md
 @rules/context.md
 @rules/gates.md
@@ -20,14 +22,16 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 ## Router — classify before acting
 
 Before any substantive task (anything that creates/modifies code, designs, or docs),
-classify the intent and load the matching rules/skills listed below using the Read tool
-(rules) and Skill tool (skills). Then announce in one line what was loaded:
+classify the intent and load the matching rules/skills below using the Read tool
+(rules) and Skill tool (skills), and dispatch the agents the matched rows name.
+Then announce in one line:
 
-`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills>`
+`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none>`
 
 The `risk` and `autonomy` fields come from always-on `rules/risk-autonomy.md` and
 are classified BEFORE the first write. They set which gates apply
-(`rules/gates.md`) and what the work is permitted to do on its own.
+(`rules/gates.md`) and what the work is permitted to do on its own. `agent` names
+what was dispatched, or `none` — see `rules/subagents.md`.
 
 Rules for routing:
 - Multiple intents can match — load all that apply, in table order.
@@ -41,6 +45,8 @@ Rules for routing:
   checks both halves of this rule — it is enforced, not just stated.
 - Unknown intent → proceed with always-on rules only. Never block on routing.
 - Pure questions/explanations need no routing — answer directly.
+- **A row that names an agent means dispatch it**, not "mention it". Doing the work
+  inline when a row names an agent is a defect — see `rules/subagents.md`.
 - Rules paths are relative to this file's directory.
 - After the work is delivered, offer the output artifact — see **Output artifact** below.
 - The **stack/domain rows** below (backend, frontend, mobile, LLM, DBA, DevOps,
@@ -67,6 +73,16 @@ Rules for routing:
   `stop-verify.sh` and `post-edit-check.sh` degrade to grep/sed parsing and keep
   running, and `ensure-project-layout.sh` keeps running via a grep fallback.
 
+- **Bypass short-circuits everything below.** When `/engineos:bypass` is on, the
+  `UserPromptSubmit` hook injects `[engineos] BYPASS ACTIVE` on every turn. On seeing
+  it: skip this table, emit no `[router]` line, dispatch no agents, skip the spec gate,
+  the change record, and the output-artifact offer — and open your reply with
+  `[engineos] bypassed` so the user knows the guardrails are down. The rule files stay
+  in context (nothing can unload a `CLAUDE.md` import); treat them as not applicable.
+  The per-repo marker expires at the next SessionStart; the machine-wide flag
+  (`~/.claude/engineos.bypass`) and `ENGINEOS_BYPASS=1` do not — they hold until
+  toggled off.
+
 | Intent (signals) | Load |
 |---|---|
 | New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `superpowers:brainstorming` first, then `superpowers:writing-plans` for spec/design/tasks, then stack rules below. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature) — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
@@ -89,7 +105,7 @@ Rules for routing:
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
 | Business / career strategy — market opportunity ("where is this market going", "before competitors"), skill learning path ("what do I learn, in what order"), blocked non-technical decision ("X or Y and I can't decide"), positioning & perceived authority, monetizing existing assets | skill `strategy` — five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to `docs/strategy/`. Technical "X vs Y" stays with `adr`; `strategy` handles business/career/positioning decisions |
 | Review / pre-merge ("review", "is this safe", PR URL) | skill `code-review` (external — provided by the Claude Code environment, not this repo); if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
-| Test writing ("write tests", "add coverage", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets |
+| Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets. This row IS the opt-in path — tests get written/run here, on request, never implicitly by other rows |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | Read `rules/llm-apps.md`; skill `eval-harness` |
 | Independent verification of high-risk work ("is this actually right", pre-release check on risk=high, release gate needs an independent pass) | `critic` agent (alias `vera`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens |
 | Handoff between agents, waves or sessions ("hand this off", wave barrier reached, session ending mid-task) | `templates/handoff.md` — objective, state (gate, risk), done, decisions, files, evidence, known failures and open risks, not done, next step, resume. Never hand off with "continue where you left off" |
@@ -97,7 +113,7 @@ Rules for routing:
 | Skill/rule friction observed mid-task ("log an observation", "watch for skill opportunities", "observation log", a loaded rule got violated, a correction reveals a missing rule, a skill section proves dead weight) | skill `task-observer` — appends to `.engineos/skill-observations/log.md`; capture only, `retro` consumes OPEN entries. Log at the moment of friction, don't wait for the retro |
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
 | Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs `scripts/kernel.sh route-escalate` and `risk` FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no agent is dispatched at all |
-| Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: lint + typecheck + build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
+| Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
 
 ## Output artifact — offer after every request
 
@@ -127,34 +143,32 @@ Rules:
 
 ## Non-negotiables (apply regardless of routing)
 
-1. Spec before code for any change touching >2 files or any new feature.
-2. Verification before "done": typecheck + lint + relevant tests, with output shown.
-   The automated Stop-gate half covers JS/TS-family packages only; other stacks are
-   verified manually. This is the Validation gate of `rules/gates.md` — it is not
-   the Release gate, which additionally wants an owner and a rollback path.
-3. No secrets in code, config, or commits. Ever. See `rules/security.md`.
-4. Follow existing project conventions over these rules when they conflict —
+Each item names the file that owns it. That file is the single source of truth —
+read it there, not here.
+
+1. **Spec before code** — any change touching >2 files or any new feature.
+2. **The final gate before "done"** — `rules/verification.md`. The automated Stop-gate
+   half covers JS/TS-family packages only; other stacks are verified manually. This is
+   the Validation gate of `rules/gates.md`, never the Release gate.
+3. **No secrets** in code, config, or commits. Ever — `rules/security.md`.
+4. **Project conventions win** over these rules when they conflict:
    project `CLAUDE.md` > EngineOS > defaults.
-5. Standard project layout: every project carries `.engineos/{changes,archived,memory}`
-   + `docs/{specs,prds,rules}`. The SessionStart hook scaffolds anything missing —
+5. **Standard project layout** — every project carries `.engineos/{changes,archived,memory}`
+   + `docs/{specs,prds,rules}`; the SessionStart hook scaffolds anything missing —
    opt-in: it runs only when the project already carries `.engineos/` or
-   `ENGINEOS_SCAFFOLD=1` is set, so unrelated clones are never dirtied
-   (non-blocking). Every change gets a change record; the record links its spec when
-   #1 required one, and carries a checklist + a "what was made" account before it is
-   archived. The spec threshold is #1's — this rule does not impose a second, stricter one.
-6. Model assignment per `rules/models.md`: the tier is the contract, the model name is
-   today's binding — rebind when a stronger model ships. Never trade correctness for cost.
-7. Parallel by default per `rules/parallelism.md`: when work splits into independent
-   units — that file owns the thresholds — freeze the shared contracts, then dispatch a
-   whole wave of agents in ONE message over disjoint file scopes. Doing independent units
-   serially is a defect, not a style choice.
-8. Offer the output artifact after every request per **Output artifact** above: options are
-   filtered per the Output artifact table's conditions; offering a dead option is a defect.
-9. Classify risk before the first write, per always-on `rules/risk-autonomy.md`, and
-   never exceed the autonomy ceiling for that tier. The tier drives which gates apply
-   (`rules/gates.md`) and which requirements fire
-   (`registries/decision-rules.json`). A tier assigned after the fact to justify work
-   already done is not a classification.
-10. Public surface changes follow `docs/COMPATIBILITY.md`: rule paths, agent names,
+   `ENGINEOS_SCAFFOLD=1` is set, so unrelated clones are never dirtied (non-blocking).
+   Every change gets a change record: it links its spec when #1 required one, and
+   carries a checklist + a "what was made" account before it is archived. #1's
+   threshold is the only spec threshold.
+6. **Model tier per work type** — `rules/models.md`.
+7. **Decompose and distribute** — `rules/parallelism.md`.
+8. **Dispatch the agent the router names, and announce it** — `rules/subagents.md`.
+   This file is the standing user request for sub-agent use; a harness that waits
+   to be asked has been asked here.
+9. **Offer the output artifact** after every request — **Output artifact** above.
+10. **Classify risk before the first write** — always-on `rules/risk-autonomy.md`, and
+    never exceed the autonomy ceiling for that tier. The tier drives which gates apply
+    (`rules/gates.md`) and which requirements fire (`registries/decision-rules.json`).
+11. **Public surface changes follow `docs/COMPATIBILITY.md`** — rule paths, agent names,
     aliases, command names, skill directories, hook contracts and the return envelope
     are versioned surface. A rename is a deprecation with a window, never a silent `git mv`.

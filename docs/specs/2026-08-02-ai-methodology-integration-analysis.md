@@ -1,7 +1,8 @@
 # AI Methodology Integration — Gap Analysis and Adoption Plan
 
 > Date: 2026-08-02
-> Status: proposal (no code changed by this document)
+> Status: implemented historical analysis; the canonical operating model is now
+> [`docs/METHODOLOGY.md`](../METHODOLOGY.md)
 > Sources: 17 archives in `~/Downloads` (`ai-development-knowledge-base-v2…v8`, `ai-engineering-platform-v10…v2.1`, `-final`)
 > Target: turn EngineOS from "a very good team config" into a defensible AI engineering methodology + orchestrator
 
@@ -376,16 +377,22 @@ Per `rules/parallelism.md`, waves 1, 2 and 4 each contain independent units over
 
 ---
 
-## 7. How we would know it worked
+## 7. Verification status and outstanding proof
 
-Concrete, checkable — the same standard non-negotiable #2 applies to code.
+This plan originally mixed implementation checks with claims that the method
+improves engineering outcomes. They are different proof layers.
 
-1. `scripts/validate-engineos.sh` exits 0 in CI, and fails on a deliberately broken cross-reference.
-2. `scripts/run-evals.sh` reports ≥ 90% on `evals/routing-cases.jsonl`, with the failures enumerated rather than hidden.
-3. Every agent in `agents/` returns a parseable `status` field; `audit-consolidator` no longer parses prose.
-4. Every router announcement carries `risk=` and the required gates for that risk.
-5. The router table in `CLAUDE.md` is generated — editing it by hand fails CI.
-6. One retro pass has produced at least one merged rule change traceable to an archived change record.
-7. Plugin version is semver'd, and a rename has gone through a deprecation window without breaking a consuming repo.
+| Claim | Proof | Current state |
+|---|---|---|
+| The corpus is internally coherent | `scripts/validate-engineos.sh`, including planted-breakage checks | implemented |
+| Deterministic routing and agent contracts do not rot | `scripts/run-evals.sh`; live tier reported separately | implemented; live grading remains opt-in |
+| Agent definitions declare one return envelope | validator checks every `agents/*.md` file | implemented; runtime conformance still needs live evidence |
+| Risk and gate policy are machine-resolvable | decision kernel behavioral tests | implemented |
+| Routing data and human guidance do not drift | cross-check registry, kernel behavior, and prose mirrors | implemented; intentionally not generated (see G3) |
+| The learning loop changes policy from repeated evidence | a retro proposal traceable to 3+ occurrences and a human-approved delta | capability implemented; outcome proof still required |
+| Compatibility policy protects consumers | an exercised deprecation window against a consuming repository | policy implemented; outcome proof still required |
+| EngineOS improves delivery | dated baseline vs. pilot for escaped defects, convention-review comments, lead time, rollback, false blocks, and bypass rate | not yet demonstrated |
 
-Items 1, 2 and 5 are the ones that separate "a methodology document" from "an enforced methodology" — which is the actual claim being made.
+The defensible claim today is that EngineOS is an internally checked and partly
+enforced methodology. It should not claim proven engineering effectiveness until
+the final row has comparative evidence.

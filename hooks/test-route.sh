@@ -4,6 +4,10 @@
 # substring — a wrong rules list would otherwise slip through unnoticed).
 # Run: hooks/test-route.sh
 set -uo pipefail
+# Isolate from the operator's bypass switches: a machine-wide pause must never make
+# this suite go quiet and report green (hooks/bypass.sh).
+export ENGINEOS_BYPASS_FLAG=/nonexistent/engineos.bypass
+unset ENGINEOS_BYPASS
 DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$DIR/route-before-change.sh"
 pass=0; fail=0

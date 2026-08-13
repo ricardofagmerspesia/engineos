@@ -1,25 +1,29 @@
 # Parallel Execution Rules — always on
 
-Big work fans out. Parallel is the default for independent work; sequential is a
-choice you justify, not a habit.
+Every substantive task starts as a task list and gets distributed. Parallel is
+the default; sequential is a choice you justify, not a habit. One agent grinding
+through a list alone is a defect when the list could have been split.
 
-## Fan-out trigger
+## Decompose-and-distribute — the default
 
-**Independent units of work are the gate.** The counts below are heuristics: they
-tell you the work is probably decomposable, not that it is. Decompose first, then
-count the units that are actually independent.
+For ANY substantive task (anything that creates or modifies code, config, or
+docs beyond a single small edit):
 
-Fan out when **any** of these holds:
+1. **Create the task list first** — break the request into named tasks (TaskCreate
+   or the plan's task list) before writing any code.
+2. **Distribute among agents always** — every task that doesn't depend on another
+   in-flight task goes to a sub-agent. Two independent tasks = two agents in one
+   message, not one agent doing both.
+3. The orchestrator's job is contracts, dispatch, integration, and the final
+   verification gate — not doing the tasks inline.
 
-- The task touches **>3 files** or **more than one domain** (backend/frontend/mobile/dba/devops/llm).
-- The spec/plan has **≥3 tasks with no dependency between them**.
-- The work is a **sweep**: rename/migrate/refactor across many call sites, audit across modules, test backfill across files.
-- The work is **read-heavy exploration** of several independent areas.
+Past **>3 files**, more than one domain, or 3 independent tasks, distribution is
+not a judgment call any more — it is the only correct shape. Those are the signals
+`registries/policy.json` carries; below them the default above still holds.
 
-Do NOT fan out when: single file, fewer than 3 units of work, the goal is still
-vague (brainstorm first), or every step feeds the next one. **This list overrides
-the trigger above** — a task can hit a heuristic (say, 5 files) and still be
-sequential because the steps feed each other.
+Do NOT fan out only when: pure question/explanation, a single-line mechanical
+edit, the goal is still vague (brainstorm first), or every step genuinely feeds
+the next one (inherently serial chain — say so explicitly).
 
 ## Procedure
 
@@ -30,18 +34,24 @@ sequential because the steps feed each other.
    see `rules/models.md`) and written down BEFORE any fan-out. Parallel agents
    consume contracts; they never negotiate them mid-flight.
 3. **Group into waves** by dependency. Inside a wave: parallel. Between waves: a
-   barrier — integrate and verify before the next wave starts.
+   barrier — integrate before the next wave starts.
 4. **Dispatch a whole wave in ONE message** — multiple Task/Agent calls in the same
    assistant turn. Sequential dispatch of independent agents is a defect.
 5. **Brief each agent** with: MODE (AUDIT|IMPLEMENT), exact file scope it owns,
    the frozen contracts, the model per `rules/models.md`, the risk tier and
-   autonomy ceiling per `rules/risk-autonomy.md`, its rules to follow, and the
-   return envelope expected back (`## Return format` in every agent file).
-   Context discipline for the brief: `rules/context.md`.
-6. **Integrate + verify** at each barrier: typecheck + lint + tests, output shown
-   (`superpowers:verification-before-completion`). Write a handoff at every
-   barrier using `templates/handoff.md` — the next wave's agents cannot read this
-   conversation, and "continue where wave 1 left off" is not a brief.
+   autonomy ceiling per `rules/risk-autonomy.md`, its rules to follow, whether
+   tests are IN SCOPE for its task (per `rules/verification.md` "Tests are
+   opt-in"), and the return envelope expected back (`## Return format` in every
+   agent file). IMPLEMENT agents write tests only when the brief says tests are in
+   scope; either way, NONE of them run the test suite themselves — execution
+   belongs to the final gate (`rules/verification.md`). Context discipline for the
+   brief: `rules/context.md`.
+6. **Integrate** at each barrier: wire the pieces, resolve contract drift, keep
+   moving. **Run the final gate at the LAST barrier only** (`rules/verification.md`).
+   Intermediate barriers integrate; they do not verify — mid-task verification
+   stalls the pipeline. Write a handoff at every barrier using
+   `templates/handoff.md` — the next wave's agents cannot read this conversation,
+   and "continue where wave 1 left off" is not a brief.
 
 ## Hard rules
 

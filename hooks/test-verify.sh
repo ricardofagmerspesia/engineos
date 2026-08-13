@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # Test harness for hooks/stop-verify.sh.
 # Drives the REAL hook with npm-only temp repos (no pnpm-lock.yaml / yarn.lock).
+# Tests are opt-in in the gate itself (rules/verification.md "Tests are opt-in"): the
+# default TARGETS list is "lint typecheck" and ENGINEOS_VERIFY_TESTS=1 is what
+# folds "test" back in. Cases below invoke() with an explicit env value so both
+# states are covered instead of relying on whatever leaked into this shell.
 # Run: hooks/test-verify.sh
 set -uo pipefail
+# Isolate from the operator's bypass switches: a machine-wide pause must never make
+# this suite go quiet and report green (hooks/bypass.sh).
+export ENGINEOS_BYPASS_FLAG=/nonexistent/engineos.bypass
+unset ENGINEOS_BYPASS
 DIR="$(cd "$(dirname "$0")" && pwd)"
 pass=0; fail=0; skip=0
 ok() { pass=$((pass+1)); }
@@ -13,12 +21,12 @@ command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm required"; exit 1; }
 
 # ---------- helper: invoke hook, return decision or empty ----------
-# invoke <ROOT> <TRANSCRIPT_FILE> <stop_hook_active: true|false>
+# invoke <ROOT> <TRANSCRIPT_FILE> <stop_hook_active: true|false> [ENGINEOS_VERIFY_TESTS]
 invoke() {
-  local ROOT="$1" TRANSCRIPT="$2" ACTIVE="$3" out
+  local ROOT="$1" TRANSCRIPT="$2" ACTIVE="$3" VERIFY_TESTS="${4:-}" out
   out=$(printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":%s}' \
     "$ROOT" "$TRANSCRIPT" "$ACTIVE" \
-    | bash "$DIR/stop-verify.sh" 2>/dev/null) || true
+    | ENGINEOS_VERIFY_TESTS="$VERIFY_TESTS" bash "$DIR/stop-verify.sh" 2>/dev/null) || true
   printf '%s' "$out" | jq -r '.decision // empty' 2>/dev/null || true
 }
 
@@ -52,7 +60,10 @@ DEC=$(invoke "$T" "$TSCRIPT" false)
 rm -rf "$T" "$TSCRIPT"
 [ -z "$DEC" ] && ok || no "case1 no-package.json: expected empty decision, got '$DEC'"
 
-# ---------- Case 2: Failing test — block ----------
+# ---------- Case 2: Failing test, tests NOT opted in (default) — no block ----------
+# rules/verification.md "Tests are opt-in": with ENGINEOS_VERIFY_TESTS unset, "test"
+# is not in the default TARGETS list, so a package whose only script is a
+# failing test must not block the gate.
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
 printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
@@ -62,9 +73,24 @@ TSCRIPT=$(mktemp)
 make_transcript "$TSCRIPT" "$T/src/x.ts"
 DEC=$(invoke "$T" "$TSCRIPT" false)
 rm -rf "$T" "$TSCRIPT"
-[ "$DEC" = "block" ] && ok || no "case2 failing-test: expected 'block', got '$DEC'"
+[ -z "$DEC" ] && ok || no "case2 failing-test-not-opted-in: expected empty decision, got '$DEC'"
 
-# ---------- Case 3: Passing test — no block ----------
+# ---------- Case 2b: Failing test, ENGINEOS_VERIFY_TESTS=1 — block ----------
+# Same package as case 2, but with the opt-in flag set: "test" joins TARGETS and
+# the failing script must now block.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"
+touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+DEC=$(invoke "$T" "$TSCRIPT" false "1")
+rm -rf "$T" "$TSCRIPT"
+[ "$DEC" = "block" ] && ok || no "case2b failing-test-opted-in: expected 'block', got '$DEC'"
+
+# ---------- Case 3: Passing test, ENGINEOS_VERIFY_TESTS=1 — no block ----------
+# Proves the opt-in path itself doesn't spuriously block when the test actually passes.
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
 printf '{"scripts":{"test":"exit 0"}}\n' > "$T/package.json"
@@ -72,9 +98,9 @@ mkdir -p "$T/src"
 touch "$T/src/x.ts"
 TSCRIPT=$(mktemp)
 make_transcript "$TSCRIPT" "$T/src/x.ts"
-DEC=$(invoke "$T" "$TSCRIPT" false)
+DEC=$(invoke "$T" "$TSCRIPT" false "1")
 rm -rf "$T" "$TSCRIPT"
-[ -z "$DEC" ] && ok || no "case3 passing-test: expected empty decision, got '$DEC'"
+[ -z "$DEC" ] && ok || no "case3 passing-test-opted-in: expected empty decision, got '$DEC'"
 
 # ---------- Case 4: Loop guard — stop_hook_active=true, no block even with failing test ----------
 T=$(mktemp -d)
@@ -112,8 +138,10 @@ DEC=$(invoke "$T" "$TSCRIPT" false)
 rm -rf "$T" "$TSCRIPT"
 [ "$DEC" = "block" ] && ok || no "case6 failing-lint-pass-test: expected 'block', got '$DEC'"
 
-# ---------- Case 7: Path with spaces — failing test must still block (FIX 1) ----------
+# ---------- Case 7: Path with spaces — failing opted-in test must still block (FIX 1) ----------
 # Build a temp repo whose source file lives under a directory whose name contains a space.
+# Uses ENGINEOS_VERIFY_TESTS=1 since "test" only runs opted-in; this still proves the
+# space-in-path handling blocks correctly once test is part of TARGETS.
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
 SPACED_DIR="$T/my pkg"
@@ -122,7 +150,7 @@ printf '{"scripts":{"test":"exit 1"}}\n' > "$SPACED_DIR/package.json"
 touch "$SPACED_DIR/src/x.ts"
 TSCRIPT=$(mktemp)
 make_transcript "$TSCRIPT" "$SPACED_DIR/src/x.ts"
-DEC=$(invoke "$T" "$TSCRIPT" false)
+DEC=$(invoke "$T" "$TSCRIPT" false "1")
 rm -rf "$T" "$TSCRIPT"
 [ "$DEC" = "block" ] && ok || no "case7 space-in-path: expected 'block', got '$DEC'"
 
@@ -202,7 +230,9 @@ rm -rf "$NOJQ_BIN"
 # ---------- Case 11: failing test with jq present — block reason states the repair bound (P5) ----------
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
-printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+# red via lint, not test: tests are opt-in (rules/verification.md), so a failing
+# "test" script alone no longer makes the default gate go red
+printf '{"scripts":{"lint":"exit 1"}}\n' > "$T/package.json"
 mkdir -p "$T/src"
 touch "$T/src/x.ts"
 TSCRIPT=$(mktemp)
@@ -219,7 +249,9 @@ esac
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
 mkdir -p "$T/.engineos"
-printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
+# red via lint, not test: tests are opt-in (rules/verification.md), so a failing
+# "test" script alone no longer makes the default gate go red
+printf '{"scripts":{"lint":"exit 1"}}\n' > "$T/package.json"
 mkdir -p "$T/src"; touch "$T/src/x.ts"
 TSCRIPT=$(mktemp)
 make_transcript "$TSCRIPT" "$T/src/x.ts"

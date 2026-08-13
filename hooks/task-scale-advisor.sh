@@ -14,6 +14,18 @@ set -uo pipefail
 INPUT=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
+# Bypass switch. Every other hook goes silent; this one speaks instead. A
+# governance system that is off must SAY it is off on every turn, or the user
+# forgets and reads unguarded work as guarded.
+# shellcheck source=hooks/bypass.sh
+. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+if engineos_bypass_active_for_payload "$INPUT"; then
+  jq -n --arg c "[engineos] BYPASS ACTIVE — routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness's own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run \`/engineos:bypass off\` to restore EngineOS." \
+    '{hookSpecificOutput:{hookEventName:"UserPromptSubmit", additionalContext:$c}}'
+  exit 0
+fi
+
+# Classification stays in scripts/kernel.sh scale — the raw prompt goes there.
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)
 [ -z "$PROMPT" ] && exit 0
 
@@ -40,7 +52,7 @@ fi
 
 if [ "$DESIGN" = "true" ]; then
   NOTES="${NOTES:+$NOTES
-}[engineos] design/architecture work — rules/models.md: design tier (model: opus) for the design pass, build tier (model: sonnet) for the code that follows."
+}[engineos] design/architecture work — rules/models.md: design tier (model: opus) for the design pass, build tier (model: opus) for the code that follows."
 fi
 
 [ -z "$NOTES" ] && exit 0

@@ -4,7 +4,7 @@
   "tiers": [
     { "id": "most-capable", "model": "fable", "escalates_to": null },
     { "id": "design",       "model": "opus",  "escalates_to": "most-capable" },
-    { "id": "build",        "model": "sonnet","escalates_to": "design" },
+    { "id": "build",        "model": "opus",  "escalates_to": "design" },
     { "id": "cheap",        "model": "haiku", "escalates_to": "build" }
   ],
   "escalation_order": ["cheap", "build", "design", "most-capable"],

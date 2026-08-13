@@ -1,0 +1,67 @@
+---
+description: Do not write tests or run test suites unless explicitly requested; the finalization gate is lint + typecheck
+globs:
+alwaysApply: true
+---
+
+# Tests are opt-in
+
+Mirrors `rules/testing.md` from the EngineOS constitution (this repo's
+`CLAUDE.md`) for Cursor sessions. Cursor has no hook system, so the Stop-gate
+enforcement that Claude Code gets (`hooks/stop-verify.sh`) does not exist here —
+this rule is prompt-only.
+
+## Rule
+
+**The default is NO tests.** Do not author tests and do not run a test suite.
+Test work is real work: it gets requested and scoped like any other task, never
+smuggled into every change.
+
+**Tests are ON for a task only when one of these holds:**
+
+- The user asks — "write tests", "add coverage", "integration tests for X",
+  "E2E", "TDD this", "run the suite".
+- The project's own `CLAUDE.md` requires tests for the area being touched
+  (project conventions beat these defaults).
+- A test-writing task was delegated on purpose.
+- The user named a release/merge gate that includes tests. A store submission
+  or production release counts.
+
+**Otherwise: write no tests, run no suite.** State the omission in one line so
+it is never silent:
+
+`[tests] skipped — not requested`
+
+## Verification timing
+
+- The finalization gate is **lint + typecheck**, run ONCE, after the last unit
+  of work is integrated, with output shown.
+- Tests join that gate ONLY when tests were ON per the section above. Then they
+  run once, at the same moment.
+- Never mid-task: no test or typecheck run per edit, per file, or per
+  intermediate step. Write freely; verify at the end.
+- Narrowing the gate makes what remains MORE mandatory, not optional. Red means
+  a fix loop until green, with output shown.
+
+## Hard limits
+
+- DON'T author "just a couple of quick tests" beside a feature nobody asked to
+  test, and don't scaffold a test file "for later".
+- DON'T run the suite to "check nothing broke". Lint, typecheck, and the user's
+  own review carry that load by default.
+- DON'T delete, skip, `.only`, or weaken EXISTING tests to make a gate pass.
+  Code you didn't touch keeps its tests. If a change genuinely invalidates a
+  test, say so and ask — never silently neutralize it.
+- Bug fixes: a regression test is RECOMMENDED, not automatic. Offer it in one
+  line ("this fix ships without a regression test — want one?") and move on
+  unless the user takes it up.
+- When in doubt, ask before writing tests — never write them and ask after.
+
+## Why this exists
+
+Reflexive test authoring and suite runs were the main thing stalling the build
+loop. In Claude Code the Stop hook enforces the narrowed gate and honours
+`ENGINEOS_VERIFY_TESTS=1` for teams that want tests back in unconditionally.
+Cursor has no equivalent hook point, so this file is best-effort: it only works
+if the model reads and follows it. Full policy, including the craft guidance
+that applies once tests ARE on: `rules/testing.md`.

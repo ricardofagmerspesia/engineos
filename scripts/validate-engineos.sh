@@ -236,6 +236,21 @@ else
       printf 'x' | grep -qE "$s" 2>/dev/null || [ $? -eq 1 ] || badsig="$badsig [$s]"
     done < <(jq -r '.rules[].signals[]?' "$D")
     [ -z "$badsig" ] && ok "every decision rule signal is a valid regex" || bad "invalid signals:$badsig"
+
+    # Verification policy is deliberately conditional on task scope. A plain
+    # referential check cannot catch the registry saying "always test" while
+    # the owning rule says tests are opt-in, so pin the behavioral agreement.
+    verify_source=$(jq -r '.rules[] | select(.id=="rule-verification") | .source' "$D")
+    verify_require=$(jq -r '[.rules[] | select(.id=="rule-verification") | .then.require[]] | sort | join(" ")' "$D")
+    verify_expected="lint output-shown tests-when-in-scope typecheck"
+    if [ "$verify_source" = "rules/verification.md" ] \
+      && [ "$verify_require" = "$verify_expected" ] \
+      && grep -q 'Tests join the gate ONLY when tests were ON' rules/verification.md \
+      && grep -q '`rules/verification.md` owns which checks are in' rules/gates.md; then
+      ok "verification policy agrees across registry, verification rule and gate"
+    else
+      bad "verification policy semantic drift: source='$verify_source' require='$verify_require'"
+    fi
   else
     bad "registries/decision-rules.json missing"
   fi
@@ -307,9 +322,21 @@ else
     [ -z "$wt_bad" ] && ok "models.json work_type tiers all resolve" \
                      || bad "models.json work_types with unknown tier:$wt_bad"
 
-    # model bindings unique
+    # tier ids unique — a duplicated id makes every lookup below ambiguous
+    dupt=$(jq -r '[.tiers[].id] | group_by(.) | map(select(length>1)) | flatten | unique | join(" ")' "$MJ")
+    [ -z "$dupt" ] && ok "models.json tier ids are unique" || bad "models.json duplicate tier ids: $dupt"
+
+    # Two tiers MAY share a model binding — build and design do today. The tier is
+    # the contract, so a shared binding is legal, but it must be stated in the prose
+    # (it makes one escalation step a no-op) rather than left for a reader to notice.
     dupm=$(jq -r '[.tiers[].model] | group_by(.) | map(select(length>1)) | flatten | unique | join(" ")' "$MJ")
-    [ -z "$dupm" ] && ok "models.json model bindings are unique" || bad "models.json duplicate model bindings: $dupm"
+    if [ -z "$dupm" ]; then
+      ok "models.json model bindings are unique"
+    elif grep -q 'bound to the same model' rules/models.md; then
+      ok "models.json shares a binding ($dupm) and rules/models.md documents it"
+    else
+      bad "models.json duplicate model bindings ($dupm) not documented in rules/models.md"
+    fi
 
     # prose mirror: every tier's model appears in rules/models.md, and the two
     # anchorable rows (ADR, code review) bind the model the registry says

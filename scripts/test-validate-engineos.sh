@@ -146,6 +146,15 @@ p='registries/decision-rules.json'; d=json.load(open(p))
 d['rules'].append({'id':'rule-noop','priority':1,'when':{},'then':{}})
 json.dump(d,open(p,'w'),indent=2)\""
 
+case_ "verification registry drifting back to mandatory tests is caught" \
+      "verification policy semantic drift" \
+      "python3 -c \"
+import json
+p='registries/decision-rules.json'; d=json.load(open(p))
+for r in d['rules']:
+    if r['id']=='rule-verification': r['then']['require'][2]='relevant-tests'
+json.dump(d,open(p,'w'),indent=2)\""
+
 case_ "capabilities.json binding a nonexistent agent is caught" \
       "capabilities.json names missing agents" \
       "sed -i.bak 's|\"backend-coordinator\"|\"ghost-writer\"|' registries/capabilities.json"

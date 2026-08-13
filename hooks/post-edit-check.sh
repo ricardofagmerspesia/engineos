@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# EngineOS PostToolUse hook (Edit|Write|NotebookEdit): typecheck + lint the changed
-# code. Tool-aware: detects biome/eslint for lint, nx/package-script for typecheck,
+# EngineOS per-edit typecheck + lint — NOT wired by default.
+# Verification runs ONCE at task finalization via the Stop hooks (stop-verify.sh);
+# a blocking check after every Edit/Write stalled the build loop, so this hook was
+# unwired from hooks.json (see .engineos change record
+# 2026-08-08-verify-at-end-distribute-always + rules/verification.md "The final
+# gate"). Teams that want per-edit gating back can
+# re-add it under PostToolUse(Edit|Write) in hooks/hooks.json.
+# Tool-aware: detects biome/eslint for lint, nx/package-script for typecheck,
 # pnpm/yarn/npm for the runner. Scopes to the changed package, not the whole repo.
 # Failure output goes to stderr with exit 2 so Claude sees it and fixes it.
 set -uo pipefail
@@ -10,6 +16,10 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 . "$DIR/lib-common.sh"
 
 INPUT=$(cat)
+
+# shellcheck source=hooks/bypass.sh
+. "$DIR/bypass.sh"
+engineos_bypass_active_for_payload "$INPUT" && exit 0
 
 if command -v jq >/dev/null 2>&1; then
   FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)

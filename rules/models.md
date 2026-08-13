@@ -10,8 +10,8 @@ second — but never pay for capability the task doesn't use.
 | Spec, PRD, requirements, problem framing, brainstorming, ADR | **most capable** | `fable` |
 | Architecture, design, task decomposition, contract/interface design, fan-out planning | **design** | `opus` |
 | Hard debugging, adversarial/security review, cross-cutting refactor design | **design** | `opus` |
-| Writing code, tests, migrations, config — against an existing spec/design | **build** | `sonnet` |
-| Standards/spec code review against an existing diff | **build** | `sonnet` |
+| Writing code, tests, migrations, config — against an existing spec/design | **build** | `opus` |
+| Standards/spec code review against an existing diff | **build** | `opus` |
 | Mechanical: renames, boilerplate, file moves, formatting, simple lookups, summaries | **cheap** | `haiku` |
 
 Adversarial correctness review (`critic`) and security review (`security-reviewer`)
@@ -24,6 +24,19 @@ it and update this table. Same when a model is retired.
 
 The machine-readable form of this table is `registries/models.json`;
 `scripts/validate-engineos.sh` fails when they disagree.
+
+The "tests" in the build-tier row is a tier assignment, not a mandate: tests get
+written only when they're in scope for the task per `rules/verification.md` ("Tests
+are opt-in"). When they are in scope, they're built on the same `opus` tier as
+the rest of the code.
+
+The **build** and **design** tiers are bound to the same model today. That is a
+binding, not a merge — the two rows stay separate because the tier is the
+contract, and a future model strong enough for build work at lower cost rebinds
+**build** without touching **design**. Keep stating the tier you meant. One
+consequence is explicit: while both tiers share a binding, escalating build ->
+design changes nothing on its own — escalate to **most capable** when a build-tier
+task has already failed at `opus`.
 
 ## How the model gets set
 
@@ -42,7 +55,9 @@ it inline.
 
 - **Escalate one tier** when: an agent failed the same task twice, requirements are
   ambiguous, the change is cross-cutting or security-sensitive, or the output will
-  be hard to reverse.
+  be hard to reverse. While **build** and **design** share a binding, escalating out
+  of **build** is a no-op — go to **most capable** (`fable`) or reframe the problem,
+  don't re-run the same model and call it an escalation.
 - **Downgrade** only when the result is provably identical — mechanical work with
   a fully specified target.
 - **Never trade correctness for cost.** When in doubt, go up a tier.

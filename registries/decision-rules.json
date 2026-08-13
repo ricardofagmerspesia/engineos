@@ -31,7 +31,7 @@
     {
       "id": "rule-verification",
       "priority": 90,
-      "source": "CLAUDE.md non-negotiable #2",
+      "source": "rules/verification.md",
       "when": {
         "code_changed": true
       },
@@ -39,7 +39,7 @@
         "require": [
           "typecheck",
           "lint",
-          "relevant-tests",
+          "tests-when-in-scope",
           "output-shown"
         ],
         "gate": "validation"

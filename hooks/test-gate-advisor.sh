@@ -4,6 +4,10 @@
 # fires on everything is noise, and noise gets ignored.
 # Run: hooks/test-gate-advisor.sh
 set -uo pipefail
+# Isolate from the operator's bypass switches: a machine-wide pause must never make
+# this suite go quiet and report green (hooks/bypass.sh).
+export ENGINEOS_BYPASS_FLAG=/nonexistent/engineos.bypass
+unset ENGINEOS_BYPASS
 DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$DIR/gate-advisor.sh"
 pass=0; fail=0

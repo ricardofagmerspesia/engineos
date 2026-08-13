@@ -31,7 +31,7 @@ cd ~/projects/engineos && ./install.sh
 
 What it does (idempotent — re-run after every `git pull`):
 1. **Secrets gate** — refuses to install if the repo contains secret-looking strings (fails closed).
-2. Adds one `@~/projects/engineos/CLAUDE.md` import line to your `~/.claude/CLAUDE.md`.
+2. Adds or updates one `@~/projects/engineos/CLAUDE.md` import line in your `~/.claude/CLAUDE.md` (re-run refreshes a stale path; personal lines untouched).
 3. Symlinks `skills/`, `agents/`, and `commands/` into `~/.claude/`.
 4. Merges the EngineOS hooks (routing + quality-gate + change-governance) and the read-only allowlist into `~/.claude/settings.json` (write-once backup at `settings.json.engineos.bak`).
 
@@ -45,6 +45,26 @@ jq '.hooks | keys' ~/.claude/settings.json    # PreToolUse, PostToolUse, Stop, S
 > Plugin mode alternative: `/plugin install engineos@engineos`. Note plugin mode does
 > NOT import the constitution automatically — add `@<plugin-path>/CLAUDE.md` to your
 > `~/.claude/CLAUDE.md` manually, or just use the installer (recommended).
+
+### Pause EngineOS (`/engineos:bypass`)
+
+Kill switch — it does **not** uninstall. Three switches, any one of which turns
+every hook off:
+
+```text
+/engineos:bypass on       # per-repo marker in the git dir; expires at the next SessionStart
+/engineos:bypass off      # clear it
+/engineos:bypass status   # report which switch is on
+
+export ENGINEOS_BYPASS=1              # process-scoped, sticky
+touch ~/.claude/engineos.bypass       # machine-wide, sticky until deleted
+```
+
+While any of them is on, every EngineOS hook exits immediately — except
+`task-scale-advisor.sh`, which announces `BYPASS ACTIVE` each turn so an unguarded
+session never looks guarded. The constitution import in `~/.claude/CLAUDE.md`
+stays (nothing can unload it); the command instructs the model to treat the rules
+as not applicable. Nuclear option: comment out the `@…/engineos/CLAUDE.md` import.
 
 ---
 
@@ -144,7 +164,8 @@ Verify: open a PR; both workflows run.
 
 In a `<project>` session, make a trivial code edit. You should see:
 - a `[router]` line naming the rules/skill/specialist for that file (PreToolUse routing);
-- on finishing without verifying, a one-time **Stop block** asking for typecheck/lint/tests;
+- on finishing without verifying, a one-time **Stop block** asking for lint + typecheck
+  (tests only when they were in scope, or `ENGINEOS_VERIFY_TESTS=1` is set);
 - on finishing with unrecorded changes, a one-time **Stop block** asking to run `record-change`.
 
 If a Stop block loops or never fires, see Troubleshooting.
@@ -178,8 +199,15 @@ record-change            # marks the .engineos/changes/ record done, registers f
                          # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/<domain>/, clears the Stop flag
 ```
 
-**Verification before "done"** is enforced: typecheck + lint + relevant tests, output
-shown. The Stop gates make this non-optional.
+**Verification before "done"** is enforced: lint + typecheck, output shown, run once
+after the last unit of work. The Stop gates make this non-optional.
+
+**Tests are opt-in.** EngineOS writes no tests and runs no suite unless you ask
+("write tests", "add coverage", "integration tests", "TDD this"), your project's
+`CLAUDE.md` requires them, or a test agent (`test-writer` / `qa-tester`) is
+dispatched on purpose. When they are off, the session says so in one line:
+`[tests] skipped — not requested`. Full policy: `rules/verification.md`. Set
+`ENGINEOS_VERIFY_TESTS=1` to force tests into the Stop gate unconditionally.
 
 ---
 

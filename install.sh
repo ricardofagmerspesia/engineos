@@ -46,24 +46,68 @@ if [ -f "$SETTINGS" ] && grep -Elq "$SECRET_PATTERNS" "$SETTINGS" >/dev/null 2>&
 fi
 
 # ---------- 3. Import EngineOS constitution into global CLAUDE.md ----------
+# Absolute @.../CLAUDE.md lines are installer-managed and refreshed on re-run
+# (repo moved, reclone, bash vs PowerShell path form). Personal prose and
+# relative @imports are left untouched.
 mkdir -p "$CLAUDE_DIR"
 IMPORT_LINE="@$REPO_DIR/CLAUDE.md"
-touch "$CLAUDE_DIR/CLAUDE.md"
-if grep -qF "$IMPORT_LINE" "$CLAUDE_DIR/CLAUDE.md"; then
-  echo "CLAUDE.md import already present."
+CLAUDE_MD="$CLAUDE_DIR/CLAUDE.md"
+IMPORT_RE='^@[^[:space:]]+[/\\]CLAUDE\.md[[:space:]]*$'
+touch "$CLAUDE_MD"
+
+managed="$(grep -E "$IMPORT_RE" "$CLAUDE_MD" 2>/dev/null || true)"
+if [ -n "$managed" ] && [ "$(printf '%s\n' "$managed" | grep -c .)" -eq 1 ] \
+   && printf '%s\n' "$managed" | grep -qF "$IMPORT_LINE"; then
+  echo "CLAUDE.md import already up to date."
 else
-  printf '\n%s\n' "$IMPORT_LINE" >> "$CLAUDE_DIR/CLAUDE.md"
-  green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+  tmp="$(mktemp)"
+  grep -vE "$IMPORT_RE" "$CLAUDE_MD" > "$tmp" 2>/dev/null || true
+  # drop trailing blank lines so we don't accumulate empties across re-runs
+  if [ -s "$tmp" ]; then
+    # portable strip of trailing blank lines (no GNU sed -i assumed)
+    cleaned="$(mktemp)"
+    awk 'NF { while (blank--) print ""; blank=0; print; next } { blank++ }' "$tmp" > "$cleaned"
+    mv "$cleaned" "$tmp"
+    printf '\n%s\n' "$IMPORT_LINE" >> "$tmp"
+  else
+    printf '%s\n' "$IMPORT_LINE" > "$tmp"
+  fi
+  mv "$tmp" "$CLAUDE_MD"
+  if [ -n "$managed" ]; then
+    green "Updated EngineOS import in ~/.claude/CLAUDE.md -> $IMPORT_LINE"
+  else
+    green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+  fi
 fi
 
-# ---------- 4. Symlink skills ----------
+# ---------- 4. Symlink helper ----------
+# MSYS/Git Bash: `ln -sfn` fails with "Not a directory" when LINK_NAME already
+# exists as a symlink to a directory — it follows the link instead of replacing
+# it. Compare + rm + ln -s is portable. Glob sources may carry a trailing slash.
+link_idempotent() {
+  local src="$1" dest="$2"
+  src="${src%/}"
+  if [ -L "$dest" ]; then
+    local cur
+    cur="$(readlink "$dest" 2>/dev/null || true)"
+    cur="${cur%/}"
+    if [ "$cur" = "$src" ]; then
+      return 0
+    fi
+    rm -f "$dest"
+  elif [ -e "$dest" ]; then
+    return 1
+  fi
+  ln -s "$src" "$dest"
+}
+
+# ---------- 4a. Symlink skills ----------
 mkdir -p "$CLAUDE_DIR/skills"
 for skill in "$REPO_DIR"/skills/*/; do
   [ -d "$skill" ] || continue   # empty glob guard (no nullglob on bash 3.2)
   name=$(basename "$skill")
   target="$CLAUDE_DIR/skills/$name"
-  if [ -L "$target" ] || [ ! -e "$target" ]; then
-    ln -sfn "$skill" "$target"
+  if link_idempotent "$skill" "$target"; then
     echo "skill linked: $name"
   else
     warn "skip: $target exists and is not a symlink (local skill with same name?)"
@@ -76,8 +120,7 @@ for agent in "$REPO_DIR"/agents/*.md; do
   [ -e "$agent" ] || continue   # empty glob guard
   name=$(basename "$agent")
   target="$CLAUDE_DIR/agents/$name"
-  if [ -L "$target" ] || [ ! -e "$target" ]; then
-    ln -sfn "$agent" "$target"
+  if link_idempotent "$agent" "$target"; then
     echo "agent linked: ${name%.md}"
   else
     warn "skip: $target exists and is not a symlink"
@@ -96,8 +139,7 @@ if [ -d "$REPO_DIR/commands" ]; then
     [ -e "$cmd" ] || continue   # empty glob guard
     name=$(basename "$cmd")
     target="$CLAUDE_DIR/commands/$name"
-    if [ -L "$target" ] || [ ! -e "$target" ]; then
-      ln -sfn "$cmd" "$target"
+    if link_idempotent "$cmd" "$target"; then
       echo "command linked: /${name%.md}"
     else
       warn "skip: $target exists and is not a symlink"
@@ -176,10 +218,17 @@ if command -v jq >/dev/null 2>&1; then
       | (if ([.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length) == 0
          then .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}]
          else . end);
+    # removal: strip cmd wherever a previous install added it, dropping emptied entries
+    def drop($event; $cmd):
+      .hooks[$event] //= []
+      | .hooks[$event] |= (map(.hooks |= map(select(.command != $cmd)))
+                           | map(select((.hooks | length) > 0)));
     .hooks //= {}
     | add("PreToolUse";  "Edit|Write"; $route)
     | add("PostToolUse"; "Edit|Write"; $mark)
-    | add("PostToolUse"; "Edit|Write"; $post)
+    # per-edit gate retired: verification runs once at Stop (rules/verification.md
+    # "The final gate") — drop stale wiring from earlier installs
+    | drop("PostToolUse"; $post)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)
@@ -206,7 +255,6 @@ if command -v jq >/dev/null 2>&1; then
 else
   warn "jq not found — add hooks manually to $SETTINGS:"
   warn "  PreToolUse  matcher 'Edit|Write' -> $REPO_DIR/hooks/route-before-change.sh"
-  warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/post-edit-check.sh"
   warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/mark-unrecorded.sh"
   warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
   warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"

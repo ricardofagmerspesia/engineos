@@ -119,6 +119,22 @@ and `/implement`; plugin mode namespaces them `/engineos:audit`.)
 `/audit` writes `.engineos/audits/<date>-<domain>.md` (verdict + root cause + plan).
 `/implement` is spec-gated and closes with a change record.
 
+**Escape hatch — `/bypass`.** Some work isn't worth the constitution: a throwaway
+script, a one-line spike, someone else's repo you're just poking at.
+
+```
+/bypass              # EngineOS off — no routing, no agents, no spec gate, no Stop gates
+/bypass status       # active | bypassed
+/bypass off          # back on
+```
+This is not a polite request to ignore the rules — it writes a marker file into the
+repo's git dir that every hook checks, so the gates genuinely stop firing. Two
+things stay true while it's on: the assistant tells you `[engineos] bypassed` on
+every turn (a silent bypass is the dangerous one), and the marker is deleted at the
+next SessionStart, so a bypass you forget about expires into gates-ON rather than
+persisting. Secrets hygiene and confirmation before destructive actions are not
+EngineOS rules and do not switch off.
+
 ---
 
 ## 4. MCPs — what powers the leaf specialists
@@ -148,15 +164,26 @@ These run on their own. Know what they do and how to respond:
 | Hook | Fires | What you do |
 |---|---|---|
 | `route-before-change` | before each edit | nothing — read the injected `[router]` line; follow it |
-| `post-edit-check` | after each edit | nothing — fix any typecheck/lint failure it surfaces |
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
-| `stop-verify` | when finishing | if it blocks: run typecheck + lint + tests, show output |
+| `stop-verify` | when finishing | if it blocks: run lint + typecheck, show output. Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
 | `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) |
 | `task-scale-advisor` | on your prompt | nothing — non-blocking nudge to fan out + pick the right model tier on big/spec/design prompts |
 | `gate-advisor` | on your prompt | nothing — non-blocking; read the matched decision rules and their required artifacts before claiming done |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
+
+Every hook in this table checks the bypass marker first and exits early when it is
+set — see `/bypass` in §3. That is the only supported way to silence them; editing
+`settings.json` to unwire a hook takes it off for good, not for one task.
+
+**Tests are opt-in, not automatic.** EngineOS writes no tests and runs no test
+suite unless you ask for them ("write tests", "add coverage", "TDD this", "run
+the suite"), your project's `CLAUDE.md` requires them, a test agent
+(`test-writer` / `qa-tester`) was dispatched on purpose, or you named a
+release/merge gate that includes tests. Otherwise the finalization gate is
+**lint + typecheck only** — see `rules/verification.md` for the full policy, and set
+`ENGINEOS_VERIFY_TESTS=1` to force tests back into the Stop gate unconditionally.
 
 ---
 
@@ -173,9 +200,11 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 ## 7. Rules — the standards being enforced
 
 - **Always-on:** `rules/base.md`, `security.md`, `git.md`, `memory.md`,
-  `parallelism.md`, `models.md`, `risk-autonomy.md`, `context.md`, `gates.md`.
+  `parallelism.md`, `models.md`, `subagents.md`, `verification.md`,
+  `risk-autonomy.md`, `context.md`, `gates.md`.
 - **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
-  `llm-apps.md`, `testing.md`, `data.md`, `observability.md`.
+  `llm-apps.md`, `testing.md` (test craft, loaded when tests are on), `data.md`,
+  `observability.md`, `memory.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.
 - Every substantive request now carries a **risk tier and autonomy ceiling**
   (`risk-autonomy.md`) which sets which gates apply (`gates.md`) — see the
@@ -190,7 +219,7 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 open a record            → cp .engineos/changes/_template.md .engineos/changes/<date>-<slug>.md  (status: active)
    ↓ classify risk + autonomy (rules/risk-autonomy.md), which sets the gates that apply (rules/gates.md)
    ↓ do the work (routing + gate-advisor active)
-verify                   → typecheck + lint + tests, output shown  (Validation gate)
+verify                   → the final gate: lint + typecheck, output shown (tests too, only if in scope)  (Validation gate)
 release-ready?           → named owner + rollback path + residual risks accepted (Release gate — required to ship)
 record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/<domain>/
 ```
@@ -216,7 +245,8 @@ goes back through the router.
 3. For >2 files / a new feature, brainstorming + a spec come first — go with it.
 4. Open a `.engineos/changes/` record.
 5. Implement (or `/implement backend ...`). Each edit gets routed guidance.
-6. Verify — show typecheck/lint/test output.
+6. Verify — show lint/typecheck output (add test output only if tests were
+   requested for this change).
 7. `record-change` to close and archive. Done.
 
 ## Cheat sheet — "I want to… → do…"
@@ -236,3 +266,4 @@ goes back through the router.
 | Learn from recent work / recurring corrections | `retro` skill |
 | Change a team standard | PR to the EngineOS repo (`CONTRIBUTING.md`) |
 | Know why a gate blocked me | §5 — verify or record, then finish |
+| Turn EngineOS off for one task | `/bypass` — and `/bypass off` when you're done |

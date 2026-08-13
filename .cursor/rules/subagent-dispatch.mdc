@@ -1,0 +1,45 @@
+---
+description: Announce every delegated/background agent task with a green, line-broken banner before and after it runs
+globs:
+alwaysApply: true
+---
+
+# Sub-agent / delegated-task announcement
+
+Mirrors `rules/subagents.md` from the EngineOS constitution (this repo's
+`CLAUDE.md`) for Cursor sessions. Cursor has no hook system and no EngineOS
+specialist-agent registry (`backend-coordinator`, `elias`, etc.) — this rule
+is prompt-only, with no technical enforcement possible. Apply it to whatever
+Cursor calls a delegated unit of work in this session: a background agent, a
+parallel/Composer sub-task, or a spawned tool-use chain — not to ordinary
+inline edits.
+
+## Rule
+
+Before starting any delegated/background task, emit its own fenced `diff`
+block, on its own line, blank line above and below:
+
+```diff
++ [agent] <short-name-or-purpose> | mode: AUDIT|IMPLEMENT | scope: <files/dirs it owns>
+```
+
+When that task's result comes back, before continuing, emit the matching
+return line in its own fenced `diff` block:
+
+```diff
++ [agent] <short-name-or-purpose> -> done|FAILED | <one-line result summary>
+```
+
+- One block per delegated task. Never batch several onto one line, never bury
+  the name in prose.
+- Do this for every delegated task in the session, not just the first one.
+- If several run concurrently, still give each its own block.
+- If a task fails, say `-> FAILED` and why — never let a summary hide it.
+
+## Why this exists
+
+Claude Code enforces this via a `PreToolUse`/`PostToolUse` hook on the
+Agent/Task tool (`hooks/announce-agent-dispatch.sh`,
+`hooks/announce-agent-return.sh`) as a backstop, because the prose-only rule
+alone was being silently skipped. Cursor has no equivalent hook point, so
+this file is best-effort: it only works if the model reads and follows it.

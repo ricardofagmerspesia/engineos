@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# EngineOS Stop hook: runs scoped lint + typecheck + tests for packages changed
-# this session and blocks finishing if any fail.
+# EngineOS Stop hook: runs scoped lint + typecheck for packages changed this
+# session and blocks finishing if any fail.
+# Tests are opt-in, not part of the default gate — see rules/verification.md
+# "Tests are opt-in". Set ENGINEOS_VERIFY_TESTS=1 to fold the test target/script
+# back into this gate (any other value, or unset, skips it).
 # No-op when there is nothing to run. Never blocks on infra quirks — only on
 # genuine red (real lint/type/test failure).
 set -uo pipefail
@@ -25,6 +28,13 @@ else
   TRANSCRIPT=$(printf '%s' "$INPUT" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
   CWD=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
 fi
+
+# ---------- bypass switch ----------
+# Checked against CWD rather than the raw payload so the guard survives the
+# no-jq path above, same as every other field here.
+# shellcheck source=hooks/bypass.sh
+. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+engineos_bypass_active "$CWD" && exit 0
 
 # ---------- loop guard ----------
 [ "${ACTIVE:-false}" = "true" ] && exit 0
@@ -102,6 +112,12 @@ OUT=""
 # so FAILED/OUT mutations inside the loop survive (no subshell).
 PKG_LIST=$(printf '%s' "$PKG_DIRS" | tr '|' '\n' | grep -v '^$' | sort -u)
 
+# ---------- verification target list ----------
+# Tests are opt-in per rules/verification.md "Tests are opt-in": lint + typecheck run
+# by default, test only joins when the environment explicitly asks for it back.
+TARGETS="lint typecheck"
+[ "${ENGINEOS_VERIFY_TESTS:-}" = "1" ] && TARGETS="lint typecheck test"
+
 while IFS= read -r PKG_DIR; do
   [ -n "$PKG_DIR" ] || continue
   [ -d "$PKG_DIR" ] || continue
@@ -114,7 +130,7 @@ while IFS= read -r PKG_DIR; do
       PROJ=$(jq -r '.name // empty' "$PKG_DIR/package.json" 2>/dev/null | sed 's/^@[^/]*\///')
     [ -n "$PROJ" ] || continue
 
-    for TARGET in lint typecheck test; do
+    for TARGET in $TARGETS; do
       # check target existence
       TARGET_EXISTS=0
       NX_SHOW=$( (cd "$ROOT" && $EXEC nx show project "$PROJ" --json 2>/dev/null) ) && \
@@ -145,7 +161,7 @@ ${STEP_OUT}"
 
   else
     # ---------- non-Nx path ----------
-    for SCRIPT in lint typecheck test; do
+    for SCRIPT in $TARGETS; do
       has_script "$PKG_DIR" "$SCRIPT" || continue
 
       TIMEOUT=90
