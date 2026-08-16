@@ -1,0 +1,8 @@
+# Local draft/snapshot/history SQLite state — never shared between operators.
+.data/
+
+# Standard Next.js / Node ignores for this standalone app.
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
