@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "description": "Machine-readable source of truth for EngineOS model-tier assignment. rules/models.md's assignment table is checked against this file by scripts/validate-engineos.sh (C16): tier/model pairs must agree, escalation order must be internally consistent, and every work type must resolve to a defined tier.",
+  "tiers": [
+    { "id": "most-capable", "model": "fable", "escalates_to": null },
+    { "id": "design",       "model": "opus",  "escalates_to": "most-capable" },
+    { "id": "build",        "model": "opus",  "escalates_to": "design" },
+    { "id": "cheap",        "model": "haiku", "escalates_to": "build" }
+  ],
+  "escalation_order": ["cheap", "build", "design", "most-capable"],
+  "work_types": [
+    { "id": "spec",               "title": "Spec, PRD, requirements, problem framing, brainstorming", "tier": "most-capable" },
+    { "id": "adr",                "title": "Architecture decision records",                            "tier": "most-capable" },
+    { "id": "architecture",       "title": "Architecture, design, task decomposition, contract/interface design, fan-out planning", "tier": "design" },
+    { "id": "hard-debugging",     "title": "Hard debugging, cross-cutting refactor design",            "tier": "design" },
+    { "id": "adversarial-review", "title": "Adversarial/security review (critic, security-reviewer)", "tier": "design" },
+    { "id": "code-review",        "title": "Standards/spec code review against an existing diff",     "tier": "build" },
+    { "id": "build",              "title": "Writing code, tests, migrations, config — against an existing spec/design", "tier": "build" },
+    { "id": "mechanical",         "title": "Renames, boilerplate, file moves, formatting, simple lookups, summaries",   "tier": "cheap" }
+  ],
+  "degradation_ladder": [
+    { "rung": 1, "id": "cache",          "take_when": "The same input was already computed and inputs are unchanged.", "not_when": "The upstream changed, or freshness is part of the requirement." },
+    { "rung": 2, "id": "reduce-context", "take_when": "The dropped layers are rules/context.md layers 5-6.", "not_when": "It would drop layer 1-2, or the evidence the answer rests on." },
+    { "rung": 3, "id": "smaller-model",  "take_when": "Work is mechanical with a fully specified target.", "not_when": "Gates assume the stronger tier, or risk is medium+ per rules/risk-autonomy.md." },
+    { "rung": 4, "id": "defer-or-batch", "take_when": "The result is not needed to unblock anything now.", "not_when": "Something is blocked on it, or deferral hides a failure." },
+    { "rung": 5, "id": "deny",           "take_when": "Every rung above failed its check.", "not_when": null }
+  ]
+}

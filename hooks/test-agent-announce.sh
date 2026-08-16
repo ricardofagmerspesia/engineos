@@ -3,6 +3,10 @@
 # Feeds sample PreToolUse/PostToolUse payloads and asserts the injected
 # additionalContext. Run: hooks/test-agent-announce.sh
 set -uo pipefail
+# Isolate from the operator's bypass switches: a machine-wide pause must never make
+# this suite go quiet and report green (hooks/bypass.sh).
+export ENGINEOS_BYPASS_FLAG=/nonexistent/engineos.bypass
+unset ENGINEOS_BYPASS
 DIR="$(cd "$(dirname "$0")" && pwd)"
 pass=0; fail=0
 

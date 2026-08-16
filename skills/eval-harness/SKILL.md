@@ -5,6 +5,14 @@ description: Scaffold a complete eval harness for an LLM feature — golden case
 
 # Eval Harness Scaffold
 
+## Boundary
+
+Ownership boundary for eval guidance: `rules/llm-apps.md` (EngineOS rule, resolved
+relative to EngineOS's `CLAUDE.md` — the repo/plugin root — not this project) sets
+the eval rules (golden set before iterating, run on every change, judge vs exact
+match), `llm-engineering` carries the how-to patterns, and this skill builds the
+machinery. Do not restate the rules here.
+
 Goal: `npm run eval:<feature>` printing a pass rate, runnable locally and in CI. No LLM feature merges without one (`rules/llm-apps.md`).
 
 ## Ownership boundary for eval guidance
@@ -16,7 +24,7 @@ this skill builds the machinery. Do not restate the rules here.
 ## Procedure
 
 1. **Locate the feature contract.** Find the feature's input type and output schema (zod). No schema → stop and fix that first (structured output rule).
-2. **Build the golden set with the user.** 10–50 cases in `evals/<feature>/cases.json`. Source priority: real production/log examples > hand-written realistic cases > synthetic. Each case:
+2. **Build the golden set with the user**, sized and paced per `rules/llm-apps.md`, in `evals/<feature>/cases.json`. Source priority: real production/log examples > hand-written realistic cases > synthetic. Each case:
    ```json
    { "id": "kebab-id", "input": {...}, "expected": {...}, "note": "why this case exists" }
    ```
@@ -27,7 +35,7 @@ this skill builds the machinery. Do not restate the rules here.
    - `set` — array membership ignoring order
    - `numeric` — tolerance band
    - `contains` / `regex` — required fragments in text
-   - `judge` — LLM-as-judge, ONLY for genuinely fuzzy criteria (tone, faithfulness, relevance)
+   - `judge` — LLM-as-judge; scope per `rules/llm-apps.md` (fuzzy criteria such as tone, faithfulness, relevance — never exact-match-able fields)
 4. **Write the runner** `evals/<feature>/run.ts`, matching project conventions:
    - Load cases → call the real feature code (same entrypoint production uses, NOT a copy of the prompt) → score → report.
    - Concurrency-limited (p-limit ~5), per-case try/catch (one crash ≠ dead run), prompt version + model logged in the report header.
@@ -35,7 +43,7 @@ this skill builds the machinery. Do not restate the rules here.
    - Threshold: define per feature (start: ≥90% or current baseline, never lower it silently).
 5. **Judge setup (only if used):** separate, cheaper model than the feature under test. Rubric prompt: criteria as yes/no questions, 1–5 scale forbidden (drift), output via structured output `{pass: boolean, reason: string}`. Spot-check 10 judge verdicts by hand once before trusting it.
 6. **Wire up:** add `"eval:<feature>": "tsx evals/<feature>/run.ts"` to package.json. Mention CI: run on PRs touching the feature's prompts/ or feature dir.
-7. **Baseline:** run once, record the rate in `evals/<feature>/BASELINE.md` with date + prompt version. Every prompt/model change PR pastes before/after.
+7. **Baseline:** run once, record the rate in `evals/<feature>/BASELINE.md` with date + prompt version. Change cadence (every prompt/model change pastes before/after) per `rules/llm-apps.md`.
 
 ## Quality bar
 

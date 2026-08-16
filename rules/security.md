@@ -4,12 +4,12 @@
 - DO load secrets from environment/secret manager only; reference by name in config templates (`${DB_PASSWORD}`).
 - DO add secret patterns to .gitignore and scan before commit (`.env*`, `*.pem`, `credentials*`).
 - DON'T put keys in code, settings files committed to git, prompts, logs, or error messages.
-- If a secret ever touches git history or a shared file: rotate it immediately. Removal is not enough.
+- If a secret ever touches git history or a shared file: rotate it immediately AND scrub history. Removal is not enough.
 
 ## Input validation
 - DO validate ALL external input at the boundary: HTTP bodies, query params, headers, webhook payloads, file uploads, LLM outputs.
 - DO validate by allowlist (what IS valid), not blocklist.
-- DO limit sizes: body size, array lengths, string lengths, file sizes, pagination limits.
+- DO limit sizes: body size, array lengths, string lengths, file sizes.
 
 ## Injection
 - DO use parameterized queries / ORM bindings — never string-concatenate SQL.
@@ -31,7 +31,7 @@
 - DO run `npm audit` / dependabot; patch criticals within days, not quarters.
 - DO pin lockfiles; review postinstall scripts of new deps.
 
-## Pre-merge checklist (review intent loads this)
+## Pre-merge checklist (apply on review intent)
 - [ ] No secrets in diff
 - [ ] All new inputs validated (body, params, headers, files)
 - [ ] AuthZ on every new endpoint, object-level where applicable

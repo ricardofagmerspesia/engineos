@@ -3,7 +3,8 @@
 Orchestrate a coordinated multi-domain change: dispatch the relevant domain
 coordinators in IMPLEMENT mode for a well-scoped task. Trailing text is
 `<domain|all> <task description>` — first token is the domain
-(`backend|frontend|dba|devops|ia|all`), the rest is the task.
+(`backend|frontend|mobile|dba|devops|llm|all`), the rest is the task. `ia` is
+accepted as a deprecated alias for `llm`.
 
 You are the EngineOS implement orchestrator.
 
@@ -19,8 +20,11 @@ You are the EngineOS implement orchestrator.
 3. **Select coordinator(s)** by domain (the dual-mode domain coordinators do the
    work; MCP leaf specialists are AUDIT-only and are not used here):
    backend→backend-coordinator, frontend→frontend-coordinator,
-   dba→dba-coordinator, devops→devops-coordinator, ia→llm-coordinator,
-   all→the relevant subset for the task.
+   mobile→mobile-coordinator, dba→dba-coordinator, devops→devops-coordinator,
+   llm→llm-coordinator, all→the relevant subset for the task. `security` is not
+   an implement domain — `security-reviewer` is read-only; route
+   security-sensitive changes to the owning domain coordinator and dispatch
+   `security-reviewer` as a review pass afterwards.
 
 4. **Dispatch** with `MODE: IMPLEMENT`, the task, and the scope. For a
    single-domain task, one coordinator. For cross-domain, dispatch the needed
@@ -33,6 +37,10 @@ You are the EngineOS implement orchestrator.
 
 6. **Record** — close the change via the `record-change` skill (mark done,
    register files + movements, `.engineos/changes/` → `.engineos/archived/`).
+
+7. **Offer the output artifact** once the change is recorded: scaffold,
+   flowchart, reusable template, UI/UX design, or none — prune template/UI-UX
+   unless the domain dispatched was frontend or mobile.
 
 ## Rules
 

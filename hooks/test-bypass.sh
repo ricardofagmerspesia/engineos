@@ -11,6 +11,8 @@ no(){ fail=$((fail+1)); echo "FAIL: $1"; }
 
 command -v jq >/dev/null 2>&1 || { echo "jq required"; exit 1; }
 T=$(mktemp -d); ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+# Isolate from the operator's real machine-wide flag: this suite owns the switch.
+export ENGINEOS_BYPASS_FLAG="$T/absent-machine-flag"
 GD="$T/.git"
 MARKER="$GD/ENGINEOS_BYPASS"
 
@@ -72,9 +74,37 @@ printf '{"cwd":"%s","session_id":"S2"}' "$T" | bash "$DIR/ensure-project-layout.
 off
 [ "$(bash "$DIR/bypass.sh" status "$T")" = "active" ] && ok || no "CLI status wrong when off"
 bash "$DIR/bypass.sh" on "$T" >/dev/null
-[ "$(bash "$DIR/bypass.sh" status "$T")" = "bypassed" ] && ok || no "CLI on did not set the marker"
+[ "$(bash "$DIR/bypass.sh" status "$T")" = "bypassed (repo marker)" ] && ok || no "CLI on did not set the marker"
 bash "$DIR/bypass.sh" off "$T" >/dev/null
 [ "$(bash "$DIR/bypass.sh" status "$T")" = "active" ] && ok || no "CLI off did not clear the marker"
+
+# ---------- sticky switch: ENGINEOS_BYPASS=1 ----------
+# Process-scoped, not cleared at SessionStart: it must bypass even with no marker.
+off
+[ -z "$(ENGINEOS_BYPASS=1 ctx route-before-change.sh "$EDIT")" ] && ok || no "routing fired under ENGINEOS_BYPASS=1"
+ENGINEOS_BYPASS=1 ctx task-scale-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" && ok \
+  || no "scale advisor did not announce ENGINEOS_BYPASS=1"
+[ "$(ENGINEOS_BYPASS=1 bash "$DIR/bypass.sh" status "$T")" = "bypassed (ENGINEOS_BYPASS=1)" ] && ok \
+  || no "CLI status did not name the env switch"
+
+# ---------- sticky switch: machine-wide ~/.claude/engineos.bypass ----------
+# HOME is redirected at a fake home so the real machine flag is never touched.
+FAKE_FLAG="$T/machine-flag"; : >"$FAKE_FLAG"
+[ -z "$(ENGINEOS_BYPASS_FLAG=$FAKE_FLAG ctx route-before-change.sh "$EDIT")" ] && ok \
+  || no "routing fired under the machine-wide flag"
+ENGINEOS_BYPASS_FLAG=$FAKE_FLAG ctx task-scale-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" && ok \
+  || no "scale advisor did not announce the machine-wide flag"
+[ "$(ENGINEOS_BYPASS_FLAG=$FAKE_FLAG bash "$DIR/bypass.sh" status "$T")" = "bypassed ($FAKE_FLAG)" ] && ok \
+  || no "CLI status did not name the machine-wide flag"
+
+# `off` clears the repo marker but must NOT clear a machine-wide flag, and must say so
+on
+ENGINEOS_BYPASS_FLAG=$FAKE_FLAG bash "$DIR/bypass.sh" off "$T" 2>&1 | grep -q "still bypasses everything" && ok \
+  || no "CLI off did not warn that the machine-wide flag still holds"
+[ -f "$FAKE_FLAG" ] && ok || no "CLI off deleted the machine-wide flag"
+[ -f "$MARKER" ] && no "CLI off did not clear the repo marker" || ok
+rm -f "$FAKE_FLAG"
+off
 
 # ---------- non-git dir: nothing to bypass, hooks stay normal ----------
 NG=$(mktemp -d)

@@ -3,7 +3,7 @@ name: 2026-08-12-rebind-build-tier-to-opus
 status: done
 completed: 2026-08-12
 owner: Ricardo Fagmer
-spec: none — mechanical rebind, no design change (see Why)
+spec: n/a — mechanical rebind, no design change (see Why)
 domain: general
 ---
 
@@ -64,4 +64,52 @@ specced, deliberately.
 - [x] escalation-out-of-build no-op called out
 - [x] committed atomically, separate from the ledger-debt work that shared the
       working tree (`4b43424` then `37d544c`)
-- [ ] PR not opened — branch `chore/rebind-build-tier-to-opus` is local only
+- [x] PR opened and merged into `main` as #20
+
+## What was made
+The build tier reads `opus` in `rules/models.md` and in every agent frontmatter
+that carried `model: sonnet`; the four downstream mentions (README tier summary,
+the `rules/subagents.md` announcement example, `commands/implement.md` step 6, the
+`hooks/task-scale-advisor.sh` advisory string) follow it. Two paragraphs in
+`rules/models.md` state that build and design share a binding without merging as
+tiers, and that escalating out of build is a no-op that must go to **most capable**.
+
+Completed at merge time, on main: `registries/models.json` — the machine-readable
+mirror this branch predates — was rebound `build: sonnet -> opus` as well, and
+`scripts/validate-engineos.sh`'s model-binding uniqueness check was relaxed to
+permit a documented shared binding. Without those two, the prose and the registry
+would have disagreed and the validator would have failed the merge.
+
+## Changes registered
+```
+M rules/models.md
+M rules/subagents.md
+M README.md
+M commands/implement.md
+M hooks/task-scale-advisor.sh
+M agents/android-builder.md
+M agents/backend-coordinator.md
+M agents/cicd-specialist.md
+M agents/dba-coordinator.md
+M agents/devops-coordinator.md
+M agents/frontend-coordinator.md
+M agents/gcp-specialist.md
+M agents/ios-builder.md
+M agents/kubernetes-specialist.md
+M agents/llm-coordinator.md
+M agents/mobile-coordinator.md
+M agents/oracle-specialist.md
+M agents/postgres-specialist.md
+M agents/qa-tester.md
+M agents/test-writer.md
+```
+Merged into main via PR #20; the registry/validator half is registered in that
+merge's own change record.
+
+## Verification
+Per the checklist above: `rules/models.md`'s build row reads `opus`, all 18 agent
+frontmatters read `model: opus`, no live file outside dated records mentions
+`sonnet` (grep, excluding `.git`, `.engineos`, `docs`, `.claude/worktrees`), and
+`hooks/task-scale-advisor.sh` parses clean under `bash -n`. Post-merge
+verification — the full validator and hook suites against the merged tree — is
+recorded in the merge's change record, not here.

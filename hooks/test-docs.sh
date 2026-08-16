@@ -7,6 +7,10 @@
 # Pure bash + grep: no jq, no node, no python.
 # Run: hooks/test-docs.sh [repo-root]
 set -uo pipefail
+# Isolate from the operator's bypass switches: a machine-wide pause must never make
+# this suite go quiet and report green (hooks/bypass.sh).
+export ENGINEOS_BYPASS_FLAG=/nonexistent/engineos.bypass
+unset ENGINEOS_BYPASS
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "${1:-$DIR/..}" && pwd)"
 cd "$ROOT" || exit 1
@@ -37,7 +41,7 @@ done)
 CORPUS=$( { echo CLAUDE.md; find rules agents commands skills templates -type f -name '*.md' | sort; } )
 # Reference scan adds the executable layer: a hook or generator naming an agent
 # or skill makes it reachable just as a doc does.
-REFSCAN=$( { printf '%s\n' "$CORPUS"; ls hooks/*.sh scripts/*.sh 2>/dev/null; } )
+REFSCAN=$( { printf '%s\n' "$CORPUS"; ls hooks/*.sh scripts/*.sh registries/*.json 2>/dev/null; } )
 
 # ------------------------------------------- family 1: referential integrity
 echo "--- family 1: referential integrity"

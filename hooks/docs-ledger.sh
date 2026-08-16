@@ -9,7 +9,7 @@
 
 # Rule stems imported by the "Always-on rules" section of CLAUDE.md. These are in
 # context on every turn, so any row may rely on them without loading them.
-ENGINEOS_ALWAYS_ON="base security git parallelism models subagents verification"
+ENGINEOS_ALWAYS_ON="base security git memory parallelism models subagents verification risk-autonomy context gates"
 
 # Accepted closure gaps: "<from>|<to>|<reason>". Pair-scoped, not row-scoped —
 # one always-on outward pointer explains the same gap in every router row.
@@ -44,9 +44,11 @@ Project `CLAUDE.md` overrides EngineOS|0|-
 # Skills referenced by name that live outside this repo (plugins, host skills).
 # Declared rather than pattern-matched: the probe cannot tell an external skill
 # from a typo, so each one is a deliberate line.
-#   claude-api — host skill, named in skills/llm-engineering for model/pricing lookups
-ENGINEOS_EXTERNAL_SKILLS="claude-api"
+#   claude-api  — host skill, named in skills/llm-engineering for model/pricing lookups
+#   code-review — host skill, named in the CLAUDE.md review row as environment-provided
+ENGINEOS_EXTERNAL_SKILLS="claude-api code-review"
 
 # Agents that carry no alias by design. The builders are named directly in the
-# router row that dispatches them, never by a short name.
-ENGINEOS_ALIAS_EXEMPT="ios-builder android-builder"
+# router row that dispatches them, never by a short name; router is reached through
+# /engineos:route, never called by a person's name.
+ENGINEOS_ALIAS_EXEMPT="ios-builder android-builder router"

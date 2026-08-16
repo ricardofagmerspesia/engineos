@@ -32,7 +32,7 @@ Plugin mode still needs the router: add `@<plugin-path>/CLAUDE.md` to your `~/.c
 Mode A is idempotent — re-run after every `git pull`. The installer:
 1. Refuses to install if secret-looking strings are in the repo (fails closed).
 2. Adds or updates one import line in your `~/.claude/CLAUDE.md` (re-run refreshes a stale path; personal lines untouched).
-3. Symlinks `skills/` and `agents/` into `~/.claude/`.
+3. Symlinks `skills/`, `agents/`, `commands/`, `rules/`, and `patterns/` into `~/.claude/` (and prunes any dangling symlink under `skills/`, `agents/`, or `commands/` left over from a prior rename).
 4. Merges the EngineOS hooks (routing, quality-gate, and change-governance) into `~/.claude/settings.json` (write-once backup), plus the shared read-only allowlist.
 
 Personal stuff (output style, personal hooks, keys) stays in your own `~/.claude/CLAUDE.md`
@@ -60,11 +60,18 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 
 | Path | What | When it fires |
 |---|---|---|
-| `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action |
-| `rules/base.md`, `security.md`, `git.md` | Always-on standards | Every session |
-| `rules/parallelism.md` | Fan-out doctrine: when to split work, contract freeze, waves, disjoint file scopes, one-message dispatch | Always on; enforced on big tasks |
-| `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `opus`, mechanical `haiku` — tier is the contract, model name is today's binding | Always on |
+| `CLAUDE.md` | Constitution + intent router | Always loaded; routes every substantive prompt to the right rules/skills before action, announcing `risk=`/`autonomy=` alongside the loaded rules |
+| `rules/base.md`, `security.md`, `git.md`, `memory.md` | Always-on standards | Every session |
+| `rules/subagents.md` | Dispatch doctrine: the router naming an agent means dispatch it, announce it, and what a dispatched agent may run | Always on |
+| `rules/verification.md` | The final gate: lint + typecheck at finalization, tests opt-in (`ENGINEOS_VERIFY_TESTS=1`) | Always on |
+| `rules/risk-autonomy.md` | Risk tiers (low/medium/high) and autonomy ceilings (A0-A4) — classify before the first write; every other gate is proportional to this | Always on |
+| `rules/gates.md` | Named gates (discovery/design/implementation/validation/release) mapped to their enforcement mechanism, plus the validation ladder | Always on |
+| `rules/context.md` | Context-as-budget: never sweep the repo, load only what the route names, state what evidence was used | Always on |
+| `rules/parallelism.md` | Fan-out doctrine: when to split work, contract freeze, waves, disjoint file scopes, one-message dispatch, the failure/retry/escalation policy | Always on; enforced on big tasks |
+| `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `opus`, mechanical `haiku` — tier is the contract, model name is today's binding. Plus the budget degradation ladder (cache -> reduce context -> smaller model -> defer -> deny) | Always on |
 | `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Per-domain standards | Loaded by router per intent |
+| `registries/routing.json` | Machine-readable domain routing — rules, skill, agent, precedence, risk floor per domain; cross-checked against `CLAUDE.md` and `hooks/routing-map.sh` so the three cannot drift silently | Read by `scripts/validate-engineos.sh` |
+| `registries/decision-rules.json` | Gate requirements as data (`when → then require`), so a new requirement is a registry entry, not a constitutional amendment | Read by `hooks/gate-advisor.sh` and by the model per `rules/gates.md` |
 | `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
 | `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
@@ -72,20 +79,24 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `skills/eval-harness` | Scaffold golden sets, runners, LLM-judge | LLM feature without evals |
 | `skills/release-notes` | Structured release page from commits/PRs | Version bump / "write release notes" |
 | `skills/strategy` | Five strategist modes — market opportunity, learning path, blocked decision, positioning, hidden monetization — each grounded in dated web sources + this repo's code/docs/git history, persisted to `docs/strategy/` | Business/career strategy questions |
-| `agents/architecture-analyst.md` | System comprehension → code-grounded architecture + onboarding docs (`/analisy-architecture`); interactive gap-filling interview (`/talk-about-the-system`) | Documenting/understanding a system |
+| `agents/architecture-analyst.md` | System comprehension → code-grounded architecture + onboarding docs (`/analyze-architecture`); interactive gap-filling interview (`/talk-about-the-system`) | Documenting/understanding a system |
 | `agents/qa-tester.md` | Autonomous end-to-end API QA (alias `qa`): clean Docker up, endpoint-inventory JSON + Postman collection, headless Newman run of all endpoints/scenarios, pass/fail report | Full API regression / smoke QA |
 | `agents/security-reviewer.md` | Adversarial, OWASP-mapped diff review (read-only) | Pre-merge on risky diffs |
+| `agents/critic.md` | Adversarial general-correctness review (read-only, alias `vera`) — tries to refute the claim that work is done, defaults to "not proven" | Required at risk=high per `rules/gates.md`; on explicit request |
 | `agents/test-writer.md` | Tests from acceptance criteria, regression tests | Coverage work |
-| `agents/{backend,frontend,dba,devops,llm}-coordinator.md` | Domain specialists, dual-mode audit/implement, shared report format | Scoped domain analysis or changes |
+| `agents/{backend,frontend,mobile,dba,devops,llm}-coordinator.md` | Domain specialists, dual-mode audit/implement, shared report format | Scoped domain analysis or changes |
 | `agents/{kubernetes,gcp,postgres,oracle,cicd}-specialist.md` | Read-only MCP-bound leaf specialists for deep audits | Dispatched by /engineos:audit or coordinators |
 | `agents/audit-consolidator.md` | Merges specialist reports into one status report (verdict + root cause + plan) | End of an audit run |
+| `agents/ios-builder.md`, `agents/android-builder.md` | Store-release pipelines: preflight, version bump, quality gates, signed build, TestFlight/Play-track upload — production rollout only on explicit instruction. No alias. | Mobile store release |
+| `commands/analyze-architecture.md`, `commands/talk-about-the-system.md` | Whole-system analysis → code-grounded architecture + onboarding docs; interactive interview to fill the gaps docs can't cover | System comprehension / onboarding |
 | `commands/audit.md`, `commands/implement.md` | Orchestrator entry points (`/engineos:audit`, `/engineos:implement`): freeze contracts, plan waves, fan out to specialists in parallel, consolidate | Multi-domain audit or coordinated change |
-| `commands/agents/*.md` (generated by `scripts/gen-agent-commands.sh`) | Direct per-agent entry points: invoke any agent by name or alias, e.g. `/engineos:backend-coordinator` or `/engineos:borisenko`. Generated files carry a `@generated` marker; **delete that marker line to hand-customize a command and the generator will preserve it** on every future run | Call one agent directly without the orchestrator |
-| `commands/bypass.md` | `/engineos:bypass [on\|off\|status]` — turns EngineOS off: routing, rule loading, agent dispatch, spec gate, change records and both Stop gates. Enforced at the hook level by a marker file in the git dir, not by prompt alone; expires at the next SessionStart | One-off work that the constitution gets in the way of |
-| `hooks/bypass.sh` | Marker-file switch behind `/engineos:bypass`; sourced by every hook, also usable as a CLI (`bypass.sh on\|off\|status [cwd]`) | Library + manual toggle |
-| `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Routed: architecture-docs, interview, and `adr` rows |
+| `commands/agents/*.md` (generated by `scripts/gen-agent-commands.sh`) | Direct per-agent entry points: invoke any agent by name or alias, e.g. `/engineos:agents:backend-coordinator` or `/engineos:agents:borisenko` in **plugin mode** (files under `commands/agents/` are namespaced by that subdirectory); `install.sh`/`install.ps1` symlink mode installs them flat, so there they invoke as bare `/backend-coordinator` or `/borisenko`. Generated files carry a `@generated` marker; **delete that marker line to hand-customize a command and the generator will preserve it** on every future run | Call one agent directly without the orchestrator |
+| `commands/bypass.md` | `/engineos:bypass [on\|off\|status]` — turns EngineOS off: routing, rule loading, agent dispatch, spec gate, change records and both Stop gates. Enforced at the hook level by a marker file in the git dir, not by prompt alone; the per-repo marker expires at the next SessionStart, while `~/.claude/engineos.bypass` and `ENGINEOS_BYPASS=1` hold until toggled off | One-off work that the constitution gets in the way of |
+| `hooks/bypass.sh` | Switch behind `/engineos:bypass`: per-repo marker, machine-wide `~/.claude/engineos.bypass`, or `ENGINEOS_BYPASS=1`; sourced by every hook, also usable as a CLI (`bypass.sh on\|off\|status [cwd]`) | Library + manual toggle |
+| `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Always on |
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/task-scale-advisor.sh` | Detects big-task / spec / design prompts and injects the fan-out + model-tier reminder (non-blocking). Under an active bypass it announces `BYPASS ACTIVE` instead — the one hook that speaks up while the rest go quiet | UserPromptSubmit |
+| `hooks/gate-advisor.sh` | Matches the prompt against `registries/decision-rules.json` and injects which gate requirements fire, plus the autonomy ceiling on a risk=high match (non-blocking) | UserPromptSubmit |
 | `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |
 | `hooks/announce-agent-dispatch.sh` + `announce-agent-return.sh` | Backstop for the green agent banner in `rules/subagents.md`. The rule was prose-only and drifted — dispatches happened silently. These re-inject the exact banner format as `additionalContext` at dispatch/return time, the same pattern `route-before-change.sh` uses for file routing. Smoke test: `hooks/test-agent-announce.sh`. Cursor has no hook system and no agent registry, so `.cursor/rules/subagent-dispatch.mdc` mirrors the convention prompt-only, best-effort | PreToolUse / PostToolUse `Agent\|Task` |
 | `hooks/post-edit-check.sh` | Per-edit typecheck+lint — retired from default wiring (verification runs once at Stop); kept on disk as opt-in | not wired (opt-in) |
@@ -94,6 +105,10 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
 | `hooks/test-docs.sh` + `docs-ledger.sh` | Probes the prose layer the hook tests can't reach: dangling `rules/`/agent/skill pointers, orphaned agents, `commands/agents/` drift from the roster, router-table ↔ `routing-map.sh` parity, router-row closure, and single-source-of-truth budgets. Known debt is declared in the ledger with a reason and a retirement path — visible, defended, and red on the next instance. Not a hook; run `hooks/test-docs.sh` | Test (manual / CI) |
 | `skills/record-change` | Finalize a change: mark done, register files+movements, `.engineos/changes/`→`.engineos/archived/` | After completing work |
+| `skills/retro` | Mines archived change records + eval/integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR — proposes only, never merges | "Run a retro", monthly cadence, a correction recurring |
+| `templates/handoff.md` | Structured handoff contract (objective, state, gate, decisions, files, evidence, next step) — the test: could the next executor resume from this file alone? | Every wave barrier (`rules/parallelism.md`), session boundaries |
+| `docs/COMPATIBILITY.md` | What counts as public surface (rule paths, agent names, aliases, commands, hook contracts), semver rules, deprecate→warn→remove window | Any rename or removal of public surface |
+| `templates/adapters/` | How the methodology maps onto Cursor, Codex and Copilot — what's enforced natively vs degrades to CI-only convention | Porting EngineOS to a non-Claude-Code tool |
 | `templates/mcp.template.json` | MCP baseline: docs (context7), github, chrome-devtools, nestjs; DBs (postgres/mysql/oracle); infra (docker/kubernetes); cloud (azure/aws/gcp); collab (mcp-atlassian/slack/discord) | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | Starter CLAUDE.md for project repos | Copy per repo |
 | `.engineos/changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
@@ -138,9 +153,11 @@ Fill in What / Why / Scope. Set `status: active`. Commit it with the work it tra
 **2. Finish a change → `.engineos/archived/`**
 Once the work is done and verified (lint + typecheck shown, plus tests only when they were in scope for the task — see `rules/verification.md`):
 ```bash
-mkdir -p ".engineos/archived/<YYYY>/<MM>/<DD>" && git mv ".engineos/changes/<date>-<slug>.md" ".engineos/archived/<YYYY>/<MM>/<DD>/<date>-<slug>.md"
+mkdir -p ".engineos/archived/<YYYY>/<MM>/<domain>" && git mv ".engineos/changes/<date>-<slug>.md" ".engineos/archived/<YYYY>/<MM>/<domain>/<date>-<slug>.md"
 ```
-Set `status: done` and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
+Archives group by month + `domain:` from the record's front matter — no day
+folder; the exact date still lives in the filename prefix. Set `status: done`
+and add `completed: <YYYY-MM-DD>`. Git keeps the full move history.
 
 **3. Capture a lasting fact → `.engineos/memory/`**
 If the change leaves a durable takeaway (a decision, a convention, a gotcha),
@@ -154,7 +171,24 @@ where.
 ## Changing a standard
 
 Rules are code. Open a PR, team reviews, merge, everyone `git pull && ./install.sh`.
-No Slack-announcement standards.
+No Slack-announcement standards. Public surface (rule paths, agent names, aliases,
+commands, registries) follows `docs/COMPATIBILITY.md` — a rename is a deprecation
+with a window, never a silent `git mv`.
+
+Before merging any change to `rules/`, `agents/`, `skills/`, `commands/`,
+`registries/`, or `hooks/routing-map.sh`, run:
+```bash
+scripts/validate-engineos.sh   # 23 self-integrity checks
+scripts/run-evals.sh           # golden set for router + agent behaviour
+```
+CI runs both, plus `scripts/test-validate-engineos.sh` — 16 planted-breakage
+cases proving the validator actually catches what it claims to.
+
+`.github/workflows/live-evals.yml` runs the eval set's live tier weekly (manual
+dispatch also works) — real model calls, so it is cost-gated off the PR path
+and needs an `ANTHROPIC_API_KEY` repo secret. It measures router *accuracy*,
+which the PR-gating deterministic tier cannot: that tier only proves the eval
+set itself is well-formed.
 
 ## Security
 

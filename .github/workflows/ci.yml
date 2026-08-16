@@ -19,12 +19,44 @@ jobs:
 
       - name: Validate JSON
         run: |
-          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json; do
+          for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json registries/capabilities.json registries/agents.json; do
             jq empty "$f" && echo "ok $f"
           done
 
+      - name: Agent-commands drift guard
+        run: |
+          bash scripts/gen-agent-commands.sh
+          if ! git diff --quiet -- commands/agents; then
+            echo "FAIL: commands/agents/ is out of sync with agents/ — run scripts/gen-agent-commands.sh and commit the result."
+            git diff -- commands/agents
+            exit 1
+          fi
+          echo "ok: commands/agents/ matches scripts/gen-agent-commands.sh output"
+
+      - name: Agent-registry drift guard
+        run: |
+          bash scripts/gen-agent-registry.sh
+          if ! git diff --quiet -- registries/agents.json; then
+            echo "FAIL: registries/agents.json is out of sync with agents/ — run scripts/gen-agent-registry.sh and commit the result."
+            git diff -- registries/agents.json
+            exit 1
+          fi
+          echo "ok: registries/agents.json matches scripts/gen-agent-registry.sh output"
+
+      - name: EngineOS integrity check
+        run: bash scripts/validate-engineos.sh
+
+      - name: Integrity check catches planted breakage
+        run: bash scripts/test-validate-engineos.sh
+
+      - name: Evals (deterministic tier)
+        run: bash scripts/run-evals.sh
+
       - name: Routing hook tests
         run: bash hooks/test-route.sh
+
+      - name: Gate advisor tests
+        run: bash hooks/test-gate-advisor.sh
 
       - name: Change-governance marker tests
         run: bash hooks/test-governance.sh
@@ -37,6 +69,12 @@ jobs:
 
       - name: Stop-gate verify tests
         run: bash hooks/test-verify.sh
+
+      - name: Exec-journal schema tests
+        run: bash scripts/test-exec-journal.sh
+
+      - name: Agent-registry generator tests
+        run: bash scripts/test-gen-agent-registry.sh
 
       - name: Secrets gate aborts on a planted secret
         run: |

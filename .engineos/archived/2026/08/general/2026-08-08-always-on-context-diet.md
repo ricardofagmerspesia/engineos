@@ -1,13 +1,19 @@
 ---
+name: 2026-08-08-always-on-context-diet
 status: done
 date: 2026-08-08
 completed: 2026-08-08
 branch: feat/subagent-dispatch-rule
-spec: none (no behavior added — compression + one demotion, see Scope)
+spec: n/a — no behavior added; compression plus one always-on demotion, see Scope
 domain: general
 ---
 
 # Always-on context diet
+
+## What
+Compressed the always-on context set (`CLAUDE.md` and its `@rules/` imports)
+without removing a rule, and demoted `rules/memory.md` from always-on to
+router-loaded. Result: 32,390 -> 27,413 bytes (-15.4%) re-sent per request.
 
 ## Why
 
@@ -126,6 +132,8 @@ out of scope for a compression pass.
 
 ### Verification
 
+Promoted to the top-level `## Verification` section below.
+
 ```
 hooks/test-route.sh           pass=21 fail=0
 hooks/test-governance.sh      pass=6  fail=0
@@ -160,3 +168,12 @@ M rules/subagents.md
 
 (Note: `install.sh` shows modified but the change predates this session; not
 included in this record.)
+
+## Verification
+
+The hook suite and the structural checks reported above under **What was made**:
+77 pass / 0 fail across `hooks/test-{route,governance,layout,task-scale,agent-announce,bypass,verify}.sh`,
+plus 25/25 intent rows, 5/5 artifact options, 9/9 non-negotiables and 6 `@rules/`
+imports. The two OPEN closure findings (`parallelism.md` and `models.md` pointing
+at `rules/testing.md`) were reported, not fixed, and were still open at archive
+time.

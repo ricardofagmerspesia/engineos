@@ -6,29 +6,11 @@ versioned in git so the trail is auditable.
 
 One change per file. Filename: `<YYYY-MM-DD>-<short-kebab-slug>.md`.
 
-```markdown
----
-name: <YYYY-MM-DD>-<short-kebab-slug>
-status: active
-owner: <name>
-domain: <backend|frontend|mobile|dba|llm|devops|security|test|docs|general>
----
-
-## What
-<the change in one or two sentences>
-
-## Why
-<motivation / problem being solved>
-
-## Scope
-<files, modules, or surfaces touched>
-
-## Verification
-<how it was checked: typecheck, lint, tests, manual>
-
-## Notes
-<decisions, gotchas, links — [[memory-slug]] for durable takeaways>
-```
+The record shape is `_template.md` — copy it; never restate the schema here.
+The schema is data on the `record-change` intent (`registries/intents.json`:
+`required_sections` / `required_fields` / `archive_contract`), and
+`scripts/validate-engineos.sh` (C21) validates the template, every archived
+record, and this file's silence against it.
 
 ## Lifecycle
 

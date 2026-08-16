@@ -24,6 +24,6 @@
 - DO delete branches after merge.
 
 ## Never
-- No secrets in any commit — if it happens, rotate the secret AND scrub history.
+- No secrets in any commit — if it happens, follow the rotation rule in `rules/security.md`.
 - No `git push --force` to main. Ever.
 - No merge with failing CI "to fix later".

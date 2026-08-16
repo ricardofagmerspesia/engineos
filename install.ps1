@@ -214,6 +214,51 @@ if (Test-Path $commandsSrc) {
     }
 }
 
+# ---------- 4d. Link rules + patterns ----------
+# Agents/skills reference these by relative path (rules/*.md, patterns/*) — without
+# them installed alongside skills/agents/commands, those references resolve to
+# nothing on an installed machine.
+$rulesDest = Join-Path $ClaudeDir 'rules'
+New-Item -ItemType Directory -Force -Path $rulesDest | Out-Null
+$rulesSrc = Join-Path $RepoDir 'rules'
+if (Test-Path $rulesSrc) {
+    Get-ChildItem $rulesSrc -Filter '*.md' | ForEach-Object {
+        $target = Join-Path $rulesDest $_.Name
+        if (New-Link -Target $target -Value $_.FullName -IsDir $false) {
+            Write-Host "rule linked: $($_.Name)"
+        }
+    }
+}
+
+$patternsDest = Join-Path $ClaudeDir 'patterns'
+New-Item -ItemType Directory -Force -Path $patternsDest | Out-Null
+$patternsSrc = Join-Path $RepoDir 'patterns'
+if (Test-Path $patternsSrc) {
+    Get-ChildItem $patternsSrc | ForEach-Object {
+        $target = Join-Path $patternsDest $_.Name
+        if (New-Link -Target $target -Value $_.FullName -IsDir $_.PSIsContainer) {
+            Write-Host "pattern linked: $($_.Name)"
+        }
+    }
+}
+
+# ---------- 4e. Prune dangling links ----------
+# A rename in the repo (e.g. patterns/1-Analisys -> patterns/1-Analysis.md) otherwise
+# leaves a stale link whose target no longer exists — a slash command or reference
+# that still "exists" but silently resolves to nothing. Sweep the directories we
+# manage and drop any link/junction pointing at a target that no longer exists.
+foreach ($dir in @($skillsDest, $agentsDest, $commandsDest)) {
+    if (-not $dir -or -not (Test-Path $dir)) { continue }
+    Get-ChildItem $dir -Force | Where-Object {
+        $_.LinkType -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
+    } | ForEach-Object {
+        if (-not (Test-Path $_.FullName)) {
+            Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
+            Write-Host "pruned dangling link: $($_.Name)"
+        }
+    }
+}
+
 # ---------- 5. Merge hooks into settings.json ----------
 # Hook scripts are bash. On Windows they MUST be invoked through Git Bash's
 # bash.exe: a bare `...\foo.sh` command is resolved by the .sh file association,
@@ -268,6 +313,10 @@ $hookPaths = @{
     record = ToUnixPath (Join-Path $hooksDir 'record-verify.sh')
     ensure = ToUnixPath (Join-Path $hooksDir 'ensure-project-layout.sh')
     scale  = ToUnixPath (Join-Path $hooksDir 'task-scale-advisor.sh')
+    gate   = ToUnixPath (Join-Path $hooksDir 'gate-advisor.sh')
+    routeadv = ToUnixPath (Join-Path $hooksDir 'route-advisor.sh')
+    announce = ToUnixPath (Join-Path $hooksDir 'announce-agent-dispatch.sh')
+    annret   = ToUnixPath (Join-Path $hooksDir 'announce-agent-return.sh')
 }
 
 $settingsObj = Get-Content $Settings -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -326,7 +375,9 @@ function Remove-EngineOSHooks {
 Remove-EngineOSHooks $settingsObj (ToUnixPath $hooksDir)
 
 Add-HookEntry $settingsObj 'PreToolUse'       'Edit|Write' (New-HookCommand $hookPaths.route)
+Add-HookEntry $settingsObj 'PreToolUse'       'Agent|Task' (New-HookCommand $hookPaths.announce)
 Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.mark)
+Add-HookEntry $settingsObj 'PostToolUse'      'Agent|Task' (New-HookCommand $hookPaths.annret)
 # per-edit gate (post-edit-check.sh) retired: verification runs once at Stop
 # (rules/testing.md "Verification timing"); Remove-EngineOSHooks above already
 # strips any previously installed entry for it.
@@ -334,6 +385,8 @@ Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hoo
 Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.record)
 Add-HookEntry $settingsObj 'SessionStart'     ''           (New-HookCommand $hookPaths.ensure)
 Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.scale)
+Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.gate)
+Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.routeadv)
 
 $settingsObj | ConvertTo-Json -Depth 20 | Set-Content $Settings -Encoding UTF8
 Write-Green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."

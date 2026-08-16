@@ -55,7 +55,7 @@ Rank by **return speed × execution effort**. State where to start and why — t
 be a property of their situation (cash need, existing warm demand, hours available), not a
 generic "highest revenue".
 
-## Rule
+## Absolute rule
 
 **No revenue source may require creating a new product from scratch.** Use only what
 already exists. If an idea needs a thing built before it earns, it belongs in a different

@@ -33,8 +33,15 @@ REMOVED=0
 KEPT_ORPHAN=0
 EXPECTED=$'\n'   # newline-delimited set of invoke names we own this run
 
-frontmatter_value() { # field, file -> value (first match, after "field: ")
-  grep -m1 "^$1:" "$2" | sed "s/^$1: //"
+# field, file -> value (first match, after "field:" and any following spaces —
+# [[:space:]]* rather than a literal single space, so a frontmatter line typo'd
+# without the space after the colon still strips correctly instead of leaving
+# the "field:" prefix stuck to the value). `|| true`: under set -e + pipefail,
+# grep finding zero matches (a genuinely absent field, e.g. no name: line)
+# would otherwise make this whole function call fatal via its command
+# substitution, before the caller's own "skip if empty" check runs.
+frontmatter_value() {
+  grep -m1 "^$1:" "$2" | sed -E "s/^$1:[[:space:]]*//" || true
 }
 
 is_generated() { # file -> 0 if it carries our marker (safe to overwrite/remove)
@@ -52,6 +59,9 @@ emit() { # invoke_name, agent_name, alias, description
     return
   fi
 
+  local alias_suffix=""
+  [ -n "$alias" ] && alias_suffix=" (alias \`$alias\`)"
+
   cat > "$out" <<EOF
 ---
 description: $desc
@@ -60,7 +70,7 @@ allowed-tools: Task
 ---
 $MARKER
 
-Dispatch the \`$agent\` agent (alias \`$alias\`) via the Task tool, passing
+Dispatch the \`$agent\` agent${alias_suffix} via the Task tool, passing
 \`\$ARGUMENTS\` as its prompt. If \`\$ARGUMENTS\` is empty, ask the user what they
 want the agent to do before dispatching.
 
@@ -74,11 +84,13 @@ EOF
 for f in "$AGENTS_DIR"/*.md; do
   name="$(frontmatter_value name "$f")"
   [ -n "$name" ] || { echo "skip (no name): $f" >&2; continue; }
-  # Alias: from description line "Alias: <slug> (invocable by this name)."
-  alias="$(grep -oiE 'Alias: [a-z0-9-]+' "$f" | head -1 | sed -E 's/[Aa]lias: //' || true)"
+  # Alias: from the frontmatter description's "Alias: <slug> (invocable by this
+  # name)." — restricted to the frontmatter block (between the first two `---`
+  # lines) so body prose can never be mistaken for an alias.
+  alias="$(sed -n '/^---$/,/^---$/p' "$f" | grep -oiE 'Alias: [a-z0-9-]+' | head -1 | sed -E 's/[Aa]lias: //' || true)"
   desc="Invoke the $name agent${alias:+ (alias $alias)}."
 
-  emit "$name" "$name" "${alias:-$name}" "$desc"
+  emit "$name" "$name" "$alias" "$desc"
   if [ -n "$alias" ] && [ "$alias" != "$name" ]; then
     emit "$alias" "$name" "$alias" "$desc"
   fi

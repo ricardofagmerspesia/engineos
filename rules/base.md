@@ -9,7 +9,7 @@
 - DO keep functions to one responsibility; if you describe it with "and", split it.
 - DO keep files under ~300 lines; split by domain concept, not by line count.
 - DON'T pass more than 3 positional args — use an options object.
-- DON'T export anything that has no external caller.
+- DON'T export anything that has no caller outside the module (barrels re-exporting the module's public surface are fine).
 
 ## Types
 - DO use explicit return types on exported functions.

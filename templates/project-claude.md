@@ -6,6 +6,9 @@
 ## Stack (router hints)
 - Backend: NestJS (apps/api) — route backend work per EngineOS `rules/backend.md` + `nestjs-patterns`
 - Frontend: Next.js (apps/web) — `rules/frontend.md` + `react-patterns`
+- Mobile: <yes/no — React Native app lives in ...> — `rules/frontend.md` + `rules/backend.md` (API-consumption parts), `mobile-coordinator` agent
+- DBA / data: <Postgres/Oracle/... — schema + migrations live in ...> — `rules/architecture.md` + `rules/data.md`, `dba-coordinator` agent
+- DevOps: <CI/CD + infra — pipelines/IaC live in ...> — `rules/architecture.md` + `rules/observability.md`, `devops-coordinator` agent
 - LLM: <yes/no — agents, RAG, prompts live in ...> — `rules/llm-apps.md` + `llm-engineering`
 
 ## Commands

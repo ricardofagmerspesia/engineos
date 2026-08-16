@@ -8,15 +8,23 @@
 # genuine red (real lint/type/test failure).
 set -uo pipefail
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# shellcheck source=hooks/lib-common.sh
+. "$DIR/lib-common.sh"
+
 INPUT=$(cat)
 
 # ---------- field extraction (jq optional) ----------
 if command -v jq >/dev/null 2>&1; then
-  ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false')
-  TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty')
-  CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
+  ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
+  TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
+  CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+  SID=$(printf '%s' "$INPUT" | jq -r '.session_id // "nosession"' 2>/dev/null)
 else
-  ACTIVE=$(printf '%s' "$INPUT" | sed -n 's/.*"stop_hook_active"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' | head -1)
+  # Portable extraction: the BRE alternation `\(true\|false\)` used previously is a
+  # GNU sed extension and yields empty on macOS/BSD sed, so ACTIVE was always empty
+  # and the loop guard below never fired. grep -E's alternation is POSIX-portable.
+  ACTIVE=$(printf '%s' "$INPUT" | grep -oE '"stop_hook_active"[[:space:]]*:[[:space:]]*(true|false)' 2>/dev/null | grep -oE '(true|false)$' | head -1)
   TRANSCRIPT=$(printf '%s' "$INPUT" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
   CWD=$(printf '%s' "$INPUT" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
 fi
@@ -36,45 +44,50 @@ engineos_bypass_active "$CWD" && exit 0
 [ -n "${CWD:-}" ] || exit 0
 
 # ---------- resolve git root ----------
-ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
+ROOT=$(repo_root "$CWD") || exit 0
+[ -n "$ROOT" ] || exit 0
 
 # ---------- collect changed code files from transcript ----------
-# Scope to Edit/Write tool calls only — Read calls are excluded so that merely
-# reading a file doesn't pull its package into the test run.
-# JSONL: each tool call is one line that contains both "name":"Edit"|"Write" and
-# "file_path". Select matching lines first, then extract the path.
+# JS/TS-family only: the runner below understands package.json/nx scripts and
+# nothing else, so other extensions would be collected but never verified —
+# a silent no-op that reads as coverage. Non-JS stacks verify manually (CLAUDE.md #2).
+# Scope to Edit/Write/NotebookEdit tool calls only — Read calls are excluded so
+# that merely reading a file doesn't pull its package into the test run.
+# Prefer jq: it parses the actual tool_use structure (name + input.file_path),
+# so a JSONL line that contains BOTH a Read and an Edit block can't leak the
+# Read path the way a flat line-grep would. Transcript is JSONL — jq reads a
+# stream of top-level JSON values from a file just fine, no need to slurp.
 # Note: harness transcripts use "tool_input" while real transcripts use "input";
-# extracting "file_path" directly handles both forms.
-FILES=$(grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write)"' "$TRANSCRIPT" 2>/dev/null \
-  | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx|py|go|rs)"' \
-  | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/' \
-  | sort -u) || true
+# the fallback (jq absent) greps "file_path" directly, which handles both forms.
+if command -v jq >/dev/null 2>&1; then
+  FILES=$(jq -r '
+      select(.type == "assistant")
+      | .message.content[]?
+      | select(.type == "tool_use")
+      | select(.name == "Edit" or .name == "Write" or .name == "NotebookEdit")
+      | (.input.file_path // .tool_input.file_path // empty)
+    ' "$TRANSCRIPT" 2>/dev/null \
+    | grep -E '\.(ts|tsx|js|jsx)$' \
+    | sort -u) || true
+else
+  FILES=$(grep -E '"name"[[:space:]]*:[[:space:]]*"(Edit|Write|NotebookEdit)"' "$TRANSCRIPT" 2>/dev/null \
+    | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*\.(ts|tsx|js|jsx)"' \
+    | sed -E 's/.*"file_path"[[:space:]]*:[[:space:]]*"([^"]*)"/\1/' \
+    | sort -u) || true
+fi
 [ -n "$FILES" ] || exit 0
 
-# ---------- helpers (copied verbatim from post-edit-check.sh style) ----------
-find_up() {  # find_up <start_dir> <filename...> ; echoes dir containing first match
-  local d="$1" prev=""; shift
-  while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
-    for f in "$@"; do [ -e "$d/$f" ] && { echo "$d"; return 0; }; done
-    prev="$d"; d=$(dirname "$d")
-  done
-  return 1
-}
+HAS_NX=0
+[ -f "$ROOT/nx.json" ] && HAS_NX=1
 
-has_script() {  # has_script <dir> <script>
-  command -v jq >/dev/null 2>&1 || { grep -q "\"$2\"" "$1/package.json" 2>/dev/null; return; }
-  [ -f "$1/package.json" ] && jq -e --arg s "$2" '.scripts[$s] // empty' "$1/package.json" >/dev/null 2>&1
-}
+# A runtime too old to run the toolchain is an infra gap, not a genuine red —
+# this hook's own charter. Try the nvm default first; if node is still <18
+# (no structuredClone — ESLint 9 and vitest cannot start), skip verification
+# entirely rather than blocking on failures no code edit can fix.
+NODE_MAJOR=$(ensure_modern_node)
+[ "${NODE_MAJOR:-0}" -lt 18 ] && exit 0
 
-# portable timeout: GNU timeout, gtimeout (brew coreutils), or no-op fallback
-if   command -v timeout  >/dev/null 2>&1; then TO() { timeout "$@"; }
-elif command -v gtimeout >/dev/null 2>&1; then TO() { gtimeout "$@"; }
-else                                          TO() { shift; "$@"; }; fi
-
-# runner: pnpm > yarn > npm, based on lockfile at root
-if   [ -f "$ROOT/pnpm-lock.yaml" ]; then RUN="pnpm run"; EXEC="pnpm exec"
-elif [ -f "$ROOT/yarn.lock" ];      then RUN="yarn run"; EXEC="yarn"
-else                                     RUN="npm run";  EXEC="npx --no-install"; fi
+runner_detect "$ROOT"
 
 # ---------- map files to unique package dirs ----------
 # Use newline-safe read loop so paths with spaces are handled correctly.
@@ -98,9 +111,6 @@ OUT=""
 # strip leading/trailing pipes into newline-delimited list; iterate with here-string
 # so FAILED/OUT mutations inside the loop survive (no subshell).
 PKG_LIST=$(printf '%s' "$PKG_DIRS" | tr '|' '\n' | grep -v '^$' | sort -u)
-
-HAS_NX=0
-[ -f "$ROOT/nx.json" ] && HAS_NX=1
 
 # ---------- verification target list ----------
 # Tests are opt-in per rules/verification.md "Tests are opt-in": lint + typecheck run
@@ -168,10 +178,35 @@ ${STEP_OUT}"
 done <<< "$PKG_LIST"
 
 # ---------- decide ----------
+# telemetry (best-effort, never affects hook behavior). jq branch only —
+# telemetry.sh needs jq anyway, and this hook only runs verification once per
+# stop cycle (the loop guard above already exited on the second pass), so one
+# cycle logs one verify event, never two. Written regardless of red or green:
+# a green run is half the base-rate usage-report.sh's block count has lacked.
+if command -v jq >/dev/null 2>&1 && [ "${ENGINEOS_TELEMETRY:-}" != "0" ]; then
+  if TROOT=$(repo_root "$CWD") && [ -d "$TROOT/.engineos" ] && TGIT=$(git_dir "$CWD") && [ -n "$TGIT" ]; then
+    mkdir -p "$TGIT/engineos-telemetry" 2>/dev/null || true
+    TDATA=$(printf '%s\n' "$PKG_LIST" | grep -v '^$' \
+      | sed "s|^$ROOT/||; s|^$ROOT\$|.|" \
+      | jq -R . | jq -cs --argjson f "$([ "$FAILED" -eq 1 ] && echo true || echo false)" \
+        '{failed: $f, targets: .}')
+    "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
+      --session "$SID" --event verify --data "$TDATA" >/dev/null 2>&1 || true
+  fi
+fi
+
 if [ "$FAILED" -eq 1 ]; then
   # Strip leading newline(s) so the JSON reason starts with text, not a blank line.
   SUMMARY=$(printf '%s' "$OUT" | sed '/./,$!d' | head -80)
-  REASON="EngineOS gate: verification failed. ${SUMMARY}"
+  BOUND=""
+  POLICY="$DIR/../registries/policy.json"
+  if command -v jq >/dev/null 2>&1 && [ -f "$POLICY" ]; then
+    MAXFIX=$(jq -r '.repair.max_fix_attempts_per_check // empty' "$POLICY" 2>/dev/null)
+    ESC=$(jq -r '.repair.escalations // empty' "$POLICY" 2>/dev/null)
+    [ -n "$MAXFIX" ] && [ -n "$ESC" ] && \
+      BOUND=" The fix loop is bounded: ${MAXFIX} fix attempts per check, ${ESC} model-tier escalation, then stop and report red — ask scripts/kernel.sh repair --check <id> --attempt <n> at each step (registries/policy.json repair)."
+  fi
+  REASON="EngineOS gate: verification failed.${BOUND} ${SUMMARY}"
   if command -v jq >/dev/null 2>&1; then
     jq -n --arg r "$REASON" '{decision: "block", reason: $r}'
   else

@@ -55,6 +55,12 @@ domain(s) from it rather than failing.
 8. **Record** — close the change via the `record-change` skill (mark done,
    register files + movements, `.engineos/changes/` → `.engineos/archived/`).
 
+9. **Offer the output artifact** (per CLAUDE.md's Output artifact section): ask
+   once which follow-up artifact to produce — scaffold, flowchart, reusable
+   template, UI/UX design, or none. Prune options that don't fit: reusable
+   template and UI/UX design are offered only when the domain dispatched was
+   frontend or mobile.
+
 ## Rules
 
 - Follow the routed rules for each domain (the PreToolUse routing hook injects

@@ -22,7 +22,7 @@ grep -h -oE '\[router\] intent=[a-zA-Z-]+' $FILES 2>/dev/null \
 
 echo ""
 echo "## EngineOS skill invocations"
-for s in nestjs-patterns react-patterns llm-engineering adr eval-harness release-notes; do
+for s in nestjs-patterns react-patterns llm-engineering adr eval-harness release-notes record-change strategy; do
   # shellcheck disable=SC2086
   n=$(grep -hl "\"skill\"[[:space:]]*:[[:space:]]*\"$s\"" $FILES 2>/dev/null | wc -l | tr -d ' ')
   printf "%6s  %s\n" "$n" "$s"
@@ -40,6 +40,19 @@ echo ""
 echo "## Hook gate hits (stop-verify blocks)"
 # shellcheck disable=SC2086
 grep -h -c 'EngineOS gate' $FILES 2>/dev/null | awk '{s+=$1} END {print s+0 " blocks"}'
+
+echo ""
+echo "## Kernel telemetry (this repo, .git/engineos-telemetry)"
+TDIR=$(git rev-parse --absolute-git-dir 2>/dev/null)/engineos-telemetry
+if [ -d "$TDIR" ] && command -v jq >/dev/null 2>&1; then
+  find "$TDIR" -name '*.jsonl' -mtime "-$DAYS" -exec cat {} + 2>/dev/null | jq -rs '
+    "prompts routed: \([.[] | select(.event=="route")] | length) (\([.[] | select(.event=="route" and (.data.intents|length)==0)] | length) unrouted, \([.[] | select(.event=="route" and .data.escalate)] | length) escalated)",
+    "intents fired:", ([.[] | select(.event=="route") | .data.intents[]] | group_by(.) | map("  \(length)  \(.[0])") | .[]),
+    "decision rules fired:", ([.[] | select(.event=="decision-rules") | .data.rules[]] | group_by(.) | map("  \(length)  \(.[0])") | .[]),
+    "verify runs: \([.[] | select(.event=="verify")] | length) (\([.[] | select(.event=="verify" and .data.failed)] | length) red)"'
+else
+  echo "(none — telemetry not adopted here, or jq missing)"
+fi
 
 echo ""
 echo "Zero-hit items are prune candidates — but check the announce habit first."

@@ -57,6 +57,20 @@ deletes the marker), so it never outlives the session that asked for it. It is
 per-repo, not per-session, so a second session started in the same repo clears it.
 The failure direction is deliberate: a forgotten bypass expires into gates-ON.
 
+## The two sticky switches
+
+The marker cannot cover a directory that is not a git repo, and it cannot hold a
+pause across sessions. Two switches above it can, and neither is cleared at
+`SessionStart` — they hold until removed:
+
+- `ENGINEOS_BYPASS=1` in the environment — process-scoped.
+- `~/.claude/engineos.bypass` — machine-wide. Create it to pause EngineOS in every
+  repo without uninstalling; delete it to resume.
+
+`hooks/bypass.sh status` names which switch is on, and `off` reports when it
+cleared the repo marker while a sticky switch still holds the bypass — it never
+clears a machine-wide or environment switch on your behalf.
+
 While it is on, the `UserPromptSubmit` hook injects a `BYPASS ACTIVE` reminder on
 every turn. Surface that state to the user rather than working silently
 unguarded — say `[engineos] bypassed` in your first line.
