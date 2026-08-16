@@ -1,7 +1,6 @@
 ---
 name: strategy
-description: "Evidence-grounded strategic analysis in five modes — spot market opportunities before competitors, compress a skill into a minimum learning path, unblock a hard decision, close a positioning gap, or find hidden revenue in assets that already exist. Every claim is grounded in web research (dated sources) or in the invoking project's own code, docs, and git history. Use when asked about market trends/opportunity windows, \"what should I learn and in what order\", \"I can't decide between X and Y\", personal/product positioning and perceived authority, or monetizing what already exists."
-enabled: false
+description: Evidence-grounded strategic analysis in five modes — spot market opportunities before competitors, compress a skill into a minimum learning path, unblock a hard decision, close a positioning gap, or find hidden revenue in assets that already exist. Every claim is grounded in web research (dated sources) or in the invoking project's own code, docs, and git history. Use when asked about market trends/opportunity windows, "what should I learn and in what order", "I can't decide between X and Y", personal/product positioning and perceived authority, or monetizing what already exists.
 ---
 
 # Strategy
