@@ -192,47 +192,71 @@ for dir in "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$CLAUDE_DIR/commands"; do
 done
 
 # ---------- 5. Hooks: merge into settings.json (requires jq) ----------
+# Hook scripts are bash. On Windows (Git Bash/MSYS) they MUST be invoked through
+# Git Bash's bash.exe: a bare `...foo.sh` command resolves through the Windows
+# .sh file association, which Git for Windows points at git-bash.exe -- a
+# *terminal launcher* that pops a visible console window on every hook fire
+# (every prompt, every edit, every stop) and stalls the tool that triggered it.
+# bash.exe is a plain console binary and stays invisible. Mirrors install.ps1.
+# On macOS/Linux the bare script path is correct and unchanged.
 chmod +x "$REPO_DIR"/hooks/*.sh
 if command -v jq >/dev/null 2>&1; then
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
   # write-once backup: never clobber the last known-good with an already-bad file
   [ -f "$SETTINGS.engineos.bak" ] || cp "$SETTINGS" "$SETTINGS.engineos.bak"
 
-  POST="$REPO_DIR/hooks/post-edit-check.sh"
-  STOP="$REPO_DIR/hooks/stop-verify.sh"
-  ROUTE="$REPO_DIR/hooks/route-before-change.sh"
-  MARK="$REPO_DIR/hooks/mark-unrecorded.sh"
-  RECORD="$REPO_DIR/hooks/record-verify.sh"
-  ENSURE="$REPO_DIR/hooks/ensure-project-layout.sh"
-  SCALE="$REPO_DIR/hooks/task-scale-advisor.sh"
-  GATE="$REPO_DIR/hooks/gate-advisor.sh"
-  ROUTEADV="$REPO_DIR/hooks/route-advisor.sh"
-  ANNOUNCE="$REPO_DIR/hooks/announce-agent-dispatch.sh"
-  ANNRET="$REPO_DIR/hooks/announce-agent-return.sh"
+  HOOKS_DIR="$REPO_DIR/hooks"
+  BASH_EXE=""
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      HOOKS_DIR="$(cygpath -m "$HOOKS_DIR")"
+      # Git root is the MSYS filesystem root. Never fall back to a bare `bash`:
+      # on Windows that can resolve to WSL, which cannot read C:/... paths.
+      for cand in "$(cygpath -m /)/bin/bash.exe" "$(cygpath -m /)/usr/bin/bash.exe"; do
+        if [ -f "$cand" ]; then BASH_EXE="$cand"; break; fi
+      done
+      if [ -z "$BASH_EXE" ]; then
+        warn "Git Bash bash.exe not found -- hooks will be registered as bare .sh paths."
+        warn "Windows hands those to git-bash.exe and pops a terminal window per hook fire."
+      fi
+      ;;
+  esac
 
-  # This list MUST stay equal to hooks/hooks.json's (plugin mode). A hook wired
-  # in only one install mode never fires for half the userbase — which is how
-  # gate-advisor.sh and route-advisor.sh were dead for every symlink install.
-  jq --arg post "$POST" --arg stop "$STOP" --arg route "$ROUTE" --arg mark "$MARK" --arg record "$RECORD" --arg ensure "$ENSURE" --arg scale "$SCALE" --arg gate "$GATE" --arg routeadv "$ROUTEADV" --arg announce "$ANNOUNCE" --arg annret "$ANNRET" '
-    # idempotent insert: add {matcher,cmd} under event unless cmd already present anywhere in that event
+  # quoted interpreter + quoted script on Windows; the bare script elsewhere
+  hook_cmd() {
+    if [ -n "$BASH_EXE" ]; then
+      printf '"%s" "%s"' "$BASH_EXE" "$HOOKS_DIR/$1"
+    else
+      printf '%s' "$HOOKS_DIR/$1"
+    fi
+  }
+
+  jq --arg hooksdir "$HOOKS_DIR" \
+     --arg stop "$(hook_cmd stop-verify.sh)" \
+     --arg route "$(hook_cmd route-before-change.sh)" \
+     --arg mark "$(hook_cmd mark-unrecorded.sh)" \
+     --arg record "$(hook_cmd record-verify.sh)" \
+     --arg ensure "$(hook_cmd ensure-project-layout.sh)" \
+     --arg scale "$(hook_cmd task-scale-advisor.sh)" '
+    # scrub: drop every previously installed EngineOS hook entry (any command
+    # referencing the hooks dir, slash-normalized) before re-adding, so an
+    # earlier install can never leave a stale form firing alongside the new
+    # one -- notably the bare-.sh terminal-window spawner on Windows, and the
+    # retired per-edit gate (post-edit-check.sh; verification runs once at
+    # Stop, rules/verification.md "The final gate").
+    def scrub($event):
+      .hooks[$event] //= []
+      | .hooks[$event] |= (map(.hooks |= map(select(
+            ((.command // "" | gsub("\\\\"; "/")) | contains($hooksdir + "/")) | not)))
+          | map(select((.hooks | length) > 0)));
     def add($event; $matcher; $cmd):
-      .hooks[$event] //= []
-      | (if ([.hooks[$event][]? | .hooks[]? | select(.command == $cmd)] | length) == 0
-         then .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}]
-         else . end);
-    # removal: strip cmd wherever a previous install added it, dropping emptied entries
-    def drop($event; $cmd):
-      .hooks[$event] //= []
-      | .hooks[$event] |= (map(.hooks |= map(select(.command != $cmd)))
-                           | map(select((.hooks | length) > 0)));
+      .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}];
     .hooks //= {}
+    | scrub("PreToolUse") | scrub("PostToolUse") | scrub("Stop")
+    | scrub("SessionStart") | scrub("UserPromptSubmit")
     | add("PreToolUse";  "Edit|Write"; $route)
     | add("PreToolUse";  "Agent|Task"; $announce)
     | add("PostToolUse"; "Edit|Write"; $mark)
-    | add("PostToolUse"; "Agent|Task"; $annret)
-    # per-edit gate retired: verification runs once at Stop (rules/verification.md
-    # "The final gate") — drop stale wiring from earlier installs
-    | drop("PostToolUse"; $post)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)
@@ -241,6 +265,7 @@ if command -v jq >/dev/null 2>&1; then
     | add("UserPromptSubmit"; "";      $routeadv)
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
+  [ -n "$BASH_EXE" ] && echo "  hooks run through: $BASH_EXE (no terminal windows)"
 
   # ---------- 5b. Shared permission allowlist (read-only commands) ----------
   PERMS="$REPO_DIR/templates/permissions.template.json"
