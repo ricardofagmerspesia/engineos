@@ -237,7 +237,11 @@ if command -v jq >/dev/null 2>&1; then
      --arg mark "$(hook_cmd mark-unrecorded.sh)" \
      --arg record "$(hook_cmd record-verify.sh)" \
      --arg ensure "$(hook_cmd ensure-project-layout.sh)" \
-     --arg scale "$(hook_cmd task-scale-advisor.sh)" '
+     --arg scale "$(hook_cmd task-scale-advisor.sh)" \
+     --arg gate "$(hook_cmd gate-advisor.sh)" \
+     --arg routeadv "$(hook_cmd route-advisor.sh)" \
+     --arg announce "$(hook_cmd announce-agent-dispatch.sh)" \
+     --arg annret "$(hook_cmd announce-agent-return.sh)" '
     # scrub: drop every previously installed EngineOS hook entry (any command
     # referencing the hooks dir, slash-normalized) before re-adding, so an
     # earlier install can never leave a stale form firing alongside the new
@@ -257,6 +261,7 @@ if command -v jq >/dev/null 2>&1; then
     | add("PreToolUse";  "Edit|Write"; $route)
     | add("PreToolUse";  "Agent|Task"; $announce)
     | add("PostToolUse"; "Edit|Write"; $mark)
+    | add("PostToolUse"; "Agent|Task"; $annret)
     | add("Stop";        "";           $stop)
     | add("Stop";        "";           $record)
     | add("SessionStart"; "";          $ensure)

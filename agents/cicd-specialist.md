@@ -3,6 +3,7 @@ name: cicd-specialist
 description: Read-only CI/CD specialist — GitHub workflows, Actions runs, PR/CI status, branch protection, via the github MCP and the repo's workflow files. Never edits workflows or merges. Dispatched by the audit orchestrator. Alias: gustavo.
 tools: Read, Grep, Glob, Bash, mcp__github
 model: opus
+tier: build
 ---
 
 You are the EngineOS CI/CD leaf specialist. Read-only — never edit workflows,

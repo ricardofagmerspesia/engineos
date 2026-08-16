@@ -5,7 +5,7 @@
     {
       "name": "android-builder",
       "alias": null,
-      "description": "Android build-and-release agent. Runs the full pipeline end to end — preflight (JDK/SDK, upload keystore, Play service-account key), versionCode/versionName bump, dependency install, quality gates, signed Release AAB via Gradle, upload to Google Play (internal/beta/production track) with staged rollout — via fastlane supply with raw gradlew fallback. Modes: BUILD (artifact only) | BETA (internal/beta track, default) | RELEASE (production track — explicit instruction only). Never touches iOS, backend, or web code. Follows EngineOS security rules: keystore passwords and service-account keys from env/secret manager, never in code or logs.",
+      "description": "Android build-and-release engineer — source to Google Play, end to end. Branches: BUILD (artifact only) | BETA (internal/beta track, default) | RELEASE (production track — explicit instruction only). Never touches iOS, backend, or web code.",
       "tools": [
         "Read",
         "Grep",
@@ -14,14 +14,14 @@
         "Edit",
         "Write"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "architecture-analyst",
       "alias": "analyst",
-      "description": "System-comprehension + onboarding-docs specialist. Analyzes a codebase (modules, files, dependencies, patterns) and produces standardized, code-grounded architecture documentation for new developers, then can interview the human to fill the gaps docs alone can't cover. Two entry commands — `/analyze-architecture` (autonomous analysis + docs) and `/talk-about-the-system` (interactive interview). Uses the EngineOS repo/plugin's `patterns/1-Analysis.md` and `patterns/2-Interview-brainstorm.md`. Alias: analyst (invocable by this name).",
+      "description": "System-comprehension and onboarding-docs specialist. Branches: `/analyze-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: analyst.",
       "tools": [
         "Read",
         "Grep",
@@ -37,7 +37,7 @@
     {
       "name": "audit-consolidator",
       "alias": "corradin",
-      "description": "Merges multiple specialist reports (coordinators + leaf specialists) into a single consolidated status report with a top-line verdict, root cause, and an ordered remediation plan. Read-only. May pull related Jira issues for context via the atlassian MCP, but NEVER writes to Jira. Dispatched last by the audit orchestrator. Alias: corradin (invocable by this name).",
+      "description": "Merges specialist reports into one consolidated status report — top-line verdict, root cause, ordered remediation plan. Read-only; may read Jira via the atlassian MCP but never writes to it. Dispatched last by the audit orchestrator. Alias: corradin.",
       "tools": [
         "Read",
         "Grep",
@@ -52,7 +52,7 @@
     {
       "name": "backend-coordinator",
       "alias": "borisenko",
-      "description": "Domain specialist for backend work (NestJS, APIs, services, data access, queues, workers, migrations). Dual-mode — AUDIT (read-only analysis, returns findings) or IMPLEMENT (writes code) depending on the MODE given by the orchestrator or inferred from the request. Use for backend-focused analysis or changes; follows EngineOS architecture/backend/testing rules. Alias: borisenko (invocable by this name).",
+      "description": "Backend specialist — NestJS modules, controllers, services, DTOs, data access, repositories, queues, workers, migrations. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: borisenko.",
       "tools": [
         "Read",
         "Grep",
@@ -63,7 +63,7 @@
         "Skill",
         "mcp__nestjs"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": [
         "implement"
@@ -72,7 +72,7 @@
     {
       "name": "cicd-specialist",
       "alias": "gustavo",
-      "description": "Read-only CI/CD leaf specialist. Inspects GitHub workflows, Actions runs, PR/CI status, and branch protection via the github MCP and the repo's workflow files, and reports findings in the shared specialist format. Dispatched by the audit orchestrator. Never edits workflows or merges. Alias: gustavo (invocable by this name).",
+      "description": "Read-only CI/CD specialist — GitHub workflows, Actions runs, PR/CI status, branch protection, via the github MCP and the repo's workflow files. Never edits workflows or merges. Dispatched by the audit orchestrator. Alias: gustavo.",
       "tools": [
         "Read",
         "Grep",
@@ -80,14 +80,14 @@
         "Bash",
         "mcp__github"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "critic",
       "alias": "vera",
-      "description": "Adversarial correctness review of work that is about to be called done. Dispatched when risk=high per rules/risk-autonomy.md, when the release gate requires an independent pass per rules/gates.md, or on explicit request. Tries to refute the claim that the work is correct and complete — the general-correctness counterpart to security-reviewer's security-only lens. Read-only, never edits. Alias: vera (invocable by this name).",
+      "description": "Adversarial correctness review of work that is about to be called done. Dispatched when risk=high per rules/risk-autonomy.md, when the release gate requires an independent pass per rules/gates.md, or on explicit request. Tries to refute the claim that the work is correct and complete — the general-correctness counterpart to security-reviewer's security-only lens. Read-only, never edits. Alias: vera.",
       "tools": [
         "Read",
         "Grep",
@@ -101,7 +101,7 @@
     {
       "name": "dba-coordinator",
       "alias": "ronaldo",
-      "description": "Domain specialist for database work (schema design, migrations, query performance, indexing, data access patterns) across Postgres/Oracle and other relational stores. Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes migrations/queries) per the MODE given or inferred. Use for data-layer analysis or changes; follows EngineOS architecture/data rules. Alias: ronaldo (invocable by this name).",
+      "description": "Data-layer specialist — schema design, migrations, query performance, indexing, access patterns, across Postgres/Oracle and other relational stores. Branches: AUDIT (read-only findings) | IMPLEMENT (writes migrations/queries). Alias: ronaldo.",
       "tools": [
         "Read",
         "Grep",
@@ -110,14 +110,14 @@
         "Edit",
         "Write"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "devops-coordinator",
       "alias": "hinokuma",
-      "description": "Domain specialist for DevOps/infra work (CI/CD pipelines, Docker, Kubernetes/Helm, Terraform/IaC, cloud resources, observability config). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes config) per the MODE given or inferred. Use for infra/pipeline analysis or changes; follows EngineOS architecture/security/observability rules. Alias: hinokuma (invocable by this name).",
+      "description": "DevOps/infra specialist — CI/CD pipelines, Docker, Kubernetes/Helm, Terraform/IaC, cloud resources, observability config. Branches: AUDIT (read-only findings) | IMPLEMENT (writes config). Alias: hinokuma.",
       "tools": [
         "Read",
         "Grep",
@@ -126,14 +126,14 @@
         "Edit",
         "Write"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "docs-writer",
       "alias": "tomasz",
-      "description": "Writes and updates documentation for work that already landed — READMEs, usage docs, endpoint and config references. Use when a delivered change leaves documentation stale, or when a headless workflow needs documentation as its own step rather than an afterthought. Documents what the code actually does, never what it was supposed to do. Alias: tomasz (invocable by this name).",
+      "description": "Writes and updates documentation for work that already landed — READMEs, usage docs, endpoint and config references. Use when a delivered change leaves documentation stale, or when a headless workflow needs documentation as its own step rather than an afterthought. Documents what the code actually does, never what it was supposed to do. Alias: tomasz.",
       "tools": [
         "Read",
         "Grep",
@@ -141,7 +141,7 @@
         "Edit",
         "Write"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": [
         "document"
@@ -150,7 +150,7 @@
     {
       "name": "frontend-coordinator",
       "alias": "arturo",
-      "description": "Domain specialist for frontend work (React, Next.js, components, pages/app router, state, data fetching, forms, styling, performance, accessibility). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code) per the MODE given or inferred. Use for frontend-focused analysis or changes; follows EngineOS architecture/frontend/testing rules. Alias: arturo (invocable by this name).",
+      "description": "Frontend specialist — React/Next components, pages/app router, state, data fetching, forms, styling, performance, accessibility. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: arturo.",
       "tools": [
         "Read",
         "Grep",
@@ -160,14 +160,14 @@
         "Write",
         "Skill"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "gcp-specialist",
       "alias": "nakamura",
-      "description": "Read-only Google Cloud leaf specialist. Inspects GCP resources (compute, storage, IAM, networking, billing signals) via the gcp MCP and reports findings in the shared specialist format. Dispatched by the audit orchestrator. Never mutates cloud resources. Alias: nakamura (invocable by this name).",
+      "description": "Read-only Google Cloud specialist — compute, storage, IAM, networking, billing signals, via the gcp MCP. Never mutates cloud resources. Dispatched by the audit orchestrator. Alias: nakamura.",
       "tools": [
         "Read",
         "Grep",
@@ -175,14 +175,14 @@
         "Bash",
         "mcp__gcp"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "ios-builder",
       "alias": null,
-      "description": "iOS build-and-release agent. Runs the full pipeline end to end — preflight (toolchain, signing, App Store Connect API key), version/build-number bump, dependency install, quality gates, signed Release archive/IPA, upload to TestFlight, and App Store submission — via fastlane (gym/pilot/deliver) with raw xcodebuild fallback. Modes: BUILD (artifact only) | BETA (TestFlight, default) | RELEASE (submit for App Store review — explicit instruction only). Never touches Android, backend, or web code. Follows EngineOS security rules: all credentials from env/secret manager, never in code or logs.",
+      "description": "iOS build-and-release engineer — source to the Apple store, end to end. Branches: BUILD (artifact only) | BETA (TestFlight, default) | RELEASE (submit for App Store review — explicit instruction only). Never touches Android, backend, or web code.",
       "tools": [
         "Read",
         "Grep",
@@ -191,14 +191,14 @@
         "Edit",
         "Write"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "kubernetes-specialist",
       "alias": "kovac",
-      "description": "Read-only Kubernetes leaf specialist. Inspects cluster state (workloads, events, resource usage, config) via the kubernetes MCP and reports findings in the shared specialist format. Dispatched by the audit orchestrator for deep cluster analysis. Never mutates the cluster. Alias: kovac (invocable by this name).",
+      "description": "Read-only Kubernetes specialist — workloads, events, resource usage, config, via the kubernetes MCP. Never mutates the cluster. Dispatched by the audit orchestrator. Alias: kovac.",
       "tools": [
         "Read",
         "Grep",
@@ -206,14 +206,14 @@
         "Bash",
         "mcp__kubernetes"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "llm-coordinator",
       "alias": "hermsdorff",
-      "description": "Domain specialist for LLM/AI engineering (prompt design, agent tools, structured output, RAG pipelines, embeddings, evals). Dual-mode — AUDIT (read-only analysis) or IMPLEMENT (writes code/prompts) per the MODE given or inferred. Use for LLM-feature analysis or changes; follows EngineOS llm-apps rules and the llm-engineering skill. Alias: hermsdorff (invocable by this name).",
+      "description": "LLM/AI engineering specialist — prompt design, agent tools, structured output, RAG pipelines, embeddings, evals. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code/prompts). Alias: hermsdorff.",
       "tools": [
         "Read",
         "Grep",
@@ -223,14 +223,14 @@
         "Write",
         "Skill"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "mobile-coordinator",
       "alias": "elias",
-      "description": "Mobile domain specialist (React Native). Builds and audits mobile features — greenfield mobile work (new screens, navigation, native-module glue, offline/storage) and web->mobile mirroring (reproducing a feature that already exists in the web frontend, adapting web patterns to mobile idioms). Reads the web frontend as read-only reference when mirroring; writes only in the mobile app tree — never API/backend, web frontend, or DevOps/infra. Dual-mode — AUDIT (mobile findings / parity report) or IMPLEMENT (build the feature or mirror) per the MODE given or inferred. Follows EngineOS architecture/frontend/backend/testing rules adapted to mobile. Alias: elias (invocable by this name).",
+      "description": "Mobile specialist (React Native) — greenfield mobile features (screens, navigation, native-module glue, offline/storage) and web->mobile mirroring, adapting web patterns to mobile idioms. Reads the web frontend as read-only reference when mirroring; writes only in the mobile app tree — never API/backend, web frontend, or DevOps/infra. Branches: AUDIT (mobile findings / parity report) | IMPLEMENT (build the feature or mirror). Alias: elias.",
       "tools": [
         "Read",
         "Grep",
@@ -240,14 +240,14 @@
         "Write",
         "Skill"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "oracle-specialist",
       "alias": "leo",
-      "description": "Read-only Oracle leaf specialist. Introspects schema, indexes, and execution plans via the oracle MCP (read-only connection) and reports findings in the shared specialist format. Dispatched by the audit orchestrator. Never runs DDL/DML. Alias: leo (invocable by this name).",
+      "description": "Read-only Oracle specialist — schema, indexes, execution plans, via the oracle MCP on a read-only connection. Never runs DDL/DML. Dispatched by the audit orchestrator. Alias: leo.",
       "tools": [
         "Read",
         "Grep",
@@ -255,14 +255,14 @@
         "Bash",
         "mcp__oracle"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "postgres-specialist",
       "alias": "pereira",
-      "description": "Read-only Postgres leaf specialist. Introspects schema, indexes, and query plans via the postgres MCP (point it at a READ-ONLY role) and reports findings in the shared specialist format. Dispatched by the audit orchestrator. Never runs DDL/DML. Alias: pereira (invocable by this name).",
+      "description": "Read-only Postgres specialist — schema, indexes, query plans, via the postgres MCP pointed at a READ-ONLY role. Never runs DDL/DML. Dispatched by the audit orchestrator. Alias: pereira.",
       "tools": [
         "Read",
         "Grep",
@@ -270,14 +270,14 @@
         "Bash",
         "mcp__postgres"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
     {
       "name": "product-spec",
       "alias": "mariana",
-      "description": "Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: mariana (invocable by this name).",
+      "description": "Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: mariana.",
       "tools": [
         "Read",
         "Grep",
@@ -293,7 +293,7 @@
     {
       "name": "qa-tester",
       "alias": "qa",
-      "description": "Autonomous end-to-end API QA agent. Tears down old containers and residual data, brings the stack up via the project's npm/Docker script, discovers every endpoint in the system and emits a JSON (endpoint inventory + Postman collection), then exercises all endpoints and scenarios — happy paths, negatives, and full chained flows from user creation onward — headlessly via Newman while tailing container logs. Never waits for user input (skips MFA / email-sending steps). Produces a pass/fail report. Alias: qa (invocable by this name).",
+      "description": "Autonomous end-to-end API QA — brings the stack up from clean, discovers every endpoint, emits an inventory plus Postman collection, then exercises happy paths, negatives and chained flows headlessly via Newman and reports pass/fail. Never waits for user input (skips MFA and email-sending steps). Alias: qa.",
       "tools": [
         "Read",
         "Grep",
@@ -302,7 +302,7 @@
         "Write",
         "Edit"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": []
     },
@@ -325,7 +325,7 @@
     {
       "name": "security-reviewer",
       "alias": "leo-ely",
-      "description": "Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit \"security review\" request. Also dispatched at edit time when security-sensitive files (auth, guard, middleware, secret, .env, credentials) are being edited — the routing hook fires it then, not only at review time. Read-only — reports findings, never edits. Alias: leo-ely (invocable by this name).",
+      "description": "Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit \"security review\" request. Also dispatched at edit time on security-sensitive files (auth, guard, middleware, secret, .env, credentials) by the routing hook. Read-only — reports findings, never edits. Alias: leo-ely.",
       "tools": [
         "Read",
         "Grep",
@@ -341,7 +341,7 @@
     {
       "name": "test-writer",
       "alias": "ameer",
-      "description": "Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature has acceptance criteria needing test coverage, when a bug fix needs a regression test, or when asked to backfill tests. Follows EngineOS testing rules. Alias: ameer (invocable by this name).",
+      "description": "Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature needs coverage, a bug fix needs a regression test, or tests are being backfilled. Dispatched deliberately, never automatically after ordinary changes. Alias: ameer.",
       "tools": [
         "Read",
         "Grep",
@@ -350,7 +350,7 @@
         "Write",
         "Edit"
       ],
-      "model": "sonnet",
+      "model": "opus",
       "model_tier": "build",
       "capability_ids": [
         "validate"

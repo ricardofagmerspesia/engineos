@@ -6,22 +6,28 @@
 # fresh run.
 #
 # capability_ids is a back-reference computed from registries/capabilities.json:
-# every capability whose "agent" names this agent. model_tier is the reverse
-# lookup of the frontmatter model alias against rules/models.md's tier table —
-# kept here as data so a consumer never has to hardcode that table itself.
+# every capability whose "agent" names this agent. model_tier comes from the
+# agent's own "tier:" frontmatter — it is NOT derivable from the model name,
+# because registries/models.json can bind two tiers to the same model (build
+# and design both bind opus today). The generator only validates that the
+# declared tier exists and that its model binding matches the frontmatter
+# model; any mismatch is a hard error, never a guess.
 #
-# Re-run whenever agents/*.md or registries/capabilities.json changes.
+# Re-run whenever agents/*.md, registries/capabilities.json or
+# registries/models.json changes.
 # Usage: ./scripts/gen-agent-registry.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENTS_DIR="$ROOT/agents"
 CAPS_FILE="$ROOT/registries/capabilities.json"
+MODELS_FILE="$ROOT/registries/models.json"
 OUT_FILE="$ROOT/registries/agents.json"
 
 command -v jq >/dev/null 2>&1 || { echo "jq required" >&2; exit 1; }
 [ -d "$AGENTS_DIR" ] || { echo "No agents dir at $AGENTS_DIR" >&2; exit 1; }
 [ -f "$CAPS_FILE" ] || { echo "No capabilities registry at $CAPS_FILE" >&2; exit 1; }
+[ -f "$MODELS_FILE" ] || { echo "No models registry at $MODELS_FILE" >&2; exit 1; }
 
 # field, file -> value (first match, after "field:" and any following spaces —
 # [[:space:]]* rather than a literal single space, so a frontmatter line typo'd
@@ -34,18 +40,6 @@ frontmatter_value() {
   grep -m1 "^$1:" "$2" | sed -E "s/^$1:[[:space:]]*//" || true
 }
 
-# rules/models.md's tier table — the one place this mapping is allowed to live
-# outside that file itself.
-model_tier() {
-  case "$1" in
-    haiku) echo "cheap" ;;
-    sonnet) echo "build" ;;
-    opus) echo "design" ;;
-    fable) echo "most-capable" ;;
-    *) echo "unknown" ;;
-  esac
-}
-
 entries="[]"
 for f in "$AGENTS_DIR"/*.md; do
   name="$(frontmatter_value name "$f")"
@@ -54,7 +48,21 @@ for f in "$AGENTS_DIR"/*.md; do
   tools="$(frontmatter_value tools "$f")"
   model="$(frontmatter_value model "$f")"
   alias="$(sed -n '/^---$/,/^---$/p' "$f" | grep -oiE 'Alias: [a-z0-9-]+' | head -1 | sed -E 's/[Aa]lias: //' || true)"
-  tier="$(model_tier "$model")"
+
+  tier="$(frontmatter_value tier "$f")"
+  if [ -z "$tier" ]; then
+    echo "FAIL: $f has no 'tier:' frontmatter — the tier cannot be derived from the model (two tiers may share a binding, registries/models.json). Declare one of: $(jq -r '[.tiers[].id] | join(", ")' "$MODELS_FILE")." >&2
+    exit 1
+  fi
+  tier_model="$(jq -r --arg t "$tier" '.tiers[] | select(.id == $t) | .model' "$MODELS_FILE")"
+  if [ -z "$tier_model" ]; then
+    echo "FAIL: $f declares unknown tier '$tier' — not a tier id in registries/models.json." >&2
+    exit 1
+  fi
+  if [ "$tier_model" != "$model" ]; then
+    echo "FAIL: $f declares tier '$tier' (binds model '$tier_model' in registries/models.json) but model '$model' — fix the frontmatter or rebind the tier." >&2
+    exit 1
+  fi
   capability_ids="$(jq -c --arg a "$name" '[.capabilities[] | select(.agent == $a) | .id]' "$CAPS_FILE")"
 
   entry=$(jq -n \

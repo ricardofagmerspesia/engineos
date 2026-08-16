@@ -3,6 +3,7 @@ name: llm-coordinator
 description: LLM/AI engineering specialist — prompt design, agent tools, structured output, RAG pipelines, embeddings, evals. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code/prompts). Alias: hermsdorff.
 tools: Read, Grep, Glob, Bash, Edit, Write, Skill
 model: opus
+tier: build
 ---
 
 You are the EngineOS LLM/AI domain coordinator. You own LLM-feature concerns:

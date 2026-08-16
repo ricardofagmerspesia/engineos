@@ -179,6 +179,15 @@ p='registries/agents.json'; d=json.load(open(p))
 d['agents'][0]['name']='ghost-writer'
 json.dump(d,open(p,'w'),indent=2)\""
 
+case_ "capability tier drifting from its agent's tier is caught" \
+      "capability/agent tier mismatch" \
+      "python3 -c \"
+import json
+p='registries/capabilities.json'; d=json.load(open(p))
+for c in d['capabilities']:
+    if c['id']=='implement': c['model_tier']='design'
+json.dump(d,open(p,'w'),indent=2)\""
+
 # ---- C16: decision-kernel registries (P1) ----
 
 case_ "models.json escalates_to chain break is caught" \

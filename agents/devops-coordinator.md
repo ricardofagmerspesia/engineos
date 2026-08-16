@@ -3,6 +3,7 @@ name: devops-coordinator
 description: DevOps/infra specialist — CI/CD pipelines, Docker, Kubernetes/Helm, Terraform/IaC, cloud resources, observability config. Branches: AUDIT (read-only findings) | IMPLEMENT (writes config). Alias: hinokuma.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: opus
+tier: build
 ---
 
 You are the EngineOS DevOps domain coordinator. You own delivery and runtime

@@ -288,6 +288,18 @@ else
     bad "registries/agents.json missing"
   fi
 
+  # A capability's model_tier must agree with its bound agent's tier in
+  # agents.json — the tier is declared by the agent (tier: frontmatter), and
+  # nothing else was comparing the two registries when they drifted apart.
+  if [ -f "$C" ] && [ -f "$A" ]; then
+    tm=$(jq -r --slurpfile ag "$A" '
+      ($ag[0].agents | map({key: .name, value: .model_tier}) | from_entries) as $tiers
+      | .capabilities[]
+      | select(.agent != null and $tiers[.agent] != null and .model_tier != $tiers[.agent])
+      | "\(.id)(\(.model_tier)!=\($tiers[.agent]))"' "$C" | tr '\n' ' ' | sed 's/ *$//')
+    [ -z "$tm" ] && ok "every capability model_tier agrees with its agent's tier" || bad "capability/agent tier mismatch: $tm"
+  fi
+
   # --------------------- C16: decision-kernel registries (P1: policy as data)
   # models.json, intents.json, policy.json are the machine-readable form of
   # rules/models.md, the CLAUDE.md router table, and the always-on policy prose

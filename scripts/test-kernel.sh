@@ -136,7 +136,7 @@ assert_eq "adr escalates_to" "$(jqval '.escalates_to')" "null"
 run model --work build
 assert_ok "model --work build exits 0"
 assert_eq "build tier" "$(jqval '.tier')" "build"
-assert_eq "build model" "$(jqval '.model')" "sonnet"
+assert_eq "build model" "$(jqval '.model')" "opus"
 assert_eq "build escalates_to.tier" "$(jqval '.escalates_to.tier')" "design"
 
 run model --work nonsense
