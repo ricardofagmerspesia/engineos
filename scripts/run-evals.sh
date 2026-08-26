@@ -23,15 +23,19 @@ ok()  { pass=$((pass+1)); printf 'ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf 'FAIL %s\n' "$1"; }
 
 ALWAYS_ON=$(sed -n 's|^@rules/\([a-z-]*\)\.md.*|\1|p' CLAUDE.md | sort -u | tr '\n' ' ')
+TASK_CONTRACT_RULES="gates models parallelism risk-autonomy verification"
 is_always_on() { case " $ALWAYS_ON " in *" $1 "*) return 0 ;; esac; return 1; }
+is_task_contract_rule() { case " $TASK_CONTRACT_RULES " in *" $1 "*) return 0 ;; esac; return 1; }
 
-# deferrals_of <rule> -> non-always-on rules that <rule>'s text points at.
+# deferrals_of <rule> -> rules not globally supplied by startup or resolve-task
+# that <rule>'s text points at.
 # Mirrors the closure derivation in scripts/validate-engineos.sh.
 deferrals_of() {
   local r="$1" s out=""
   for s in $(cd rules && ls ./*.md | sed 's|^\./||; s|\.md$||'); do
     [ "$s" = "$r" ] && continue
     is_always_on "$s" && continue
+    is_task_contract_rule "$s" && continue
     grep -qE "(rules/)?\`?${s}\.md" "rules/$r.md" 2>/dev/null && out="$out $s"
   done
   echo "$out"

@@ -9,7 +9,13 @@
 
 # Rule stems imported by the "Always-on rules" section of CLAUDE.md. These are in
 # context on every turn, so any row may rely on them without loading them.
-ENGINEOS_ALWAYS_ON="base security git memory parallelism models subagents verification risk-autonomy context gates"
+ENGINEOS_ALWAYS_ON="base security git context"
+
+# Closed policy bundle injected by kernel.sh resolve-task for every substantive
+# request. These files are not paid for by pure questions, but router rows may
+# rely on them exactly as they rely on the always-on core. C18g validates the
+# executable contract; this ledger gives the prose probe the same vocabulary.
+ENGINEOS_TASK_CONTRACT_RULES="gates models parallelism risk-autonomy verification"
 
 # Accepted closure gaps: "<from>|<to>|<reason>". Pair-scoped, not row-scoped —
 # one always-on outward pointer explains the same gap in every router row.

@@ -113,6 +113,8 @@ echo "--- family 3: router-row closure"
 xrefs(){ grep -hoE 'rules/[a-z-]+\.md' "rules/$1.md" 2>/dev/null | sed 's|rules/||;s|\.md$||' | sort -u | grep -vx "$1"; }
 excepted(){ printf '%s\n' "$ENGINEOS_CLOSURE_EXCEPTIONS" | grep -q "^$1|$2|"; }
 always_on(){ case " $ENGINEOS_ALWAYS_ON " in *" $1 "*) return 0 ;; esac; return 1; }
+task_contract_rule(){ case " $ENGINEOS_TASK_CONTRACT_RULES " in *" $1 "*) return 0 ;; esac; return 1; }
+globally_available(){ always_on "$1" || task_contract_rule "$1"; }
 
 # Router rows: drop the intent cell and the trailing bar, keep the load cell
 # (which may itself contain escaped pipes).
@@ -132,9 +134,9 @@ NEEDED=$(while read -r load; do
   loaded=$(printf '%s' "$load" | grep -oE 'rules/[a-z-]+\.md' | sed 's|rules/||;s|\.md$||' | sort -u)
   [ -z "$loaded" ] && continue
   for a in $loaded; do
-    always_on "$a" && continue
+    globally_available "$a" && continue
     for b in $(xrefs "$a"); do
-      always_on "$b" && continue
+      globally_available "$b" && continue
       has "$b" "$loaded" && continue
       echo "$a|$b"
     done

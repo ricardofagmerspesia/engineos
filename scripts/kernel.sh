@@ -16,6 +16,7 @@
 #   kernel.sh decision-rules --prompt <text>
 #   kernel.sh scale --prompt <text>
 #   kernel.sh route-escalate --prompt <text>
+#   kernel.sh resolve-task --prompt <text>
 #
 # Exit: 0 success (a null/no-match answer IS an answer), 1 error. Errors are
 # {"error": "..."} on stdout so callers parse a single stream. jq is REQUIRED —
@@ -85,10 +86,9 @@ cmd_route_path() {
 
   local dom typ pat hit=""
   while IFS=$'\t' read -r dom typ pat; do
+    # shellcheck disable=SC2254  # $pat is registry-owned glob data
     case "$typ" in
-      # shellcheck disable=SC2254
       path) case "$norm" in $pat) hit="$dom"; break ;; esac ;;
-      # shellcheck disable=SC2254
       base) case "$base" in $pat) hit="$dom"; break ;; esac ;;
     esac
   done < <(jq -r '
@@ -117,26 +117,28 @@ cmd_route_intent() {
   local text="$1"
   need_reg intents.json
   local I="$REG/intents.json"
-  local lower id sig esc matched=""
-  lower=$(printf '%s' "$text" | tr '[:upper:]' '[:lower:]')
-
-  while IFS=$'\t' read -r id sig; do
-    [ -z "$id" ] && continue
-    case " $matched " in *" $id "*) continue ;; esac
-    # Signals are literal phrases, not regexes — escape ERE metacharacters,
-    # then bound on non-alphanumerics so "add" never matches "addressed".
-    esc=$(printf '%s' "$sig" | sed 's/[][\.|$(){}?+*^\\]/\\&/g')
-    if printf '%s' "$lower" | grep -qiE "(^|[^[:alnum:]])${esc}([^[:alnum:]]|$)"; then
-      matched="$matched $id"
-    fi
-  done < <(jq -r '.intents[] | .id as $i | .signals[]? | "\($i)\t\(.)"' "$I")
-
-  local ids_json
-  ids_json=$(printf '%s\n' $matched | jq -R . | jq -s 'map(select(length > 0))')
-  jq --argjson ids "$ids_json" '
-    {matches: [ $ids[] as $id | .intents[] | select(.id==$id)
-                | {id, title, rules, skills, agents, commands, mcp, model_tier, risk_floor, note} ],
-     ambiguous: (($ids | length) == 0)}' "$I"
+  # Evaluate all literal signals inside ONE jq process. The previous loop
+  # spawned sed + grep for every signal (136 today), making routing take ~3s.
+  # `bounded_contains` preserves the old non-alphanumeric boundary semantics:
+  # "add" matches "add endpoint" but never "addressed".
+  jq -n --arg text "$text" --slurpfile intents "$I" '
+    def bounded_contains($haystack; $needle):
+      ($needle | length) as $n
+      | any($haystack | indices($needle)[];
+          . as $i
+          | ($i == 0
+             or (($haystack[$i-1:$i] | test("^[[:alnum:]]$")) | not))
+            and (($i + $n) == ($haystack | length)
+                 or (($haystack[$i+$n:$i+$n+1]
+                      | test("^[[:alnum:]]$")) | not)));
+    ($text | ascii_downcase) as $lower
+    | ([ $intents[0].intents[]
+         | select(any(.signals[]?;
+             . as $signal
+             | bounded_contains($lower; ($signal | ascii_downcase))))
+         | {id, title, rules, skills, agents, commands, mcp,
+            model_tier, risk_floor, note} ]) as $matches
+    | {matches: $matches, ambiguous: (($matches | length) == 0)}'
 }
 
 # --------------------------------------------------------------------- model
@@ -380,25 +382,18 @@ cmd_decision_rules() {
   [ -n "$prompt" ] || err "decision-rules requires --prompt <text>"
   need_reg decision-rules.json
   local D="$REG/decision-rules.json"
-  local lower id sig matched=""
-  lower=$(printf '%s' "$prompt" | tr '[:upper:]' '[:lower:]')
-
-  # Raw interpolation, NOT @tsv: @tsv escapes backslashes, which turns every
-  # \b word boundary in the signal patterns into \\b and they stop matching.
-  while IFS=$'\t' read -r id sig; do
-    [ -z "$id" ] && continue
-    printf '%s' "$lower" | grep -qE "$sig" || continue
-    case " $matched " in *" $id "*) continue ;; esac
-    matched="$matched $id"
-  done < <(jq -r '.rules | sort_by(-.priority) | .[] | select(.signals != null) | . as $r | .signals[] | "\($r.id)\t\(.)"' "$D")
-
-  local ids_json
-  ids_json=$(printf '%s\n' $matched | jq -R . | jq -s 'map(select(length > 0))')
-  jq --argjson ids "$ids_json" '
-    {matches: [ $ids[] as $id | .rules[] | select(.id==$id)
-                | {id, require: (.then.require // []), prefer: (.then.prefer // null),
-                   gate: (.then.gate // null), risk: (.then.risk // null)} ],
-     any_high: ([ $ids[] as $id | .rules[] | select(.id==$id) | .then.risk ] | index("high") != null)}' "$D"
+  jq --arg prompt "$prompt" '
+    ($prompt | ascii_downcase) as $lower
+    | ([ .rules | sort_by(-.priority)[]
+         | select(.signals != null)
+         | select(any(.signals[];
+             . as $signal | ($lower | test($signal))))
+         | {id, require: (.then.require // []),
+            prefer: (.then.prefer // null),
+            gate: (.then.gate // null),
+            risk: (.then.risk // null)} ]) as $matches
+    | {matches: $matches,
+       any_high: ([$matches[].risk] | index("high") != null)}' "$D"
 }
 
 # --------------------------------------------------------------------- scale
@@ -410,24 +405,23 @@ cmd_scale() {
   [ -n "$prompt" ] || err "scale requires --prompt <text>"
   need_reg policy.json
   local P="$REG/policy.json"
-  local lower a s sp ds dw
-  lower=$(printf '%s' "$prompt" | tr '[:upper:]' '[:lower:]')
-  has() { printf '%s' "$lower" | grep -qE "$1"; }
-
-  a=$(jq -r '.parallelism.prompt_signals.action' "$P")
-  s=$(jq -r '.parallelism.prompt_signals.scale' "$P")
-  sp=$(jq -r '.parallelism.prompt_signals.spec' "$P")
-  ds=$(jq -r '.parallelism.prompt_signals.design_strong' "$P")
-  dw=$(jq -r '.parallelism.prompt_signals.design_weak' "$P")
-  [ "$a" = "null" ] && err "policy.json has no parallelism.prompt_signals block"
-
-  local big=false spec=false design=false
-  has "$a" && has "$s" && big=true
-  has "$sp" && spec=true
-  { has "$ds" || { has "$dw" && has "$a"; }; } && design=true
-
-  jq -n --argjson b "$big" --argjson sp "$spec" --argjson d "$design" \
-    '{big_task: $b, spec_authoring: $sp, design_work: $d}'
+  local out
+  out=$(jq -n --arg prompt "$prompt" --slurpfile pol "$P" '
+    ($pol[0].parallelism.prompt_signals // null) as $s
+    | if $s == null then
+        {error: "policy.json has no parallelism.prompt_signals block"}
+      else
+        ($prompt | ascii_downcase) as $lower
+        | ($lower | test($s.action)) as $action
+        | {big_task: ($action and ($lower | test($s.scale))),
+           spec_authoring: ($lower | test($s.spec)),
+           design_work: (($lower | test($s.design_strong))
+                         or ($action and ($lower | test($s.design_weak))))}
+      end')
+  if printf '%s' "$out" | jq -e '.error' >/dev/null 2>&1; then
+    printf '%s\n' "$out"; exit 1
+  fi
+  printf '%s\n' "$out"
 }
 
 # ------------------------------------------------------------- route-escalate
@@ -526,6 +520,86 @@ cmd_route_escalate() {
       }'
 }
 
+# --------------------------------------------------------------- resolve-task
+# Deep prompt-resolution interface: one call returns every deterministic fact a
+# prompt advisor needs. Policy stays in the existing registries; this function
+# composes their answers and hides the multi-call implementation from adapters.
+cmd_resolve_task() {
+  local prompt=""
+  while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "resolve-task: unknown argument $1" ;; esac; done
+  [ -n "$prompt" ] || err "resolve-task requires --prompt <text>"
+  need_reg intents.json; need_reg policy.json; need_reg decision-rules.json
+
+  local route decisions rc
+  route=$(cmd_route_escalate --prompt "$prompt"); rc=$?
+  [ $rc -eq 0 ] || { printf '%s\n' "$route"; exit 1; }
+  decisions=$(cmd_decision_rules --prompt "$prompt"); rc=$?
+  [ $rc -eq 0 ] || { printf '%s\n' "$decisions"; exit 1; }
+
+  jq -n --arg prompt "$prompt" --argjson route "$route" --argjson decisions "$decisions" \
+    --slurpfile intents "$REG/intents.json" --slurpfile pol "$REG/policy.json" '
+    ($route.intents) as $ids
+    | ([ $intents[0].intents[]
+         | select(.id as $id | $ids | index($id) != null) ]) as $matched
+    | (reduce ($matched | map(.rules[]?) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $rules
+    | (reduce ($matched | map(.skills[]?) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $skills
+    | (reduce ($matched | map(.commands[]?) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $commands
+    | (reduce ($matched | map(.mcp[]?) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $mcp
+    | (reduce ($decisions.matches | map(.require[]) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $required
+    | (reduce ($decisions.matches | map(.gate // empty) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $gates
+    | (reduce ($decisions.matches | map(.prefer // empty) | .[]) as $x
+        ([]; if index($x) then . else . + [$x] end)) as $preferences
+    | (if $decisions.any_high then "high" else $route.risk_floor end) as $floor
+    # A prompt can request real work without matching a registered domain
+    # ("update this prose"). Reuse the registry-owned action expression as the
+    # fallback that keeps such work inside the safety/verification bundle.
+    | ((($ids | length) > 0
+       or ($decisions.matches | length) > 0
+       or ($route.scale | any(.))
+       or (($prompt | ascii_downcase)
+           | test($pol[0].parallelism.prompt_signals.substantive_action)))) as $substantive
+    # This is the closed policy bundle for substantive work. gates references
+    # parallelism/risk/verification; parallelism references models/risk/
+    # verification. Returning the closure here keeps adapters and router rows
+    # from reconstructing it independently.
+    | ((if $substantive then
+          ["gates", "models", "parallelism", "risk-autonomy", "verification"]
+        else [] end)
+       + (if ($route.agents | length) > 0
+            then ["subagents"] else [] end)
+       | unique) as $policy_rules
+    | {task_contract:
+        {substantive: $substantive,
+         intents: $ids,
+         escalates: $route.escalate,
+         escalation_reasons: $route.reasons,
+         suppressed: $route.suppressed,
+         agents: $route.agents,
+         rules: $rules,
+         policy_rules: $policy_rules,
+         skills: $skills,
+         commands: $commands,
+         mcp: $mcp,
+         model_tier: $route.model_tier,
+         risk_floor: $floor,
+         autonomy_ceiling_at_floor:
+           (if $floor == null then null
+            else $pol[0].autonomy.ceiling_by_risk[$floor] end),
+         scale: $route.scale,
+         decision_rules: [$decisions.matches[].id],
+         required: $required,
+         gates: $gates,
+         preferences: $preferences},
+       route: $route,
+       decision_rules: $decisions}'
+}
+
 # ---------------------------------------------------------------- dispatcher
 cmd="${1:-}"
 [ -n "$cmd" ] && shift
@@ -542,5 +616,6 @@ case "$cmd" in
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|capability|waves|decision-rules|scale|route-escalate} ..." ;;
+  resolve-task)   cmd_resolve_task "$@" ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
 esac

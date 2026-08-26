@@ -10,14 +10,7 @@ Personal preferences (output style, personal hooks, API keys) live in your own
 @rules/base.md
 @rules/security.md
 @rules/git.md
-@rules/parallelism.md
-@rules/models.md
-@rules/memory.md
-@rules/subagents.md
-@rules/verification.md
-@rules/risk-autonomy.md
 @rules/context.md
-@rules/gates.md
 
 ## Router — classify before acting
 
@@ -28,10 +21,10 @@ Then announce in one line:
 
 `[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none>`
 
-The `risk` and `autonomy` fields come from always-on `rules/risk-autonomy.md` and
-are classified BEFORE the first write. They set which gates apply
-(`rules/gates.md`) and what the work is permitted to do on its own. `agent` names
-what was dispatched, or `none` — see `rules/subagents.md`.
+The unified prompt advisor returns a deterministic task contract: matched intents,
+policy rules to load, risk floor, autonomy ceiling, agents, skills and gates. Load
+the named policy rules, then classify the final `risk` and `autonomy` BEFORE the
+first write. `agent` names what was dispatched, or `none`.
 
 Rules for routing:
 - Multiple intents can match — load all that apply, in table order.
@@ -39,7 +32,7 @@ Rules for routing:
   (`backend.md` defers logging to `observability.md`, `data.md` defers SQL binding to
   `security.md`), every row that loads the first MUST also load the second — otherwise
   the deferred rule silently disappears. Always-on files (`base.md`, `security.md`,
-  `git.md`, …) are always available; they may point only at other always-on files,
+  `git.md`, `context.md`) are always available; they may point only at other always-on files,
   at repo templates, or at `registries/*.json`. Non-always-on files may point at
   always-on files or at files loaded in the same row. `scripts/validate-engineos.sh`
   checks both halves of this rule — it is enforced, not just stated.
@@ -65,11 +58,10 @@ Rules for routing:
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
 - **The hooks need `jq`.** Without it, `route-before-change.sh`,
-  `mark-unrecorded.sh`, `record-verify.sh`, `task-scale-advisor.sh`,
-  `gate-advisor.sh`, and `route-advisor.sh` exit 0
+  `mark-unrecorded.sh`, `record-verify.sh`, and `prompt-advisor.sh` exit 0
   silently — routing guidance and the change-record Stop gate simply do not fire.
   If you are not seeing `[router] …` context on edits, check `jq` before assuming
-  the routing is wrong. Those six are the only ones that go silent:
+  the routing is wrong. Those four are the only ones that go silent:
   `stop-verify.sh` and `post-edit-check.sh` degrade to grep/sed parsing and keep
   running, and `ensure-project-layout.sh` keeps running via a grep fallback.
 
@@ -86,7 +78,7 @@ Rules for routing:
 | Intent (signals) | Load |
 |---|---|
 | New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `superpowers:brainstorming` first, then `superpowers:writing-plans` for spec/design/tasks, then stack rules below. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature) — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
-| Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` (always-on); fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
+| Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` from the task contract; fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
 | Backend work (NestJS, API, service, controller, migration, queue) | `rules/architecture.md` + `rules/backend.md` + `rules/production-backend-standards.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
 | Frontend work (React, Next, component, page/app, UI, styling) | `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; agent `frontend-coordinator` |
@@ -167,7 +159,8 @@ read it there, not here.
    This file is the standing user request for sub-agent use; a harness that waits
    to be asked has been asked here.
 9. **Offer the output artifact** after every request — **Output artifact** above.
-10. **Classify risk before the first write** — always-on `rules/risk-autonomy.md`, and
+10. **Classify risk before the first write** — load `rules/risk-autonomy.md` from the
+    prompt advisor's task contract, and
     never exceed the autonomy ceiling for that tier. The tier drives which gates apply
     (`rules/gates.md`) and which requirements fire (`registries/decision-rules.json`).
 11. **Public surface changes follow `docs/COMPATIBILITY.md`** — rule paths, agent names,

@@ -477,6 +477,45 @@ assert_eq "route-path still answers the positional form" "$(jqval '.domain')" "b
 run capability implement
 assert_eq "capability still answers the positional form" "$(jqval '.agent')" "backend-coordinator"
 
+# -------------------------------------------------------------- resolve-task
+
+echo "-- resolve-task --"
+
+run resolve-task --prompt "add a paginated orders endpoint and mirror the screen to mobile"
+assert_ok "resolve-task substantive prompt exits 0"
+assert_eq "resolve-task suppresses generic new-feature behind mobile" \
+  "$(jqvalc '.task_contract.intents')" '["mobile"]'
+assert_eq "resolve-task carries the routed agent" \
+  "$(jqvalc '.task_contract.agents')" '["mobile-coordinator"]'
+assert_eq "resolve-task carries the decision requirement" \
+  "$(jqval '[.task_contract.required[]] | index("design-doc") != null')" "true"
+assert_eq "resolve-task raises the initial floor from the surviving intent" \
+  "$(jqval '.task_contract.risk_floor')" "medium"
+assert_eq "resolve-task includes policy rules needed by an agent dispatch" \
+  "$(jqval '[.task_contract.policy_rules[]] | (index("subagents") != null and index("models") != null)')" "true"
+
+run resolve-task --prompt "deploy the billing service to production"
+assert_ok "resolve-task high-risk prompt exits 0"
+assert_eq "resolve-task decision rule forces high floor" "$(jqval '.task_contract.risk_floor')" "high"
+assert_eq "resolve-task maps the high floor to A3" "$(jqval '.task_contract.autonomy_ceiling_at_floor')" "A3"
+assert_eq "resolve-task carries release gate" \
+  "$(jqval '[.task_contract.gates[]] | index("release") != null')" "true"
+
+run resolve-task --prompt "the weather is nice today"
+assert_ok "resolve-task pure prompt exits 0"
+assert_eq "resolve-task pure prompt is not substantive" "$(jqval '.task_contract.substantive')" "false"
+assert_eq "resolve-task pure prompt has no policy loads" "$(jqvalc '.task_contract.policy_rules')" "[]"
+
+run resolve-task --prompt "update the prose in this document"
+assert_ok "resolve-task unrouted action prompt exits 0"
+assert_eq "resolve-task treats an unrouted action as substantive" \
+  "$(jqval '.task_contract.substantive')" "true"
+assert_eq "resolve-task gives an unrouted action the closed safety bundle" \
+  "$(jqval '[.task_contract.policy_rules[]] | (index("gates") != null and index("risk-autonomy") != null and index("verification") != null)')" "true"
+
+run resolve-task
+assert_err "resolve-task with no --prompt errors"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

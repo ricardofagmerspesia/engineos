@@ -17,15 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/task-scale-advisor.sh"
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/gate-advisor.sh"
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/route-advisor.sh"
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/prompt-advisor.sh"
           }
         ]
       }

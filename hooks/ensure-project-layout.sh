@@ -39,6 +39,12 @@ ROOT=$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || ex
 GITDIR=$(cd "$CWD" 2>/dev/null && git rev-parse --absolute-git-dir 2>/dev/null) || GITDIR=""
 if [ -n "$GITDIR" ] && [ -d "$GITDIR" ]; then
   find "$GITDIR" -maxdepth 1 -name 'ENGINEOS_UNRECORDED.*' -mtime +7 -exec rm -f {} + 2>/dev/null || true
+  # Route answers are session-scoped hot-path data. Removing the bounded cache
+  # here also clears entries left by clients that omitted a session id.
+  if [ -d "$GITDIR/engineos-route-cache" ]; then
+    find "$GITDIR/engineos-route-cache" -type f -delete 2>/dev/null || true
+    find "$GITDIR/engineos-route-cache" -depth -type d -empty -delete 2>/dev/null || true
+  fi
 fi
 
 # Reap kernel-telemetry event files past their retention window (registries/

@@ -1,5 +1,5 @@
 {
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop and telemetry policy — nine blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry — so a future prose edit or block change that diverges fails CI.",
   "risk": {
     "aggregation": "max",
@@ -136,6 +136,7 @@
     "prompt_signals": {
       "note": "Prompt-classification EREs for kernel.sh scale (was hardcoded in hooks/task-scale-advisor.sh). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
       "action": "\\b(add|build|create|implement|develop|refactor|migrate|port|mirror|rewrite|redesign|extract|split|backfill|integrate|scaffold|modernize)\\b",
+      "substantive_action": "\\b(add|build|change|check|create|develop|document|edit|fix|implement|inspect|integrate|investigate|migrate|mirror|modernize|modify|port|refactor|remove|rename|redesign|review|rewrite|run|scaffold|split|test|update|validate|write)\\b",
       "scale": "\\b(all|every|entire|whole|across|full stack|fullstack|end.to.end|end2end|multiple|several|both|system.wide|codebase|monorepo|modules|services|endpoints|screens|pages|components|features|epic|milestone|phase|roadmap|suite)\\b",
       "spec": "\\b(spec|specification|prd|requirement[s]?|product brief|design doc|rfc|adr)\\b",
       "design_strong": "\\b(decompose|trade.?off|should we use|adr)\\b",
@@ -190,20 +191,20 @@
     ]
   },
   "telemetry": {
-    "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/route-advisor.sh, hooks/gate-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",
+    "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/prompt-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",
     "home": ".git/engineos-telemetry/<session_id>.jsonl",
     "retention_days": 90,
     "value_pattern": "^[A-Za-z0-9@_./:-]+$",
     "events": [
       {
         "id": "route",
-        "written_by": "hooks/route-advisor.sh",
+        "written_by": "hooks/prompt-advisor.sh",
         "keys": ["escalate", "reasons", "intents", "suppressed", "agents"],
         "sample": {"escalate": true, "reasons": ["multi-agent-dispatch"], "intents": ["backend", "mobile"], "suppressed": ["new-feature"], "agents": ["backend-coordinator", "mobile-coordinator"]}
       },
       {
         "id": "decision-rules",
-        "written_by": "hooks/gate-advisor.sh",
+        "written_by": "hooks/prompt-advisor.sh",
         "keys": ["rules", "any_high"],
         "sample": {"rules": ["rule-spec-threshold", "rule-verification"], "any_high": false}
       },
