@@ -3,7 +3,7 @@ name: 2026-08-26-agents-prompt-advisor-refs
 status: done
 completed: 2026-08-26
 owner: Ricardo Fagmer
-spec: none — single-surface reference fix, below non-negotiable #1's threshold
+spec: n/a — two-line reference fix, below non-negotiable #1's threshold
 domain: general
 ---
 
@@ -19,6 +19,11 @@ three registered prompt hooks with the single `hooks/prompt-advisor.sh`.
 as the dispatch trigger / fast path. The legacy file remains on disk but is no
 longer registered in `hooks/hooks.json`, so both references pointed a reader at
 a hook that never fires.
+
+## Scope
+
+`agents/router.md` and `commands/route.md` only — the two documents naming the
+retired hook as trigger. No kernel, hook, or registry changes.
 
 ## Checklist
 
@@ -36,7 +41,12 @@ dispatch trigger) and `commands/route.md` (fast-path note) now name
 (`route-escalate`, `risk`, `gates`, `model`, `waves`) named in the router flow
 is unchanged and still current. Validator: passed 88, failed 0.
 
-## Files
+## Verification
 
-- agents/router.md — modified
-- commands/route.md — modified
+`scripts/validate-engineos.sh`: passed 88, failed 0, after the edits. No code
+paths touched, so no lint/typecheck applies.
+
+## Changes registered
+
+- agents/router.md — modified (description: dispatch trigger renamed)
+- commands/route.md — modified (fast-path note renamed)
