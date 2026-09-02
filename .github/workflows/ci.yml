@@ -12,7 +12,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Tools present
-        run: { jq --version; shellcheck --version; bash --version | head -1; }
+        run: |
+          jq --version
+          shellcheck --version
+          bash --version | head -1
 
       - name: Shellcheck hooks + scripts (errors only)
         run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh
@@ -81,6 +84,27 @@ jobs:
 
       - name: Agent-registry generator tests
         run: bash scripts/test-gen-agent-registry.sh
+
+      - name: Decision-kernel resolver tests
+        run: bash scripts/test-kernel.sh
+
+      - name: Bypass switch tests
+        run: bash hooks/test-bypass.sh
+
+      - name: Prose-layer docs tests
+        run: bash hooks/test-docs.sh
+
+      - name: Route advisor tests
+        run: bash hooks/test-route-advisor.sh
+
+      - name: Agent-announce hook tests
+        run: bash hooks/test-agent-announce.sh
+
+      - name: Telemetry CLI tests
+        run: bash scripts/test-telemetry.sh
+
+      - name: Post-edit check tests
+        run: bash hooks/test-post-edit.sh
 
       - name: Secrets gate aborts on a planted secret
         run: |
