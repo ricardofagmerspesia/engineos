@@ -177,11 +177,16 @@ with a window, never a silent `git mv`.
 Before merging any change to `rules/`, `agents/`, `skills/`, `commands/`,
 `registries/`, or `hooks/`, run:
 ```bash
-scripts/validate-engineos.sh   # 23 self-integrity checks
+scripts/validate-engineos.sh   # 44 self-integrity Checks
 scripts/run-evals.sh           # golden set for router + agent behaviour
 ```
-CI runs both, plus `scripts/test-validate-engineos.sh` — 16 planted-breakage
-cases proving the validator actually catches what it claims to.
+`validate-engineos.sh` is a harness; the Checks themselves are `check_<id>()`
+functions in `scripts/checks/<family>.sh`, discovered by name. `--list` prints
+the ids, `--only C17,C21c` runs a subset (a parent id also selects its
+letter-suffixed sub-checks).
+
+CI runs both, plus `scripts/test-validate-engineos.sh` — planted-breakage cases,
+one per Check, proving the validator actually catches what it claims to.
 
 `.github/workflows/live-evals.yml` runs the eval set's live tier weekly (manual
 dispatch also works) — real model calls, so it is cost-gated off the PR path
