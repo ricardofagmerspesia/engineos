@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "description": "Gate requirements as data. CLAUDE.md states the constitution; this file states which artifacts a given condition demands, so a new requirement is a registry entry rather than a constitutional amendment. Read by hooks/gate-advisor.sh (keyword tier) and by the model directly (full tier, via rules/gates.md).",
+  "description": "Gate requirements as data. CLAUDE.md states the constitution; this file states which artifacts a given condition demands, so a new requirement is a registry entry rather than a constitutional amendment. Read by hooks/prompt-advisor.sh (keyword tier, via scripts/kernel.sh resolve-task) and by the model directly (full tier, via rules/gates.md).",
   "precedence": [
     "security and compliance",
     "explicit user constraints",

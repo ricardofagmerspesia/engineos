@@ -19,8 +19,7 @@ mirrored deterministically for file edits by `hooks/routing-map.sh`.
 | Event | Hook | Effect |
 |---|---|---|
 | SessionStart | `ensure-project-layout.sh` | Scaffolds `.engineos/` + `docs/` (opt-in) |
-| UserPromptSubmit | `task-scale-advisor.sh` | Fan-out and model-tier reminders |
-| UserPromptSubmit | `gate-advisor.sh` | Decision rules that match the prompt |
+| UserPromptSubmit | `prompt-advisor.sh` | One kernel call: task contract, fan-out and model-tier reminders, matching decision rules, route escalation |
 | PreToolUse (edit) | `route-before-change.sh` | Injects the domain route for the file |
 | PostToolUse (edit) | `mark-unrecorded.sh` | Sets the change-record flag |
 | PostToolUse (edit) | `post-edit-check.sh` | Scoped lint/typecheck |

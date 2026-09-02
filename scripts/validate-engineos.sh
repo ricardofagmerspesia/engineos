@@ -276,7 +276,7 @@ else
     [ -z "$empty_then" ] && ok "every decision rule requires or prefers something" \
                          || bad "decision rules with an empty then:$empty_then"
 
-    # a signal that is not a valid ERE would silently never match in gate-advisor.sh
+    # a signal that is not a valid ERE would silently never match in the kernel's keyword tier
     badsig=""
     while IFS= read -r s; do
       printf 'x' | grep -qE "$s" 2>/dev/null || [ $? -eq 1 ] || badsig="$badsig [$s]"

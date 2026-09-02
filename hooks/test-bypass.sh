@@ -38,7 +38,7 @@ off
 [ -n "$(ctx route-before-change.sh "$EDIT")" ] && ok || no "routing silent without bypass"
 [ -n "$(ctx announce-agent-dispatch.sh "$AGENT")" ] && ok || no "dispatch banner silent without bypass"
 [ -n "$(ctx announce-agent-return.sh "$AGENT")" ] && ok || no "return banner silent without bypass"
-[ -n "$(ctx task-scale-advisor.sh "$PROMPT")" ] && ok || no "scale advisor silent without bypass"
+[ -n "$(ctx prompt-advisor.sh "$PROMPT")" ] && ok || no "prompt advisor silent without bypass"
 
 printf '%s' "$EDIT" | bash "$DIR/mark-unrecorded.sh"
 [ -f "$GD/ENGINEOS_UNRECORDED.S1" ] && ok || no "mark-unrecorded did not flag without bypass"
@@ -62,8 +62,8 @@ printf '%s' "$EDIT" | bash "$DIR/mark-unrecorded.sh"
 [ -f "$GD/ENGINEOS_UNRECORDED.S1" ] && no "mark-unrecorded flagged under bypass" || ok
 
 # the prompt hook is the one that must SPEAK — a silent bypass is the failure mode
-printf '%s' "$(ctx task-scale-advisor.sh "$PROMPT")" | grep -q "BYPASS ACTIVE" && ok \
-  || no "scale advisor did not announce the active bypass"
+printf '%s' "$(ctx prompt-advisor.sh "$PROMPT")" | grep -q "BYPASS ACTIVE" && ok \
+  || no "prompt advisor did not announce the active bypass"
 
 # ---------- lifetime: SessionStart expires the marker ----------
 on
@@ -82,8 +82,8 @@ bash "$DIR/bypass.sh" off "$T" >/dev/null
 # Process-scoped, not cleared at SessionStart: it must bypass even with no marker.
 off
 [ -z "$(ENGINEOS_BYPASS=1 ctx route-before-change.sh "$EDIT")" ] && ok || no "routing fired under ENGINEOS_BYPASS=1"
-ENGINEOS_BYPASS=1 ctx task-scale-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" && ok \
-  || no "scale advisor did not announce ENGINEOS_BYPASS=1"
+ENGINEOS_BYPASS=1 ctx prompt-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" && ok \
+  || no "prompt advisor did not announce ENGINEOS_BYPASS=1"
 [ "$(ENGINEOS_BYPASS=1 bash "$DIR/bypass.sh" status "$T")" = "bypassed (ENGINEOS_BYPASS=1)" ] && ok \
   || no "CLI status did not name the env switch"
 
@@ -92,8 +92,8 @@ ENGINEOS_BYPASS=1 ctx task-scale-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" 
 FAKE_FLAG="$T/machine-flag"; : >"$FAKE_FLAG"
 [ -z "$(ENGINEOS_BYPASS_FLAG=$FAKE_FLAG ctx route-before-change.sh "$EDIT")" ] && ok \
   || no "routing fired under the machine-wide flag"
-ENGINEOS_BYPASS_FLAG=$FAKE_FLAG ctx task-scale-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" && ok \
-  || no "scale advisor did not announce the machine-wide flag"
+ENGINEOS_BYPASS_FLAG=$FAKE_FLAG ctx prompt-advisor.sh "$PROMPT" | grep -q "BYPASS ACTIVE" && ok \
+  || no "prompt advisor did not announce the machine-wide flag"
 [ "$(ENGINEOS_BYPASS_FLAG=$FAKE_FLAG bash "$DIR/bypass.sh" status "$T")" = "bypassed ($FAKE_FLAG)" ] && ok \
   || no "CLI status did not name the machine-wide flag"
 

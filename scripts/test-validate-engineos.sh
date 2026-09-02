@@ -29,7 +29,7 @@ group_for() {
     *"registry rules/guidance"*|*"does not match domain order"*|*"duplicate decision rule"*|*"decision rules with an empty"*|*"verification policy semantic drift"*) echo C14 ;;
     *"capabilities.json"*|*"invalid model_tier on agent"*|*"agents.json names"*) echo C15 ;;
     *"escalates_to"*|*"work_types"*|*"ADR row"*|*"duplicate intent"*|*"hook_mirrored"*|*"intent/routing mismatches"*|*"routing domains not claimed"*|*"intent drift"*|*"wave cap drift"*|*"autonomy levels"*|*"by_risk incomplete"*|*"spec-threshold drift"*) echo C16 ;;
-    *"route capability"*|*"router does not call"*|*"router must not hold"*|*"suppression data"*|*"route-escalate fixture"*|*"prompt-advisor"*|*"route-advisor"*) echo C18 ;;
+    *"route capability"*|*"router does not call"*|*"router must not hold"*|*"suppression data"*|*"route-escalate fixture"*|*"prompt-advisor"*) echo C18 ;;
     *"handoff"*) echo C19 ;;
     *"repair"*) echo C20 ;;
     *"change template"*|*"record-change contract"*|*"archived spec-link"*|*"archived change-record"*|*"change-record mirror"*) echo C21 ;;

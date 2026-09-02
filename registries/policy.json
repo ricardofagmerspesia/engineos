@@ -134,7 +134,7 @@
     "subagent_depth": 1,
     "disjoint_file_scopes": true,
     "prompt_signals": {
-      "note": "Prompt-classification EREs for kernel.sh scale (was hardcoded in hooks/task-scale-advisor.sh). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
+      "note": "Prompt-classification EREs for kernel.sh scale (were hardcoded in the UserPromptSubmit advisor before the kernel owned them). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
       "action": "\\b(add|build|create|implement|develop|refactor|migrate|port|mirror|rewrite|redesign|extract|split|backfill|integrate|scaffold|modernize)\\b",
       "substantive_action": "\\b(add|build|change|check|create|develop|document|edit|fix|implement|inspect|integrate|investigate|migrate|mirror|modernize|modify|port|refactor|remove|rename|redesign|review|rewrite|run|scaffold|split|test|update|validate|write)\\b",
       "scale": "\\b(all|every|entire|whole|across|full stack|fullstack|end.to.end|end2end|multiple|several|both|system.wide|codebase|monorepo|modules|services|endpoints|screens|pages|components|features|epic|milestone|phase|roadmap|suite)\\b",
