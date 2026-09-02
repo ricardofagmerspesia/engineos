@@ -38,12 +38,17 @@ Duplication drifts.
   userland AND Linux. No GNU-only flags, no empty regex alternations. Wire it in
   BOTH `hooks/hooks.json` (plugin) and `install.sh` (mode A) — they must match.
   Add a test.
+- **Integrity Check** (`scripts/checks/<family>.sh`): a `check_<id>()` function —
+  `check_C24`, or `check_C24b` for a sub-check of an existing one. The harness
+  (`scripts/validate-engineos.sh`) discovers it by name; nothing needs wiring.
+  Add a planted-breakage case to `scripts/test-validate-engineos.sh` naming the
+  same id — a Check with no negative case proves nothing.
 
 ## Verification (required before "done")
 
 - `hooks/test-route.sh` — routing map assertions.
 - `hooks/test-governance.sh` — change-governance marker flow.
-- `shellcheck -S error hooks/*.sh install.sh scripts/*.sh`.
+- `shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh`.
 - `jq empty` on every JSON file you touched.
 - CI (`.github/workflows/ci.yml`) runs all of the above on every PR; keep it green.
 

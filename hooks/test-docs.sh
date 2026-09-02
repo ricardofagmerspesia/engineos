@@ -4,8 +4,8 @@
 # glob everyone already runs. Three families:
 #   1 referential integrity  3 closure  4 marker budgets
 # (Family 2, hook <-> table parity, retired with hooks/routing-map.sh: guidance
-# lives only in registries/routing.json, which scripts/validate-engineos.sh C6-8
-# and C14 check directly. Ids 3 and 4 keep their numbers.)
+# lives only in registries/routing.json, which the validator's C6, C7, C8 and
+# C14 Checks read directly. Ids 3 and 4 keep their numbers.)
 # Accepted debt is declared in hooks/docs-ledger.sh, never hidden here.
 # Pure bash + grep: no jq, no node, no python.
 # Run: hooks/test-docs.sh [repo-root]
@@ -44,7 +44,7 @@ done)
 CORPUS=$( { echo CLAUDE.md; find rules agents commands skills templates -type f -name '*.md' | sort; } )
 # Reference scan adds the executable layer: a hook or generator naming an agent
 # or skill makes it reachable just as a doc does.
-REFSCAN=$( { printf '%s\n' "$CORPUS"; ls hooks/*.sh scripts/*.sh registries/*.json 2>/dev/null; } )
+REFSCAN=$( { printf '%s\n' "$CORPUS"; ls hooks/*.sh scripts/*.sh scripts/checks/*.sh registries/*.json 2>/dev/null; } )
 
 # ------------------------------------------- family 1: referential integrity
 echo "--- family 1: referential integrity"
