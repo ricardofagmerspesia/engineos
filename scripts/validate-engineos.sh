@@ -9,32 +9,51 @@
 # decision-kernel era's own checks (C16-C23): registries, kernel.sh, the
 # router agent, handoff and change-record contracts, repair and telemetry.
 #
-# Run: scripts/validate-engineos.sh     Exit: 0 all clear, 1 any violation.
+# Run: scripts/validate-engineos.sh [--only C1,C2,C17]
+# Exit: 0 selected checks clear, 1 any selected violation.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
+
+ONLY="all"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only) [ $# -ge 2 ] || { echo "--only requires a comma-separated check list" >&2; exit 2; }; ONLY="$2"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+want() {
+  [ "$ONLY" = "all" ] && return 0
+  case ",$ONLY," in *",$1,"*) return 0 ;; esac
+  return 1
+}
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); printf 'ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf 'FAIL %s\n' "$1"; }
 
-# Always-on rules are loaded on every session, so a row need not list them as
-# deferral targets. Source of truth: the "Always-on rules" @-imports in CLAUDE.md.
+# Always-on rules and the resolver's closed substantive-task policy bundle need
+# not be repeated in every row. The latter is asserted behaviorally in C18.
 ALWAYS_ON=$(sed -n 's|^@rules/\([a-z-]*\)\.md.*|\1|p' CLAUDE.md | sort -u)
+TASK_CONTRACT_RULES="gates models parallelism risk-autonomy verification"
 is_always_on() { case " $(echo "$ALWAYS_ON" | tr '\n' ' ') " in *" $1 "*) return 0 ;; esac; return 1; }
+is_task_contract_rule() { case " $TASK_CONTRACT_RULES " in *" $1 "*) return 0 ;; esac; return 1; }
 
 RULE_NAMES=$(cd rules && ls ./*.md 2>/dev/null | sed 's|^\./||; s|\.md$||')
 
 echo "== EngineOS integrity =="
 
 # ---------------------------------------------------------------- C1: tooling
+if want C1; then
 if command -v jq >/dev/null 2>&1; then
-  ok "jq present (route-before-change, mark-unrecorded, record-verify, task-scale-advisor, route-advisor need it)"
+  ok "jq present (route-before-change, mark-unrecorded, record-verify, prompt-advisor need it)"
 else
   bad "jq missing — those four hooks will exit 0 silently and routing/change-record gates will not fire"
 fi
+fi
 
 # ------------------------------------------------- C2: always-on imports exist
+if want C2; then
 if [ -z "$ALWAYS_ON" ]; then
   bad "CLAUDE.md declares no @rules/*.md always-on imports"
 else
@@ -43,8 +62,10 @@ else
   [ -z "$miss" ] && ok "always-on imports resolve ($(echo "$ALWAYS_ON" | tr '\n' ' '))" \
                  || bad "always-on imports point at missing files:$miss"
 fi
+fi
 
 # ---------------------------------- C3/C4: every rules/X.md reference resolves
+if want C3-4; then
 broken=""
 for f in CLAUDE.md rules/*.md agents/*.md skills/*/SKILL.md skills/*/references/*.md commands/*.md; do
   [ -f "$f" ] || continue
@@ -54,15 +75,17 @@ for f in CLAUDE.md rules/*.md agents/*.md skills/*/SKILL.md skills/*/references/
 done
 [ -z "$broken" ] && ok "all rules/*.md cross-references resolve" \
                  || bad "dangling rule references:$broken"
+fi
 
 # ------------------------------------------------------ C5: router row closure
 # Build the deferral graph: rule R defers to S when R's text names S.md and S is
-# not always-on. Then every router row loading R must also load S.
+# not supplied globally. Then every router row loading R must also load S.
 deferrals_of() {
   local r="$1" out=""
   for s in $RULE_NAMES; do
     [ "$s" = "$r" ] && continue
     is_always_on "$s" && continue
+    is_task_contract_rule "$s" && continue
     grep -qE "(rules/)?\`?${s}\.md" "rules/$r.md" 2>/dev/null && out="$out $s"
   done
   echo "$out"
@@ -70,6 +93,7 @@ deferrals_of() {
 
 violations=""
 row=0
+if want C5; then
 while IFS= read -r line; do
   case "$line" in
     '|'*'|'*) ;;
@@ -82,6 +106,7 @@ while IFS= read -r line; do
   row=$((row+1))
   for r in $loaded; do
     is_always_on "$r" && continue
+    is_task_contract_rule "$r" && continue
     for d in $(deferrals_of "$r"); do
       case " $(echo "$loaded" | tr '\n' ' ') " in
         *" $d "*) ;;
@@ -95,10 +120,12 @@ if [ -z "$violations" ]; then
 else
   bad "router closure rule violated:$(printf '%b' "$violations")"
 fi
+fi
 
 # ------------------------- C5b: always-on files reference only always-on rules
 # CLAUDE.md: "Always-on files ... may point only at other always-on files, at repo
 # templates, or at registries/*.json." Enforced here rather than trusted.
+if want C5b; then
 ao_viol=""
 for r in $ALWAYS_ON; do
   for s in $RULE_NAMES; do
@@ -109,6 +136,7 @@ for r in $ALWAYS_ON; do
 done
 [ -z "$ao_viol" ] && ok "always-on rules reference only always-on rules" \
                   || bad "always-on rule points at a route-loaded rule:$ao_viol"
+fi
 
 # ------------------- C6/C7/C8: guidance-string targets all exist (registry)
 # Pre-P2 these grepped hooks/routing-map.sh's echo literals; the map is now a
@@ -116,6 +144,7 @@ done
 # so the same three checks read the registry's hook_guidance strings instead.
 map=hooks/routing-map.sh
 RJSON=registries/routing.json
+if want C6-8; then
 missing_agents=""; missing_skills=""; missing_rules=""
 if command -v jq >/dev/null 2>&1 && [ -f "$RJSON" ]; then
   GUIDANCE=$(jq -r '.domains[].hook_guidance' "$RJSON")
@@ -133,8 +162,10 @@ if command -v jq >/dev/null 2>&1 && [ -f "$RJSON" ]; then
   [ -z "$missing_skills" ] && ok "guidance skills all exist" || bad "hook_guidance names missing skills:$missing_skills"
   [ -z "$missing_rules"  ] && ok "guidance rules all exist"  || bad "hook_guidance names missing rules:$missing_rules"
 fi
+fi
 
 # ------------------------------------------- C9/C10/C11: agent contract checks
+if want C9-11; then
 bad_fm=""; bad_ret=""; bad_cmd=""
 for f in agents/*.md; do
   base=$(basename "$f" .md)
@@ -157,8 +188,10 @@ done
 [ -z "$bad_fm"  ] && ok "agent frontmatter complete and name matches filename ($(ls agents/*.md | wc -l | tr -d ' ') agents)" || bad "agent frontmatter problems:$bad_fm"
 [ -z "$bad_ret" ] && ok "every agent declares the canonical Return format envelope"                                        || bad "agent return-format problems:$bad_ret"
 [ -z "$bad_cmd" ] && ok "every agent and alias has a slash command"                                                        || bad "missing slash commands:$bad_cmd"
+fi
 
 # ------------------------------------------------------- C12: skill contracts
+if want C12; then
 bad_skill=""
 for d in skills/*/; do
   s=$(basename "$d")
@@ -169,20 +202,34 @@ for d in skills/*/; do
   [ -n "$dsc" ]   || bad_skill="$bad_skill $s(no-description)"
 done
 [ -z "$bad_skill" ] && ok "every skill has SKILL.md with matching name and a description" || bad "skill problems:$bad_skill"
+fi
 
 # ----------------------------------------------- C14: registries are coherent
 # The point of registries/routing.json is that the CLAUDE.md table, the hook map
 # and the registry can no longer drift apart in silence.
+R=registries/routing.json
+D=registries/decision-rules.json
+C=registries/capabilities.json
+A=registries/agents.json
+MJ=registries/models.json
+IJ=registries/intents.json
+PJ=registries/policy.json
+KSH=scripts/kernel.sh
+REGISTRY_SELECTED=false
+for check in C14 C15 C16 C17 C18 C19 C20 C21 C22 C23; do
+  if want "$check"; then REGISTRY_SELECTED=true; break; fi
+done
+if [ "$REGISTRY_SELECTED" = "true" ]; then
 if ! command -v jq >/dev/null 2>&1; then
   bad "registry checks skipped — jq missing"
 else
+  if want C14; then
   reg_bad=""
   for f in registries/*.json; do
     jq empty "$f" >/dev/null 2>&1 || reg_bad="$reg_bad $f"
   done
   [ -z "$reg_bad" ] && ok "registries are valid JSON" || bad "malformed registries:$reg_bad"
 
-  R=registries/routing.json
   if [ -f "$R" ]; then
     # Pre-P2, two checks grepped routing-map.sh's echo literals against the
     # registry. The map is a shim now — guidance is emitted FROM the registry
@@ -221,7 +268,6 @@ else
     bad "registries/routing.json missing"
   fi
 
-  D=registries/decision-rules.json
   if [ -f "$D" ]; then
     dupes=$(jq -r '[.rules[].id] | group_by(.) | map(select(length>1)) | flatten | join(" ")' "$D")
     [ -z "$dupes" ] && ok "decision rule ids are unique" || bad "duplicate decision rule ids: $dupes"
@@ -254,13 +300,13 @@ else
   else
     bad "registries/decision-rules.json missing"
   fi
+  fi
 
   # ------------------------------------- C15: capability/agent registries
   # registries/capabilities.json + registries/agents.json (Phase 1
   # registry-kernel, docs/specs/2026-08-05-phase1-registry-kernel-design.md).
   # JSON-validity is already covered by the registries/*.json loop above.
-  C=registries/capabilities.json
-  A=registries/agents.json
+  if want C15; then
   VALID_TIERS='^(cheap|build|design|most-capable)$'
   if [ -f "$C" ]; then
     ca=""
@@ -287,6 +333,7 @@ else
   else
     bad "registries/agents.json missing"
   fi
+  fi
 
   # A capability's model_tier must agree with its bound agent's tier in
   # agents.json — the tier is declared by the agent (tier: frontmatter), and
@@ -307,10 +354,7 @@ else
   # checks are what keeps mirror and data from drifting apart in silence —
   # same discipline as routing.json above.
   # Spec: docs/specs/2026-08-06-decision-kernel-p1-policy-as-data.md
-  MJ=registries/models.json
-  IJ=registries/intents.json
-  PJ=registries/policy.json
-
+  if want C16; then
   if [ -f "$MJ" ]; then
     # escalation_order is a permutation of tiers[].id
     eo=$(jq -r '.escalation_order | sort | join(" ")' "$MJ")
@@ -534,6 +578,7 @@ else
   else
     bad "registries/policy.json missing"
   fi
+  fi
 
   # ------------------------ C17: kernel resolver + routing patterns (P2)
   # scripts/kernel.sh is the one implementation of path->domain matching;
@@ -541,7 +586,7 @@ else
   # domain. These behavioral checks replace the pre-P2 string-grepping of
   # routing-map.sh's case ladder (see C14 note above).
   # Spec: docs/specs/2026-08-06-decision-kernel-p2-resolver-api.md
-  KSH=scripts/kernel.sh
+  if want C17; then
   if [ -f "$KSH" ] && [ -f "$R" ]; then
     # C17a: every domain declares patterns and a sample fixture
     m_bad=""
@@ -584,7 +629,7 @@ else
     # would make kernel.sh scale silently mis-answer, same failure class as
     # decision-rules signals)
     ps_bad=""
-    for k in action scale spec design_strong design_weak; do
+    for k in action substantive_action scale spec design_strong design_weak; do
       s=$(jq -r --arg k "$k" '.parallelism.prompt_signals[$k] // empty' "$PJ")
       if [ -z "$s" ]; then ps_bad="$ps_bad $k(missing)"; continue; fi
       printf 'x' | grep -qE "$s" 2>/dev/null || [ $? -eq 1 ] || ps_bad="$ps_bad $k(invalid)"
@@ -594,14 +639,16 @@ else
   else
     bad "scripts/kernel.sh or registries/routing.json missing — kernel checks skipped"
   fi
+  fi
 
   # ---------------------------- C18: router agent wiring (P3)
   # scripts/kernel.sh route-escalate decides when the deterministic path is
   # not enough and a model (agents/router.md) must produce a dispatch plan.
   # Spec: docs/specs/2026-08-06-decision-kernel-p3-router-agent.md
   ROUTER_MD=agents/router.md
-  ROUTE_ADVISOR=hooks/route-advisor.sh
+  PROMPT_ADVISOR=hooks/prompt-advisor.sh
   HOOKS_JSON=hooks/hooks.json
+  if want C18; then
   if [ -f "$KSH" ] && [ -f "$IJ" ] && [ -f "$C" ] && [ -f "$PJ" ]; then
     # C18a: capability binding — pinned specifically, not just "some valid tier"
     ra=$(jq -r '.capabilities[] | select(.id=="route") | .agent' "$C")
@@ -688,16 +735,30 @@ else
     [ -z "$rf_bad" ] && ok "every policy.json.router.fixtures entry matches kernel.sh route-escalate" \
                      || bad "route-escalate fixture mismatches:$rf_bad"
 
-    # C18f: hook registration
-    if [ -x "$ROUTE_ADVISOR" ] \
-       && jq -e '[.hooks.UserPromptSubmit[].hooks[]?.command] | any(test("route-advisor"))' "$HOOKS_JSON" >/dev/null 2>&1 \
-       && grep -q 'route-escalate' "$ROUTE_ADVISOR" 2>/dev/null; then
-      ok "hooks/route-advisor.sh is executable, registered, and calls route-escalate"
+    # C18f: the hot path is one registered adapter and one deep kernel call.
+    if [ -x "$PROMPT_ADVISOR" ] \
+       && jq -e '[.hooks.UserPromptSubmit[].hooks[]?.command] as $h | ($h|length)==1 and ($h[0]|test("prompt-advisor"))' "$HOOKS_JSON" >/dev/null 2>&1 \
+       && grep -q 'resolve-task' "$PROMPT_ADVISOR" 2>/dev/null; then
+      ok "hooks/prompt-advisor.sh is the single registered prompt adapter and calls resolve-task"
     else
-      bad "route-advisor.sh registration/wiring incomplete"
+      bad "prompt-advisor.sh registration/wiring incomplete or UserPromptSubmit has duplicate passes"
+    fi
+
+    # C18g: substantive routes receive the complete transitive policy closure;
+    # pure questions do not pay for it.
+    policy_got=$(bash "$KSH" resolve-task --prompt "update the prose in this document" 2>/dev/null \
+      | jq -r '.task_contract.policy_rules | map(select(. != "subagents")) | sort | join(" ")')
+    policy_want=$(printf '%s\n' $TASK_CONTRACT_RULES | sort | tr '\n' ' ' | sed 's/ $//')
+    pure_policy=$(bash "$KSH" resolve-task --prompt "what is the weather" 2>/dev/null \
+      | jq -r '.task_contract.policy_rules | length')
+    if [ "$policy_got" = "$policy_want" ] && [ "$pure_policy" = "0" ]; then
+      ok "resolve-task supplies the closed substantive policy bundle and keeps pure questions lean"
+    else
+      bad "resolve-task policy closure drift (got='$policy_got' want='$policy_want' pure=$pure_policy)"
     fi
   else
     bad "kernel.sh, intents.json, capabilities.json or policy.json missing — router checks skipped"
+  fi
   fi
 
   # ------------- C19: handoff template <-> registry section contract (P4)
@@ -706,6 +767,7 @@ else
   # row is the checked human mirror. Same prose/data discipline as C16-C18.
   # Spec: docs/specs/2026-08-06-decision-kernel-p4-handoff-frontmatter.md
   TPL=templates/handoff.md
+  if want C19; then
   if [ -f "$IJ" ] && [ -f "$TPL" ]; then
     # C19a: the contract is data, not prose — and the prose list stays dead
     h_bad=""
@@ -757,6 +819,7 @@ else
   else
     bad "intents.json or templates/handoff.md missing — handoff checks skipped"
   fi
+  fi
 
   # ------------- C20: check-level repair policy — data, ladder, mirrors (P5)
   # The check-level fix loop's bound ("2 fix attempts, 1 escalation, then stop
@@ -765,6 +828,7 @@ else
   # prose homes that used to say only "until clean". Same discipline as
   # C16-C19 applied to a fourth prose/data pair.
   # Spec: docs/specs/2026-08-06-decision-kernel-p5-repair-loop.md
+  if want C20; then
   if [ -f "$PJ" ] && [ -x "$KSH" ]; then
     # C20a: the repair block is well-formed
     r_bad=""
@@ -830,6 +894,7 @@ else
   else
     bad "policy.json or kernel.sh missing — repair checks skipped"
   fi
+  fi
 
   # ------------- C21: change-record contract — template, archive, mirrors (P6)
   # The change record is where delivered work claims conformance with its spec
@@ -838,6 +903,7 @@ else
   # instances are the checked claims; the prose homes are checked mirrors.
   # Spec: docs/specs/2026-08-06-decision-kernel-p6-spec-conformance.md
   CT=.engineos/changes/_template.md
+  if want C21; then
   if [ -f "$IJ" ] && [ -f "$CT" ]; then
     RC='.intents[] | select(.id=="record-change")'
 
@@ -940,12 +1006,14 @@ else
   else
     bad "intents.json or .engineos/changes/_template.md missing — change-record checks skipped"
   fi
+  fi
 
   # ------------- C22: telemetry — policy + plumbing, never the event data (P7)
   # Events live in .git/ on developer machines; a CI clone has none by
   # construction, so this validates the registry and the wiring only.
   # Spec: docs/specs/2026-08-06-decision-kernel-p7-telemetry.md
   TSH=scripts/telemetry.sh
+  if want C22; then
   if [ -f "$PJ" ] && [ -x "$TSH" ]; then
     # C22a: the telemetry block is well-formed
     t_bad=""
@@ -991,7 +1059,8 @@ else
     w_bad=""
     while IFS=$'\t' read -r eid wb; do
       grep -q 'telemetry.sh' "$wb" || w_bad="$w_bad [$wb:does-not-call-telemetry.sh]"
-      grep -q -- "--event $eid" "$wb" || w_bad="$w_bad [$wb:missing-literal---event-$eid]"
+      grep -qE -- "--event[[:space:]]+$eid([[:space:]]|$)" "$wb" \
+        || w_bad="$w_bad [$wb:missing-literal---event-$eid]"
       grep -A2 'telemetry.sh" append' "$wb" | grep -qE '\$PROMPT|"\$INPUT"' \
         && w_bad="$w_bad [$wb:append-invocation-references-prompt-text]"
     done < <(jq -r '.telemetry.events[] | [.id, .written_by] | @tsv' "$PJ")
@@ -1006,6 +1075,7 @@ else
   else
     bad "policy.json or telemetry.sh missing — telemetry checks skipped"
   fi
+  fi
 
   # ------------- C23: constitution preamble mirrors (P8, epic close)
   # CLAUDE.md's routing preamble and docs/COMPATIBILITY.md's always-on
@@ -1013,6 +1083,7 @@ else
   # applied one layer out: the registry/import list is truth, the sentence is
   # the checked mirror.
   # Spec: docs/specs/2026-08-06-decision-kernel-p8-contradiction-cleanup.md
+  if want C23; then
   if [ -f "$R" ]; then
     # C23a: the precedence-chain sentence names every routing.json domain,
     # in registry order
@@ -1040,14 +1111,18 @@ else
   else
     bad "registries/routing.json missing — constitution preamble checks skipped"
   fi
+  fi
+fi
 fi
 
 # ------------------------------------------------------------ C13: no empties
+if want C13; then
 empties=""
 for f in rules/*.md agents/*.md skills/*/SKILL.md; do
   [ -s "$f" ] || empties="$empties $f"
 done
 [ -z "$empties" ] && ok "no empty rule/agent/skill documents" || bad "empty documents:$empties"
+fi
 
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"

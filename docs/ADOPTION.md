@@ -61,7 +61,7 @@ touch ~/.claude/engineos.bypass       # machine-wide, sticky until deleted
 ```
 
 While any of them is on, every EngineOS hook exits immediately — except
-`task-scale-advisor.sh`, which announces `BYPASS ACTIVE` each turn so an unguarded
+`prompt-advisor.sh`, which announces `BYPASS ACTIVE` each turn so an unguarded
 session never looks guarded. The constitution import in `~/.claude/CLAUDE.md`
 stays (nothing can unload it); the command instructs the model to treat the rules
 as not applicable. Nuclear option: comment out the `@…/engineos/CLAUDE.md` import.

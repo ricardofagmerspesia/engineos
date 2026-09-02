@@ -64,6 +64,12 @@ jobs:
       - name: Task-scale advisor tests
         run: bash hooks/test-task-scale.sh
 
+      - name: Unified prompt advisor tests
+        run: bash hooks/test-prompt-advisor.sh
+
+      - name: Runtime performance budgets
+        run: bash scripts/bench-runtime.sh
+
       - name: Standard-layout scaffold tests
         run: bash hooks/test-layout.sh
 

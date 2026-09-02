@@ -6,25 +6,82 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 pass=0; fail=0
+JOBS="${ENGINEOS_TEST_JOBS:-4}"
+case "$JOBS" in ''|*[!0-9]*|0) echo "ENGINEOS_TEST_JOBS must be a positive integer" >&2; exit 2 ;; esac
+RESULT_DIR=$(mktemp -d) || exit 1
+trap 'rm -rf "$RESULT_DIR"' EXIT
+BATCH_PIDS=()
+BATCH_RESULTS=()
+CASE_SEQ=0
 
-# case <description> <expected-substring-in-output> <mutation-shell>
-# The mutation runs with CWD = a fresh copy of the repo.
-case_() {
-  local desc="$1" want="$2" mutate="$3" tmp out rc
+group_for() {
+  case "$1" in
+    *"dangling rule references"*) echo C3-4 ;;
+    *"always-on imports"*) echo C2 ;;
+    *"router closure"*) echo C5 ;;
+    *"always-on rule points"*) echo C5b ;;
+    *"hook_guidance"*) echo C6-8 ;;
+    *"agent frontmatter models unknown"*) echo C16 ;;
+    *"agent frontmatter"*|*"agent return-format"*|*"missing slash commands"*) echo C9-11 ;;
+    *"skill problems"*) echo C12 ;;
+    *"empty documents"*) echo C13 ;;
+    *"sample_path"*|*"routing domains missing patterns"*|*"pure shim"*|*"prompt_signals"*) echo C17 ;;
+    *"registry rules/guidance"*|*"does not match domain order"*|*"duplicate decision rule"*|*"decision rules with an empty"*|*"verification policy semantic drift"*) echo C14 ;;
+    *"capabilities.json"*|*"invalid model_tier on agent"*|*"agents.json names"*) echo C15 ;;
+    *"escalates_to"*|*"work_types"*|*"ADR row"*|*"duplicate intent"*|*"hook_mirrored"*|*"intent/routing mismatches"*|*"routing domains not claimed"*|*"intent drift"*|*"wave cap drift"*|*"autonomy levels"*|*"by_risk incomplete"*|*"spec-threshold drift"*) echo C16 ;;
+    *"route capability"*|*"router does not call"*|*"router must not hold"*|*"suppression data"*|*"route-escalate fixture"*|*"prompt-advisor"*|*"route-advisor"*) echo C18 ;;
+    *"handoff"*) echo C19 ;;
+    *"repair"*) echo C20 ;;
+    *"change template"*|*"record-change contract"*|*"archived spec-link"*|*"archived change-record"*|*"change-record mirror"*) echo C21 ;;
+    *"telemetry"*) echo C22 ;;
+    *"constitution preamble"*|*"retired routing-map"*) echo C23 ;;
+    *) echo all ;;
+  esac
+}
+
+# run_case <description> <expected-substring> <mutation> <result-file>
+run_case() {
+  local desc="$1" want="$2" mutate="$3" result="$4" tmp out rc group
   tmp=$(mktemp -d) || return 1
-  # -a would also copy .git; the validator never reads it and the copy is slower.
   ( cd "$ROOT" && tar --exclude=.git -cf - . ) | ( cd "$tmp" && tar -xf - )
   ( cd "$tmp" && eval "$mutate" ) >/dev/null 2>&1
-  out=$(cd "$tmp" && bash scripts/validate-engineos.sh 2>&1); rc=$?
+  group=$(group_for "$want")
+  out=$(cd "$tmp" && bash scripts/validate-engineos.sh --only "$group" 2>&1); rc=$?
   rm -rf "$tmp"
 
   if [ "$rc" -eq 0 ]; then
-    fail=$((fail+1)); printf 'FAIL %s — validator exited 0, expected non-zero\n' "$desc"; return
+    { echo FAIL; printf 'FAIL %s — validator exited 0, expected non-zero\n' "$desc"; } > "$result"
+  else
+    case "$out" in
+      *"$want"*) { echo PASS; printf 'ok   %s\n' "$desc"; } > "$result" ;;
+      *) { echo FAIL; printf 'FAIL %s — no "%s" in output:\n%s\n' "$desc" "$want" "$out"; } > "$result" ;;
+    esac
   fi
-  case "$out" in
-    *"$want"*) pass=$((pass+1)); printf 'ok   %s\n' "$desc" ;;
-    *) fail=$((fail+1)); printf 'FAIL %s — no "%s" in output:\n%s\n' "$desc" "$want" "$out" ;;
-  esac
+}
+
+flush_batch() {
+  local i kind
+  for i in "${!BATCH_PIDS[@]}"; do wait "${BATCH_PIDS[$i]}" || true; done
+  for i in "${!BATCH_RESULTS[@]}"; do
+    IFS= read -r kind < "${BATCH_RESULTS[$i]}" || kind=FAIL
+    tail -n +2 "${BATCH_RESULTS[$i]}"
+    if [ "$kind" = PASS ]; then pass=$((pass+1)); else fail=$((fail+1)); fi
+  done
+  BATCH_PIDS=()
+  BATCH_RESULTS=()
+}
+
+# case <description> <expected-substring-in-output> <mutation-shell>
+# Cases run in bounded parallel batches; every mutation still gets a private
+# copy, so planted breakage cannot leak between checks.
+case_() {
+  local desc="$1" want="$2" mutate="$3" tmp out rc group
+  CASE_SEQ=$((CASE_SEQ + 1))
+  result="$RESULT_DIR/$CASE_SEQ"
+  run_case "$desc" "$want" "$mutate" "$result" &
+  BATCH_PIDS+=("$!")
+  BATCH_RESULTS+=("$result")
+  [ "${#BATCH_PIDS[@]}" -lt "$JOBS" ] || flush_batch
 }
 
 echo "== validate-engineos negative tests =="
@@ -35,7 +92,7 @@ case_ "dangling rule reference is caught" \
 
 case_ "deleted always-on rule is caught" \
       "always-on imports point at missing files" \
-      "rm rules/memory.md"
+      "rm rules/context.md"
 
 case_ "router row dropping a deferred rule is caught" \
       "router closure rule violated" \
@@ -337,12 +394,12 @@ p='registries/policy.json'; d=json.load(open(p))
 d['router']['fixtures'][0]['escalate'] = not d['router']['fixtures'][0]['escalate']
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ "route-advisor.sh removed from hooks.json is caught" \
-      "route-advisor" \
+case_ "prompt-advisor.sh removed from hooks.json is caught" \
+      "prompt-advisor" \
       "python3 -c \"
 import json
 p='hooks/hooks.json'; d=json.load(open(p))
-d['hooks']['UserPromptSubmit'][0]['hooks'] = [h for h in d['hooks']['UserPromptSubmit'][0]['hooks'] if 'route-advisor' not in h['command']]
+d['hooks']['UserPromptSubmit'][0]['hooks'] = [h for h in d['hooks']['UserPromptSubmit'][0]['hooks'] if 'prompt-advisor' not in h['command']]
 json.dump(d,open(p,'w'),indent=2)\""
 
 # ---- C19: handoff template <-> registry section contract (P4) ----
@@ -523,13 +580,13 @@ for e in d['telemetry']['events']:
     if e['id']=='decision-rules': e['sample']['rules']=['two words']
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ "the telemetry.sh call removed from gate-advisor.sh is caught" \
+case_ "the route telemetry event removed from prompt-advisor.sh is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak '/telemetry.sh/d' hooks/gate-advisor.sh"
+      "sed -i.bak 's|--event route|--event route-missing|' hooks/prompt-advisor.sh"
 
-case_ "route-advisor's append reading \$PROMPT instead of \$TDATA is caught" \
+case_ "prompt-advisor's append reading \$PROMPT instead of \$ROUTE_DATA is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|--data \"\$TDATA\"|--data \"\$PROMPT\"|' hooks/route-advisor.sh"
+      "sed -i.bak 's|--data \"\$ROUTE_DATA\"|--data \"\$PROMPT\"|' hooks/prompt-advisor.sh"
 
 case_ "ensure-project-layout's registry read replaced with a hardcoded retention window is caught" \
       "telemetry wiring problems" \
@@ -541,14 +598,15 @@ case_ "a reordered precedence domain in CLAUDE.md's sentence is caught" \
       "constitution preamble mirror problems" \
       "sed -i.bak 's|security → test → backend|test → security → backend|' CLAUDE.md"
 
-case_ "gates.md dropped from COMPATIBILITY.md's always-on enumeration is caught" \
+case_ "context.md dropped from COMPATIBILITY.md's always-on enumeration is caught" \
       "constitution preamble mirror problems" \
-      "sed -i.bak 's|\`gates.md\`) load|) load|' docs/COMPATIBILITY.md"
+      "sed -i.bak 's|\`context.md\`) load|) load|' docs/COMPATIBILITY.md"
 
 case_ "the retired routing-map.sh authority claim restored in CLAUDE.md is caught" \
       "reintroduced the retired routing-map.sh authority claim" \
       "sed -i.bak 's|is a compatibility shim kept only for its function|is authoritative for file-pattern routing; it is a shim kept only for its function|' CLAUDE.md"
 
+flush_batch
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

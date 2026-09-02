@@ -168,8 +168,7 @@ These run on their own. Know what they do and how to respond:
 | `stop-verify` | when finishing | if it blocks: run lint + typecheck, show output. Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
 | `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) |
-| `task-scale-advisor` | on your prompt | nothing — non-blocking nudge to fan out + pick the right model tier on big/spec/design prompts |
-| `gate-advisor` | on your prompt | nothing — non-blocking; read the matched decision rules and their required artifacts before claiming done |
+| `prompt-advisor` | on your prompt | nothing — one non-blocking task contract combining route, scale, model tier, policy loads and matched decision rules |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
 
@@ -199,9 +198,9 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 
 ## 7. Rules — the standards being enforced
 
-- **Always-on:** `rules/base.md`, `security.md`, `git.md`, `memory.md`,
-  `parallelism.md`, `models.md`, `subagents.md`, `verification.md`,
-  `risk-autonomy.md`, `context.md`, `gates.md`.
+- **Always-on:** `rules/base.md`, `security.md`, `git.md`, `context.md`.
+- **Task-contract-loaded:** `memory.md`, `parallelism.md`, `models.md`,
+  `subagents.md`, `verification.md`, `risk-autonomy.md`, `gates.md`.
 - **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
   `llm-apps.md`, `testing.md` (test craft, loaded when tests are on), `data.md`,
   `observability.md`, `memory.md`.
@@ -218,7 +217,7 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 ```
 open a record            → cp .engineos/changes/_template.md .engineos/changes/<date>-<slug>.md  (status: active)
    ↓ classify risk + autonomy (rules/risk-autonomy.md), which sets the gates that apply (rules/gates.md)
-   ↓ do the work (routing + gate-advisor active)
+   ↓ do the work (unified prompt advisor + edit routing active)
 verify                   → the final gate: lint + typecheck, output shown (tests too, only if in scope)  (Validation gate)
 release-ready?           → named owner + rollback path + residual risks accepted (Release gate — required to ship)
 record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/<domain>/

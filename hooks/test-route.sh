@@ -107,5 +107,29 @@ exclcheck "EngineOS's own hooks/ file excluded"      "$DIR/routing-map.sh"      
 exclcheck "EngineOS's own docs/ file excluded"       "$(cd "$DIR/.." && pwd)/docs/x.ts"   excluded
 exclcheck ".engineos/ exclusion stays generic"       "/some/project/.engineos/changes/x.ts" excluded
 
+# Session cache: the same path reuses one entry; a buster produces a distinct
+# key, proving invalidation does not require deleting or mutating source files.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/src"
+CACHE_PAYLOAD=$(jq -nc --arg f "$T/src/Button.tsx" --arg c "$T" \
+  '{tool_input:{file_path:$f},cwd:$c,session_id:"route-cache"}')
+FIRST=$(printf '%s' "$CACHE_PAYLOAD" | bash "$HOOK" | jq -r '.hookSpecificOutput.additionalContext // ""')
+SECOND=$(printf '%s' "$CACHE_PAYLOAD" | bash "$HOOK" | jq -r '.hookSpecificOutput.additionalContext // ""')
+CACHE_DIR="$T/.git/engineos-route-cache"
+if [ "$FIRST" = "$SECOND" ] && [ -n "$FIRST" ] \
+   && [ "$(find "$CACHE_DIR" -type f -name '*.route' 2>/dev/null | wc -l | tr -d ' ')" = "1" ]; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1)); echo "FAIL: repeated route should reuse one session cache entry"
+fi
+printf '%s' "$CACHE_PAYLOAD" | ENGINEOS_ROUTE_CACHE_BUSTER=changed bash "$HOOK" >/dev/null
+if [ "$(find "$CACHE_DIR" -type f -name '*.route' 2>/dev/null | wc -l | tr -d ' ')" = "2" ]; then
+  pass=$((pass+1))
+else
+  fail=$((fail+1)); echo "FAIL: route cache buster should create an invalidated entry"
+fi
+rm -rf "$T"
+
 echo "---"; echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

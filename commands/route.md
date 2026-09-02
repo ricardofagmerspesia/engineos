@@ -39,7 +39,7 @@ route and stop.
 2. Dispatch the `router` agent via the Task tool with `model: opus`, passing
    `$ARGUMENTS` as the request. **Explicit invocation always dispatches**, even
    when `escalate` is `false` — the user asked for a plan, and the fast path in
-   `hooks/route-advisor.sh` is an automation default, not a refusal. When
+   `hooks/prompt-advisor.sh` is an automation default, not a refusal. When
    `escalate` is `false`, say so in one line first, so the user can see the
    dispatch was optional.
 3. Print, in this order:

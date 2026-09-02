@@ -1,6 +1,6 @@
 # Context Rules — always on
 
-`rules/memory.md` says where knowledge lives. This file says what to load into a
+The memory policy says where knowledge lives. This file says what to load into a
 given turn, and what to leave out. Context is a budget, not a bucket.
 
 ## The operating rule
@@ -21,7 +21,7 @@ imprecise, and it has crowded out the context it actually needed.
 
 When the budget binds, drop from the bottom. Layer 1 never gets dropped; if it
 would have to, the task is too big for one unit and belongs in waves
-(`rules/parallelism.md`).
+(see the parallel-work policy when it is loaded).
 
 ## Rules
 
@@ -34,7 +34,7 @@ would have to, the task is too big for one unit and belongs in waves
 - DO summarize history rather than replay it. Keep decisions and their reasons;
   drop the search that found nothing.
 - DO re-read before relying on something you learned many turns ago. Memory of a
-  file is not the file — `rules/memory.md`'s recall caveat applies to your own
+  file is not the file — the memory policy's recall caveat applies to your own
   working memory too.
 - DON'T load a rule the route did not name "just in case". The router's load list
   is closed by design (`CLAUDE.md`); adding to it silently is how the closure

@@ -137,7 +137,7 @@ Status semantics — pick the worst that applies, never round up to OK:
 | Status | Means |
 |---|---|
 | `OK` | Done; every check you ran passed. |
-| `DEGRADED` | Done, but with caveats, warnings, or partial coverage. |
+| `DEGRADED` | Done, but the work you delivered carries a caveat you could not clear. |
 | `CRITICAL` | Findings that block merge or release (AUDIT mode). |
 | `BLOCKED` | Could not proceed — missing input, permission, or scope. |
 | `FAILED` | Attempted and failed. Say what failed and what you tried. |
@@ -146,3 +146,8 @@ Status semantics — pick the worst that applies, never round up to OK:
 defect — see always-on `superpowers:verification-before-completion`. Never report
 `OK` for work you did not verify, and never omit a unit you were given but did
 not complete: list it under `out_of_scope` or `next_actions`.
+
+`DEGRADED` speaks about the work INSIDE your brief. A unit that was never
+yours - deferred to another ticket, another agent, or a later wave - is not
+degradation: list it under `out_of_scope` or `next_actions` and report `OK`
+when everything you owned is done and verified.

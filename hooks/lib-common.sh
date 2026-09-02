@@ -12,7 +12,8 @@ find_up() {
   local d="$1" prev=""; shift
   while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
     for f in "$@"; do [ -e "$d/$f" ] && { echo "$d"; return 0; }; done
-    prev="$d"; d=$(dirname "$d")
+    prev="$d"
+    case "$d" in */*) d="${d%/*}"; [ -n "$d" ] || d="/" ;; *) d="." ;; esac
   done
   return 1
 }
@@ -23,7 +24,8 @@ find_up_file() {
   local d="$1" name="$2" prev=""
   while [ "$d" != "/" ] && [ "$d" != "$prev" ] && [ -n "$d" ]; do
     [ -e "$d/$name" ] && { echo "$d/$name"; return 0; }
-    prev="$d"; d=$(dirname "$d")
+    prev="$d"
+    case "$d" in */*) d="${d%/*}"; [ -n "$d" ] || d="/" ;; *) d="." ;; esac
   done
   return 1
 }
