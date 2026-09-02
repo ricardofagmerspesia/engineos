@@ -12,7 +12,7 @@
 #   run_id        string, groups entries from the same run
 #   capability_id string, matches an id in registries/capabilities.json
 #   agent         string or null, matches an agent name in registries/agents.json
-#   model_tier    string, one of rules/models.md's four tier names
+#   model_tier    string, a tier id from registries/models.json
 #   status        "OK" | "BLOCKED" | "FAILED" | "DEGRADED" — the kernel's own
 #                 return-envelope vocabulary (rules/parallelism.md), never a
 #                 second status vocabulary
@@ -34,10 +34,23 @@
 set -euo pipefail
 
 VALID_STATUSES="OK BLOCKED FAILED DEGRADED"
-# Hyphenated slug of rules/models.md's tier names (its "most capable" table
-# cell has a space; a space-containing token would silently break in_list's
-# word-splitting for-loop below, so the identifier form is always hyphenated).
-VALID_TIERS="cheap build design most-capable"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MODELS_FILE="$ROOT/registries/models.json"
+
+# registries/models.json is the source of truth for the tier vocabulary
+# (rules/models.md's table is its human mirror). Read on demand rather than
+# copied into a constant here: a second copy drifts the moment a tier is added
+# or rebound, and this file would keep accepting a tier the kernel no longer
+# knows. Tier ids are hyphenated identifiers ("most-capable"), never the table's
+# spaced prose — a space-containing token would silently break in_list's
+# word-splitting for-loop below.
+#
+# No new degradation path: every caller passes the jq guard first, and the whole
+# script already refuses to run without jq.
+valid_tiers() {
+  jq -r '[.tiers[].id] | join(" ")' "$MODELS_FILE"
+}
 
 usage() {
   echo "usage: $0 append <file> --run-id ID --capability-id ID [--agent NAME] --model-tier TIER --status STATUS --tokens-in N --tokens-out N --duration-ms N [--note TEXT] [--timestamp TS]" >&2
@@ -64,6 +77,7 @@ is_nonneg_int() {
 cmd_append() {
   local file="$1"; shift
   command -v jq >/dev/null 2>&1 || { echo "jq required" >&2; exit 1; }
+  [ -f "$MODELS_FILE" ] || { echo "no models registry at $MODELS_FILE" >&2; exit 1; }
 
   local run_id="" capability_id="" agent_val="" agent_set=0 model_tier="" status=""
   local tokens_in="" tokens_out="" duration_ms="" note_val="" note_set=0 timestamp=""
@@ -92,7 +106,8 @@ cmd_append() {
     && [ -n "$tokens_in" ] && [ -n "$tokens_out" ] && [ -n "$duration_ms" ] || usage
 
   in_list "$status" "$VALID_STATUSES" || { echo "invalid status: $status (must be one of: $VALID_STATUSES)" >&2; exit 1; }
-  in_list "$model_tier" "$VALID_TIERS" || { echo "invalid model_tier: $model_tier (must be one of: $VALID_TIERS)" >&2; exit 1; }
+  local tiers; tiers="$(valid_tiers)"
+  in_list "$model_tier" "$tiers" || { echo "invalid model_tier: $model_tier (must be one of: $tiers)" >&2; exit 1; }
   is_nonneg_int "$tokens_in"    || { echo "--tokens-in must be a non-negative integer, got: $tokens_in" >&2; exit 1; }
   is_nonneg_int "$tokens_out"   || { echo "--tokens-out must be a non-negative integer, got: $tokens_out" >&2; exit 1; }
   is_nonneg_int "$duration_ms" || { echo "--duration-ms must be a non-negative integer, got: $duration_ms" >&2; exit 1; }
