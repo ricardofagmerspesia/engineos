@@ -476,7 +476,7 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "requires_dispatch_plan": true,
-      "note": "The router agent runs scripts/kernel.sh route-escalate and risk FIRST and reasons only about the residue: intent tiebreaks the notes do not settle mechanically, scope decomposition against real files, and wave grouping. It returns a dispatch plan; it never dispatches and never edits. Tier is design per registries/models.json work type architecture, which covers task decomposition and fan-out planning. The deterministic path needs no agent at all — hooks/route-advisor.sh emits the kernel's answer directly when route-escalate reports escalate=false."
+      "note": "The router agent runs scripts/kernel.sh route-escalate and risk FIRST and reasons only about the residue: intent tiebreaks the notes do not settle mechanically, scope decomposition against real files, and wave grouping. It returns a dispatch plan; it never dispatches and never edits. Tier is design per registries/models.json work type architecture, which covers task decomposition and fan-out planning. The deterministic path needs no agent at all — hooks/prompt-advisor.sh emits the kernel's answer directly when route-escalate reports escalate=false."
     }
   ]
 }

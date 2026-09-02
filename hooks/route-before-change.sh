@@ -12,38 +12,24 @@
 # only case to add it — verify in a live session before changing this.
 set -uo pipefail
 
-INPUT=$(cat)
-command -v jq >/dev/null 2>&1 || exit 0
-
 DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=hooks/lib-common.sh
 . "$DIR/lib-common.sh"
-# shellcheck source=hooks/bypass.sh
-. "$DIR/bypass.sh"
 
 # Parse the envelope once; edits often fire this hook repeatedly in one turn.
-FILE=""
-CWD=""
-SID="nosession"
-{
-  IFS= read -r -d '' FILE || true
-  IFS= read -r -d '' CWD || true
-  IFS= read -r -d '' SID || true
-} < <(printf '%s' "$INPUT" | jq -j \
-  '(.tool_input.file_path // ""), "\u0000", (.cwd // ""), "\u0000", (.session_id // "nosession"), "\u0000"' \
-  2>/dev/null)
+hook_read_envelope
 
-[ -z "$FILE" ] && exit 0
+[ -z "$HOOK_FILE" ] && exit 0
 
 KERNEL="$DIR/../scripts/kernel.sh"
-case "$FILE" in */*) START="${FILE%/*}"; [ -n "$START" ] || START="/" ;; *) START="." ;; esac
+case "$HOOK_FILE" in */*) START="${HOOK_FILE%/*}"; [ -n "$START" ] || START="/" ;; *) START="." ;; esac
 
 # Resolve repo root + git dir with one git process and reuse both values for
 # bypass, cache placement and the change-record reminder.
 REPO=""
 CACHE_GITDIR=""
 REPO_PREFIX=""
-GIT_INFO=$(git -C "${CWD:-$START}" rev-parse --show-toplevel --absolute-git-dir --show-prefix 2>/dev/null) || GIT_INFO=""
+GIT_INFO=$(git -C "${HOOK_CWD:-$START}" rev-parse --show-toplevel --absolute-git-dir --show-prefix 2>/dev/null) || GIT_INFO=""
 if [ -n "$GIT_INFO" ]; then
   {
     IFS= read -r REPO || true
@@ -63,12 +49,12 @@ CACHE_OUTPUT_FILE=""
 if [ -n "$CACHE_GITDIR" ]; then
   if ROUTING_SIG=$(stat -f '%m-%z' "$DIR/../registries/routing.json" 2>/dev/null); then :
   else ROUTING_SIG=$(stat -c '%Y-%s' "$DIR/../registries/routing.json" 2>/dev/null || printf unknown); fi
-  case "$SID" in *[!A-Za-z0-9._-]*) SAFE_SID=$(printf '%s' "$SID" | tr -c 'A-Za-z0-9._-' '_') ;; *) SAFE_SID="$SID" ;; esac
+  case "$HOOK_SID" in *[!A-Za-z0-9._-]*) SAFE_SID=$(printf '%s' "$HOOK_SID" | tr -c 'A-Za-z0-9._-' '_') ;; *) SAFE_SID="$HOOK_SID" ;; esac
   CACHE_DIR="$CACHE_GITDIR/engineos-route-cache"
   CACHE_REL=""
-  case "$FILE" in
-    "$REPO"/*) CACHE_REL=${FILE#"$REPO"/} ;;
-    "${CWD%/}"/*) CACHE_REL="${REPO_PREFIX}${FILE#"${CWD%/}"/}" ;;
+  case "$HOOK_FILE" in
+    "$REPO"/*) CACHE_REL=${HOOK_FILE#"$REPO"/} ;;
+    "${HOOK_CWD%/}"/*) CACHE_REL="${REPO_PREFIX}${HOOK_FILE#"${HOOK_CWD%/}"/}" ;;
   esac
   if [ -n "$CACHE_REL" ]; then
     # Never let a non-normalized tool path escape the private cache tree.
@@ -82,7 +68,7 @@ fi
 if [ -n "$CACHE_FILE" ] && [ -s "$CACHE_FILE" ]; then
   IFS= read -r GUIDE < "$CACHE_FILE" || GUIDE=""
 else
-  GUIDE=$("$KERNEL" route-path "$FILE" 2>/dev/null \
+  GUIDE=$("$KERNEL" route-path "$HOOK_FILE" 2>/dev/null \
     | jq -r 'if (.excluded // false) then "__ENGINEOS_EXCLUDED__" else (.hook_guidance // "") end' \
       2>/dev/null) || GUIDE=""
   if [ -n "$CACHE_FILE" ]; then
@@ -109,7 +95,7 @@ fi
 # a linked worktree's ".git" is a file, not a directory, so string-gluing
 # "$repo/.git" breaks there.
 CHANGE_NOTE=""
-case "$FILE" in
+case "$HOOK_FILE" in
   *.ts|*.tsx|*.js|*.jsx|*.py|*.go|*.rs|*.sql)
     if [ -n "$REPO" ]; then
       if [ -d "$REPO/.engineos/changes" ] && ! grep -lq '^status:[[:space:]]*active' "$REPO"/.engineos/changes/*.md 2>/dev/null; then
@@ -132,8 +118,7 @@ if [ -z "$PROJ_NOTE" ] && [ -z "$CHANGE_NOTE" ] \
 fi
 
 MSG="[router] ${GUIDE:-base.md+git.md only}${PROJ_NOTE}${CHANGE_NOTE}"
-OUTPUT=$(jq -cn --arg c "$MSG" \
-  '{hookSpecificOutput:{hookEventName:"PreToolUse", additionalContext:$c}}')
+OUTPUT=$(hook_context PreToolUse "$MSG")
 printf '%s\n' "$OUTPUT"
 if [ -z "$PROJ_NOTE" ] && [ -z "$CHANGE_NOTE" ] && [ -n "$CACHE_OUTPUT_FILE" ]; then
   OUTPUT_TMP="$CACHE_OUTPUT_FILE.$$"

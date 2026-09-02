@@ -67,6 +67,8 @@ fi
 # runner_detect <root_dir> -> sets globals RUN and EXEC based on the lockfile
 # present at root_dir (pnpm > yarn > npm). One consistent form ("pnpm run" /
 # "yarn run" / "npm run") used by every caller.
+# hooks/lib-runner.sh wraps this as the npm-family half of its runner seam; a
+# hook that needs the Nx-vs-package-manager choice sources that file too.
 runner_detect() {
   local root="$1"
   if   [ -f "$root/pnpm-lock.yaml" ]; then RUN="pnpm run"; EXEC="pnpm exec"
@@ -107,4 +109,117 @@ git_dir() {
 # repo_root <cwd> -> echoes the top-level working tree dir for cwd.
 repo_root() {
   git -C "$1" rev-parse --show-toplevel 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Hook envelope
+#
+# Everything below is the part of a hook that is not its decision: reading the
+# payload, deciding whether EngineOS is even on, emitting context back to the
+# harness, and recording what happened. Each hook used to carry its own copy.
+# ---------------------------------------------------------------------------
+
+# Absolute dir of this library, resolved from BASH_SOURCE rather than $0 so it
+# is right however the sourcing hook was invoked — hook_telemetry reaches
+# scripts/telemetry.sh through it.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The bypass switch travels with the library: sourcing lib-common.sh is all a
+# hook needs to call engineos_bypass_active. bypass.sh defines functions and
+# ENGINEOS_BYPASS_FLAG, and sets `set -uo pipefail` — every hook here opens with
+# those same options, so the inherited setting is a no-op rather than a
+# surprise. Its CLI block is guarded on BASH_SOURCE[0] = $0 and never fires when
+# the file is sourced.
+# shellcheck source=hooks/bypass.sh
+. "$LIB_DIR/bypass.sh"
+
+# hook_read_envelope -> read the harness payload from stdin ONCE into HOOK_INPUT
+# and decode it in a single jq pass, setting:
+#   HOOK_CWD HOOK_SID HOOK_PROMPT HOOK_FILE HOOK_TOOL HOOK_TRANSCRIPT
+#   HOOK_STOP_ACTIVE
+#
+# No jq -> exit 0. Hooks are non-blocking by design and none of them can decode a
+# payload without it, so staying silent beats guessing. The two hooks that still
+# do useful work without jq (stop-verify.sh, ensure-project-layout.sh) keep their
+# own fallback decode and deliberately do not call this.
+#
+# NUL delimiters keep tabs, newlines and quotes inside a prompt intact — no eval,
+# no lossy shell requoting. A payload jq cannot parse yields no fields at all,
+# leaving the defaults in place, which is the same silent no-op an unparseable
+# payload always produced.
+#
+# The HOOK_* names are the contract hooks code against, so shellcheck's
+# unused-variable warning is expected for the fields no hook in this repo reads yet.
+# shellcheck disable=SC2034
+hook_read_envelope() {
+  HOOK_INPUT=$(cat)
+  command -v jq >/dev/null 2>&1 || exit 0
+  HOOK_CWD=""
+  HOOK_SID="nosession"
+  HOOK_PROMPT=""
+  HOOK_FILE=""
+  HOOK_TOOL=""
+  HOOK_TRANSCRIPT=""
+  HOOK_STOP_ACTIVE="false"
+  {
+    IFS= read -r -d '' HOOK_CWD || true
+    IFS= read -r -d '' HOOK_SID || true
+    IFS= read -r -d '' HOOK_PROMPT || true
+    IFS= read -r -d '' HOOK_FILE || true
+    IFS= read -r -d '' HOOK_TOOL || true
+    IFS= read -r -d '' HOOK_TRANSCRIPT || true
+    IFS= read -r -d '' HOOK_STOP_ACTIVE || true
+  } < <(printf '%s' "$HOOK_INPUT" | jq -j '
+      (.cwd // ""), "\u0000",
+      (.session_id // "nosession"), "\u0000",
+      (.prompt // ""), "\u0000",
+      (.tool_input.file_path // ""), "\u0000",
+      (.tool_name // ""), "\u0000",
+      (.transcript_path // ""), "\u0000",
+      ((.stop_hook_active // false) | tostring), "\u0000"' 2>/dev/null)
+  # `read` clears its variable on a short stream, so the two fields whose default
+  # is not the empty string are restored here rather than trusted from above.
+  [ -n "$HOOK_SID" ] || HOOK_SID="nosession"
+  [ -n "$HOOK_STOP_ACTIVE" ] || HOOK_STOP_ACTIVE="false"
+}
+
+# hook_context <event> <text> -> emit one additionalContext payload for the
+# harness. The literal was copy-pasted at every injection site; the event name
+# is the only thing that ever differed between them.
+hook_context() {
+  jq -n --arg e "$1" --arg c "$2" \
+    '{hookSpecificOutput:{hookEventName:$e, additionalContext:$c}}'
+}
+
+# Memoized answer to "where do this session's telemetry events go, if anywhere".
+# Empty means this project is not eligible and will not become eligible mid-run,
+# so the two git processes behind the question are paid for once per hook.
+HOOK_TELEMETRY_DIR=""
+HOOK_TELEMETRY_RESOLVED=""
+hook_telemetry_dir() {
+  local troot tgit
+  if [ -z "$HOOK_TELEMETRY_RESOLVED" ]; then
+    HOOK_TELEMETRY_RESOLVED=1
+    if [ -n "${HOOK_CWD:-}" ] \
+       && troot=$(repo_root "$HOOK_CWD") && [ -d "$troot/.engineos" ] \
+       && tgit=$(git_dir "$HOOK_CWD") && [ -n "$tgit" ]; then
+      mkdir -p "$tgit/engineos-telemetry" 2>/dev/null || true
+      HOOK_TELEMETRY_DIR="$tgit/engineos-telemetry"
+    fi
+  fi
+  [ -n "$HOOK_TELEMETRY_DIR" ]
+}
+
+# hook_telemetry <event> <data-json> -> append one event to this session's
+# stream. Best-effort in every direction: off when ENGINEOS_TELEMETRY=0, off when
+# the payload carried no cwd, and off in any project that has not adopted
+# EngineOS (no .engineos/ dir) — telemetry is never written into a repo that did
+# not opt in. Always returns 0: evidence must not become a gate.
+hook_telemetry() {
+  [ "${ENGINEOS_TELEMETRY:-}" = "0" ] && return 0
+  hook_telemetry_dir || return 0
+  "$LIB_DIR/../scripts/telemetry.sh" append \
+    "$HOOK_TELEMETRY_DIR/$HOOK_SID.jsonl" \
+    --session "$HOOK_SID" --event "$1" --data "$2" >/dev/null 2>&1 || true
+  return 0
 }

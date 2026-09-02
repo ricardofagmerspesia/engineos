@@ -70,7 +70,7 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `rules/parallelism.md` | Fan-out doctrine: when to split work, contract freeze, waves, disjoint file scopes, one-message dispatch, the failure/retry/escalation policy | In the substantive-task policy bundle; enforced when scale requires it |
 | `rules/models.md` | Model tiers: spec/PRD `fable`, design/security `opus`, code `opus`, mechanical `haiku` — tier is the contract, model name is today's binding. Plus the budget degradation ladder (cache -> reduce context -> smaller model -> defer -> deny) | In the substantive-task policy bundle |
 | `rules/architecture.md`, `backend.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Per-domain standards | Loaded by router per intent |
-| `registries/routing.json` | Machine-readable domain routing — rules, skill, agent, precedence, risk floor per domain; cross-checked against `CLAUDE.md` and `hooks/routing-map.sh` so the three cannot drift silently | Read by `scripts/validate-engineos.sh` |
+| `registries/routing.json` | Machine-readable domain routing — rules, skill, agent, precedence, risk floor per domain; cross-checked against `CLAUDE.md`'s router table so the two cannot drift silently | Read by `scripts/validate-engineos.sh` |
 | `registries/decision-rules.json` | Gate requirements as data (`when → then require`), so a new requirement is a registry entry, not a constitutional amendment | Resolved by `scripts/kernel.sh resolve-task`, surfaced by `hooks/prompt-advisor.sh` |
 | `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
@@ -96,13 +96,13 @@ which hits the terminal-window behaviour above. On Windows, prefer mode A.
 | `rules/memory.md` | Where knowledge lives (rules vs ADR vs CLAUDE.md vs memory) | Loaded when durable knowledge or recall is in scope |
 | `templates/permissions.template.json` | Shared read-only permission allowlist | Merged by installer |
 | `hooks/prompt-advisor.sh` | Calls `kernel.sh resolve-task` once and injects one task contract covering route, task scale, model tier, policy loads and matched gate requirements. Under bypass it announces `BYPASS ACTIVE` | UserPromptSubmit |
-| `hooks/route-before-change.sh` + `routing-map.sh` | Routes each edit to the right rules/skill/specialist via injected context (canonical path→domain map) | PreToolUse Edit\|Write |
+| `hooks/route-before-change.sh` | Routes each edit to the right rules/skill/specialist via injected context, resolved by `scripts/kernel.sh route-path` against `registries/routing.json` (the canonical path→domain map) | PreToolUse Edit\|Write |
 | `hooks/announce-agent-dispatch.sh` + `announce-agent-return.sh` | Backstop for the green agent banner in `rules/subagents.md`. The rule was prose-only and drifted — dispatches happened silently. These re-inject the exact banner format as `additionalContext` at dispatch/return time, the same pattern `route-before-change.sh` uses for file routing. Smoke test: `hooks/test-agent-announce.sh`. Cursor has no hook system and no agent registry, so `.cursor/rules/subagent-dispatch.mdc` mirrors the convention prompt-only, best-effort | PreToolUse / PostToolUse `Agent\|Task` |
 | `hooks/post-edit-check.sh` | Per-edit typecheck+lint — retired from default wiring (verification runs once at Stop); kept on disk as opt-in | not wired (opt-in) |
 | `hooks/mark-unrecorded.sh` | Flags unrecorded code changes for the record gate | PostToolUse Edit\|Write |
 | `hooks/stop-verify.sh` | Blocks "done" once if code changed but scoped lint+typecheck weren't run; tests are opt-in (`rules/verification.md`) and join the gate only when `ENGINEOS_VERIFY_TESTS=1` or the task had tests in scope | Stop |
 | `hooks/record-verify.sh` | Blocks "done" once if code changed but the change was not recorded | Stop |
-| `hooks/test-docs.sh` + `docs-ledger.sh` | Probes the prose layer the hook tests can't reach: dangling `rules/`/agent/skill pointers, orphaned agents, `commands/agents/` drift from the roster, router-table ↔ `routing-map.sh` parity, router-row closure, and single-source-of-truth budgets. Known debt is declared in the ledger with a reason and a retirement path — visible, defended, and red on the next instance. Not a hook; run `hooks/test-docs.sh` | Test (manual / CI) |
+| `hooks/test-docs.sh` + `docs-ledger.sh` | Probes the prose layer the hook tests can't reach: dangling `rules/`/agent/skill pointers, orphaned agents, `commands/agents/` drift from the roster, router-row closure, and single-source-of-truth budgets. Known debt is declared in the ledger with a reason and a retirement path — visible, defended, and red on the next instance. Not a hook; run `hooks/test-docs.sh` | Test (manual / CI) |
 | `skills/record-change` | Finalize a change: mark done, register files+movements, `.engineos/changes/`→`.engineos/archived/` | After completing work |
 | `skills/retro` | Mines archived change records + eval/integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR — proposes only, never merges | "Run a retro", monthly cadence, a correction recurring |
 | `templates/handoff.md` | Structured handoff contract (objective, state, gate, decisions, files, evidence, next step) — the test: could the next executor resume from this file alone? | Every wave barrier (`rules/parallelism.md`), session boundaries |
@@ -175,13 +175,18 @@ commands, registries) follows `docs/COMPATIBILITY.md` — a rename is a deprecat
 with a window, never a silent `git mv`.
 
 Before merging any change to `rules/`, `agents/`, `skills/`, `commands/`,
-`registries/`, or `hooks/routing-map.sh`, run:
+`registries/`, or `hooks/`, run:
 ```bash
-scripts/validate-engineos.sh   # 23 self-integrity checks
+scripts/validate-engineos.sh   # 44 self-integrity Checks
 scripts/run-evals.sh           # golden set for router + agent behaviour
 ```
-CI runs both, plus `scripts/test-validate-engineos.sh` — 16 planted-breakage
-cases proving the validator actually catches what it claims to.
+`validate-engineos.sh` is a harness; the Checks themselves are `check_<id>()`
+functions in `scripts/checks/<family>.sh`, discovered by name. `--list` prints
+the ids, `--only C17,C21c` runs a subset (a parent id also selects its
+letter-suffixed sub-checks).
+
+CI runs both, plus `scripts/test-validate-engineos.sh` — planted-breakage cases,
+one per Check, proving the validator actually catches what it claims to.
 
 `.github/workflows/live-evals.yml` runs the eval set's live tier weekly (manual
 dispatch also works) — real model calls, so it is cost-gated off the PR path

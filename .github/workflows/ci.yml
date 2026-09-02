@@ -12,10 +12,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Tools present
-        run: { jq --version; shellcheck --version; bash --version | head -1; }
+        run: |
+          jq --version
+          shellcheck --version
+          bash --version | head -1
 
       - name: Shellcheck hooks + scripts (errors only)
-        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh
+        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh
 
       - name: Validate JSON
         run: |
@@ -55,17 +58,17 @@ jobs:
       - name: Routing hook tests
         run: bash hooks/test-route.sh
 
-      - name: Gate advisor tests
-        run: bash hooks/test-gate-advisor.sh
-
       - name: Change-governance marker tests
         run: bash hooks/test-governance.sh
 
-      - name: Task-scale advisor tests
-        run: bash hooks/test-task-scale.sh
-
       - name: Unified prompt advisor tests
         run: bash hooks/test-prompt-advisor.sh
+
+      - name: Hook-envelope library tests
+        run: bash hooks/test-lib-common.sh
+
+      - name: Installer hook-derivation tests
+        run: bash hooks/test-install-hooks.sh
 
       - name: Runtime performance budgets
         run: bash scripts/bench-runtime.sh
@@ -81,6 +84,24 @@ jobs:
 
       - name: Agent-registry generator tests
         run: bash scripts/test-gen-agent-registry.sh
+
+      - name: Decision-kernel resolver tests
+        run: bash scripts/test-kernel.sh
+
+      - name: Bypass switch tests
+        run: bash hooks/test-bypass.sh
+
+      - name: Prose-layer docs tests
+        run: bash hooks/test-docs.sh
+
+      - name: Agent-announce hook tests
+        run: bash hooks/test-agent-announce.sh
+
+      - name: Telemetry CLI tests
+        run: bash scripts/test-telemetry.sh
+
+      - name: Post-edit check tests
+        run: bash hooks/test-post-edit.sh
 
       - name: Secrets gate aborts on a planted secret
         run: |

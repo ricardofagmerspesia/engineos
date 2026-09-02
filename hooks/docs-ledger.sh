@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Declarations for hooks/test-docs.sh. No logic — four lists the probe suite
-# reads. Split from the checker for the same reason routing-map.sh is split from
-# route-before-change.sh: accepted debt changes on a different clock than the
+# reads. Split from the checker for the same reason routing data is split from
+# the hook that consumes it: accepted debt changes on a different clock than the
 # assertions that defend it.
 #
 # Every entry here is a promise: the gap is known, the reason is written down,

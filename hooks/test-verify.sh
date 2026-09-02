@@ -331,6 +331,37 @@ DEC=$(printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"sessi
 rm -rf "$T" "$TSCRIPT" "$OLDBIN" "$FAKEHOME"
 [ -z "$DEC" ] && ok || no "case16 ancient-node-infra-skip: expected no block, got '$DEC'"
 
+# ---------- Case 17: the false-positive guard now covers the npm arm too ----------
+# Before the runner seam, the "target was never really there" guard existed only
+# in the Nx arm; a package-manager run that reported a missing script still went
+# red. Both arms now share one guard (hooks/lib-runner.sh runner_infra_skip).
+# The script emits the runner's own missing-script wording itself because
+# `npm run -s` silences npm's real report, so npm cannot produce it here — the
+# guard matches on that wording wherever the runner does emit it (pnpm, yarn).
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+printf '{"scripts":{"lint":"echo \\"Missing script: \\\\\\"lint\\\\\\"\\"; exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+DEC=$(invoke "$T" "$TSCRIPT" false)
+rm -rf "$T" "$TSCRIPT"
+[ -z "$DEC" ] && ok || no "case17 npm-arm-infra-guard: expected empty decision (missing-script output is an infra skip), got '$DEC'"
+
+# ---------- Case 18: one timeout table, shared by both runners ----------
+# The Nx and package-manager ladders each carried their own copy of the 90s/180s
+# budgets and had already drifted apart. Asserted at the source, because proving
+# it through behaviour would need a fake runner adapter — rejected by the owner
+# (docs/specs/2026-09-02-deepen-runtime-modules-design.md), tests stay on real npm.
+T90=$(grep -c 'TIMEOUT=90' "$DIR/stop-verify.sh")
+T180=$(grep -c 'TIMEOUT=180' "$DIR/stop-verify.sh")
+ADAPTER_T=$(grep -cE 'TIMEOUT=|\b(90|180)\b' "$DIR/lib-runner.sh")
+if [ "$T90" = "1" ] && [ "$T180" = "1" ] && [ "$ADAPTER_T" = "0" ]; then
+  ok
+else
+  no "case18 one-timeout-table: expected 1x TIMEOUT=90 and 1x TIMEOUT=180 in stop-verify.sh and no budget literal in lib-runner.sh, got 90=$T90 180=$T180 adapter=$ADAPTER_T"
+fi
+
 echo "---"
 echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

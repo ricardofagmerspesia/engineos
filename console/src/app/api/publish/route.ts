@@ -83,8 +83,8 @@ export function POST(): NextResponse<PublishResult> {
       logMutation(CONSOLE_ROOT, { path: change.path, action: 'write', result: 'ok' });
     }
 
-    // TODO(routing-ticket): once routing.json exists, regenerate
-    // hooks/routing-map.sh from the routing entities here and gate on
+    // TODO(routing-ticket): once the console owns routing entities, write them
+    // into registries/routing.json here and gate on
     // `hooks/test-route.sh` — inserted between the file write above and the
     // commit below. On failure that ticket must checkoutPaths() and abort,
     // exactly like the catch block below does for any other failure.

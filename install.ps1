@@ -306,17 +306,39 @@ function New-HookCommand([string]$ScriptPath) {
     return $ScriptPath
 }
 
-$hookPaths = @{
-    stop   = ToUnixPath (Join-Path $hooksDir 'stop-verify.sh')
-    route  = ToUnixPath (Join-Path $hooksDir 'route-before-change.sh')
-    mark   = ToUnixPath (Join-Path $hooksDir 'mark-unrecorded.sh')
-    record = ToUnixPath (Join-Path $hooksDir 'record-verify.sh')
-    ensure = ToUnixPath (Join-Path $hooksDir 'ensure-project-layout.sh')
-    scale  = ToUnixPath (Join-Path $hooksDir 'task-scale-advisor.sh')
-    gate   = ToUnixPath (Join-Path $hooksDir 'gate-advisor.sh')
-    routeadv = ToUnixPath (Join-Path $hooksDir 'route-advisor.sh')
-    announce = ToUnixPath (Join-Path $hooksDir 'announce-agent-dispatch.sh')
-    annret   = ToUnixPath (Join-Path $hooksDir 'announce-agent-return.sh')
+# The hook list IS hooks/hooks.json -- the same file plugin mode loads. Every
+# event/matcher/command is read from there and the leading
+# "${CLAUDE_PLUGIN_ROOT}" placeholder replaced by this checkout, so symlink mode
+# and plugin mode cannot drift. Adding a hook means editing hooks.json, and
+# nothing else. Mirrors install.sh.
+$hooksJsonPath = Join-Path $hooksDir 'hooks.json'
+if (-not (Test-Path $hooksJsonPath -PathType Leaf)) {
+    Write-Red "ABORT: $hooksJsonPath not found -- cannot derive the hook list."
+    exit 1
+}
+$hooksJson = Get-Content $hooksJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+
+$derivedHooks = @()
+foreach ($eventProp in $hooksJson.hooks.PSObject.Properties) {
+    foreach ($entry in @($eventProp.Value)) {
+        $matcher = if ($entry.matcher) { [string]$entry.matcher } else { '' }
+        foreach ($inner in @($entry.hooks)) {
+            $scriptName = $inner.command -replace '^"\$\{CLAUDE_PLUGIN_ROOT\}"/hooks/', ''
+            # The rewrite leaves a bare script name. Anything else is a command
+            # form this installer cannot place -- fail loudly rather than
+            # register a path that silently never fires.
+            if (($scriptName -eq '') -or ($scriptName -match '[/\\ ]')) {
+                Write-Red "ABORT: unrecognized hook command in ${hooksJsonPath}: $($inner.command)"
+                Write-Red 'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh'
+                exit 1
+            }
+            $derivedHooks += [PSCustomObject]@{
+                Event   = $eventProp.Name
+                Matcher = $matcher
+                Command = (New-HookCommand (ToUnixPath (Join-Path $hooksDir $scriptName)))
+            }
+        }
+    }
 }
 
 $settingsObj = Get-Content $Settings -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -348,15 +370,15 @@ function Add-HookEntry {
     }
 }
 
-# Drop every previously installed EngineOS hook entry before re-adding, so an
-# earlier install's bare-`.sh` command (the terminal-window spawner) is replaced
-# rather than left firing alongside the wrapped one.
+# Drop every previously installed EngineOS hook entry, under every event, before
+# re-adding: an earlier install's bare-`.sh` command (the terminal-window
+# spawner) is replaced rather than left firing alongside the wrapped one, and a
+# hook since retired -- the per-edit gate (post-edit-check.sh) and the three
+# legacy prompt advisors that prompt-advisor.sh replaced -- is dropped for good.
 function Remove-EngineOSHooks {
     param($SettingsObj, [string]$HooksDirUnix)
 
-    foreach ($event in @('PreToolUse', 'PostToolUse', 'Stop', 'SessionStart', 'UserPromptSubmit')) {
-        if (-not (Get-Member -InputObject $SettingsObj.hooks -Name $event -MemberType NoteProperty)) { continue }
-
+    foreach ($event in @($SettingsObj.hooks.PSObject.Properties.Name)) {
         $kept = @()
         foreach ($entry in @($SettingsObj.hooks.$event)) {
             # Compare slash-normalized so both C:/... and C:\... forms are caught.
@@ -374,19 +396,9 @@ function Remove-EngineOSHooks {
 
 Remove-EngineOSHooks $settingsObj (ToUnixPath $hooksDir)
 
-Add-HookEntry $settingsObj 'PreToolUse'       'Edit|Write' (New-HookCommand $hookPaths.route)
-Add-HookEntry $settingsObj 'PreToolUse'       'Agent|Task' (New-HookCommand $hookPaths.announce)
-Add-HookEntry $settingsObj 'PostToolUse'      'Edit|Write' (New-HookCommand $hookPaths.mark)
-Add-HookEntry $settingsObj 'PostToolUse'      'Agent|Task' (New-HookCommand $hookPaths.annret)
-# per-edit gate (post-edit-check.sh) retired: verification runs once at Stop
-# (rules/testing.md "Verification timing"); Remove-EngineOSHooks above already
-# strips any previously installed entry for it.
-Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.stop)
-Add-HookEntry $settingsObj 'Stop'             ''           (New-HookCommand $hookPaths.record)
-Add-HookEntry $settingsObj 'SessionStart'     ''           (New-HookCommand $hookPaths.ensure)
-Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.scale)
-Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.gate)
-Add-HookEntry $settingsObj 'UserPromptSubmit' ''           (New-HookCommand $hookPaths.routeadv)
+foreach ($derived in $derivedHooks) {
+    Add-HookEntry $settingsObj $derived.Event $derived.Matcher $derived.Command
+}
 
 $settingsObj | ConvertTo-Json -Depth 20 | Set-Content $Settings -Encoding UTF8
 Write-Green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."

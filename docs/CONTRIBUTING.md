@@ -26,8 +26,10 @@ Duplication drifts.
 
 - **Rule** (`rules/*.md`): keep it actionable and verifiable. Prefer DO/DON'T
   bullets with concrete examples. If it overlaps an existing rule, edit that file
-  instead of adding a new one. If it introduces a new file-domain, add a router row
-  to `CLAUDE.md` AND a pattern to `hooks/routing-map.sh` (they must stay in sync).
+  instead of adding a new one. If it introduces a new file-domain, add a domain
+  to `registries/routing.json` (`match` globs, `precedence`, `hook_guidance`,
+  `sample_path`) AND the mirroring router row to `CLAUDE.md`;
+  `scripts/validate-engineos.sh` fails when the two disagree.
 - **Skill** (`skills/<name>/SKILL.md`): frontmatter `name` + a trigger-rich
   `description` (the description is what makes it fire — be specific about when).
 - **Agent** (`agents/*.md`): frontmatter `name`, `description`, and an explicit
@@ -36,12 +38,17 @@ Duplication drifts.
   userland AND Linux. No GNU-only flags, no empty regex alternations. Wire it in
   BOTH `hooks/hooks.json` (plugin) and `install.sh` (mode A) — they must match.
   Add a test.
+- **Integrity Check** (`scripts/checks/<family>.sh`): a `check_<id>()` function —
+  `check_C24`, or `check_C24b` for a sub-check of an existing one. The harness
+  (`scripts/validate-engineos.sh`) discovers it by name; nothing needs wiring.
+  Add a planted-breakage case to `scripts/test-validate-engineos.sh` naming the
+  same id — a Check with no negative case proves nothing.
 
 ## Verification (required before "done")
 
 - `hooks/test-route.sh` — routing map assertions.
 - `hooks/test-governance.sh` — change-governance marker flow.
-- `shellcheck -S error hooks/*.sh install.sh scripts/*.sh`.
+- `shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh`.
 - `jq empty` on every JSON file you touched.
 - CI (`.github/workflows/ci.yml`) runs all of the above on every PR; keep it green.
 

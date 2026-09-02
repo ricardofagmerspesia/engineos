@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for route-before-change.sh + routing-map.sh. Feeds sample PreToolUse
+# Smoke test for route-before-change.sh + kernel.sh route-path. Feeds sample PreToolUse
 # payloads and asserts the FULL injected guidance string (not just an agent-name
 # substring — a wrong rules list would otherwise slip through unnoticed).
 # Run: hooks/test-route.sh
@@ -26,9 +26,10 @@ check() {  # <desc> <file> <expected-substring | empty=expect no routing>
   fi
 }
 
-# Full canonical guidance strings (rules|skill|agent) — kept identical to
-# routing-map.sh's echo lines. Asserting the full string, not just the agent
-# name, catches a wrong/stale rules list that a substring check would miss.
+# Full canonical guidance strings (rules|skill|agent) — kept identical to the
+# hook_guidance values in registries/routing.json. Asserting the full string, not
+# just the agent name, catches a wrong/stale rules list that a substring check
+# would miss.
 FRONTEND="rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator"
 BACKEND="rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator"
 DBA="rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)"
@@ -87,24 +88,28 @@ check "excluded md"            "/tmp/repo/README.md"                ""
 # (the security-sensitive directory).
 check "authors ctrl NOT security" "/tmp/api/src/authors/author.controller.ts" "$BACKEND"
 
-# --- route_excluded unit checks (exclusion-scoping fix) -------------------------
+# --- exclusion unit checks, against the kernel's JSON contract ------------------
 # The generic */hooks/*, */docs/* exclusions used to swallow ANY project's own
-# src/hooks/ or product docs/ dir. They must now only exclude EngineOS's own
-# hooks/ and docs/ trees (resolved from this script's own location), while
-# .engineos/ stays excluded everywhere (generic, not EngineOS-repo-specific).
-# shellcheck source=hooks/routing-map.sh
-. "$DIR/routing-map.sh"
+# src/hooks/ or product docs/ dir. They must only exclude EngineOS's own hooks/
+# and docs/ trees — registries/routing.json .excluded.self_dirs, resolved by the
+# kernel against its own root — while .engineos/ stays excluded everywhere
+# (generic, not EngineOS-repo-specific). Asserted on `.excluded == true` in the
+# kernel's own output, so this suite tests the shipped resolver, not a wrapper.
+EOS_ROOT="$(cd "$DIR/.." && pwd)"
+KERNEL="$EOS_ROOT/scripts/kernel.sh"
 
 exclcheck() {  # <desc> <path> <want: excluded|routed>
   local desc="$1" path="$2" want="$3" got
-  if route_excluded "$path"; then got=excluded; else got=routed; fi
+  if bash "$KERNEL" route-path "$path" 2>/dev/null | jq -e '.excluded == true' >/dev/null 2>&1
+  then got=excluded; else got=routed; fi
   if [ "$got" = "$want" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL: $desc — want $want got $got"; fi
 }
 
 exclcheck "generic project src/hooks/ not swallowed" "/some/project/src/hooks/useAuth.ts" routed
+exclcheck "generic project hooks/ ts not swallowed"  "/some/project/hooks/x.ts"           routed
 exclcheck "generic project docs/ ts not swallowed"   "/some/project/docs/notes.ts"        routed
-exclcheck "EngineOS's own hooks/ file excluded"      "$DIR/routing-map.sh"                excluded
-exclcheck "EngineOS's own docs/ file excluded"       "$(cd "$DIR/.." && pwd)/docs/x.ts"   excluded
+exclcheck "EngineOS's own hooks/ file excluded"      "$DIR/x.sh"                          excluded
+exclcheck "EngineOS's own docs/ file excluded"       "$EOS_ROOT/docs/x.ts"                excluded
 exclcheck ".engineos/ exclusion stays generic"       "/some/project/.engineos/changes/x.ts" excluded
 
 # Session cache: the same path reuses one entry; a buster produces a distinct

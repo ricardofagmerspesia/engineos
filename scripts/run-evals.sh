@@ -29,7 +29,7 @@ is_task_contract_rule() { case " $TASK_CONTRACT_RULES " in *" $1 "*) return 0 ;;
 
 # deferrals_of <rule> -> rules not globally supplied by startup or resolve-task
 # that <rule>'s text points at.
-# Mirrors the closure derivation in scripts/validate-engineos.sh.
+# Mirrors the closure derivation in scripts/checks/lib.sh.
 deferrals_of() {
   local r="$1" s out=""
   for s in $(cd rules && ls ./*.md | sed 's|^\./||; s|\.md$||'); do

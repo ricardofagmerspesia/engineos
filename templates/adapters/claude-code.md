@@ -12,15 +12,15 @@ imports the project constitution, which `@`-imports the always-on set:
 ```
 
 Route-loaded rules are read on demand by the model via the router table, and
-mirrored deterministically for file edits by `hooks/routing-map.sh`.
+mirrored deterministically for file edits by `hooks/route-before-change.sh`,
+which resolves `registries/routing.json` through `scripts/kernel.sh route-path`.
 
 ## What is enforced
 
 | Event | Hook | Effect |
 |---|---|---|
 | SessionStart | `ensure-project-layout.sh` | Scaffolds `.engineos/` + `docs/` (opt-in) |
-| UserPromptSubmit | `task-scale-advisor.sh` | Fan-out and model-tier reminders |
-| UserPromptSubmit | `gate-advisor.sh` | Decision rules that match the prompt |
+| UserPromptSubmit | `prompt-advisor.sh` | One kernel call: task contract, fan-out and model-tier reminders, matching decision rules, route escalation |
 | PreToolUse (edit) | `route-before-change.sh` | Injects the domain route for the file |
 | PostToolUse (edit) | `mark-unrecorded.sh` | Sets the change-record flag |
 | PostToolUse (edit) | `post-edit-check.sh` | Scoped lint/typecheck |

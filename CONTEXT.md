@@ -63,3 +63,13 @@ _Avoid_: Change record, summary
 The mapping from the EngineOS method to a tool's actual instruction and
 enforcement capabilities.
 _Avoid_: Integration, port
+
+**Hook envelope**:
+The decoded facts a tool hook receives from the harness for one event — working
+directory, session, prompt, file, tool, transcript.
+_Avoid_: Payload, input JSON, stdin
+
+**Runner**:
+The tool that executes a project's verification targets, such as lint,
+typecheck, and tests — Nx or a package-manager script runner.
+_Avoid_: Build tool, task runner, toolchain

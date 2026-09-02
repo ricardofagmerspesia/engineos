@@ -46,10 +46,8 @@ Rules for routing:
   security, test, and the mobile store-release split) are mirrored
   deterministically by the `PreToolUse` hook `hooks/route-before-change.sh`.
   The canonical path→domain map is `registries/routing.json` (`match`/
-  `excluded` globs), resolved by `scripts/kernel.sh route-path`;
-  `hooks/routing-map.sh` is a compatibility shim kept only for its function
-  contracts — it carries no routing data of its own. This table is the human
-  mirror of the **registry**. **They no longer drift silently:**
+  `excluded` globs), resolved by `scripts/kernel.sh route-path`. This table is
+  the human mirror of the **registry**. **They no longer drift silently:**
   `scripts/validate-engineos.sh` fails CI if the table and the registry
   disagree. All other rows are request-driven and have no hook equivalent.
 - **Multi-match applies to this table only.** The hook emits exactly ONE route —
@@ -92,7 +90,6 @@ Rules for routing:
 | Fill doc gaps by interview ("interview me about the system", "ask me about how X works", resolve open hypotheses) | `/talk-about-the-system` + `rules/memory.md`; `architecture-analyst` in INTERVIEW mode (`patterns/2-Interview-brainstorm.md`), interactive, folds answers back into `docs/` |
 | End-to-end API QA ("test all endpoints", "run the API test suite", "QA the system", Postman/Newman run) | agent `qa-tester` (qa) — non-interactive, skips MFA/email steps |
 | Multi-domain audit / system health check ("audit", "analyze the system", "what's broken across X") | `/engineos:audit <domain\|all>` — fans out to coordinators + MCP leaf specialists, consolidates into a status report |
-| Coordinated multi-domain change | `/engineos:implement <domain> <task>` — dispatches coordinators in implement mode (spec-gated) |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` + `rules/memory.md` — decision gets recorded, not just chatted |
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |

@@ -231,43 +231,58 @@ if command -v jq >/dev/null 2>&1; then
     fi
   }
 
-  jq --arg hooksdir "$HOOKS_DIR" \
-     --arg stop "$(hook_cmd stop-verify.sh)" \
-     --arg route "$(hook_cmd route-before-change.sh)" \
-     --arg mark "$(hook_cmd mark-unrecorded.sh)" \
-     --arg record "$(hook_cmd record-verify.sh)" \
-     --arg ensure "$(hook_cmd ensure-project-layout.sh)" \
-     --arg scale "$(hook_cmd task-scale-advisor.sh)" \
-     --arg gate "$(hook_cmd gate-advisor.sh)" \
-     --arg routeadv "$(hook_cmd route-advisor.sh)" \
-     --arg announce "$(hook_cmd announce-agent-dispatch.sh)" \
-     --arg annret "$(hook_cmd announce-agent-return.sh)" '
+  # The hook list IS hooks/hooks.json -- the same file plugin mode loads. Every
+  # event/matcher/command is read from there and the leading
+  # "${CLAUDE_PLUGIN_ROOT}" placeholder replaced by this checkout, so symlink
+  # mode and plugin mode cannot drift. Adding a hook means editing hooks.json,
+  # and nothing else.
+  HOOKS_JSON="$REPO_DIR/hooks/hooks.json"
+  # Split each TSV row by hand: with IFS=<tab>, `read a b c` collapses the two
+  # tabs of an empty matcher into one and shifts the fields (tab is IFS
+  # whitespace), which would register every matcher-less hook under the wrong
+  # matcher.
+  ADDS=""
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    ev="${line%%$'\t'*}";      rest="${line#*$'\t'}"
+    matcher="${rest%%$'\t'*}"; script="${rest#*$'\t'}"
+    # The placeholder rewrite above leaves a bare script name. Anything else is
+    # a command form this installer cannot place -- fail loudly instead of
+    # registering a path that silently never fires.
+    case "$script" in
+      ''|*/*|*' '*)
+        red "ABORT: unrecognized hook command in $HOOKS_JSON: $script"
+        red "Expected \"\${CLAUDE_PLUGIN_ROOT}\"/hooks/<script>.sh"
+        exit 1 ;;
+    esac
+    ADDS="$ADDS$ev"$'\t'"$matcher"$'\t'"$(hook_cmd "$script")"$'\n'
+  done < <(jq -r '.hooks | to_entries[] | .key as $event | .value[]
+                  | (.matcher // "") as $matcher
+                  | .hooks[]
+                  | [$event, $matcher,
+                     (.command | sub("^\"\\$\\{CLAUDE_PLUGIN_ROOT\\}\"/hooks/"; ""))]
+                  | @tsv' "$HOOKS_JSON")
+
+  jq --arg hooksdir "$HOOKS_DIR" --arg adds "$ADDS" '
     # scrub: drop every previously installed EngineOS hook entry (any command
-    # referencing the hooks dir, slash-normalized) before re-adding, so an
-    # earlier install can never leave a stale form firing alongside the new
-    # one -- notably the bare-.sh terminal-window spawner on Windows, and the
-    # retired per-edit gate (post-edit-check.sh; verification runs once at
-    # Stop, rules/verification.md "The final gate").
-    def scrub($event):
-      .hooks[$event] //= []
-      | .hooks[$event] |= (map(.hooks |= map(select(
-            ((.command // "" | gsub("\\\\"; "/")) | contains($hooksdir + "/")) | not)))
-          | map(select((.hooks | length) > 0)));
+    # referencing the hooks dir, slash-normalized) from EVERY event before
+    # re-adding, so an earlier install can never leave a stale form firing
+    # alongside the new one -- notably the bare-.sh terminal-window spawner on
+    # Windows, and any hook since retired: the per-edit gate (post-edit-check.sh;
+    # verification runs once at Stop, rules/verification.md "The final gate") and
+    # the three legacy prompt advisors that prompt-advisor.sh replaced.
+    def scrub:
+      .hooks |= with_entries(.value |=
+          (map(.hooks |= map(select(
+              (((.command // "") | gsub("\\\\"; "/")) | contains($hooksdir + "/")) | not)))
+           | map(select((.hooks | length) > 0))));
     def add($event; $matcher; $cmd):
-      .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}];
+      .hooks[$event] //= []
+      | .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}];
     .hooks //= {}
-    | scrub("PreToolUse") | scrub("PostToolUse") | scrub("Stop")
-    | scrub("SessionStart") | scrub("UserPromptSubmit")
-    | add("PreToolUse";  "Edit|Write"; $route)
-    | add("PreToolUse";  "Agent|Task"; $announce)
-    | add("PostToolUse"; "Edit|Write"; $mark)
-    | add("PostToolUse"; "Agent|Task"; $annret)
-    | add("Stop";        "";           $stop)
-    | add("Stop";        "";           $record)
-    | add("SessionStart"; "";          $ensure)
-    | add("UserPromptSubmit"; "";      $scale)
-    | add("UserPromptSubmit"; "";      $gate)
-    | add("UserPromptSubmit"; "";      $routeadv)
+    | scrub
+    | reduce ($adds | split("\n")[] | select(length > 0) | split("\t")) as $a
+        (.; add($a[0]; $a[1]; $a[2]))
   ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
   green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
   [ -n "$BASH_EXE" ] && echo "  hooks run through: $BASH_EXE (no terminal windows)"
@@ -287,17 +302,14 @@ if command -v jq >/dev/null 2>&1; then
     warn "permissions template missing ($PERMS) — skipped allowlist merge."
   fi
 else
-  warn "jq not found — add hooks manually to $SETTINGS:"
-  warn "  PreToolUse  matcher 'Edit|Write' -> $REPO_DIR/hooks/route-before-change.sh"
-  warn "  PreToolUse  matcher 'Agent|Task' -> $REPO_DIR/hooks/announce-agent-dispatch.sh"
-  warn "  PostToolUse matcher 'Edit|Write' -> $REPO_DIR/hooks/mark-unrecorded.sh"
-  warn "  PostToolUse matcher 'Agent|Task' -> $REPO_DIR/hooks/announce-agent-return.sh"
-  warn "  Stop -> $REPO_DIR/hooks/stop-verify.sh"
-  warn "  Stop -> $REPO_DIR/hooks/record-verify.sh"
-  warn "  SessionStart -> $REPO_DIR/hooks/ensure-project-layout.sh"
-  warn "  UserPromptSubmit -> $REPO_DIR/hooks/task-scale-advisor.sh"
-  warn "  UserPromptSubmit -> $REPO_DIR/hooks/gate-advisor.sh"
-  warn "  UserPromptSubmit -> $REPO_DIR/hooks/route-advisor.sh"
+  # No jq means no hooks.json parsing either, so there is no list to print here
+  # without hand-copying one -- exactly the second copy this installer stopped
+  # keeping. Point at the source of truth instead.
+  warn "jq not found — hooks NOT registered. Install jq and re-run:"
+  warn "  https://jqlang.github.io/jq/download/"
+  warn "Or add every entry of $REPO_DIR/hooks/hooks.json to $SETTINGS by hand,"
+  warn "replacing the leading \"\${CLAUDE_PLUGIN_ROOT}\" with $REPO_DIR."
+  warn "Note: every hook parses tool input with jq, so they stay silent until jq is installed."
 fi
 
 # ---------- 6. MCP reminder ----------
