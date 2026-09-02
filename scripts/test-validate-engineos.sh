@@ -96,7 +96,7 @@ case_ "deleted always-on rule is caught" \
 
 case_ "router row dropping a deferred rule is caught" \
       "router closure rule violated" \
-      "sed -i.bak 's| + \`rules/observability.md\` (closure: \`backend.md\` defers to it)||' CLAUDE.md"
+      "sed -i.bak '/^| Backend work/s| + \`rules/observability.md\`||' CLAUDE.md"
 
 case_ "guidance naming a nonexistent agent is caught" \
       "hook_guidance names missing agents" \
