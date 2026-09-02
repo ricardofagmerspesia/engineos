@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Probes the EngineOS PROSE layer — the CLAUDE.md router table, rules/, agents/,
 # commands/ and skills/. Not a hook: it lives here because hooks/test-*.sh is the
-# glob everyone already runs. Four families:
-#   1 referential integrity  2 hook<->table parity  3 closure  4 marker budgets
+# glob everyone already runs. Three families:
+#   1 referential integrity  3 closure  4 marker budgets
+# (Family 2, hook <-> table parity, retired with hooks/routing-map.sh: guidance
+# lives only in registries/routing.json, which scripts/validate-engineos.sh C6-8
+# and C14 check directly. Ids 3 and 4 keep their numbers.)
 # Accepted debt is declared in hooks/docs-ledger.sh, never hidden here.
 # Pure bash + grep: no jq, no node, no python.
 # Run: hooks/test-docs.sh [repo-root]
@@ -95,17 +98,6 @@ while read -r a; do
   [ -z "$a" ] && continue
   has "$a" "$EXPECTED" && ok || no "commands/agents/$a.md maps to no agent name or alias"
 done < <(printf '%s\n' "$ACTUAL")
-
-# -------------------------------------------- family 2: hook <-> table parity
-echo "--- family 2: hook <-> table parity"
-
-for a in $(grep -oE 'agent:[a-z-]+' hooks/routing-map.sh | sed 's/agent://' | sort -u); do
-  has "$a" "$AGENTS" && ok || no "routing-map.sh routes to unknown agent $a"
-  grep -qF "$a" CLAUDE.md && ok || no "routing-map.sh routes to $a but the CLAUDE.md router table never names it"
-done
-for r in $(grep -oE '(rules/)?[a-z-]+\.md' hooks/routing-map.sh | sed 's|rules/||;s|\.md$||' | sort -u); do
-  has "$r" "$RULES" && ok || no "routing-map.sh names rules/$r.md, which is not on disk"
-done
 
 # ---------------------------------------------------- family 3: closure
 echo "--- family 3: router-row closure"

@@ -12,7 +12,8 @@ imports the project constitution, which `@`-imports the always-on set:
 ```
 
 Route-loaded rules are read on demand by the model via the router table, and
-mirrored deterministically for file edits by `hooks/routing-map.sh`.
+mirrored deterministically for file edits by `hooks/route-before-change.sh`,
+which resolves `registries/routing.json` through `scripts/kernel.sh route-path`.
 
 ## What is enforced
 

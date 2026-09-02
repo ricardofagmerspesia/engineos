@@ -3,7 +3,7 @@
 #
 # CLAUDE.md states several invariants and enforces them by human diligence:
 #   - "A row's load list must be closed" (deferred rules must travel together);
-#   - "this table is the human mirror, keep them in sync" (router vs routing-map.sh);
+#   - "this table is the human mirror, keep them in sync" (router table vs registry);
 #   - "The hooks need jq" (six hooks no-op silently without it).
 # Every one of those is checkable. This script checks them, plus the
 # decision-kernel era's own checks (C16-C23): registries, kernel.sh, the
@@ -139,10 +139,9 @@ done
 fi
 
 # ------------------- C6/C7/C8: guidance-string targets all exist (registry)
-# Pre-P2 these grepped hooks/routing-map.sh's echo literals; the map is now a
-# shim over kernel.sh and guidance lives ONLY in registries/routing.json —
-# so the same three checks read the registry's hook_guidance strings instead.
-map=hooks/routing-map.sh
+# Pre-P2 these grepped a hand-written case ladder's echo literals; guidance now
+# lives ONLY in registries/routing.json — so the same three checks read the
+# registry's hook_guidance strings instead.
 RJSON=registries/routing.json
 if want C6-8; then
 missing_agents=""; missing_skills=""; missing_rules=""
@@ -231,11 +230,10 @@ else
   [ -z "$reg_bad" ] && ok "registries are valid JSON" || bad "malformed registries:$reg_bad"
 
   if [ -f "$R" ]; then
-    # Pre-P2, two checks grepped routing-map.sh's echo literals against the
-    # registry. The map is a shim now — guidance is emitted FROM the registry
-    # via kernel.sh, so that drift class is structurally dead. Its successors
-    # are the C17 behavioral checks below (sample paths route correctly, the
-    # shim contains no literals).
+    # Pre-P2, two checks grepped a hand-written case ladder's echo literals
+    # against the registry. Guidance is emitted FROM the registry via kernel.sh
+    # now, so that drift class is structurally dead. Its successor is the C17
+    # behavioral check below (every sample path routes correctly).
 
     # the rules list must agree with the rules named inside the guidance string
     mism=""
@@ -583,8 +581,8 @@ else
   # ------------------------ C17: kernel resolver + routing patterns (P2)
   # scripts/kernel.sh is the one implementation of path->domain matching;
   # routing.json carries the patterns and a self-validating sample_path per
-  # domain. These behavioral checks replace the pre-P2 string-grepping of
-  # routing-map.sh's case ladder (see C14 note above).
+  # domain. These behavioral checks replace the pre-P2 string-grepping of the
+  # hand-written case ladder (see C14 note above).
   # Spec: docs/specs/2026-08-06-decision-kernel-p2-resolver-api.md
   if want C17; then
   if [ -f "$KSH" ] && [ -f "$R" ]; then
@@ -609,21 +607,16 @@ else
     [ -z "$r_bad" ] && ok "every domain sample_path routes to its own domain via kernel.sh" \
                     || bad "sample_path routing failures:$r_bad"
 
-    # C17c: exclusions still exclude
+    # C17c: exclusions still exclude — the glob patterns, plus .excluded.self_dirs
+    # resolved against this checkout's own root (a consumer project's own
+    # hooks/ dir must still route).
     excl=$(bash "$KSH" route-path "/tmp/some-repo/.engineos/changes/x.ts" 2>/dev/null | jq -r '.excluded')
     excl2=$(bash "$KSH" route-path "/tmp/some-repo/README.md" 2>/dev/null | jq -r '.excluded')
-    [ "$excl" = "true" ] && [ "$excl2" = "true" ] \
-      && ok "kernel.sh route-path honors the excluded patterns" \
-      || bad "kernel.sh exclusion broken (.engineos=$excl, README.md=$excl2)"
-
-    # C17d: routing-map.sh is a shim — it calls the kernel and carries no
-    # guidance literal of its own (a reintroduced literal is a second source
-    # of truth, the exact drift P2 removed)
-    if grep -q 'kernel\.sh' "$map" && ! grep -q 'echo "rules/' "$map"; then
-      ok "routing-map.sh is a shim over kernel.sh (no guidance literals)"
-    else
-      bad "routing-map.sh is not a pure shim: must call kernel.sh and carry no 'echo \"rules/' literal"
-    fi
+    excl3=$(bash "$KSH" route-path "$ROOT/hooks/x.sh" 2>/dev/null | jq -r '.excluded')
+    excl4=$(bash "$KSH" route-path "/tmp/some-repo/hooks/x.ts" 2>/dev/null | jq -r '.excluded')
+    [ "$excl" = "true" ] && [ "$excl2" = "true" ] && [ "$excl3" = "true" ] && [ "$excl4" = "false" ] \
+      && ok "kernel.sh route-path honors the excluded patterns and self_dirs" \
+      || bad "kernel.sh exclusion broken (.engineos=$excl, README.md=$excl2, self hooks/=$excl3, foreign hooks/=$excl4)"
 
     # C17e: prompt_signals EREs exist and are valid regexes (an invalid one
     # would make kernel.sh scale silently mis-answer, same failure class as
@@ -1114,7 +1107,9 @@ else
     [ -z "$c_bad" ] && ok "CLAUDE.md's precedence sentence and always-on mirror agree with the registry" \
                      || bad "constitution preamble mirror problems:$c_bad"
 
-    # C23c: the retired routing-map.sh authority claim stays dead
+    # C23c: the retired "authoritative for file-pattern routing" claim stays
+    # dead. hooks/routing-map.sh is gone; the registry is the canonical map, and
+    # CLAUDE.md prose must not crown anything else (a hook, a shim) in its place.
     grep -qi 'authoritative for file-pattern routing' CLAUDE.md 2>/dev/null \
       && bad "CLAUDE.md reintroduced the retired routing-map.sh authority claim" \
       || ok "CLAUDE.md does not reintroduce the retired routing-map.sh authority claim"

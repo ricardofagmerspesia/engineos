@@ -25,7 +25,7 @@ group_for() {
     *"agent frontmatter"*|*"agent return-format"*|*"missing slash commands"*) echo C9-11 ;;
     *"skill problems"*) echo C12 ;;
     *"empty documents"*) echo C13 ;;
-    *"sample_path"*|*"routing domains missing patterns"*|*"pure shim"*|*"prompt_signals"*) echo C17 ;;
+    *"sample_path"*|*"routing domains missing patterns"*|*"exclusion broken"*|*"prompt_signals"*) echo C17 ;;
     *"registry rules/guidance"*|*"does not match domain order"*|*"duplicate decision rule"*|*"decision rules with an empty"*|*"verification policy semantic drift"*) echo C14 ;;
     *"capabilities.json"*|*"invalid model_tier on agent"*|*"agents.json names"*) echo C15 ;;
     *"escalates_to"*|*"work_types"*|*"ADR row"*|*"duplicate intent"*|*"hook_mirrored"*|*"intent/routing mismatches"*|*"routing domains not claimed"*|*"intent drift"*|*"wave cap drift"*|*"autonomy levels"*|*"by_risk incomplete"*|*"spec-threshold drift"*) echo C16 ;;
@@ -175,9 +175,13 @@ for x in d['domains']:
     if x['id']=='frontend': x['match']={'paths':[],'basenames':[]}
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ "a guidance literal reintroduced into the routing-map shim is caught" \
-      "not a pure shim" \
-      "printf '\necho \"rules/ghost.md | agent:nobody\"\n' >> hooks/routing-map.sh"
+case_ "dropping .excluded.self_dirs stops excluding EngineOS's own hooks/ tree" \
+      "exclusion broken" \
+      "python3 -c \"
+import json
+p='registries/routing.json'; d=json.load(open(p))
+del d['excluded']['self_dirs']
+json.dump(d,open(p,'w'),indent=2)\""
 
 case_ "an invalid prompt_signals regex is caught" \
       "prompt_signals problems" \
@@ -602,9 +606,9 @@ case_ "context.md dropped from COMPATIBILITY.md's always-on enumeration is caugh
       "constitution preamble mirror problems" \
       "sed -i.bak 's|\`context.md\`) load|) load|' docs/COMPATIBILITY.md"
 
-case_ "the retired routing-map.sh authority claim restored in CLAUDE.md is caught" \
+case_ "the retired \"authoritative for file-pattern routing\" claim restored in CLAUDE.md is caught" \
       "reintroduced the retired routing-map.sh authority claim" \
-      "sed -i.bak 's|is a compatibility shim kept only for its function|is authoritative for file-pattern routing; it is a shim kept only for its function|' CLAUDE.md"
+      "sed -i.bak 's|resolved by \`scripts/kernel.sh route-path\`|which is authoritative for file-pattern routing, resolved by \`scripts/kernel.sh route-path\`|' CLAUDE.md"
 
 flush_batch
 echo

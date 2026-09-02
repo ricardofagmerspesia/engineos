@@ -58,9 +58,9 @@ require_positional() {
 
 # ---------------------------------------------------------------- route-path
 # First exclusion wins; then domains in precedence order, first matching glob
-# wins — the same first-match-wins semantics as the case ladder this replaces
-# (hooks/routing-map.sh, now a shim over this). Glob matching uses bash case
-# with unquoted pattern expansion: the same engine, patterns now registry data.
+# wins — the same first-match-wins semantics as the case ladder this replaced.
+# Glob matching uses bash case with unquoted pattern expansion: the same engine,
+# patterns now registry data.
 cmd_route_path() {
   require_positional route-path "a file path" "$@"
   local f="$1"
@@ -68,23 +68,32 @@ cmd_route_path() {
   local R="$REG/routing.json"
   local base="${f##*/}" norm="/$f"
 
-  # EngineOS-self exclusion is runtime-relative (this checkout's own hooks/
-  # and docs/ trees), so it stays code, not registry data.
-  case "$f" in
-    "$ROOT/hooks"/*|"$ROOT/docs"/*)
-      jq -n '{domain: null, excluded: true}'; return 0 ;;
-  esac
-  local p
-  while IFS= read -r p; do
-    # shellcheck disable=SC2254  # unquoted on purpose: $p is a glob pattern
-    case "$norm" in $p) jq -n '{domain: null, excluded: true}'; return 0 ;; esac
-  done < <(jq -r '.excluded.paths[]?' "$R")
-  while IFS= read -r p; do
-    # shellcheck disable=SC2254
-    case "$base" in $p) jq -n '{domain: null, excluded: true}'; return 0 ;; esac
-  done < <(jq -r '.excluded.basenames[]?' "$R")
+  # Exclusions, in one jq pass and in first-match-wins order:
+  #   self  — .excluded.self_dirs: root-relative directories of THIS checkout
+  #           (its own hooks/ and docs/ trees) that get no routing. The list is
+  #           registry data; only its resolution against $ROOT is code, which is
+  #           what keeps a consumer project's own src/hooks/ or docs/ routable.
+  #   path  — glob against the leading-slash-normalized full path
+  #   base  — glob against the basename
+  local typ p
+  while IFS=$'\t' read -r typ p; do
+    [ -n "$typ" ] || continue
+    # shellcheck disable=SC2254  # $p is unquoted on purpose: it is a glob pattern
+    case "$typ" in
+      self) case "$f"    in "$ROOT/$p"/*) ;; *) continue ;; esac ;;
+      path) case "$norm" in $p) ;;           *) continue ;; esac ;;
+      base) case "$base" in $p) ;;           *) continue ;; esac ;;
+      *) continue ;;
+    esac
+    jq -n '{domain: null, excluded: true}'; return 0
+  done < <(jq -r '
+      .excluded as $e
+      | (($e.self_dirs // [])[] | ["self", .]),
+        (($e.paths     // [])[] | ["path", .]),
+        (($e.basenames // [])[] | ["base", .])
+      | @tsv' "$R")
 
-  local dom typ pat hit=""
+  local dom pat hit=""
   while IFS=$'\t' read -r dom typ pat; do
     # shellcheck disable=SC2254  # $pat is registry-owned glob data
     case "$typ" in
@@ -373,7 +382,8 @@ cmd_waves() {
 }
 
 # ------------------------------------------------------------ decision-rules
-# The keyword tier of the decision engine (was inline in hooks/gate-advisor.sh):
+# The keyword tier of the decision engine (was inline in the gate advisor, now
+# composed by resolve-task for hooks/prompt-advisor.sh):
 # match the prompt against decision-rules.json signal regexes, highest priority
 # first. Rules with no signals are model-only by design and never match here.
 cmd_decision_rules() {
@@ -398,7 +408,8 @@ cmd_decision_rules() {
 
 # --------------------------------------------------------------------- scale
 # Big-task / spec-authoring / design-work classification (was hardcoded regexes
-# in hooks/task-scale-advisor.sh; the EREs now live in policy.json).
+# in the task-scale advisor; the EREs now live in policy.json and reach
+# hooks/prompt-advisor.sh through resolve-task).
 cmd_scale() {
   local prompt=""
   while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "scale: unknown argument $1" ;; esac; done

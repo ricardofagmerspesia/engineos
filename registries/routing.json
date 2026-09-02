@@ -1,6 +1,6 @@
 {
   "version": "1.1.0",
-  "description": "Machine-readable source of truth for EngineOS domain routing, including the path-pattern -> domain matching itself (match/excluded, moved out of hooks/routing-map.sh, which is now a shim over scripts/kernel.sh route-path). CLAUDE.md's stack/domain table is the human mirror. Precedence order MUST list every domain exactly once, in match order — first match wins. Each domain's sample_path is a self-validating fixture: scripts/validate-engineos.sh (C17) routes it through kernel.sh and fails if it does not resolve to this domain.",
+  "description": "Machine-readable source of truth for EngineOS domain routing, including the path-pattern -> domain matching itself (match/excluded globs, resolved by scripts/kernel.sh route-path). CLAUDE.md's stack/domain table is the human mirror. Precedence order MUST list every domain exactly once, in match order — first match wins. Each domain's sample_path is a self-validating fixture: scripts/validate-engineos.sh (C17) routes it through kernel.sh and fails if it does not resolve to this domain.",
   "precedence": [
     "security",
     "test",
@@ -322,6 +322,10 @@
       "pnpm-lock.yaml",
       "yarn.lock"
     ],
-    "note": "Meta/non-code files get no routing. The EngineOS-self exclusion (this checkout's own hooks/ and docs/ trees) is runtime-relative and lives in kernel.sh, not here."
+    "self_dirs": [
+      "hooks",
+      "docs"
+    ],
+    "note": "Meta/non-code files get no routing. self_dirs is the EngineOS-self exclusion: root-relative directories of the EngineOS checkout itself (this repo's own hooks/ and docs/ trees), resolved by scripts/kernel.sh against its own root, so a consumer project's src/hooks/ or product docs/ still route normally."
   }
 }

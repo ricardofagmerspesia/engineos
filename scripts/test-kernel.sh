@@ -72,6 +72,45 @@ assert_ok "excluded .engineos path exits 0"
 assert_eq "excluded .engineos/y.ts -> domain" "$(jqval '.domain')" "null"
 assert_eq "excluded .engineos/y.ts -> excluded" "$(jqval '.excluded')" "true"
 
+# EngineOS-self exclusion: .excluded.self_dirs is DATA, not code. This checkout's
+# own hooks/ and docs/ trees get no routing; an unrelated project's hooks/ dir
+# must still route, and dropping self_dirs from the registry must turn the
+# exclusion off — which is what proves the list is data.
+run route-path "$ROOT/hooks/anything.sh"
+assert_ok "self hooks/ path exits 0"
+assert_eq "self hooks/anything.sh -> excluded" "$(jqval '.excluded')" "true"
+
+# .ts, not .md: an .md basename is excluded anyway, so it would pass vacuously.
+run route-path "$ROOT/docs/x.ts"
+assert_eq "self docs/x.ts -> excluded" "$(jqval '.excluded')" "true"
+
+run route-path "/some/project/hooks/x.ts"
+assert_eq "a foreign project's hooks/x.ts -> not excluded" "$(jqval '.excluded')" "false"
+
+# The kernel derives its ROOT/REG from its own location, so a copy of kernel.sh
+# beside a modified registries/ answers against THAT data — no env override on the
+# kernel is needed. Run as a MATCHED PAIR: without the `with` control, a `false`
+# from the `without` half could just as well mean the relocated root never matched
+# at all, and the sub-case would pass vacuously.
+# pwd -P because mktemp -d hands back a symlinked path on macOS (/var -> /private/var)
+# while the kernel's own $ROOT is the resolved one — unresolved, nothing would match.
+SELFT=$(cd "$(mktemp -d)" && pwd -P)
+for variant in with without; do
+  mkdir -p "$SELFT/$variant/scripts" "$SELFT/$variant/registries"
+  cp "$KERNEL" "$SELFT/$variant/scripts/kernel.sh"
+done
+cp "$REG/routing.json" "$SELFT/with/registries/routing.json"
+jq 'del(.excluded.self_dirs)' "$REG/routing.json" > "$SELFT/without/registries/routing.json"
+
+OUT=$(bash "$SELFT/with/scripts/kernel.sh" route-path "$SELFT/with/hooks/x.sh" 2>&1); RC=$?
+assert_ok "relocated kernel copy exits 0"
+assert_eq "self_dirs present -> relocated root's own hooks/ excluded" "$(jqval '.excluded')" "true"
+
+OUT=$(bash "$SELFT/without/scripts/kernel.sh" route-path "$SELFT/without/hooks/x.sh" 2>&1); RC=$?
+assert_ok "relocated kernel copy without self_dirs exits 0"
+assert_eq "self_dirs removed -> own hooks/ no longer excluded" "$(jqval '.excluded')" "false"
+rm -rf "$SELFT"
+
 # Unmatched file: no domain, not excluded either.
 run route-path "/tmp/other/random.py"
 assert_ok "unmatched random.py exits 0"

@@ -14,7 +14,7 @@ alwaysApply: true
 ```
 
 Domain rules become glob-scoped files, which is Cursor's native equivalent of
-`hooks/routing-map.sh`:
+the `match` globs in `registries/routing.json`:
 
 ```mdc
 ---

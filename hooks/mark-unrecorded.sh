@@ -12,12 +12,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=hooks/lib-common.sh
 . "$DIR/lib-common.sh"
 
-# EngineOS's own hooks/ and docs/ dirs — restricting the exclusion below to these
-# exact paths (not any hooks/ or docs/ anywhere) so a consumer project's own
-# src/hooks/ or product docs/ still get flagged. Kept in sync with routing-map.sh.
-EOS_HOOKS_DIR="$DIR"
-EOS_DOCS_DIR="$(cd "$DIR/.." && pwd)/docs"
-
 hook_read_envelope
 engineos_bypass_active "$HOOK_CWD" && exit 0
 
@@ -32,9 +26,22 @@ esac
 case "$HOOK_FILE" in
   */.engineos/*) exit 0 ;;
 esac
-case "$HOOK_FILE" in
-  "$EOS_HOOKS_DIR"/*|"$EOS_DOCS_DIR"/*) exit 0 ;;
-esac
+# EngineOS's own meta dirs, read from registries/routing.json (.excluded.self_dirs)
+# and resolved against THIS checkout's root — the same list and the same
+# resolution scripts/kernel.sh route-path uses, so the two cannot drift. Scoping
+# to these exact paths (not any hooks/ or docs/ anywhere) is what keeps a consumer
+# project's own src/hooks/ or product docs/ flagged.
+EOS_ROOT="$(cd "$DIR/.." && pwd)"
+EOS_SELF_DIRS=$(jq -r '.excluded.self_dirs[]?' "$EOS_ROOT/registries/routing.json" 2>/dev/null)
+
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
+  case "$HOOK_FILE" in
+    "$EOS_ROOT/$d"/*) exit 0 ;;
+  esac
+done <<EOF
+$EOS_SELF_DIRS
+EOF
 
 [ -n "$HOOK_CWD" ] || exit 0
 GITDIR=$(git_dir "$HOOK_CWD") || exit 0

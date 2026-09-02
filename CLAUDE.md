@@ -46,10 +46,8 @@ Rules for routing:
   security, test, and the mobile store-release split) are mirrored
   deterministically by the `PreToolUse` hook `hooks/route-before-change.sh`.
   The canonical path→domain map is `registries/routing.json` (`match`/
-  `excluded` globs), resolved by `scripts/kernel.sh route-path`;
-  `hooks/routing-map.sh` is a compatibility shim kept only for its function
-  contracts — it carries no routing data of its own. This table is the human
-  mirror of the **registry**. **They no longer drift silently:**
+  `excluded` globs), resolved by `scripts/kernel.sh route-path`. This table is
+  the human mirror of the **registry**. **They no longer drift silently:**
   `scripts/validate-engineos.sh` fails CI if the table and the registry
   disagree. All other rows are request-driven and have no hook equivalent.
 - **Multi-match applies to this table only.** The hook emits exactly ONE route —
