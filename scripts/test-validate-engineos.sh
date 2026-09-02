@@ -582,11 +582,11 @@ json.dump(d,open(p,'w'),indent=2)\""
 
 case_ "the route telemetry event removed from prompt-advisor.sh is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|--event route|--event route-missing|' hooks/prompt-advisor.sh"
+      "sed -i.bak 's|hook_telemetry route|hook_telemetry route-missing|' hooks/prompt-advisor.sh"
 
-case_ "prompt-advisor's append reading \$PROMPT instead of \$ROUTE_DATA is caught" \
+case_ "prompt-advisor's append reading the prompt instead of \$ROUTE_DATA is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|--data \"\$ROUTE_DATA\"|--data \"\$PROMPT\"|' hooks/prompt-advisor.sh"
+      "sed -i.bak 's|hook_telemetry route \"\$ROUTE_DATA\"|hook_telemetry route \"\$HOOK_PROMPT\"|' hooks/prompt-advisor.sh"
 
 case_ "ensure-project-layout's registry read replaced with a hardcoded retention window is caught" \
       "telemetry wiring problems" \

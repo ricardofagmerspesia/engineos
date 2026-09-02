@@ -1058,12 +1058,22 @@ else
     # copy, and both readers still mention the source.
     w_bad=""
     while IFS=$'\t' read -r eid wb; do
-      grep -q 'telemetry.sh' "$wb" || w_bad="$w_bad [$wb:does-not-call-telemetry.sh]"
-      grep -qE -- "--event[[:space:]]+$eid([[:space:]]|$)" "$wb" \
+      # The append invocation itself now lives in hooks/lib-common.sh
+      # (hook_telemetry); a hook names its event at that helper instead of
+      # spelling out the CLI call. Either form counts as wired.
+      grep -qE 'telemetry\.sh|hook_telemetry' "$wb" \
+        || w_bad="$w_bad [$wb:does-not-call-telemetry.sh]"
+      grep -qE -- "(--event|hook_telemetry)[[:space:]]+$eid([[:space:]]|\$)" "$wb" \
         || w_bad="$w_bad [$wb:missing-literal---event-$eid]"
-      grep -A2 'telemetry.sh" append' "$wb" | grep -qE '\$PROMPT|"\$INPUT"' \
+      { grep -A2 'telemetry.sh" append' "$wb"; grep 'hook_telemetry ' "$wb"; } \
+        | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
         && w_bad="$w_bad [$wb:append-invocation-references-prompt-text]"
     done < <(jq -r '.telemetry.events[] | [.id, .written_by] | @tsv' "$PJ")
+    # The shared emitter is the real append site now, so the prompt-text ban has
+    # to be enforced there too, not only at the hooks that call it.
+    grep -A3 'telemetry.sh" append' hooks/lib-common.sh \
+      | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
+      && w_bad="$w_bad [hooks/lib-common.sh:append-invocation-references-prompt-text]"
     grep -q 'telemetry\.retention_days' hooks/ensure-project-layout.sh \
       || w_bad="$w_bad ensure-project-layout.sh-does-not-read-the-registry-field"
     grep -qE '\-mtime "\+[0-9]' hooks/ensure-project-layout.sh \

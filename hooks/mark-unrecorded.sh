@@ -18,34 +18,27 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 EOS_HOOKS_DIR="$DIR"
 EOS_DOCS_DIR="$(cd "$DIR/.." && pwd)/docs"
 
-INPUT=$(cat)
-command -v jq >/dev/null 2>&1 || exit 0
+hook_read_envelope
+engineos_bypass_active "$HOOK_CWD" && exit 0
 
-# shellcheck source=hooks/bypass.sh
-. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
-engineos_bypass_active_for_payload "$INPUT" && exit 0
-
-FILE=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
-[ -z "$FILE" ] && exit 0
+[ -z "$HOOK_FILE" ] && exit 0
 
 # only code changes count
-case "$FILE" in
+case "$HOOK_FILE" in
   *.ts|*.tsx|*.js|*.jsx|*.py|*.go|*.rs|*.sql) ;;
   *) exit 0 ;;
 esac
 # never flag edits to our own scaffolding/meta
-case "$FILE" in
+case "$HOOK_FILE" in
   */.engineos/*) exit 0 ;;
 esac
-case "$FILE" in
+case "$HOOK_FILE" in
   "$EOS_HOOKS_DIR"/*|"$EOS_DOCS_DIR"/*) exit 0 ;;
 esac
 
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
-SID=$(printf '%s' "$INPUT" | jq -r '.session_id // "nosession"' 2>/dev/null)
-[ -n "$CWD" ] || exit 0
-GITDIR=$(git_dir "$CWD") || exit 0
+[ -n "$HOOK_CWD" ] || exit 0
+GITDIR=$(git_dir "$HOOK_CWD") || exit 0
 [ -n "$GITDIR" ] || exit 0
 
-: > "$GITDIR/ENGINEOS_UNRECORDED.$SID" 2>/dev/null || true
+: > "$GITDIR/ENGINEOS_UNRECORDED.$HOOK_SID" 2>/dev/null || true
 exit 0

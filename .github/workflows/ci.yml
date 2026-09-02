@@ -70,6 +70,9 @@ jobs:
       - name: Unified prompt advisor tests
         run: bash hooks/test-prompt-advisor.sh
 
+      - name: Hook-envelope library tests
+        run: bash hooks/test-lib-common.sh
+
       - name: Runtime performance budgets
         run: bash scripts/bench-runtime.sh
 

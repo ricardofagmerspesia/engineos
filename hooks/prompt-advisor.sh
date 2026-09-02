@@ -7,60 +7,36 @@ set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=hooks/lib-common.sh
 . "$DIR/lib-common.sh"
-# shellcheck source=hooks/bypass.sh
-. "$DIR/bypass.sh"
 
-INPUT=$(cat)
-command -v jq >/dev/null 2>&1 || exit 0
+hook_read_envelope
 
-# Parse the hook envelope once. NUL delimiters preserve tabs and newlines in
-# prompts without using eval or lossy shell quoting.
-PROMPT=""
-CWD=""
-SID="nosession"
-{
-  IFS= read -r -d '' PROMPT || true
-  IFS= read -r -d '' CWD || true
-  IFS= read -r -d '' SID || true
-} < <(printf '%s' "$INPUT" | jq -j \
-  '(.prompt // ""), "\u0000", (.cwd // ""), "\u0000", (.session_id // "nosession"), "\u0000"' \
-  2>/dev/null)
-
-if engineos_bypass_active "$CWD"; then
-  jq -n --arg c "[engineos] BYPASS ACTIVE — routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness's own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run \`/engineos:bypass off\` to restore EngineOS." \
-    '{hookSpecificOutput:{hookEventName:"UserPromptSubmit", additionalContext:$c}}'
+if engineos_bypass_active "$HOOK_CWD"; then
+  hook_context UserPromptSubmit "[engineos] BYPASS ACTIVE — routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness's own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run \`/engineos:bypass off\` to restore EngineOS."
   exit 0
 fi
 
-[ -n "$PROMPT" ] || exit 0
-RESULT=$("$DIR/../scripts/kernel.sh" resolve-task --prompt "$PROMPT" 2>/dev/null) || exit 0
+[ -n "$HOOK_PROMPT" ] || exit 0
+RESULT=$("$DIR/../scripts/kernel.sh" resolve-task --prompt "$HOOK_PROMPT" 2>/dev/null) || exit 0
 printf '%s' "$RESULT" | jq -e . >/dev/null 2>&1 || exit 0
 
 # Telemetry is best-effort and stores registry ids only, never prompt text.
-if [ "${ENGINEOS_TELEMETRY:-}" != "0" ] && [ -n "$CWD" ]; then
-  if TROOT=$(repo_root "$CWD") && [ -d "$TROOT/.engineos" ] && TGIT=$(git_dir "$CWD") && [ -n "$TGIT" ]; then
-    mkdir -p "$TGIT/engineos-telemetry" 2>/dev/null || true
-    ROUTE_DATA=$(printf '%s' "$RESULT" | jq -c \
-      '{escalate: (.route.escalate // false), reasons: .route.reasons,
-        intents: .route.intents, suppressed: [.route.suppressed[]?.id],
-        agents: .route.agents}' 2>/dev/null)
-    "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
-      --session "$SID" --event route --data "$ROUTE_DATA" >/dev/null 2>&1 || true
+ROUTE_DATA=$(printf '%s' "$RESULT" | jq -c \
+  '{escalate: (.route.escalate // false), reasons: .route.reasons,
+    intents: .route.intents, suppressed: [.route.suppressed[]?.id],
+    agents: .route.agents}' 2>/dev/null)
+hook_telemetry route "$ROUTE_DATA"
 
-    if printf '%s' "$RESULT" | jq -e '.decision_rules.matches | length > 0' >/dev/null 2>&1; then
-      DECISION_DATA=$(printf '%s' "$RESULT" | jq -c \
-        '{rules: [.decision_rules.matches[].id], any_high: (.decision_rules.any_high // false)}' \
-        2>/dev/null)
-      "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
-        --session "$SID" --event decision-rules --data "$DECISION_DATA" >/dev/null 2>&1 || true
-    fi
-  fi
+if printf '%s' "$RESULT" | jq -e '.decision_rules.matches | length > 0' >/dev/null 2>&1; then
+  DECISION_DATA=$(printf '%s' "$RESULT" | jq -c \
+    '{rules: [.decision_rules.matches[].id], any_high: (.decision_rules.any_high // false)}' \
+    2>/dev/null)
+  hook_telemetry decision-rules "$DECISION_DATA"
 fi
 
 # Build a single context payload. The task_contract is the stable interface;
 # route and decision_rules remain attached only so this adapter can preserve
 # the existing human-readable guidance during the compatibility window.
-printf '%s' "$RESULT" | jq '
+NOTES=$(printf '%s' "$RESULT" | jq -r '
   def csv($xs): if ($xs | length) == 0 then "-" else ($xs | join(",")) end;
   def scale_notes:
     [if .task_contract.scale.big_task then
@@ -95,7 +71,7 @@ printf '%s' "$RESULT" | jq '
       ["[engineos] task contract (kernel, deterministic): intents=\(csv(.task_contract.intents)) agents=\(csv(.task_contract.agents)) rules=\(csv(.task_contract.rules)) policy_rules=\(csv(.task_contract.policy_rules)) skills=\(csv(.task_contract.skills)) commands=\(csv(.task_contract.commands)) mcp=\(csv(.task_contract.mcp)) model_tier=\(.task_contract.model_tier // "-") risk_floor=\(.task_contract.risk_floor // "-") autonomy_ceiling_at_floor=\(.task_contract.autonomy_ceiling_at_floor // "-") — load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed."]
     else [] end;
   (scale_notes + decision_note + route_note) as $notes
-  | if ($notes | length) == 0 then empty
-    else {hookSpecificOutput:{hookEventName:"UserPromptSubmit", additionalContext:($notes | join("\n"))}}
-    end'
+  | if ($notes | length) == 0 then empty else ($notes | join("\n")) end')
+[ -n "$NOTES" ] || exit 0
+hook_context UserPromptSubmit "$NOTES"
 exit 0

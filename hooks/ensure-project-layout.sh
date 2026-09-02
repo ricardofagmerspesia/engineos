@@ -10,9 +10,14 @@
 set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=hooks/lib-common.sh
+. "$(cd "$(dirname "$0")" && pwd)/lib-common.sh"
 INPUT=$(cat 2>/dev/null || true)
 
-# Parse cwd: prefer jq, fall back to a minimal grep so we never hard-depend on jq.
+# Parse cwd: prefer jq, fall back to a minimal grep so we never hard-depend on
+# jq. lib-common's hook_read_envelope is deliberately not used — it exits 0
+# without jq, and a session start must still expire a stale bypass and reap
+# stale flags on a machine that has none.
 if command -v jq >/dev/null 2>&1; then
   CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 else
@@ -24,8 +29,6 @@ fi
 # engineos-repo skips below, so a forgotten bypass always dies at the next
 # session start — including inside the engineos repo itself, which those skips
 # would otherwise exempt. A bypass never outlives the session that asked for it.
-# shellcheck source=hooks/bypass.sh
-. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
 if BYPASS_MARKER=$(engineos_bypass_marker "$CWD"); then rm -f "$BYPASS_MARKER"; fi
 
 # Resolve project root; bail silently if not a git work tree.

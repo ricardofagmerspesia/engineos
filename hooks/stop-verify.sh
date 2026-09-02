@@ -15,6 +15,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 INPUT=$(cat)
 
 # ---------- field extraction (jq optional) ----------
+# This hook does NOT use lib-common's hook_read_envelope: that helper exits 0
+# without jq, and this gate still verifies through the grep/sed path below. The
+# rest of the envelope work (bypass, telemetry) does come from the library.
 if command -v jq >/dev/null 2>&1; then
   ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
   TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
@@ -31,10 +34,16 @@ fi
 
 # ---------- bypass switch ----------
 # Checked against CWD rather than the raw payload so the guard survives the
-# no-jq path above, same as every other field here.
-# shellcheck source=hooks/bypass.sh
-. "$(cd "$(dirname "$0")" && pwd)/bypass.sh"
+# no-jq path above, same as every other field here. bypass.sh arrives with
+# lib-common.sh.
 engineos_bypass_active "$CWD" && exit 0
+
+# Hand the library the two envelope fields hook_telemetry reads. The decode
+# above stays local; only the emit is shared.
+# shellcheck disable=SC2034
+HOOK_CWD="$CWD"
+# shellcheck disable=SC2034
+HOOK_SID="${SID:-nosession}"
 
 # ---------- loop guard ----------
 [ "${ACTIVE:-false}" = "true" ] && exit 0
@@ -184,15 +193,11 @@ done <<< "$PKG_LIST"
 # cycle logs one verify event, never two. Written regardless of red or green:
 # a green run is half the base-rate usage-report.sh's block count has lacked.
 if command -v jq >/dev/null 2>&1 && [ "${ENGINEOS_TELEMETRY:-}" != "0" ]; then
-  if TROOT=$(repo_root "$CWD") && [ -d "$TROOT/.engineos" ] && TGIT=$(git_dir "$CWD") && [ -n "$TGIT" ]; then
-    mkdir -p "$TGIT/engineos-telemetry" 2>/dev/null || true
-    TDATA=$(printf '%s\n' "$PKG_LIST" | grep -v '^$' \
-      | sed "s|^$ROOT/||; s|^$ROOT\$|.|" \
-      | jq -R . | jq -cs --argjson f "$([ "$FAILED" -eq 1 ] && echo true || echo false)" \
-        '{failed: $f, targets: .}')
-    "$DIR/../scripts/telemetry.sh" append "$TGIT/engineos-telemetry/$SID.jsonl" \
-      --session "$SID" --event verify --data "$TDATA" >/dev/null 2>&1 || true
-  fi
+  TDATA=$(printf '%s\n' "$PKG_LIST" | grep -v '^$' \
+    | sed "s|^$ROOT/||; s|^$ROOT\$|.|" \
+    | jq -R . | jq -cs --argjson f "$([ "$FAILED" -eq 1 ] && echo true || echo false)" \
+      '{failed: $f, targets: .}')
+  hook_telemetry verify "$TDATA"
 fi
 
 if [ "$FAILED" -eq 1 ]; then
