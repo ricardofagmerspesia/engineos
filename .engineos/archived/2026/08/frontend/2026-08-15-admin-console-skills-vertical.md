@@ -3,7 +3,7 @@ name: 2026-08-15-admin-console-skills-vertical
 status: done
 completed: 2026-08-15
 owner: Ricardo Fagmer
-spec: docs/superpowers/specs/2026-08-15-engineos-admin-console-design.md
+spec: docs/specs/2026-08-15-engineos-admin-console-design.md
 domain: frontend
 ---
 
@@ -172,6 +172,11 @@ this console, but worth knowing about; flip it back via the console or a
 direct edit if that skill should stay enabled.
 
 `[tests] skipped — not requested.`
+
+## Changes registered
+Not captured at archive time. The landed diff is merge commit f7b3008 (PR #21,
+`feat/engineos-admin-console`); see `git show --stat f7b3008^2`. Section added
+2026-09-02 for change-record conformance when CI first ran the integrity check.
 
 ## Notes
 Agent registry note: this session has no `frontend-coordinator` subagent_type
