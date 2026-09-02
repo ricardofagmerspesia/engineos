@@ -407,6 +407,10 @@ for c in d['capabilities']:
     if c['id']=='route': c['model_tier']='build'
 json.dump(d,open(p,'w'),indent=2)\""
 
+case_ C18 "route capability's tier drifting off the router agent's model is caught" \
+      "route capability binding broken" \
+      "sed -i.bak 's|^model: opus|model: haiku|' agents/router.md"
+
 case_ C18b "router agent losing a required kernel call is caught" \
       "router does not call the kernel" \
       "sed -i.bak 's|kernel.sh waves|kernel.sh wavez|g' agents/router.md"

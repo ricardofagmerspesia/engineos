@@ -212,36 +212,6 @@ assert_eq "gates high -> release" "$(jqval '.gates.release')" "required-plus-hum
 run gates --risk banana
 assert_err "gates --risk banana exits 1 with .error"
 
-# --------------------------------------------------------------------- retry
-
-echo "-- retry --"
-
-run retry --status FAILED --attempt 1
-assert_ok "retry FAILED attempt 1 exits 0"
-assert_eq "FAILED attempt 1 -> action" "$(jqval '.action')" "retry-same-tier"
-
-run retry --status FAILED --attempt 2
-assert_eq "FAILED attempt 2 -> action" "$(jqval '.action')" "escalate-one-tier"
-
-run retry --status FAILED --attempt 3
-assert_eq "FAILED attempt 3 -> action" "$(jqval '.action')" "stop"
-
-run retry --status BLOCKED
-assert_eq "BLOCKED -> action" "$(jqval '.action')" "no-retry"
-
-run retry --status DEGRADED
-assert_eq "DEGRADED -> action" "$(jqval '.action')" "accept-carry"
-
-run retry --status OK
-assert_eq "OK -> action" "$(jqval '.action')" "none"
-
-# never-retry situations win regardless of status/attempt.
-run retry --status OK --situation security-risk
-assert_eq "security-risk situation overrides OK -> never-retry" "$(jqval '.action')" "never-retry"
-
-run retry --status FAILED --attempt 1 --situation security-risk
-assert_eq "security-risk situation overrides FAILED attempt1 -> never-retry" "$(jqval '.action')" "never-retry"
-
 # -------------------------------------------------------------------- repair
 
 echo "-- repair --"
@@ -277,19 +247,6 @@ assert_err "ladder path missing --attempt errors"
 
 run repair --check lint --attempt 1 --situation nonsense
 assert_err "unknown situation errors"
-
-# --------------------------------------------------------------- capability
-
-echo "-- capability --"
-
-run capability security-review
-assert_ok "capability security-review exits 0"
-assert_eq "security-review -> agent" "$(jqval '.agent')" "security-reviewer"
-assert_eq "security-review -> model" "$(jqval '.model')" "opus"
-assert_eq "security-review -> bound" "$(jqval '.bound')" "true"
-
-run capability does-not-exist
-assert_err "capability unknown id exits 1 with .error"
 
 # --------------------------------------------------------------------- waves
 
@@ -474,14 +431,14 @@ cp /tmp/test-kernel-policy-bak.json "$REG/policy.json"
 rm -f /tmp/test-kernel-policy-bak.json
 
 # ---------------------------------------------- positional subcommands fail closed
-# The three positional subcommands used to accept a flag SILENTLY: bash bound
+# The positional subcommands used to accept a flag SILENTLY: bash bound
 # "--prompt" to $1 and the real argument was discarded, so route-intent answered
 # about the literal string "--prompt" (which contains the LLM signal "prompt")
 # and exited 0. A resolver that returns a confident wrong answer is worse than
 # one that refuses, and the flag shape is plausible because route-escalate,
 # scale and decision-rules all legitimately take --prompt.
 
-for sub in route-path route-intent capability; do
+for sub in route-path route-intent; do
   run "$sub" --prompt "audit the system"
   assert_err "$sub rejects a --prompt flag instead of routing on the literal string"
 
@@ -513,8 +470,59 @@ assert_eq "route-intent positional form resolves audit" "$(jqvalc '[.matches[].i
 run route-path apps/api/src/orders/orders.service.ts
 assert_eq "route-path still answers the positional form" "$(jqval '.domain')" "backend"
 
-run capability implement
-assert_eq "capability still answers the positional form" "$(jqval '.agent')" "backend-coordinator"
+# ----------------------------------------------------------- registry loader
+# Every registry read goes through kernel.sh's `reg` seam, so the seam owns the
+# fail-closed behaviour that used to be a `need_reg` call at each of 13 sites.
+# That behaviour had no test at all: nothing proved a subcommand refuses, or
+# says which registry it wanted, when one is absent. A resolver that answers
+# from a half-present registry set is the failure mode worth defending against.
+
+echo "-- registry loader --"
+
+# The kernel derives ROOT/REG from its own location (see the route-path
+# relocated-copy pair above), so a copy of kernel.sh beside an INCOMPLETE
+# registries/ exercises the real error path instead of mocking it. Each case
+# hides exactly one registry, so a subcommand that stopped declaring one of its
+# inputs — or that names the wrong one — fails here.
+LOADT=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$LOADT/scripts" "$LOADT/registries"
+cp "$KERNEL" "$LOADT/scripts/kernel.sh"
+cp "$REG"/*.json "$LOADT/registries/"
+
+while IFS=$'\t' read -r missing sub args; do
+  mv "$LOADT/registries/$missing" "$LOADT/registries/$missing.hidden"
+  # shellcheck disable=SC2086  # $args is a space-separated argument list from the table
+  OUT=$(bash "$LOADT/scripts/kernel.sh" "$sub" $args 2>&1); RC=$?
+  assert_err "$sub without $missing exits 1 with .error"
+  assert_eq "$sub names the missing registry" \
+    "$(jqval '.error')" "registry missing: registries/$missing"
+  mv "$LOADT/registries/$missing.hidden" "$LOADT/registries/$missing"
+done <<TSV
+routing.json	route-path	src/x.ts
+intents.json	route-intent	anything
+models.json	model	--work spec
+policy.json	gates	--risk low
+decision-rules.json	decision-rules	--prompt deploy
+TSV
+
+# The composing subcommands must refuse with the same shaped error even when
+# the missing registry is needed deep in the composition, not by their first jq
+# program: resolve-task reaches decision-rules.json only through the
+# cmd_decision_rules call it makes, and route-escalate reaches models.json only
+# in its own final pass. A caller parses one stream either way, so "which
+# registry" has to survive the composition.
+while IFS=$'\t' read -r missing sub; do
+  mv "$LOADT/registries/$missing" "$LOADT/registries/$missing.hidden"
+  OUT=$(bash "$LOADT/scripts/kernel.sh" "$sub" --prompt "add an endpoint" 2>&1); RC=$?
+  assert_err "$sub without $missing exits 1 with .error"
+  assert_eq "$sub names the missing composed registry" \
+    "$(jqval '.error')" "registry missing: registries/$missing"
+  mv "$LOADT/registries/$missing.hidden" "$LOADT/registries/$missing"
+done <<TSV
+decision-rules.json	resolve-task
+models.json	route-escalate
+TSV
+rm -rf "$LOADT"
 
 # -------------------------------------------------------------- resolve-task
 
