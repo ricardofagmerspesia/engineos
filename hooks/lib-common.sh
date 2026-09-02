@@ -67,6 +67,8 @@ fi
 # runner_detect <root_dir> -> sets globals RUN and EXEC based on the lockfile
 # present at root_dir (pnpm > yarn > npm). One consistent form ("pnpm run" /
 # "yarn run" / "npm run") used by every caller.
+# hooks/lib-runner.sh wraps this as the npm-family half of its runner seam; a
+# hook that needs the Nx-vs-package-manager choice sources that file too.
 runner_detect() {
   local root="$1"
   if   [ -f "$root/pnpm-lock.yaml" ]; then RUN="pnpm run"; EXEC="pnpm exec"
