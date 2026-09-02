@@ -4,6 +4,7 @@ status: done
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-02-deepen-runtime-modules-design.md
 domain: devops
+completed: 2026-09-02
 ---
 
 ## What

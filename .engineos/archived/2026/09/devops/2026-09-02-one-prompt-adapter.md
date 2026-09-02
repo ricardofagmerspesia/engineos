@@ -1,9 +1,10 @@
 ---
 name: 2026-09-02-one-prompt-adapter
-status: active
+status: done
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-02-deepen-runtime-modules-design.md
 domain: devops
+completed: 2026-09-02
 ---
 
 ## What
@@ -114,8 +115,12 @@ same shape as `install.sh` and reviewed by reading only.
  19 files changed, 339 insertions(+), 687 deletions(-)
 ```
 
-Branch `refactor/one-prompt-adapter`, one commit, stacked on
-`chore/ci-run-all-suites` (PR0) as the spec's PR table requires.
+Branch `refactor/one-prompt-adapter`, one commit (`aba76e2`). The draft said
+it stacks on `chore/ci-run-all-suites` (PR0); the commit says otherwise — its
+parent is `418db21` on `refactor/hook-envelope` (PR1), which is what the spec's
+sequential stack requires. Corrected on archiving. The stat above was taken
+before the commit, so it does not list this record file; the commit's own stat
+is 20 files, adding `.engineos/changes/2026-09-02-one-prompt-adapter.md`.
 
 ## Notes
 - **PR size.** 588 lines are pure deletion of dead files (called out as the
