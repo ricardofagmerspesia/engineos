@@ -340,3 +340,117 @@ check_C24c() {
   [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors backpressure: names kernel.sh admit, quotes the queue bound, one row per declared action" \
                    || bad "backpressure prose-mirror problems:$p_bad"
 }
+
+# ------------- C25: circuit breaker — data, canary, prose mirror
+# The per-resource circuit breaker is data (policy.json.breaker), answered by
+# kernel.sh breaker, and stated in rules/parallelism.md "Circuit breaker".
+# Same three-part shape as C24 applied to a sixth prose/data pair.
+#
+# The breaker is the THIRD failure-policy block, not a variant of retry (agent
+# units) or repair (checks) — C25a therefore pins the state machine's shape so
+# a later reader cannot quietly collapse the three into one.
+# Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 3
+# ADR: docs/adr/2026-09-03-circuit-breaker-separate-from-retry.md
+have_breaker_inputs() {
+  [ -f "$PJ" ] && [ -x "$KSH" ] && return 0
+  skip_once breaker "policy.json or kernel.sh missing — circuit-breaker checks skipped"
+  return 1
+}
+
+# The failure threshold C25a validates and C25b/C25c consume. Prints nothing
+# unless the field is an integer >= 1 — the same condition C25a fails on — so a
+# threshold C25a has already condemned can never silently reach the checks
+# downstream.
+breaker_threshold() {
+  local v
+  v=$(jq -r '.breaker.failure_threshold' "$PJ" 2>/dev/null)
+  case "$v" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$v" -ge 1 ] || return 0
+  printf '%s' "$v"
+}
+
+check_C25() {
+  have_jq || return 0
+  have_breaker_inputs || return 0
+  # C25a: the breaker block is well-formed
+  k_bad=""
+  thr=$(jq -r '.breaker.failure_threshold' "$PJ" 2>/dev/null)
+  case "$thr" in
+    ''|*[!0-9]*) k_bad="$k_bad failure_threshold-not-a-nonneg-integer" ;;
+    # A threshold of 0 opens the breaker before anything has failed, so the
+    # closed state would be unreachable and the whole machine dead data.
+    *) [ "$thr" -ge 1 ] || k_bad="$k_bad failure_threshold-below-1" ;;
+  esac
+  cw=$(jq -r '.breaker.cooldown_waves' "$PJ" 2>/dev/null)
+  case "$cw" in
+    ''|*[!0-9]*) k_bad="$k_bad cooldown_waves-not-a-nonneg-integer" ;;
+    *) [ "$cw" -ge 1 ] || k_bad="$k_bad cooldown_waves-below-1" ;;
+  esac
+  # cmd_breaker interpolates this straight into the half-open reason, so an
+  # absent or zero value ships "allow null probe call(s)" to a caller rather
+  # than failing anywhere.
+  hp=$(jq -r '.breaker.half_open_probes' "$PJ" 2>/dev/null)
+  case "$hp" in
+    ''|*[!0-9]*) k_bad="$k_bad half_open_probes-not-a-nonneg-integer" ;;
+    *) [ "$hp" -ge 1 ] || k_bad="$k_bad half_open_probes-below-1" ;;
+  esac
+  # The three states are the contract kernel.sh breaker implements as a case
+  # arm each; a fourth state, or a missing one, is a kernel the registry no
+  # longer describes.
+  st=$(jq -r '[.breaker.states[]?] | sort | join(",")' "$PJ" 2>/dev/null)
+  [ "$st" = "closed,half-open,open" ] \
+    || k_bad="$k_bad states-are-not-exactly-closed+half-open+open(got:${st:-none})"
+  jq -e '(.breaker.scopes | type == "array") and (.breaker.scopes | length > 0)' "$PJ" >/dev/null 2>&1 \
+    || k_bad="$k_bad scopes-missing-or-empty"
+  [ -z "$k_bad" ] && ok "policy.json.breaker is well-formed: failure_threshold, cooldown_waves and half_open_probes are integers >= 1, states are exactly closed/half-open/open, scopes is non-empty" \
+                   || bad "breaker block problems:$k_bad"
+}
+
+check_C25b() {
+  have_jq || return 0
+  have_breaker_inputs || return 0
+  # C25b: canary — three distinct outcomes, so a kernel that answered one
+  # transition unconditionally cannot pass: the threshold opens it, one failure
+  # below the threshold does NOT, and a successful probe closes it. The
+  # threshold comes from the registry, never from a literal here.
+  n_bad=""
+  thr=$(breaker_threshold)
+  if [ -z "$thr" ]; then
+    n_bad="$n_bad failure-threshold-unusable-see-C25a"
+  else
+    opened=$(bash "$KSH" breaker --state closed --failures "$thr" 2>/dev/null | jq -r '.state // empty')
+    [ "$opened" = "open" ] || n_bad="$n_bad expected-open-at-threshold-got:${opened:-none}"
+    held=$(bash "$KSH" breaker --state closed --failures "$((thr - 1))" 2>/dev/null | jq -r '.state // empty')
+    [ "$held" = "closed" ] || n_bad="$n_bad expected-closed-one-below-threshold-got:${held:-none}"
+  fi
+  recovered=$(bash "$KSH" breaker --state half-open --probe-result ok 2>/dev/null | jq -r '.state // empty')
+  [ "$recovered" = "closed" ] || n_bad="$n_bad expected-closed-after-a-successful-probe-got:${recovered:-none}"
+  [ -z "$n_bad" ] && ok "kernel.sh breaker opens at the registry threshold, holds one failure below it, and closes on a successful probe" \
+                  || bad "breaker canary:$n_bad"
+}
+
+check_C25c() {
+  have_jq || return 0
+  have_breaker_inputs || return 0
+  # C25c: prose mirror — rules/parallelism.md names the subcommand an
+  # orchestrator is supposed to call, quotes the registry's failure threshold,
+  # and carries a table row for every state the registry declares.
+  m_bad=""
+  thr=$(breaker_threshold)
+  grep -q 'kernel.sh breaker' rules/parallelism.md 2>/dev/null \
+    || m_bad="$m_bad parallelism.md-does-not-name-kernel.sh-breaker"
+  # An empty threshold would make the grep below match vacuously —
+  # "[^0-9]*\b" hits any bare mention of the field name — so an unusable
+  # threshold is its own finding rather than a silent pass.
+  if [ -z "$thr" ]; then
+    m_bad="$m_bad failure-threshold-unusable-see-C25a"
+  elif ! grep -qE "failure_threshold[^0-9]*${thr}\b" rules/parallelism.md 2>/dev/null; then
+    m_bad="$m_bad parallelism.md-threshold-disagrees-with-registry(${thr})"
+  fi
+  for bst in $(jq -r '.breaker.states[]?' "$PJ"); do
+    grep -qE "^\| \`$bst\`" rules/parallelism.md 2>/dev/null \
+      || m_bad="$m_bad parallelism.md-has-no-table-row-for-state:$bst"
+  done
+  [ -z "$m_bad" ] && ok "rules/parallelism.md mirrors the breaker: names kernel.sh breaker, quotes the failure threshold, one row per declared state" \
+                   || bad "breaker prose-mirror problems:$m_bad"
+}

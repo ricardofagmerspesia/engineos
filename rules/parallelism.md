@@ -109,6 +109,26 @@ hole. Either fix the unit, or re-plan the remaining waves with the hole explicit
 retried until it succeeds has not succeeded — it has been sampled until it looked
 right.
 
+## Circuit breaker
+
+The failure policy above is per unit. The breaker is per resource — a provider,
+an MCP server, a tool, an agent type — and answers a different question: not
+"retry?" but "why are we still calling this?". Consult it BEFORE `retry`.
+
+`scripts/kernel.sh breaker --state closed --failures <consecutive failures on this resource>`
+
+| State | Rule |
+|---|---|
+| `closed` | calls allowed; `failure_threshold` (3) consecutive failures opens it |
+| `open` | calls blocked for `cooldown_waves` (1); route around or report `DEGRADED` |
+| `half-open` | after cooldown, `half_open_probes` (1) call is allowed; success closes, failure reopens |
+
+The consecutive-failure count comes from the exec journal
+(`rules/observability.md` "Agent traces"): `span_kind` `tool` or `model`,
+`status: FAILED`, same `tool`/`provider`. An open breaker on a resource a unit
+needs makes that unit `BLOCKED`, which is a HITL reason (`breaker-open`) when
+no alternative resource exists.
+
 ## Choosing the fan-out mechanism
 
 | Situation | Use |

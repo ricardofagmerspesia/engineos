@@ -606,6 +606,69 @@ assert_err "admit rejects a non-numeric --queued"
 run admit --inflight 1
 assert_err "admit requires --queued"
 
+# --------------------------------------------------------------------- breaker
+
+echo "-- breaker --"
+
+# every number below comes from the registry, so a threshold change moves the
+# fixtures instead of turning them red
+thr=$(jq -r '.breaker.failure_threshold' "$REG/policy.json")
+
+run breaker --state closed --failures 0
+assert_ok "breaker with a healthy resource exits 0"
+assert_eq "closed with 0 failures stays closed" "$(jqval .state)" "closed"
+assert_eq "closed allows" "$(jqval .allow)" "true"
+assert_eq "breaker answers exactly {allow, reason, state}" \
+  "$(jqvalc '. | keys | sort')" '["allow","reason","state"]'
+
+# one below the threshold must NOT trip: a kernel that always opened would
+# otherwise pass on the threshold case alone
+run breaker --state closed --failures "$((thr - 1))"
+assert_eq "closed one failure below the threshold stays closed" "$(jqval .state)" "closed"
+
+run breaker --state closed --failures "$thr"
+assert_eq "closed at threshold opens" "$(jqval .state)" "open"
+assert_eq "open blocks" "$(jqval .allow)" "false"
+
+run breaker --state open --cooldown-elapsed false
+assert_eq "open before cooldown stays open" "$(jqval .state)" "open"
+run breaker --state open --cooldown-elapsed true
+assert_eq "open after cooldown goes half-open" "$(jqval .state)" "half-open"
+assert_eq "half-open allows a probe" "$(jqval .allow)" "true"
+
+run breaker --state half-open --probe-result ok
+assert_eq "successful probe closes" "$(jqval .state)" "closed"
+run breaker --state half-open --probe-result failed
+assert_eq "failed probe reopens" "$(jqval .state)" "open"
+
+run breaker --state closed
+assert_err "closed requires --failures"
+run breaker --state open
+assert_err "open requires --cooldown-elapsed"
+run breaker --state half-open
+assert_err "half-open requires --probe-result"
+run breaker --state bogus --failures 1
+assert_err "unknown state is an error"
+run breaker --failures 1
+assert_err "breaker requires --state"
+
+# a trailing flag with no value must error, not spin the arg loop forever
+run breaker --state
+assert_err "breaker with a valueless --state errors instead of hanging"
+
+# a leading zero is a shell-ism, not a JSON number: it normalises, and must
+# never surface as a bare jq parse error
+run breaker --state closed --failures 00
+assert_ok "breaker normalises a leading-zero --failures"
+assert_eq "breaker treats 00 as 0" "$(jqval .state)" "closed"
+
+run breaker --state closed --failures abc
+assert_err "breaker rejects a non-numeric --failures"
+run breaker --state open --cooldown-elapsed maybe
+assert_err "breaker rejects a non-boolean --cooldown-elapsed"
+run breaker --state half-open --probe-result maybe
+assert_err "breaker rejects an unknown --probe-result"
+
 # ------------------------------------------------------- risk fail-closed fix
 
 echo "-- risk fail-closed --"

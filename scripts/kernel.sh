@@ -12,6 +12,9 @@
 #   kernel.sh retry --status <s> --attempt <n> [--situation <sit>]
 #   kernel.sh repair --check <id> --attempt <n> [--situation <sit>]
 #   kernel.sh admit --inflight <n> --queued <n>
+#   kernel.sh breaker --state closed --failures <n>
+#   kernel.sh breaker --state open --cooldown-elapsed <true|false>
+#   kernel.sh breaker --state half-open --probe-result <ok|failed>
 #   kernel.sh capability <id>
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
@@ -356,6 +359,61 @@ cmd_admit() {
       end'
 }
 
+# ------------------------------------------------------------------- breaker
+# Per-resource circuit breaker. retry (above) asks "try this UNIT again?";
+# breaker asks "why are we still calling this RESOURCE?". The orchestrator
+# owns the state and the consecutive-failure count (from the exec journal)
+# and passes them in — the kernel is the transition table, nothing more.
+# rules/parallelism.md "Circuit breaker" is the prose mirror; C25 guards both.
+cmd_breaker() {
+  local state="" failures="" cooldown="" probe=""
+  # Same fail-fast arg discipline as cmd_admit: a flag with no value must error
+  # rather than spin. `shift 2` on a single remaining argument fails silently
+  # (no set -e), $# never reaches 0, and the flag re-matches forever.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --state)            [ $# -ge 2 ] || err "breaker requires a value for --state";            state="$2";    shift 2 ;;
+      --failures)         [ $# -ge 2 ] || err "breaker requires a value for --failures";         failures="$2"; shift 2 ;;
+      --cooldown-elapsed) [ $# -ge 2 ] || err "breaker requires a value for --cooldown-elapsed"; cooldown="$2"; shift 2 ;;
+      --probe-result)     [ $# -ge 2 ] || err "breaker requires a value for --probe-result";     probe="$2";    shift 2 ;;
+      *) err "breaker: unknown argument $1" ;;
+    esac
+  done
+  case "$state" in closed|open|half-open) ;; *) err "breaker requires --state closed|open|half-open" ;; esac
+  need_reg policy.json
+  local P="$REG/policy.json"
+  case "$state" in
+    closed)
+      case "$failures" in ''|*[!0-9]*) err "breaker --state closed requires a numeric --failures" ;; esac
+      # --arg + tonumber, not --argjson: "03" passes the digits-only check above
+      # but is not valid JSON, and --argjson would fail inside jq with a parse
+      # error on stderr instead of the kernel's {"error": ...} contract.
+      jq -n --arg f "$failures" --slurpfile pol "$P" '
+        ($f | tonumber) as $f
+        | $pol[0].breaker as $b
+        | if $f >= $b.failure_threshold
+          then {state: "open", allow: false,
+                reason: "\($f) consecutive failures reached threshold \($b.failure_threshold) — stop calling this resource for \($b.cooldown_waves) wave(s); route around or report DEGRADED"}
+          else {state: "closed", allow: true,
+                reason: "\($f) of \($b.failure_threshold) failures — resource healthy"} end' ;;
+    open)
+      case "$cooldown" in true|false) ;; *) err "breaker --state open requires --cooldown-elapsed true|false" ;; esac
+      if [ "$cooldown" = true ]; then
+        jq -n --slurpfile pol "$P" '{state: "half-open", allow: true,
+          reason: "cooldown elapsed — allow \($pol[0].breaker.half_open_probes) probe call(s); no fan-out through this resource until it closes"}'
+      else
+        jq -n '{state: "open", allow: false, reason: "cooldown not elapsed — do not call; route around or report DEGRADED"}'
+      fi ;;
+    half-open)
+      case "$probe" in ok|failed) ;; *) err "breaker --state half-open requires --probe-result ok|failed" ;; esac
+      if [ "$probe" = ok ]; then
+        jq -n '{state: "closed", allow: true, reason: "probe succeeded — resource recovered; reset the failure count to 0"}'
+      else
+        jq -n '{state: "open", allow: false, reason: "probe failed — reopen for another cooldown"}'
+      fi ;;
+  esac
+}
+
 # ---------------------------------------------------------------- capability
 cmd_capability() {
   require_positional capability "an id" "$@"
@@ -670,11 +728,12 @@ case "$cmd" in
   retry)          cmd_retry "$@" ;;
   repair)         cmd_repair "$@" ;;
   admit)          cmd_admit "$@" ;;
+  breaker)        cmd_breaker "$@" ;;
   capability)     cmd_capability "$@" ;;
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
   resolve-task)   cmd_resolve_task "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|admit|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|admit|breaker|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
 esac

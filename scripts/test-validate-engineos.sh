@@ -662,6 +662,32 @@ p='registries/policy.json'; d=json.load(open(p))
 d['parallelism']['backpressure']['max_inflight']=d['parallelism']['wave_concurrency_cap']
 json.dump(d,open(p,'w'),indent=2)\""
 
+# ---- C25: circuit breaker — data, canary, prose mirror ----
+
+case_ C25 "a breaker state dropped from policy.json is caught" \
+      "breaker block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['breaker']['states']=['closed','open']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C25 "failure_threshold set to 0 is caught" \
+      "breaker block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['breaker']['failure_threshold']=0
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C25c "the breaker threshold changed in policy.json without the prose is caught" \
+      "breaker prose-mirror problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['breaker']['failure_threshold']=d['breaker']['failure_threshold']+4
+json.dump(d,open(p,'w'),indent=2)\""
+
 flush_batch
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
