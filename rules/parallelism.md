@@ -67,6 +67,24 @@ the next one (inherently serial chain — say so explicitly).
   incomplete — never let a green summary hide a dead branch. The `status` field of
   the return envelope is the mechanism: `BLOCKED` and `FAILED` are real answers.
 
+## Backpressure
+
+The wave cap says how many agents may run. Backpressure says what happens when
+work arrives faster than the cap drains it. Before every dispatch the
+orchestrator asks the kernel:
+
+`scripts/kernel.sh admit --inflight <running agents> --queued <units waiting>`
+
+| Answer | Meaning |
+|---|---|
+| `dispatch` | capacity remains under the wave cap — go |
+| `defer` | cap reached, queue below `max_queued_units` (12) — hold the unit for the next wave |
+| `reject` | cap reached and queue full — stop planning, report `BLOCKED`, re-plan with a human |
+
+`reject` is a HITL reason (`budget-exhausted`), not a retry. Capacity is the
+same number as the wave cap above; the queue bound lives in
+`registries/policy.json` `parallelism.backpressure`.
+
 ## Failure policy
 
 An agent that fails is a normal event with a defined response, not an improvisation.
@@ -90,6 +108,31 @@ hole. Either fix the unit, or re-plan the remaining waves with the hole explicit
 **Bound the loop.** Two attempts per unit, one escalation, then a human. An agent
 retried until it succeeds has not succeeded — it has been sampled until it looked
 right.
+
+## Circuit breaker
+
+The failure policy above is per unit. The breaker is per resource, and the
+resource kinds it scopes over are `provider`, `mcp` (an MCP server), `tool` and
+`agent` (an agent type). It answers a different question: not "retry?" but "why
+are we still calling this?". Consult it BEFORE `retry`.
+
+Those scope ids are the orchestrator's own vocabulary for keying a breaker's
+state — the kernel never reads them, so nothing enforces them beyond this
+section and `registries/policy.json` `breaker.scopes`.
+
+`scripts/kernel.sh breaker --state closed --failures <consecutive failures on this resource>`
+
+| State | Rule |
+|---|---|
+| `closed` | calls allowed; `failure_threshold` (3) consecutive failures opens it |
+| `open` | calls blocked for `cooldown_waves` (1); route around or report `DEGRADED` |
+| `half-open` | after cooldown, `half_open_probes` (1) call is allowed; success closes, failure reopens |
+
+The consecutive-failure count comes from the exec journal
+(`rules/observability.md` "Agent traces"): `span_kind` `tool` or `model`,
+`status: FAILED`, same `tool`/`provider`. An open breaker on a resource a unit
+needs makes that unit `BLOCKED`, which is a HITL reason (`breaker-open`) when
+no alternative resource exists.
 
 ## Choosing the fan-out mechanism
 
