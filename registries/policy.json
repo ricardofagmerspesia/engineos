@@ -202,7 +202,7 @@
     "cooldown_waves": 1,
     "half_open_probes": 1,
     "states": ["closed", "half-open", "open"],
-    "scopes": ["provider", "mcp-server", "tool", "agent-type"]
+    "scopes": ["provider", "mcp", "tool", "agent"]
   },
   "telemetry": {
     "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/prompt-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",

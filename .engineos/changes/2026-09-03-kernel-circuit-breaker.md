@@ -62,7 +62,7 @@ a rename — same call Task 2 made for `admit`), and no hook.
 **Registry — `registries/policy.json`.** A top-level `breaker` block after
 `repair`: `failure_threshold: 3`, `cooldown_waves: 1`, `half_open_probes: 1`,
 `states: ["closed", "half-open", "open"]` (sorted, so C25a can compare a joined
-sort), `scopes: ["provider", "mcp-server", "tool", "agent-type"]`, and a `note`
+sort), `scopes: ["provider", "mcp", "tool", "agent"]`, and a `note`
 that spells out the three-way distinction between `retry` (agent units),
 `repair` (checks) and `breaker` (resources), names the kernel subcommand, the
 prose mirror, C25 and the ADR. `version` left at `1.6.0` per the brief. The
@@ -131,7 +131,7 @@ Run and green:
 - `bash -n scripts/test-validate-engineos.sh` -> `test-validate-engineos.sh: syntax OK`
 - `jq . registries/policy.json > /dev/null` -> `policy.json parses`
 - `jq -c '.breaker | {failure_threshold, cooldown_waves, half_open_probes, states, scopes}' registries/policy.json`
-  -> `{"failure_threshold":3,"cooldown_waves":1,"half_open_probes":1,"states":["closed","half-open","open"],"scopes":["provider","mcp-server","tool","agent-type"]}`
+  -> `{"failure_threshold":3,"cooldown_waves":1,"half_open_probes":1,"states":["closed","half-open","open"],"scopes":["provider","mcp","tool","agent"]}`
 - both new jq programs compiled parse-only (wrapped in `if false then (...) else
   empty end`, vars supplied, nothing evaluated) -> both compile
 - C25c's three prose assertions replayed by hand as `grep`:
@@ -174,16 +174,13 @@ written but unexecuted.
 `git log --oneline 17f0399..HEAD` — one commit, whose real output was:
 
 ```
-898905e feat(kernel): add per-resource circuit breaker
+a1f8d06 feat(kernel): add per-resource circuit breaker
+<controller fix commit — scope ids realigned to the frozen contract>
 ```
 
-That sha is stale on purpose and is recorded as such rather than silently
-patched: this record lives inside the very commit it describes, so pasting the
-final sha into it is impossible — writing the sha changes the tree, which
-changes the sha. The stable identifiers are the parent (`17f0399`) and the
-subject (`feat(kernel): add per-resource circuit breaker`); `898905e` was the
-sha before this correction was amended in. The controller's `git log` is the
-authority for the final value.
+A record cannot carry the sha of the commit that contains it, so the follow-on
+controller commit is named by its subject rather than its sha. The stable
+identifiers are the parent (`17f0399`) and the first commit (`a1f8d06`).
 
 The `git diff --stat` above was likewise captured from the pre-amend commit, so
 this record's own line count in it is short by the size of this correction. No
