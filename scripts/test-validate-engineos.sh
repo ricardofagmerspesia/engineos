@@ -644,6 +644,24 @@ case_ C23c "the retired \"authoritative for file-pattern routing\" claim restore
       "reintroduced the retired routing-map.sh authority claim" \
       "sed -i.bak 's|resolved by \`scripts/kernel.sh route-path\`|which is authoritative for file-pattern routing, resolved by \`scripts/kernel.sh route-path\`|' CLAUDE.md"
 
+# ---- C24: backpressure — data, canary, prose mirror ----
+
+case_ C24 "max_queued_units set to a word is caught" \
+      "backpressure block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['parallelism']['backpressure']['max_queued_units']='many'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C24 "a max_inflight copy of the wave cap added under backpressure is caught" \
+      "backpressure block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['parallelism']['backpressure']['max_inflight']=d['parallelism']['wave_concurrency_cap']
+json.dump(d,open(p,'w'),indent=2)\""
+
 flush_batch
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"

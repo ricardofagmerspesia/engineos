@@ -1,6 +1,6 @@
 {
   "version": "1.5.0",
-  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop and telemetry policy — nine blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry — so a future prose edit or block change that diverges fails CI.",
+  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop and telemetry policy — nine blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure') — so a future prose edit or block change that diverges fails CI.",
   "risk": {
     "aggregation": "max",
     "inputs": [
@@ -133,6 +133,12 @@
     "wave_concurrency_cap": 6,
     "subagent_depth": 1,
     "disjoint_file_scopes": true,
+    "backpressure": {
+      "note": "Admission control for the orchestrator's dispatch loop. Capacity is wave_concurrency_cap above (never a second copy). Answered by scripts/kernel.sh admit; mirrored in rules/parallelism.md 'Backpressure'. defer = hold the unit for the next wave; reject = stop planning, report BLOCKED, re-plan with a human (a hitl reason).",
+      "max_queued_units": 12,
+      "overload_action": "defer",
+      "actions": ["dispatch", "defer", "reject"]
+    },
     "prompt_signals": {
       "note": "Prompt-classification EREs for kernel.sh scale (were hardcoded in the UserPromptSubmit advisor before the kernel owned them). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
       "action": "\\b(add|build|create|implement|develop|refactor|migrate|port|mirror|rewrite|redesign|extract|split|backfill|integrate|scaffold|modernize)\\b",

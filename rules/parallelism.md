@@ -67,6 +67,24 @@ the next one (inherently serial chain — say so explicitly).
   incomplete — never let a green summary hide a dead branch. The `status` field of
   the return envelope is the mechanism: `BLOCKED` and `FAILED` are real answers.
 
+## Backpressure
+
+The wave cap says how many agents may run. Backpressure says what happens when
+work arrives faster than the cap drains it. Before every dispatch the
+orchestrator asks the kernel:
+
+`scripts/kernel.sh admit --inflight <running agents> --queued <units waiting>`
+
+| Answer | Meaning |
+|---|---|
+| `dispatch` | capacity remains under the wave cap — go |
+| `defer` | cap reached, queue below `max_queued_units` (12) — hold the unit for the next wave |
+| `reject` | cap reached and queue full — stop planning, report `BLOCKED`, re-plan with a human |
+
+`reject` is a HITL reason (`budget-exhausted`), not a retry. Capacity is the
+same number as the wave cap above; the queue bound lives in
+`registries/policy.json` `parallelism.backpressure`.
+
 ## Failure policy
 
 An agent that fails is a normal event with a defined response, not an improvisation.

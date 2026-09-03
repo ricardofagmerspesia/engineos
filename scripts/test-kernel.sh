@@ -555,6 +555,42 @@ assert_eq "resolve-task gives an unrouted action the closed safety bundle" \
 run resolve-task
 assert_err "resolve-task with no --prompt errors"
 
+# ----------------------------------------------------------------------- admit
+
+echo "-- admit --"
+
+cap=$(jq -r '.parallelism.wave_concurrency_cap' "$REG/policy.json")
+maxq=$(jq -r '.parallelism.backpressure.max_queued_units' "$REG/policy.json")
+
+run admit --inflight 0 --queued 0
+assert_ok "admit with idle capacity exits 0"
+assert_eq "admit idle -> dispatch" "$(jqval .action)" "dispatch"
+assert_eq "admit idle capacity == cap" "$(jqval .capacity)" "$cap"
+
+run admit --inflight "$cap" --queued 0
+assert_eq "admit at cap -> overload_action" "$(jqval .action)" "$(jq -r '.parallelism.backpressure.overload_action' "$REG/policy.json")"
+assert_eq "admit at cap capacity 0" "$(jqval .capacity)" "0"
+
+run admit --inflight "$cap" --queued "$maxq"
+assert_eq "admit at cap and queue full -> reject" "$(jqval .action)" "reject"
+
+run admit --inflight abc --queued 0
+assert_err "admit rejects a non-numeric --inflight"
+run admit --inflight 1
+assert_err "admit requires --queued"
+
+# ------------------------------------------------------- risk fail-closed fix
+
+echo "-- risk fail-closed --"
+
+run risk --signals '{}'
+assert_err "risk with neither inputs nor floors is an error, not low"
+run risk --signals '{"inputs":{}}'
+assert_err "risk with empty inputs and no floors is an error"
+run risk --signals '{"floors":["destructive-ddl-dml"]}'
+assert_ok "risk with a floor and no inputs is still answerable"
+assert_eq "floor alone -> high" "$(jqval .risk)" "high"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

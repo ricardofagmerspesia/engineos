@@ -172,7 +172,9 @@ cmd_model() {
 # Input: {"inputs": {<input-id>: low|medium|high}, "floors": [<floor-id>]}.
 # Tier = max over inputs; any recognized floor forces high. Unknown ids or
 # tier values are errors, not silently ignored — a risk resolver that guesses
-# around bad input is a fail-open gate.
+# around bad input is a fail-open gate. An empty payload (no inputs, no floors)
+# is an error for the same reason: absence of evidence is not evidence of low
+# risk, and answering "low" there was the same hole one step earlier.
 cmd_risk() {
   local signals=""
   while [ $# -gt 0 ]; do case "$1" in --signals) signals="${2:-}"; shift 2 ;; *) err "risk: unknown argument $1" ;; esac; done
@@ -188,6 +190,9 @@ cmd_risk() {
     | ([$p.risk.high_floors[]]) as $known_floors
     | ((.inputs // {}) | to_entries) as $in
     | ((.floors // [])) as $fl
+    | if ($in | length) == 0 and ($fl | length) == 0
+        then {error: "risk --signals needs a non-empty inputs{} or floors[] — an empty payload is not low risk, it is no evidence"}
+      else .
     | ([$in[] | select(.key as $k | $known_inputs | index($k) | not) | .key]) as $bad_in
     | ([$in[] | select(.value | test("^(low|medium|high)$") | not) | .key]) as $bad_val
     | ([$fl[] | select(. as $f | $known_floors | index($f) | not)]) as $bad_fl
@@ -198,13 +203,12 @@ cmd_risk() {
         ( if ($fl | length) > 0 then "high"
           elif ([$in[].value] | index("high")) then "high"
           elif ([$in[].value] | index("medium")) then "medium"
-          elif ($in | length) > 0 then "low"
           else "low" end ) as $tier
         | {risk: $tier,
            autonomy_ceiling: $p.autonomy.ceiling_by_risk[$tier],
            gates: $p.gates.by_risk[$tier],
            floors_applied: $fl}
-      end')
+      end end')
   if printf '%s' "$out" | jq -e '.error' >/dev/null 2>&1; then
     printf '%s\n' "$out"; exit 1
   fi
@@ -307,6 +311,40 @@ cmd_repair() {
   else
     jq -n --arg c "$check" '{check: $c, action: "stop-report-red", reason: "the bound is exhausted — stop, report the check red with what was tried; a loop continued past this point is sampling until it looks right, not fixing (rules/parallelism.md)"}'
   fi
+}
+
+# --------------------------------------------------------------------- admit
+# Backpressure: may one more unit be dispatched right now? Capacity is
+# parallelism.wave_concurrency_cap (never a second copy of the number); the
+# queue bound and the overload action live in parallelism.backpressure.
+# rules/parallelism.md "Backpressure" is the prose mirror; C24 guards both.
+cmd_admit() {
+  local inflight="" queued=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --inflight) inflight="${2:-}"; shift 2 ;;
+      --queued)   queued="${2:-}"; shift 2 ;;
+      *) err "admit: unknown argument $1" ;;
+    esac
+  done
+  case "$inflight" in ''|*[!0-9]*) err "admit requires a numeric --inflight" ;; esac
+  case "$queued"   in ''|*[!0-9]*) err "admit requires a numeric --queued" ;; esac
+  need_reg policy.json
+  jq -n --argjson i "$inflight" --argjson q "$queued" --slurpfile pol "$REG/policy.json" '
+    $pol[0].parallelism as $par
+    | $par.wave_concurrency_cap as $cap
+    | $par.backpressure.max_queued_units as $maxq
+    | ($cap - $i) as $capacity
+    | if $capacity > 0 then
+        {action: "dispatch", capacity: $capacity,
+         reason: "inflight \($i) below cap \($cap)"}
+      elif $q < $maxq then
+        {action: $par.backpressure.overload_action, capacity: 0,
+         reason: "cap \($cap) reached; \($q) of \($maxq) queued — hold the unit for the next wave"}
+      else
+        {action: "reject", capacity: 0,
+         reason: "cap \($cap) reached and queue full (\($q)/\($maxq)) — stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)"}
+      end'
 }
 
 # ---------------------------------------------------------------- capability
@@ -622,11 +660,12 @@ case "$cmd" in
   gates)          cmd_gates "$@" ;;
   retry)          cmd_retry "$@" ;;
   repair)         cmd_repair "$@" ;;
+  admit)          cmd_admit "$@" ;;
   capability)     cmd_capability "$@" ;;
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
   resolve-task)   cmd_resolve_task "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|admit|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
 esac

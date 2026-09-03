@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # Checks on the runtime's own policy plumbing: the check-level repair loop
-# (C20*), telemetry (C22*) and the constitution preamble mirrors (C23*).
+# (C20*), telemetry (C22*), the constitution preamble mirrors (C23*) and the
+# dispatch loop's backpressure (C24*).
 
 # ------------- C20: check-level repair policy — data, ladder, mirrors (P5)
 # The check-level fix loop's bound ("2 fix attempts, 1 escalation, then stop
@@ -241,4 +242,73 @@ check_C23c() {
   grep -qi 'authoritative for file-pattern routing' CLAUDE.md 2>/dev/null \
     && bad "CLAUDE.md reintroduced the retired routing-map.sh authority claim" \
     || ok "CLAUDE.md does not reintroduce the retired routing-map.sh authority claim"
+}
+
+# ------------- C24: backpressure — data, canary, prose mirror
+# Admission control for the orchestrator's dispatch loop is data
+# (policy.json.parallelism.backpressure), answered by kernel.sh admit, and
+# stated in rules/parallelism.md "Backpressure". Same discipline as C20/C22
+# applied to a fifth prose/data pair.
+#
+# Capacity is wave_concurrency_cap itself, never a second copy of the number:
+# a duplicate under backpressure would be a mirror nobody checks, so C24a
+# fails on any max_inflight* key instead of reading one.
+# Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 2
+# ADR: docs/adr/2026-09-03-backpressure-reuses-wave-cap.md
+have_backpressure_inputs() {
+  [ -f "$PJ" ] && [ -x "$KSH" ] && return 0
+  skip_once backpressure "policy.json or kernel.sh missing — backpressure checks skipped"
+  return 1
+}
+
+# The queue bound C24a validates and C24b/C24c consume. Prints nothing when the
+# field is not a non-negative integer, which is exactly how C24a blanks it.
+backpressure_maxq() {
+  local v
+  v=$(jq -r '.parallelism.backpressure.max_queued_units' "$PJ" 2>/dev/null)
+  case "$v" in ''|*[!0-9]*) return 0 ;; esac
+  printf '%s' "$v"
+}
+
+check_C24() {
+  have_jq || return 0
+  have_backpressure_inputs || return 0
+  # C24a: the backpressure block is well-formed
+  b_bad=""
+  maxq=$(jq -r '.parallelism.backpressure.max_queued_units' "$PJ" 2>/dev/null)
+  case "$maxq" in ''|*[!0-9]*) b_bad="$b_bad max_queued_units-not-a-nonneg-integer" ;; esac
+  oa=$(jq -r '.parallelism.backpressure.overload_action // ""' "$PJ")
+  jq -e --arg a "$oa" '.parallelism.backpressure.actions | index($a)' "$PJ" >/dev/null 2>&1 \
+    || b_bad="$b_bad overload_action-not-in-actions"
+  jq -e '.parallelism.backpressure | keys[] | select(test("max_inflight"))' "$PJ" >/dev/null 2>&1 \
+    && b_bad="$b_bad has-a-max_inflight-copy-of-wave_concurrency_cap"
+  [ -z "$b_bad" ] && ok "policy.json.parallelism.backpressure is well-formed" \
+                   || bad "backpressure block problems:$b_bad"
+}
+
+check_C24b() {
+  have_jq || return 0
+  have_backpressure_inputs || return 0
+  # C24b: canary — the kernel rejects exactly when the registry says the queue
+  # is full. Cap and bound come from the registry, never from a literal here.
+  cap=$(jq -r '.parallelism.wave_concurrency_cap' "$PJ")
+  maxq=$(backpressure_maxq)
+  got=$(bash "$KSH" admit --inflight "$cap" --queued "${maxq:-0}" 2>/dev/null | jq -r '.action // empty')
+  [ "$got" = "reject" ] && ok "kernel.sh admit rejects at cap with a full queue" \
+                        || bad "admit canary: expected reject at cap/full-queue, got '$got'"
+}
+
+check_C24c() {
+  have_jq || return 0
+  have_backpressure_inputs || return 0
+  # C24c: prose mirror — rules/parallelism.md names the subcommand an
+  # orchestrator is supposed to call, and quotes the registry's queue bound
+  p_bad=""
+  maxq=$(backpressure_maxq)
+  grep -q 'kernel.sh admit' rules/parallelism.md 2>/dev/null \
+    || p_bad="$p_bad parallelism.md-does-not-name-kernel.sh-admit"
+  grep -qE "max_queued_units[^0-9]*${maxq}\b" rules/parallelism.md 2>/dev/null \
+    || p_bad="$p_bad parallelism.md-queue-bound-disagrees-with-registry(${maxq})"
+  [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors policy.json.parallelism.backpressure" \
+                   || bad "backpressure prose-mirror problems:$p_bad"
 }
