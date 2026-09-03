@@ -1,8 +1,9 @@
 ---
 name: 2026-09-03-runtime-governance-modules
-status: active
+status: done
 owner: docs-writer (tomasz)
 spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md
+completed: 2026-09-03
 domain: docs
 ---
 
@@ -82,9 +83,8 @@ see Notes.
       returned MERGE WITH FIXES and those fixes shipped in `c7f8342`. The HIGH
       (scaffolder writing outside the project through symlinks) was reproduced
       three ways against the pre-fix tree and refuted against the post-fix tree
-- [ ] Merge approval recorded under `## Human decisions` — PENDING. PR
-      ricardofagmer/engineer-spec-ia-pattern#33 is open and NOT merged; the
-      approval is the human's and has not been given
+- [x] Merge approval recorded under `## Human decisions` — given 2026-09-03 by
+      Ricardo Fagmer, by merging PR #33 into `main` as `21471db`
 
 ## What was made
 `docs/COMPATIBILITY.md` gained `## 1.6.0 additions` as its last section, placed
@@ -212,22 +212,27 @@ not affect it" is not evidence. Task 10's gate is the evidence.
 
 ## Human decisions
 <!-- date | who | reasons (from registries/policy.json hitl.reasons) | approved/refused | note -->
-PENDING | not yet given | `high-risk`, `external-effect` | not approved | The
-merge of this epic into `main` is the external effect and **no human has
-approved it**. This row is a placeholder for the approval, not a record of one.
-What is owed before the merge, per `rules/gates.md` and
-`rules/risk-autonomy.md`: the date, the approver's name, the reason ids
-`high-risk, external-effect` from `registries/policy.json` `hitl.reasons`, and
-the word `approved` (or `refused`). Task 10 Step 4 records it; until it does,
-this record must not be archived and nothing may be pushed or merged.
+2026-09-03 | Ricardo Fagmer | `high-risk`, `external-effect` | **approved** |
+Approval was given by merging PR #33 into `main` as commit `21471db`, after the
+branch was reported green and both review lenses were discharged. The external
+effect this row gates is that merge, and it has now happened.
 
-2026-09-03 | docs-writer (tomasz) | `external-effect` | bounded, no approval
-claimed | This unit operated at A2 inside the
-`.claude/worktrees/integration` worktree: documentation edits in the working
-tree only, no push, no merge, no branch other than
-`chore/runtime-governance-integration` touched. No external effect was taken,
-so no approval was needed for the work itself — and none is implied for the
-merge above.
+Recorded honestly, because the sequence matters: an earlier answer in the
+session authorised opening a PR, and that answer predated the security review's
+BLOCK. It was NOT treated as approval for anything afterwards. The branch was
+held local until the HIGH was closed, then the question was put again, and this
+row records the answer to the second asking — not the first.
+
+What was approved: EngineOS 1.6.0's six runtime-governance modules, with the
+residual risks listed in the PR body accepted as stated — in particular that
+nothing calls `admit` before a dispatch today, that `hook_path_slug` narrowing
+is documented but unenforced, and that the scaffolder's TOCTOU window remains
+open outside the hostile-repo-at-clone-time threat model.
+
+Rollback path, per `rules/gates.md`: `git revert` of `21471db`. No migration, no
+external state, no published artifact. Note that a revert restores the
+pre-existing symlink hole and the looser journal validation, so it is a security
+regression and must be paired with cherry-picking `10c8166`.
 
 ## Changes registered
 Real output, captured on `chore/runtime-governance-integration` with everything
