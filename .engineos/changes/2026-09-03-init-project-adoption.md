@@ -46,8 +46,9 @@ scaffold: `engineos_scaffold_layout <project_root> <engineos_repo_dir>` walks
 `src:dest` pairs, prints each created dir on its own line and always returns 0 so a
 session start can never break on it. `hooks/ensure-project-layout.sh` lost its
 private copy of that loop (and its `resolve_src` helper) and now sources the shared
-file, joins the printed list with `paste -sd,` and prints the same one warn line it
-printed before. Everything above the scaffold in that hook — bypass expiry, the
+file defensively (`2>/dev/null || exit 0`), joins the printed list with a bash
+substitution and prints the same one warn line it printed before. Everything above
+the scaffold in that hook — bypass expiry, the
 stale-flag and telemetry reaps, the engineos-repo skip, the `ENGINEOS_SCAFFOLD`
 opt-in gate — is byte-identical.
 
@@ -85,9 +86,10 @@ a fake `HOME` so the suite never reads or writes the operator's real
 `~/.claude/CLAUDE.md`.
 
 ## Verification
-UNVERIFIED. Per the dispatch brief, no checks were executed in this task: the test
-cases were written but `hooks/test-layout.sh` was not run, and `shellcheck -S error`
-was not run against `hooks/scaffold-layout.sh`, `scripts/init-project.sh` or
+UNVERIFIED beyond syntax. Per the dispatch brief and the fix-round ruling, the only
+check executed was `bash -n` on all four shell files (clean). The eight test cases
+were written but `hooks/test-layout.sh` was not run, and `shellcheck -S error` was
+not run against `hooks/scaffold-layout.sh`, `scripts/init-project.sh` or
 `hooks/ensure-project-layout.sh`. Both belong to the final gate, which runs once
 after the last unit of the plan is integrated.
 
@@ -103,8 +105,15 @@ after the last unit of the plan is integrated.
 ?? hooks/scaffold-layout.sh
 ?? scripts/init-project.sh
 ```
-Commit: `feat(adoption): add init-project bootstrap and /engineos:init` on
-`feat/init-project-adoption`, based on `ef387ee`.
+`git log --oneline ef387ee..HEAD` on `feat/init-project-adoption`:
+```
+1425664 feat(adoption): add init-project bootstrap and /engineos:init
+<fix>  fix(adoption): drop paste, harden init exit codes
+```
+The second line is the review fix-round-1 commit that carries this very edit, so it
+cannot hold its own sha; the sha is recorded in
+`.superpowers/sdd/2026-09-03-engineos-default-methodology-plan/task-7-report.md`
+under `## Fix round 1`.
 
 ## Notes
 - The scaffold function is the seam that makes one-command adoption honest: the hook
@@ -119,3 +128,6 @@ Commit: `feat(adoption): add init-project bootstrap and /engineos:init` on
   that lands.
 - Validator check C29 (wiring assertions) was deliberately left out of this change by
   controller ruling; `scripts/validate-engineos.sh` and its test file are untouched.
+- paste removed after review; sandbox list unchanged. Both scripts join the scaffold's
+  line-per-dir output with `${var//$'\n'/, }` instead, so the hook keeps working on a
+  reduced PATH and `init-project.sh` can no longer exit 127 outside its contract.

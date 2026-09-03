@@ -8,7 +8,12 @@
 # prints the optional follow-ups. Idempotent; never overwrites user files.
 #
 # Usage: scripts/init-project.sh [--dir PATH] [--dry-run]
-# Exit:  0 ok | 1 machine install missing | 2 not a git work tree | 3 refused (engineos repo itself)
+# Exit:  0  ok
+#        1  cannot proceed from this machine — no machine install, no usable $HOME,
+#           or a broken EngineOS checkout. Each case prints a distinct message.
+#        2  not a git work tree
+#        3  refused (the EngineOS repo itself)
+#        64 bad usage
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,35 +26,57 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# 1. Machine install present? Same regex install.sh uses for its own import line.
+# 1. A git work tree?
+ROOT=$(cd "$TARGET" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || { echo "[engineos] $TARGET is not inside a git work tree" >&2; exit 2; }
+
+# 2. Not the engineos repo itself (its .engineos/ is the canonical store). Checked
+# BEFORE the machine-level guards below so running this in the EngineOS checkout
+# always answers 3 — the honest reason — instead of a 1 about the local install.
+# Two independent signals: the repo's own marker files, or the target simply being
+# this script's own checkout.
+if { [ -f "$ROOT/hooks/layout-manifest.sh" ] && [ -f "$ROOT/hooks/hooks.json" ] && [ -f "$ROOT/install.sh" ]; } \
+   || [ "$ROOT" = "$REPO_DIR" ]; then
+  echo "[engineos] refusing to init inside the EngineOS repo" >&2; exit 3
+fi
+
+# 3. A usable HOME. Without this guard `set -u` kills the script on the grep below
+# with a bare bash error and exit 1, which would read as "no machine install".
+if [ -z "${HOME:-}" ]; then
+  echo "[engineos] HOME is unset or empty — cannot locate ~/.claude/CLAUDE.md" >&2
+  exit 1
+fi
+
+# 4. Machine install present? Same regex install.sh uses for its own import line.
 IMPORT_RE='^@[^[:space:]]+[/\\]CLAUDE\.md[[:space:]]*$'
 if ! grep -Eq "$IMPORT_RE" "$HOME/.claude/CLAUDE.md" 2>/dev/null; then
   echo "[engineos] machine install not found in ~/.claude/CLAUDE.md — run once: $REPO_DIR/install.sh" >&2
   exit 1
 fi
 
-# 2. A git work tree?
-ROOT=$(cd "$TARGET" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || { echo "[engineos] $TARGET is not inside a git work tree" >&2; exit 2; }
-
-# 3. Not the engineos repo itself (its .engineos/ is the canonical store).
-if [ -f "$ROOT/hooks/layout-manifest.sh" ] && [ -f "$ROOT/install.sh" ]; then
-  echo "[engineos] refusing to init inside the EngineOS repo" >&2; exit 3
+# 5. The shared scaffold must be there. Sourcing a missing file under `set -e` would
+# abort with a bash error and exit 1 that looks like a missing machine install.
+if [ ! -f "$REPO_DIR/hooks/scaffold-layout.sh" ]; then
+  echo "[engineos] broken checkout: $REPO_DIR/hooks/scaffold-layout.sh is missing" >&2
+  exit 1
 fi
 
 echo "[engineos] adopting EngineOS in $ROOT"
 [ "$DRY" -eq 1 ] && echo "(dry run — nothing written)"
 
-# 4. Layout — the same function the SessionStart hook uses.
+# 6. Layout — the same function the SessionStart hook uses. Lists are joined in
+# bash rather than with `paste`: under `set -euo pipefail` a `paste` missing from
+# the caller's PATH would exit 127, outside the contract documented above.
 # shellcheck source=hooks/scaffold-layout.sh
 . "$REPO_DIR/hooks/scaffold-layout.sh"
 if [ "$DRY" -eq 0 ]; then
-  created=$(engineos_scaffold_layout "$ROOT" "$REPO_DIR" | paste -sd, -)
-  [ -n "$created" ] && echo "  created: ${created//,/, }" || echo "  layout: already complete"
+  created=$(engineos_scaffold_layout "$ROOT" "$REPO_DIR"); created=${created//$'\n'/, }
+  [ -n "$created" ] && echo "  created: $created" || echo "  layout: already complete"
 else
-  echo "  would ensure: $(sed -n 's/^  "\([^|]*\)|.*/\1/p' "$REPO_DIR/hooks/layout-manifest.sh" | paste -sd, -)"
+  manifest_dirs=$(sed -n 's/^  "\([^|]*\)|.*/\1/p' "$REPO_DIR/hooks/layout-manifest.sh")
+  echo "  would ensure: ${manifest_dirs//$'\n'/, }"
 fi
 
-# 5. Project CLAUDE.md — deltas only, never overwrite.
+# 7. Project CLAUDE.md — deltas only, never overwrite.
 if [ -f "$ROOT/CLAUDE.md" ]; then
   echo "  CLAUDE.md: exists, left untouched (declare your stack there — see templates/project-claude.md)"
 elif [ "$DRY" -eq 0 ]; then

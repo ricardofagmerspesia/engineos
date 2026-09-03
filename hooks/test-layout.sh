@@ -98,6 +98,12 @@ unset NOJQ_BIN _t _p
 IP=$(mktemp -d); ( cd "$IP" && git init -q )
 HOME_FAKE=$(mktemp -d); mkdir -p "$HOME_FAKE/.claude"
 printf '@%s/CLAUDE.md\n' "$REPO" > "$HOME_FAKE/.claude/CLAUDE.md"
+
+# --dry-run first, on the still-untouched project: reports, writes nothing
+OUTD=$(HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" --dry-run); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$OUTD" | grep -q 'dry run' && [ ! -d "$IP/.engineos" ] \
+  && ok || no "--dry-run did not report cleanly without writing (rc=$rc)"
+
 HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null; rc=$?
 [ "$rc" -eq 0 ] && ok || no "init did not exit 0 on a fresh git repo (rc=$rc)"
 [ -d "$IP/.engineos/changes" ] && ok || no "init did not create .engineos/changes"

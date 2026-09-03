@@ -90,8 +90,10 @@ What it creates:
   project CLAUDE.md" on every edit.
 
 It is idempotent (re-run after every `git pull`) and it never overwrites a file you
-own. Exit codes: `1` the machine install is missing (Step 1 first), `2` not a git
-work tree, `3` you are inside the EngineOS repo itself.
+own. Exit codes: `0` done, `1` cannot proceed from this machine — the machine install
+is missing (Step 1 first), `$HOME` is unset, or the checkout is broken; the message
+says which, `2` not a git work tree, `3` you are inside the EngineOS repo itself,
+`64` bad usage.
 
 **Commit `.engineos/` and `CLAUDE.md`.** That commit is what makes EngineOS the
 default for every teammate: the presence of `.engineos/` is the opt-in signal the
