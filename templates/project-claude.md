@@ -28,5 +28,7 @@
 Decisions live in `docs/adr/`. Read related ADRs before structural changes.
 
 ## EngineOS
-Adopted with `scripts/init-project.sh` (EngineOS 1.6.0). Tests are opt-in per `rules/verification.md`;
-list any area where this project requires them: <none | e.g. "apps/api/src/billing/**">.
+Adopted with `scripts/init-project.sh`. The test policy is defined once, in
+`rules/verification.md` — read it there and do not restate it here. This section
+declares only the delta: the areas where this project requires tests regardless of
+what was asked for: <none | e.g. "apps/api/src/billing/**">.

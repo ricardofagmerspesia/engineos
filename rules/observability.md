@@ -71,10 +71,20 @@ router decision and the verification gate are spans in it.
   value is length-bounded. It bounds the shape and the size of what reaches
   disk; it does not classify the content, and claiming otherwise is the same
   false-containment bug in a new coat.
-- `note` is the single field that admits text: a consumer forwarding the journal
-  treats `note` — and only `note` — as untrusted. Every value, `note` included,
-  is capped at `telemetry.exec_journal.max_value_length` characters on append,
-  and over-long is a reject rather than a truncation. Same words in
+- `note` is the only field that admits free text — and it is NOT the only field
+  carrying attacker-influenced content, so a consumer that treats `note` as the
+  single untrusted field is wrong. A harness-supplied value transits dash-joined
+  through `hook_slug`, so its characters still reach disk. The slug class admits
+  `.` and `/`: `../../../../etc/cron.d/x` is a valid slug that
+  `exec-journal.sh validate` passes clean. A journal field is therefore never
+  safe as a filesystem path component, and a consumer building a path from one
+  must narrow it itself — `hooks/lib-common.sh`'s `hook_path_slug`, which drops
+  `.` and `/` from the class, is that narrowing. What the guard does buy is
+  unchanged and still true: no field but `note` can carry whitespace, a newline,
+  a quote or a control character, so nothing written through one can break the
+  line format, smuggle a second JSON object or span two lines — and every value,
+  `note` included, is capped at `telemetry.exec_journal.max_value_length` (256)
+  characters on append, a reject rather than a truncation. Same words in
   `registries/policy.json` and `scripts/exec-journal.sh`'s header.
 - Who writes what: the dispatch/return hooks write `agent` spans (duration and
   status only — `tokens_*` are 0 there because the hook cannot see the
