@@ -56,7 +56,7 @@ opt-in gate — is byte-identical.
 `install.sh`. It gates on the machine install being present (the same `IMPORT_RE`
 regex `install.sh` uses on `~/.claude/CLAUDE.md`, exit 1), on the target being a git
 work tree (exit 2), and refuses to run inside the EngineOS repo itself (exit 3,
-detected by `hooks/layout-manifest.sh` + `install.sh` at the root). Then it scaffolds
+detected by the `hooks/layout-manifest.sh` + `hooks/hooks.json` + `install.sh` triple at the root, or by the root equalling the EngineOS checkout; 64 = bad usage). Then it scaffolds
 the layout through the shared function and copies `templates/project-claude.md` to
 `<project>/CLAUDE.md` only when the project has none — an existing one is reported
 and left untouched. `--dry-run` prints what it would ensure without writing;
@@ -78,7 +78,7 @@ gate was not touched. `templates/project-claude.md` got the RAG-baseline pointer
 the LLM router-hint row and a final `## EngineOS` section recording how the project
 was adopted and where it requires tests.
 
-`hooks/test-layout.sh` gained seven assertions covering the exit-0 fresh-repo path,
+`hooks/test-layout.sh` gained eight assertions covering the exit-0 fresh-repo path,
 `.engineos/changes` creation, the CLAUDE.md copy, idempotency, the never-overwrite
 guarantee, exit 1 without the machine install, exit 3 inside the EngineOS repo, and
 that the SessionStart hook stops printing the opt-in hint once init has run. They use

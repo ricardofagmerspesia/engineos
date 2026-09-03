@@ -53,12 +53,16 @@ if ! grep -Eq "$IMPORT_RE" "$HOME/.claude/CLAUDE.md" 2>/dev/null; then
   exit 1
 fi
 
-# 5. The shared scaffold must be there. Sourcing a missing file under `set -e` would
-# abort with a bash error and exit 1 that looks like a missing machine install.
-if [ ! -f "$REPO_DIR/hooks/scaffold-layout.sh" ]; then
-  echo "[engineos] broken checkout: $REPO_DIR/hooks/scaffold-layout.sh is missing" >&2
-  exit 1
-fi
+# 5. The shared scaffold and its manifest must be there. Sourcing a missing file
+# under `set -e` would abort with a bash error and exit 1 that looks like a missing
+# machine install; a missing manifest would abort the --dry-run listing with sed's
+# own exit code.
+for sibling in hooks/scaffold-layout.sh hooks/layout-manifest.sh; do
+  if [ ! -f "$REPO_DIR/$sibling" ]; then
+    echo "[engineos] broken checkout: $REPO_DIR/$sibling is missing" >&2
+    exit 1
+  fi
+done
 
 echo "[engineos] adopting EngineOS in $ROOT"
 [ "$DRY" -eq 1 ] && echo "(dry run — nothing written)"
@@ -73,7 +77,8 @@ if [ "$DRY" -eq 0 ]; then
   [ -n "$created" ] && echo "  created: $created" || echo "  layout: already complete"
 else
   manifest_dirs=$(sed -n 's/^  "\([^|]*\)|.*/\1/p' "$REPO_DIR/hooks/layout-manifest.sh")
-  echo "  would ensure: ${manifest_dirs//$'\n'/, }"
+  manifest_dirs=${manifest_dirs//$'\n'/, }
+  echo "  would ensure: $manifest_dirs"
 fi
 
 # 7. Project CLAUDE.md — deltas only, never overwrite.
