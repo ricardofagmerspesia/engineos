@@ -1,7 +1,19 @@
 # shellcheck shell=bash
 # Checks on the runtime's own policy plumbing: the check-level repair loop
-# (C20*), telemetry (C22*), the constitution preamble mirrors (C23*) and the
-# dispatch loop's backpressure (C24*).
+# (C20*), telemetry (C22*), the constitution preamble mirrors (C23*), the
+# dispatch loop's backpressure (C24*) and the per-resource circuit breaker
+# (C25*).
+
+# Three of the families below gate on the same pair — the policy registry and
+# an executable kernel — and each carried a verbatim copy of this body until
+# the third one triggered rules/base.md's rule of three. The label stays the
+# skip_once token, so a missing precondition is still one FAIL per family
+# rather than one per Check.
+have_kernel_inputs() {
+  [ -f "$PJ" ] && [ -x "$KSH" ] && return 0
+  skip_once "$1" "$2"
+  return 1
+}
 
 # ------------- C20: check-level repair policy — data, ladder, mirrors (P5)
 # The check-level fix loop's bound ("2 fix attempts, 1 escalation, then stop
@@ -11,9 +23,7 @@
 # C16-C19 applied to a fourth prose/data pair.
 # Spec: docs/specs/2026-08-06-decision-kernel-p5-repair-loop.md
 have_repair_inputs() {
-  [ -f "$PJ" ] && [ -x "$KSH" ] && return 0
-  skip_once repair "policy.json or kernel.sh missing — repair checks skipped"
-  return 1
+  have_kernel_inputs repair "policy.json or kernel.sh missing — repair checks skipped"
 }
 
 # The bound C20a validates and C20b/C20c consume. Prints nothing when the field
@@ -256,9 +266,7 @@ check_C23c() {
 # Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 2
 # ADR: docs/adr/2026-09-03-backpressure-reuses-wave-cap.md
 have_backpressure_inputs() {
-  [ -f "$PJ" ] && [ -x "$KSH" ] && return 0
-  skip_once backpressure "policy.json or kernel.sh missing — backpressure checks skipped"
-  return 1
+  have_kernel_inputs backpressure "policy.json or kernel.sh missing — backpressure checks skipped"
 }
 
 # The queue bound C24a validates and C24b/C24c consume. Prints nothing unless
@@ -352,9 +360,7 @@ check_C24c() {
 # Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 3
 # ADR: docs/adr/2026-09-03-circuit-breaker-separate-from-retry.md
 have_breaker_inputs() {
-  [ -f "$PJ" ] && [ -x "$KSH" ] && return 0
-  skip_once breaker "policy.json or kernel.sh missing — circuit-breaker checks skipped"
-  return 1
+  have_kernel_inputs breaker "policy.json or kernel.sh missing — circuit-breaker checks skipped"
 }
 
 # The failure threshold C25a validates and C25b/C25c consume. Prints nothing
@@ -372,85 +378,114 @@ breaker_threshold() {
 check_C25() {
   have_jq || return 0
   have_breaker_inputs || return 0
-  # C25a: the breaker block is well-formed
-  k_bad=""
+  # C25a: the breaker block is well-formed. The three numeric fields are read
+  # through jq -r and matched as digit strings, so a JSON string "3" passes
+  # here exactly as 3 does — the assertion is "reads as a whole number >= 1",
+  # not "is a JSON number", and the verdict below says so rather than
+  # overclaiming a type check nobody performs.
+  b_bad=""
   thr=$(jq -r '.breaker.failure_threshold' "$PJ" 2>/dev/null)
   case "$thr" in
-    ''|*[!0-9]*) k_bad="$k_bad failure_threshold-not-a-nonneg-integer" ;;
+    ''|*[!0-9]*) b_bad="$b_bad failure_threshold-does-not-read-as-a-nonneg-whole-number" ;;
     # A threshold of 0 opens the breaker before anything has failed, so the
     # closed state would be unreachable and the whole machine dead data.
-    *) [ "$thr" -ge 1 ] || k_bad="$k_bad failure_threshold-below-1" ;;
+    *) [ "$thr" -ge 1 ] || b_bad="$b_bad failure_threshold-below-1" ;;
   esac
   cw=$(jq -r '.breaker.cooldown_waves' "$PJ" 2>/dev/null)
   case "$cw" in
-    ''|*[!0-9]*) k_bad="$k_bad cooldown_waves-not-a-nonneg-integer" ;;
-    *) [ "$cw" -ge 1 ] || k_bad="$k_bad cooldown_waves-below-1" ;;
+    ''|*[!0-9]*) b_bad="$b_bad cooldown_waves-does-not-read-as-a-nonneg-whole-number" ;;
+    *) [ "$cw" -ge 1 ] || b_bad="$b_bad cooldown_waves-below-1" ;;
   esac
   # cmd_breaker interpolates this straight into the half-open reason, so an
   # absent or zero value ships "allow null probe call(s)" to a caller rather
   # than failing anywhere.
   hp=$(jq -r '.breaker.half_open_probes' "$PJ" 2>/dev/null)
   case "$hp" in
-    ''|*[!0-9]*) k_bad="$k_bad half_open_probes-not-a-nonneg-integer" ;;
-    *) [ "$hp" -ge 1 ] || k_bad="$k_bad half_open_probes-below-1" ;;
+    ''|*[!0-9]*) b_bad="$b_bad half_open_probes-does-not-read-as-a-nonneg-whole-number" ;;
+    *) [ "$hp" -ge 1 ] || b_bad="$b_bad half_open_probes-below-1" ;;
   esac
   # The three states are the contract kernel.sh breaker implements as a case
   # arm each; a fourth state, or a missing one, is a kernel the registry no
-  # longer describes.
+  # longer describes. Compared as a sorted join, so the stored order is free.
   st=$(jq -r '[.breaker.states[]?] | sort | join(",")' "$PJ" 2>/dev/null)
   [ "$st" = "closed,half-open,open" ] \
-    || k_bad="$k_bad states-are-not-exactly-closed+half-open+open(got:${st:-none})"
+    || b_bad="$b_bad states-are-not-exactly-closed+half-open+open(got:${st:-none})"
   jq -e '(.breaker.scopes | type == "array") and (.breaker.scopes | length > 0)' "$PJ" >/dev/null 2>&1 \
-    || k_bad="$k_bad scopes-missing-or-empty"
-  [ -z "$k_bad" ] && ok "policy.json.breaker is well-formed: failure_threshold, cooldown_waves and half_open_probes are integers >= 1, states are exactly closed/half-open/open, scopes is non-empty" \
-                   || bad "breaker block problems:$k_bad"
+    || b_bad="$b_bad scopes-missing-or-empty"
+  [ -z "$b_bad" ] && ok "policy.json.breaker is well-formed: failure_threshold, cooldown_waves and half_open_probes each read as a whole number >= 1, states are exactly closed/half-open/open, scopes is a non-empty array" \
+                   || bad "breaker block problems:$b_bad"
+}
+
+# One canary call, reported as state/allow. `allow` is the field a caller
+# actually gates on, so asserting the state alone would let a kernel that
+# answered {"state":"open","allow":true} through the integrity gate.
+breaker_answer() {
+  bash "$KSH" breaker "$@" 2>/dev/null | jq -r '[(.state // "none"), (.allow | tostring)] | join("/")'
 }
 
 check_C25b() {
   have_jq || return 0
   have_breaker_inputs || return 0
-  # C25b: canary — three distinct outcomes, so a kernel that answered one
-  # transition unconditionally cannot pass: the threshold opens it, one failure
-  # below the threshold does NOT, and a successful probe closes it. The
-  # threshold comes from the registry, never from a literal here.
-  n_bad=""
+  # C25b: canary — every state arm is exercised, and each is pinned on both
+  # answer fields, so neither a kernel that answers one transition
+  # unconditionally nor one with an inverted boolean in an unvisited arm can
+  # pass. Includes the outcome that must NOT trip (one failure below the
+  # threshold). The threshold comes from the registry, never a literal here.
+  d_bad=""
   thr=$(breaker_threshold)
   if [ -z "$thr" ]; then
-    n_bad="$n_bad failure-threshold-unusable-see-C25a"
+    d_bad="$d_bad failure-threshold-unusable-see-C25a"
   else
-    opened=$(bash "$KSH" breaker --state closed --failures "$thr" 2>/dev/null | jq -r '.state // empty')
-    [ "$opened" = "open" ] || n_bad="$n_bad expected-open-at-threshold-got:${opened:-none}"
-    held=$(bash "$KSH" breaker --state closed --failures "$((thr - 1))" 2>/dev/null | jq -r '.state // empty')
-    [ "$held" = "closed" ] || n_bad="$n_bad expected-closed-one-below-threshold-got:${held:-none}"
+    got=$(breaker_answer --state closed --failures "$thr")
+    [ "$got" = "open/false" ] || d_bad="$d_bad at-threshold-expected-open/false-got:${got:-none}"
+    got=$(breaker_answer --state closed --failures "$((thr - 1))")
+    [ "$got" = "closed/true" ] || d_bad="$d_bad one-below-threshold-expected-closed/true-got:${got:-none}"
   fi
-  recovered=$(bash "$KSH" breaker --state half-open --probe-result ok 2>/dev/null | jq -r '.state // empty')
-  [ "$recovered" = "closed" ] || n_bad="$n_bad expected-closed-after-a-successful-probe-got:${recovered:-none}"
-  [ -z "$n_bad" ] && ok "kernel.sh breaker opens at the registry threshold, holds one failure below it, and closes on a successful probe" \
-                  || bad "breaker canary:$n_bad"
+  got=$(breaker_answer --state open --cooldown-elapsed true)
+  [ "$got" = "half-open/true" ] || d_bad="$d_bad cooldown-elapsed-expected-half-open/true-got:${got:-none}"
+  got=$(breaker_answer --state open --cooldown-elapsed false)
+  [ "$got" = "open/false" ] || d_bad="$d_bad cooldown-pending-expected-open/false-got:${got:-none}"
+  got=$(breaker_answer --state half-open --probe-result ok)
+  [ "$got" = "closed/true" ] || d_bad="$d_bad successful-probe-expected-closed/true-got:${got:-none}"
+  got=$(breaker_answer --state half-open --probe-result failed)
+  [ "$got" = "open/false" ] || d_bad="$d_bad failed-probe-expected-open/false-got:${got:-none}"
+  [ -z "$d_bad" ] && ok "kernel.sh breaker answers the expected state and allow for all six transitions across the three state arms" \
+                  || bad "breaker canary:$d_bad"
 }
 
 check_C25c() {
   have_jq || return 0
   have_breaker_inputs || return 0
-  # C25c: prose mirror — rules/parallelism.md names the subcommand an
-  # orchestrator is supposed to call, quotes the registry's failure threshold,
-  # and carries a table row for every state the registry declares.
-  m_bad=""
+  # C25c: prose mirror — rules/parallelism.md carries a "Circuit breaker"
+  # section, names the subcommand an orchestrator is supposed to call, quotes
+  # the registry's failure threshold, and mentions every state and every scope
+  # the registry declares. scopes is the only breaker field with no kernel
+  # consumer and no canary, so this grep is its only guard — and it is the one
+  # field that has already drifted from the frozen ids once.
+  p_bad=""
   thr=$(breaker_threshold)
+  # Anchored, because every other assertion here is a claim about that section
+  # and a passing grep elsewhere in the file would not be a mirror.
+  grep -qE '^## Circuit breaker$' rules/parallelism.md 2>/dev/null \
+    || p_bad="$p_bad parallelism.md-has-no-Circuit-breaker-section"
   grep -q 'kernel.sh breaker' rules/parallelism.md 2>/dev/null \
-    || m_bad="$m_bad parallelism.md-does-not-name-kernel.sh-breaker"
+    || p_bad="$p_bad parallelism.md-does-not-name-kernel.sh-breaker"
   # An empty threshold would make the grep below match vacuously —
   # "[^0-9]*\b" hits any bare mention of the field name — so an unusable
   # threshold is its own finding rather than a silent pass.
   if [ -z "$thr" ]; then
-    m_bad="$m_bad failure-threshold-unusable-see-C25a"
+    p_bad="$p_bad failure-threshold-unusable-see-C25a"
   elif ! grep -qE "failure_threshold[^0-9]*${thr}\b" rules/parallelism.md 2>/dev/null; then
-    m_bad="$m_bad parallelism.md-threshold-disagrees-with-registry(${thr})"
+    p_bad="$p_bad parallelism.md-threshold-disagrees-with-registry(${thr})"
   fi
-  for bst in $(jq -r '.breaker.states[]?' "$PJ"); do
-    grep -qE "^\| \`$bst\`" rules/parallelism.md 2>/dev/null \
-      || m_bad="$m_bad parallelism.md-has-no-table-row-for-state:$bst"
+  for st in $(jq -r '.breaker.states[]?' "$PJ"); do
+    grep -qE "^\| \`$st\`" rules/parallelism.md 2>/dev/null \
+      || p_bad="$p_bad parallelism.md-has-no-table-row-for-state:$st"
   done
-  [ -z "$m_bad" ] && ok "rules/parallelism.md mirrors the breaker: names kernel.sh breaker, quotes the failure threshold, one row per declared state" \
-                   || bad "breaker prose-mirror problems:$m_bad"
+  for sc in $(jq -r '.breaker.scopes[]?' "$PJ"); do
+    grep -qE "\`$sc\`" rules/parallelism.md 2>/dev/null \
+      || p_bad="$p_bad parallelism.md-does-not-name-scope:$sc"
+  done
+  [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state and a mention of every declared scope" \
+                   || bad "breaker prose-mirror problems:$p_bad"
 }

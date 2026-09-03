@@ -111,9 +111,14 @@ right.
 
 ## Circuit breaker
 
-The failure policy above is per unit. The breaker is per resource — a provider,
-an MCP server, a tool, an agent type — and answers a different question: not
-"retry?" but "why are we still calling this?". Consult it BEFORE `retry`.
+The failure policy above is per unit. The breaker is per resource, and the
+resource kinds it scopes over are `provider`, `mcp` (an MCP server), `tool` and
+`agent` (an agent type). It answers a different question: not "retry?" but "why
+are we still calling this?". Consult it BEFORE `retry`.
+
+Those scope ids are the orchestrator's own vocabulary for keying a breaker's
+state — the kernel never reads them, so nothing enforces them beyond this
+section and `registries/policy.json` `breaker.scopes`.
 
 `scripts/kernel.sh breaker --state closed --failures <consecutive failures on this resource>`
 

@@ -382,6 +382,15 @@ cmd_breaker() {
   case "$state" in closed|open|half-open) ;; *) err "breaker requires --state closed|open|half-open" ;; esac
   need_reg policy.json
   local P="$REG/policy.json"
+
+  # need_reg proves the FILE exists, not that this block does. Without the
+  # guard, $b.failure_threshold is null, jq sorts null below every number, so
+  # `0 >= null` is true and a healthy resource is reported open with exit 0 —
+  # the fail-open class cmd_risk was fixed for. Same shape as route-escalate's
+  # router-block guard.
+  jq -e '.breaker' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no breaker block — breaker cannot resolve its own policy without it"
+
   case "$state" in
     closed)
       case "$failures" in ''|*[!0-9]*) err "breaker --state closed requires a numeric --failures" ;; esac

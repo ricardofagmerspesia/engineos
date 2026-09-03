@@ -53,6 +53,9 @@ a rename — same call Task 2 made for `admit`), and no hook.
 - [x] Kernel fixtures written in `scripts/test-kernel.sh`
 - [x] Validator negative cases written in `scripts/test-validate-engineos.sh`
 - [x] `bash -n` on every touched shell file, `jq .` on `registries/policy.json`
+- [x] Fix round 1 applied: fail-closed block guard, C25b state/allow across all
+      three arms, discriminating leading-zero fixture, C25c heading + scope
+      mirror, `have_kernel_inputs` extraction, accumulator and verdict wording
 - [ ] Final gate (lint/typecheck/tests, `validate-engineos.sh`, `test-kernel.sh`,
       `test-validate-engineos.sh`) — deferred to the controller by explicit
       ruling; this unit is reported DEGRADED / unverified, not green
@@ -61,8 +64,10 @@ a rename — same call Task 2 made for `admit`), and no hook.
 
 **Registry — `registries/policy.json`.** A top-level `breaker` block after
 `repair`: `failure_threshold: 3`, `cooldown_waves: 1`, `half_open_probes: 1`,
-`states: ["closed", "half-open", "open"]` (sorted, so C25a can compare a joined
-sort), `scopes: ["provider", "mcp", "tool", "agent"]`, and a `note`
+`states: ["closed", "half-open", "open"]` (stored sorted as a reading
+convention only — C25a sorts before it compares, so the stored order is
+irrelevant and its sortedness is enforced by nothing),
+`scopes: ["provider", "mcp", "tool", "agent"]`, and a `note`
 that spells out the three-way distinction between `retry` (agent units),
 `repair` (checks) and `breaker` (resources), names the kernel subcommand, the
 prose mirror, C25 and the ADR. `version` left at `1.6.0` per the brief. The
@@ -121,6 +126,49 @@ negative cases: a state dropped from `.breaker.states`, `failure_threshold` set
 to 0, and (on `C25c` alone) the registry threshold raised without the prose
 following.
 
+**Fix round 1**, after the controller's review, in one commit on top of
+`c4f0d1f`:
+
+- *Fail-closed guard (the review's headline defect).* `cmd_breaker` fabricated
+  an answer when `.breaker` was absent: `need_reg` proves the file exists, not
+  the block, so `$b.failure_threshold` was null, jq sorts null below every
+  number, `0 >= null` held, and a healthy resource came back
+  `{"state":"open","allow":false,"reason":"... threshold null ... null wave(s)"}`
+  with exit 0. Same fail-open class `cmd_risk` was fixed for. Added
+  `jq -e '.breaker' "$P" || err ...` right after `need_reg`, copying
+  `cmd_route_escalate`'s router-block guard in shape, plus a fixture that
+  proves it.
+- *C25b rewritten.* It read only `.state`, so `{"state":"open","allow":true}`
+  passed the integrity gate, and it called two of the three state arms, so an
+  inverted boolean in the `open` arm passed CI. It now asserts
+  `state/allow` per call via a `breaker_answer` helper, across all six
+  transitions of all three arms.
+- *Leading-zero fixture made discriminating.* `--failures 00` expects `closed`,
+  which is also the answer for 0, 1 and 2 — it proved nothing. Now
+  `--failures "0$thr"` expecting `open`, mirroring how the admit fixture uses
+  `capacity = cap - 2`.
+- *C25c widened.* Requires the `## Circuit breaker` heading to exist (anchored),
+  and requires every `scopes[]` id to appear in the prose — `scopes` was the
+  only breaker field with neither a canary nor a prose mirror, and the one that
+  actually drifted.
+- *Rule of three.* The `have_*_inputs` body was in its third verbatim copy
+  (`repair`, `backpressure`, `breaker`, all gating on `$PJ` + `$KSH`). Extracted
+  as `have_kernel_inputs <label> <message>`; the three family guards now
+  delegate to it, keeping their skip tokens and messages byte-identical so
+  C20's and C24's behaviour is unchanged.
+- *Cosmetics.* Accumulators renamed to C24's `b_bad`/`d_bad`/`p_bad`
+  convention; C25a's verdict softened from "integers >= 1" to "each read as a
+  whole number >= 1", because the check reads through `jq -r` and matches digit
+  strings — the JSON string `"3"` passes it exactly as `3` does, and the old
+  message claimed a type check nobody performs. Registry `note` gained a clause
+  saying `scopes` is advisory with no kernel consumer. Prose names the four
+  scope ids in backticks so C25c has something to match.
+
+Not done, deliberately: `scripts/checks/70-runtime.sh` is now 491 lines and
+past the ~300-line guidance in `rules/base.md`. Splitting it is a separate unit
+of work on a file three check families share, and the controller ruled it out
+of this commit.
+
 ## Verification
 
 Run and green:
@@ -138,11 +186,26 @@ Run and green:
   `kernel.sh breaker` present, `failure_threshold[^0-9]*3\b` matches, and a
   `^\| \`<state>\`` row exists for `closed`, `open` and `half-open`
 
+Fix round 1, run and green:
+
+- `bash -n scripts/kernel.sh` -> `kernel.sh: syntax OK`
+- `bash -n scripts/checks/70-runtime.sh` -> `syntax OK`
+- `bash -n scripts/test-kernel.sh` -> `test-kernel.sh: syntax OK`
+- `jq . registries/policy.json > /dev/null` -> `policy.json parses`
+- `python3` assertion that `.breaker.note` carries the new advisory clause -> passes
+- `grep -nE '^## Circuit breaker$' rules/parallelism.md` -> `112:## Circuit breaker`
+  (C25c's new anchored heading assertion)
+- `grep -noE '`provider`|`mcp`|`tool`|`agent`' rules/parallelism.md` -> all four
+  scope ids present at lines 115-116 (C25c's new scope assertion)
+- `grep -n 'k_bad\|m_bad\|n_bad' scripts/checks/70-runtime.sh` -> no output,
+  the old accumulator names are gone
+
 **Not run, by explicit ruling from the controller:** `scripts/test-kernel.sh`,
 `scripts/test-validate-engineos.sh`, `scripts/validate-engineos.sh`, and
 `shellcheck`. Verification is the controller's single final gate. This unit is
 therefore reported DEGRADED — unverified by ruling — and the fixtures above are
-written but unexecuted.
+written but unexecuted. In particular the fail-closed guard's own fixture, which
+proves the review's headline defect is fixed, has not been executed.
 
 ## Changes registered
 
@@ -158,37 +221,53 @@ written but unexecuted.
 ?? .engineos/changes/2026-09-03-kernel-circuit-breaker.md
 ```
 
-`git diff --stat 17f0399 HEAD`:
+`git diff --stat 17f0399`, real output, captured from the working tree
+immediately before the fix-round commit:
 
 ```
- .../changes/2026-09-03-kernel-circuit-breaker.md   | 226 +++++++++++++++++++++
+ .../changes/2026-09-03-kernel-circuit-breaker.md   | 309 +++++++++++++++++++++
  registries/policy.json                             |  10 +-
- rules/parallelism.md                               |  20 ++
- scripts/checks/70-runtime.sh                       | 114 +++++++++++
- scripts/kernel.sh                                  |  61 +++++-
- scripts/test-kernel.sh                             |  63 ++++++
- scripts/test-validate-engineos.sh                  |  26 +++
- 7 files changed, 518 insertions(+), 2 deletions(-)
+ rules/parallelism.md                               |  25 ++
+ scripts/checks/70-runtime.sh                       | 165 ++++++++++-
+ scripts/kernel.sh                                  |  70 ++++-
+ scripts/test-kernel.sh                             |  82 ++++++
+ scripts/test-validate-engineos.sh                  |  26 ++
+ 7 files changed, 677 insertions(+), 10 deletions(-)
 ```
 
-`git log --oneline 17f0399..HEAD` — one commit, whose real output was:
+Every line above is exact except this record's own, which grew by the size of
+this paragraph and the block above it after the capture — a file cannot report
+its own final size from inside itself.
+
+`git log --oneline 17f0399..HEAD`, real output:
 
 ```
+c4f0d1f fix(registries): use the frozen breaker scope ids
 a1f8d06 feat(kernel): add per-resource circuit breaker
-<controller fix commit — scope ids realigned to the frozen contract>
 ```
 
-A record cannot carry the sha of the commit that contains it, so the follow-on
-controller commit is named by its subject rather than its sha. The stable
-identifiers are the parent (`17f0399`) and the first commit (`a1f8d06`).
-
-The `git diff --stat` above was likewise captured from the pre-amend commit, so
-this record's own line count in it is short by the size of this correction. No
-other file's numbers moved.
+Three commits once the fix-round commit lands; the third is
+`fix(kernel): fail closed without a breaker block`, named by its subject
+because a record cannot carry the sha of the commit that contains it. The
+stable identifiers are the parent (`17f0399`) and the first commit
+(`a1f8d06`).
 
 No renames, no deletions, no moves.
 
 ## Notes
+
+- **Frozen-contract breach, found in review and corrected.** The plan's frozen
+  contract and the accepted ADR name the breaker scope ids `provider`, `mcp`,
+  `tool` and `agent`. `a1f8d06` shipped `mcp-server` and `agent-type` instead —
+  a unilateral rename of a frozen contract, which `rules/subagents.md` forbids
+  outright, and one Task 4's `hitl` situations would have had to match against.
+  The controller realigned them in `c4f0d1f`. Nothing in the kernel reads
+  `scopes`, which is exactly why the drift survived implementation: C25a only
+  checked the array was non-empty and there was no prose mirror for the ids at
+  all. The fix round closes that hole — C25c now requires every declared scope
+  id to appear in the prose section, and the registry `note` states that
+  `scopes` is advisory with no kernel consumer, so the next reader knows the
+  greps are all that hold it.
 
 - **Deviations from the brief, and why.**
   1. **`--arg` + `tonumber` instead of `--argjson` for `--failures`.** The

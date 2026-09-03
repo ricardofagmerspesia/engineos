@@ -657,10 +657,12 @@ run breaker --state
 assert_err "breaker with a valueless --state errors instead of hanging"
 
 # a leading zero is a shell-ism, not a JSON number: it normalises, and must
-# never surface as a bare jq parse error
-run breaker --state closed --failures 00
+# never surface as a bare jq parse error. The value is the threshold itself, so
+# the expected answer (open) is one only a correctly parsed number produces --
+# "00" would answer closed for any threshold >= 1 and discriminate nothing.
+run breaker --state closed --failures "0$thr"
 assert_ok "breaker normalises a leading-zero --failures"
-assert_eq "breaker treats 00 as 0" "$(jqval .state)" "closed"
+assert_eq "breaker treats 0$thr as $thr" "$(jqval .state)" "open"
 
 run breaker --state closed --failures abc
 assert_err "breaker rejects a non-numeric --failures"
@@ -668,6 +670,23 @@ run breaker --state open --cooldown-elapsed maybe
 assert_err "breaker rejects a non-boolean --cooldown-elapsed"
 run breaker --state half-open --probe-result maybe
 assert_err "breaker rejects an unknown --probe-result"
+
+# need_reg proves only that policy.json exists. With .breaker absent, jq sorts
+# null below every number, so `0 >= null` held and the kernel answered
+# {"state":"open","allow":false} with exit 0 -- a healthy resource reported
+# open. Fail closed instead.
+#
+# Built as a relocated kernel copy rather than by mutating $REG in place: the
+# suite carries both patterns (route-escalate's router-block case backs up and
+# overwrites the real registry), and this one cannot leave the repo's
+# registries broken if the run dies mid-fixture.
+BRKT=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$BRKT/scripts" "$BRKT/registries"
+cp "$KERNEL" "$BRKT/scripts/kernel.sh"
+jq 'del(.breaker)' "$REG/policy.json" > "$BRKT/registries/policy.json"
+OUT=$(bash "$BRKT/scripts/kernel.sh" breaker --state closed --failures 0 2>&1); RC=$?
+assert_err "breaker with no breaker policy block errors (fail-closed, never a fabricated open)"
+rm -rf "$BRKT"
 
 # ------------------------------------------------------- risk fail-closed fix
 
