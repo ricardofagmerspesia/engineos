@@ -820,6 +820,18 @@ p='registries/policy.json'; d=json.load(open(p))
 d['telemetry']['exec_journal']['home']='.git/engineos-telemetry/<session_id>.jsonl'
 json.dump(d,open(p,'w'),indent=2)\""
 
+case_ C27 "the length bound removed from policy.json is caught" \
+      "exec_journal block problems" \
+      "python3 -c \"
+import json,collections
+p='registries/policy.json'; d=json.load(open(p),object_pairs_hook=collections.OrderedDict)
+del d['telemetry']['exec_journal']['max_value_length']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C27 "the length bound drifting from the script's fallback is caught" \
+      "exec_journal block problems" \
+      "sed -i.bak 's|^MAX_VALUE_LEN_FALLBACK=\"256\"|MAX_VALUE_LEN_FALLBACK=\"512\"|' scripts/exec-journal.sh"
+
 # The invariant the whole schema exists for. is_slug weakened to accept
 # whitespace is a prompt-text channel straight to disk, and it is a one-line
 # edit, so it gets its own behavioral case rather than trusting the unit suite.
@@ -833,6 +845,14 @@ open(p,'w').write(s)\""
 case_ C27b "an unknown span_kind silently accepted is caught by the live canary" \
       "exec-journal span canary failed" \
       "sed -i.bak 's|in_list \"\$span_kind_val\" \"\$VALID_SPAN_KINDS\"|true|' scripts/exec-journal.sh"
+
+case_ C27b "the agent field losing its slug guard is caught by the canary" \
+      "exec-journal span canary failed" \
+      "sed -i.bak '/^  check_slug_flag --agent /d' scripts/exec-journal.sh"
+
+case_ C27b "the length bound no longer enforced on append is caught" \
+      "exec-journal span canary failed" \
+      "sed -i.bak '/^    check_len \"\$1\" \"\$2\"\$/d' scripts/exec-journal.sh"
 
 case_ C27c "the router span removed from prompt-advisor.sh is caught" \
       "exec-journal wiring problems" \
@@ -866,37 +886,87 @@ case_ C27d "tokens_in dropped from the Agent traces field list is caught" \
       "exec-journal prose-mirror problems" \
       "sed -i.bak 's|\`tokens_in\`, \`tokens_out\`, ||' rules/observability.md"
 
-# ---- C28 / C29: the pairs Tasks 6 and 7 landed ----
-# NOTE: these two checks are RED until this branch is merged with the branches
-# that carry those artifacts, so on the stack's own tip the cases below pass on
-# the missing-file finding rather than on the planted one. They become
-# refutable at the merge, which is the only tree where the checks are green.
-case_ C28 "the RAG section deleted from rules/llm-apps.md is caught" \
-      "retrieval-metrics prose/data problems" \
+case_ C27d "the span-kind alternation line deleted from the prose is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak '/router | coordinator | agent | tool | model | verification/d' rules/observability.md"
+
+case_ C27d "the status-is-a-floor caveat dropped from the prose is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|is a FLOOR|is a count|' rules/observability.md"
+
+case_ C27d "the slug claim re-broadened past note is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|every field EXCEPT \`note\` is a slug|every field is a slug|' rules/observability.md"
+
+case_ C27d "the slug guard re-claiming that it classifies content is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|it does not classify the content|a PII value cannot be written through those|' rules/observability.md"
+
+case_ C27e "append and validate guarding different field sets is caught" \
+      "exec-journal slug-guard set problems" \
+      "sed -i.bak '/^  check_slug_flag --agent /d' scripts/exec-journal.sh"
+
+case_ C27e "note becoming a guarded slug field is caught" \
+      "exec-journal slug-guard set problems" \
       "python3 -c \"
+p='scripts/exec-journal.sh'; s=open(p).read()
+old='  check_slug_flag --route          '
+open(p,'w').write(s.replace(old, '  check_slug_flag --note           \\\"\\\$note_set\\\"           \\\"\\\$note_val\\\"\\n'+old, 1))\""
+
+case_ C27f "a span writer passing an unregistered capability_id is caught" \
+      "exec-journal capability_id problems" \
+      "sed -i.bak 's|--capability-id validate|--capability-id verify|' hooks/stop-verify.sh"
+
+# ---- C28 / C29: the pairs Tasks 6 and 7 land ----
+# Those artifacts live on other branches until the stack merges, and their
+# Checks skip on absent inputs (70-runtime.sh have_retrieval_metrics_inputs /
+# have_adoption_inputs). A case registered here anyway would assert a FAIL the
+# validator correctly does not emit, so registration is gated on the same
+# predicate: on the merged tree every case below runs and each is refutable on
+# its own mutation. Nothing here plants breakage in the guard input itself.
+tskip() { printf 'skip %s\n' "$1"; }
+
+if [ -d "$ROOT/skills/eval-harness/references" ]; then
+  case_ C28 "the RAG section deleted from rules/llm-apps.md is caught" \
+        "retrieval-metrics prose/data problems" \
+        "python3 -c \"
 import re
 p='rules/llm-apps.md'; s=open(p).read()
 open(p,'w').write(re.sub(r'## RAG\n(.*\n)*?(?=## )', '', s))\""
 
-case_ C28 "a metric name dropped from the RAG section is caught" \
-      "retrieval-metrics prose/data problems" \
-      "sed -i.bak 's| and \*\*MRR\*\*||' rules/llm-apps.md"
+  case_ C28 "a metric name dropped from the RAG section is caught" \
+        "retrieval-metrics prose/data problems" \
+        "sed -i.bak 's| and \*\*MRR\*\*||' rules/llm-apps.md"
 
-case_ C28 "the retrieval-metrics reference deleted is caught" \
-      "retrieval-metrics prose/data problems" \
-      "rm -f skills/eval-harness/references/retrieval-metrics.md"
+  case_ C28 "the retrieval-metrics reference deleted is caught" \
+        "retrieval-metrics prose/data problems" \
+        "rm -f skills/eval-harness/references/retrieval-metrics.md"
+else
+  tskip "C28 cases — skills/eval-harness/references/ is not in this tree yet"
+fi
 
-case_ C29 "init-project.sh losing its exec bit is caught" \
-      "adoption entrypoint problems" \
-      "chmod -x scripts/init-project.sh 2>/dev/null; rm -f commands/init.md"
+if [ -f "$ROOT/scripts/init-project.sh" ]; then
+  # One mutation per case. This one used to remove commands/init.md as well,
+  # which meant it passed on `commands/init.md-missing` and never on the exec
+  # bit it is named for.
+  case_ C29 "init-project.sh losing its exec bit is caught" \
+        "adoption entrypoint problems" \
+        "chmod -x scripts/init-project.sh"
 
-case_ C29 "ensure-project-layout no longer sourcing scaffold-layout.sh is caught" \
-      "adoption entrypoint problems" \
-      "sed -i.bak '/scaffold-layout.sh/d' hooks/ensure-project-layout.sh"
+  case_ C29 "ensure-project-layout no longer sourcing scaffold-layout.sh is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak '/scaffold-layout.sh/d' hooks/ensure-project-layout.sh"
 
-case_ C29 "docs/ADOPTION.md losing the /engineos:init command is caught" \
-      "adoption entrypoint problems" \
-      "sed -i.bak 's|/engineos:init|/engineos:setup|g' docs/ADOPTION.md"
+  case_ C29 "docs/ADOPTION.md losing the /engineos:init command is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak 's|/engineos:init|/engineos:setup|g' docs/ADOPTION.md"
+
+  case_ C29 "commands/init.md no longer naming init-project.sh is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak 's|scripts/init-project.sh|scripts/setup-project.sh|g' commands/init.md"
+else
+  tskip "C29 cases — scripts/init-project.sh is not in this tree yet"
+fi
 
 flush_batch
 echo

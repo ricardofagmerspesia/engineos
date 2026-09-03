@@ -35,25 +35,42 @@ if DUR=$(hook_span_close "$SPAN_ID"); then
     '.agents[]? | select(.name == $a) | .model_tier // empty' \
     "$LIB_DIR/../registries/agents.json" 2>/dev/null | head -1)
   [ -n "$TIER" ] || TIER=build
-  # FAILED comes from the harness reporting an error, or from the return
-  # envelope's own status when it is the FIRST token of the response. The
-  # vocabulary inside the response body is the agent's claim about itself
-  # (rules/parallelism.md), not the harness's, so it is read only in that
-  # position and never searched for further in — a "FAILED" mentioned in the
-  # middle of a report is prose, not a verdict. The consequence is deliberate
-  # and stated in rules/observability.md: a structured tool_response with no
-  # error flag reads as OK, so this status is a floor on the failure count the
-  # breaker consumes, never a ceiling.
+  # Status, from three STRUCTURAL sources and no fourth:
+  #   1. the harness's own error flag, which is authoritative;
+  #   2. a top-level `.status` on an object payload — a field, not prose;
+  #   3. the envelope vocabulary as the FIRST token of a string payload.
+  # The `case` below is the allowlist for all three, so a `.status` carrying
+  # anything else (including text) becomes OK rather than reaching disk.
+  #
+  # Nothing scans free text, deliberately: an extractor that read prose would
+  # turn a report saying "the previous attempt FAILED" into a verdict, and would
+  # hand a subagent a channel for putting chosen words into telemetry. The
+  # earlier version had only sources 1 and 3, and `tostring` on the shapes the
+  # Task tool actually returns — an array of content blocks, or an object with
+  # `content`/`totalDurationMs` — starts with `[` or `{`, so the anchored
+  # capture never fired and only `is_error` ever produced FAILED. Source 2
+  # closes the common case; the rest stays a known FLOOR, stated as such in
+  # rules/observability.md, because the breaker's consecutive-failure count is
+  # built on it.
   STATUS=$(printf '%s' "$HOOK_INPUT" | jq -r '
     if (((.tool_response | if type == "object" then .is_error else null end)
          // .is_error // false) == true) then "FAILED"
-    else ((.tool_response | tostring)
-          | (capture("^(?<s>OK|BLOCKED|FAILED|DEGRADED)\\b") | .s)? // "OK") end' 2>/dev/null)
+    else ((.tool_response | if type == "object" then (.status | strings) else empty end)
+          // (.tool_response | tostring
+              | (capture("^(?<s>OK|BLOCKED|FAILED|DEGRADED)\\b") | .s)?)
+          // "OK") end' 2>/dev/null)
   case "$STATUS" in OK|BLOCKED|FAILED|DEGRADED) ;; *) STATUS=OK ;; esac
   # tokens_in/tokens_out are 0 and cost_micros absent by construction: this hook
   # never sees the subagent's usage. rules/observability.md says so in prose so
   # nobody reads a 0 as "free".
-  hook_span agent --capability-id dispatch --agent "$AGENT" --model-tier "$TIER" \
+  # capability_id is `implement`, not a `dispatch` id of its own: every value
+  # here has to resolve against registries/capabilities.json (C27f), and a
+  # `dispatch` capability would need an agent binding and a model_tier to
+  # satisfy C13 — but dispatching is what the ORCHESTRATOR does, so there is no
+  # agent to bind. Known imprecision, recorded in rules/observability.md: a
+  # consumer grouping agent spans by capability sees them all as `implement`
+  # (a security-review dispatch included) and disambiguates on `agent`.
+  hook_span agent --capability-id implement --agent "$AGENT" --model-tier "$TIER" \
     --status "$STATUS" --duration-ms "$DUR" --span-id "$SPAN_ID"
 fi
 

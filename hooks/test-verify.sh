@@ -381,7 +381,7 @@ printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":true,"session_id":
 XF="$T/.git/engineos-telemetry/vspan1.exec.jsonl"
 XLINES=$([ -f "$XF" ] && wc -l < "$XF" | tr -d ' ' || echo 0)
 if [ -f "$XF" ] \
-   && jq -e '.span_kind == "verification" and .status == "FAILED" and .capability_id == "verify"
+   && jq -e '.span_kind == "verification" and .status == "FAILED" and .capability_id == "validate"
              and .trace_id == "vspan1" and (.duration_ms | type) == "number"' "$XF" >/dev/null 2>&1 \
    && bash "$DIR/../scripts/exec-journal.sh" validate "$XF" >/dev/null 2>&1 \
    && [ "$XLINES" = "1" ]; then

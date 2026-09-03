@@ -19,7 +19,7 @@
 #   tokens_in     non-negative integer
 #   tokens_out    non-negative integer
 #   duration_ms   non-negative integer
-#   note          string or null, optional free text
+#   note          string or null, the ONE field that admits free text (below)
 #
 # Span fields (optional, v2) — one session is one trace, and every dispatched
 # agent, router decision and verification gate is a span in it
@@ -38,15 +38,41 @@
 #   route          (optional, v2) slug, the routed intent id
 #   risk           (optional, v2) one of VALID_RISKS below
 #
-# Every v2 string field is a SLUG (SLUG_RE below) — the same no-whitespace class
-# as registries/policy.json telemetry.value_pattern. That is what makes it
-# structurally impossible for prompt text, a file body or a PII value to reach
-# disk through a span: there is no field that admits a space. Adding a free-text
-# field is a compatibility event (docs/COMPATIBILITY.md), never a convenience.
+# CONTAINMENT — stated the same way here, in registries/policy.json
+# telemetry.exec_journal.note and in rules/observability.md "Agent traces":
 #
-# Validates shape and these enumerated/numeric constraints only — it does NOT
-# check capability_id against capabilities.json or agent against agents.json;
-# that would make this a registry-aware service rather than a schema contract.
+#   Every field except `note` is a slug (SLUG_RE below, the same no-whitespace
+#   class as registries/policy.json telemetry.value_pattern), and the validator
+#   rejects a line where one of them is not. `note` is the single field that
+#   admits text, so a consumer forwarding this journal must treat `note` — and
+#   only `note` — as untrusted. Every value, `note` included, is capped at
+#   telemetry.exec_journal.max_value_length characters on append; over-long is a
+#   reject, never a truncation, because a truncated value that still validates
+#   is the same unbounded-input bug with the evidence removed.
+#
+#   The two write boundaries differ on purpose, and the difference IS the claim.
+#   This CLI REJECTS a non-slug value. The hooks SANITIZE first
+#   (hooks/lib-common.sh hook_slug maps every other character to '-') so that a
+#   span is recorded rather than lost, so a harness-supplied value's characters
+#   still transit, dash-joined: `SECRET=hunter2 x` lands as `SECRET-hunter2-x`.
+#   What the guard buys is that no field but `note` can carry whitespace, a
+#   newline, a quote or a control character — so nothing written through one can
+#   break the line format, smuggle a second JSON object or span two lines — and
+#   that every value is length-bounded. It bounds the SHAPE and the SIZE of what
+#   reaches disk; it does not classify the content. Saying otherwise is the same
+#   false-containment bug the paragraph below describes, in a new coat.
+#
+# An earlier version scoped the slug claim to the v2 fields only, which left
+# run_id, capability_id and agent as a working prompt-text-and-credential
+# channel to disk while three prose homes claimed no such field existed. Adding
+# another free-text field is a compatibility event (docs/COMPATIBILITY.md),
+# never a convenience.
+#
+# Validates shape, the enumerated/numeric constraints and the slug class only —
+# it does NOT check capability_id against capabilities.json or agent against
+# agents.json; that would make this a registry-aware service rather than a
+# schema contract. The length bound is read from policy.json rather than
+# hardcoded, which is a number with one home, not a registry lookup.
 #
 # Usage:
 #   scripts/exec-journal.sh append <journal-file> \
@@ -72,6 +98,13 @@ VALID_RISKS="low medium high"
 # Same no-whitespace class as registries/policy.json telemetry.value_pattern:
 # no free-text field may be added to a span without a deprecation (docs/COMPATIBILITY.md).
 SLUG_RE='^[A-Za-z0-9@_./:-]+$'
+# Per-value length bound. The NUMBER lives in registries/policy.json
+# telemetry.exec_journal.max_value_length so the prose can quote one home;
+# MAX_VALUE_LEN_FALLBACK is what this CLI uses when that file is unreadable,
+# because a schema contract must still run standalone. validate-engineos.sh
+# C27a asserts the registry value equals this constant, so they cannot drift.
+MAX_VALUE_LEN_FALLBACK="256"
+EJ_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() {
   echo "usage: $0 append <file> --run-id ID --capability-id ID [--agent NAME] --model-tier TIER --status STATUS --tokens-in N --tokens-out N --duration-ms N [--note TEXT] [--timestamp TS] [--trace-id ID] [--span-id ID] [--parent-span-id ID] [--span-kind KIND] [--tool NAME] [--provider NAME] [--model NAME] [--cost-micros N] [--retry-attempt N] [--cache-hit true|false] [--route ID] [--risk TIER]" >&2
@@ -109,16 +142,36 @@ is_slug() {
 }
 
 # check_slug_flag <flag-name> <set-flag> <value> -> no-op when the flag was not
-# given, otherwise aborts unless the value is a slug. Seven v2 flags share this
-# body; spelling it seven times is how one of them silently loses its guard.
+# given, otherwise aborts unless the value is a slug. Every string flag except
+# --note and --timestamp shares this body; spelling it out per flag is how
+# --agent silently lost its guard while three prose homes claimed it had one.
 check_slug_flag() {
   [ "$2" = 1 ] || return 0
   is_slug "$3" || { echo "$1 must match $SLUG_RE, got: $3" >&2; exit 1; }
 }
 
+# check_len <flag-name> <value> -> aborts when the value is longer than
+# MAX_VALUE_LEN. Called once for every flag value in the parse loop, so a new
+# flag is bounded the moment it is added rather than when someone remembers.
+check_len() {
+  [ "${#2}" -le "$MAX_VALUE_LEN" ] \
+    || { echo "$1 must be at most $MAX_VALUE_LEN characters, got ${#2}" >&2; exit 1; }
+}
+
+# max_value_len -> the bound, from the registry, falling back to this file's own
+# constant when policy.json is absent or the field is not a positive integer.
+max_value_len() {
+  local v
+  v=$(jq -r '.telemetry.exec_journal.max_value_length // empty' \
+    "$EJ_ROOT/registries/policy.json" 2>/dev/null)
+  case "$v" in ''|*[!0-9]*|0) v="$MAX_VALUE_LEN_FALLBACK" ;; esac
+  printf '%s' "$v"
+}
+
 cmd_append() {
   local file="$1"; shift
   command -v jq >/dev/null 2>&1 || { echo "jq required" >&2; exit 1; }
+  MAX_VALUE_LEN=$(max_value_len)
 
   local run_id="" capability_id="" agent_val="" agent_set=0 model_tier="" status=""
   local tokens_in="" tokens_out="" duration_ms="" note_val="" note_set=0 timestamp=""
@@ -135,6 +188,9 @@ cmd_append() {
     # following) would otherwise read an unset $2 and abort under `set -u`
     # instead of hitting usage()'s field-completeness check.
     [ $# -ge 2 ] || usage
+    # Bounded before it is stored, so no field — slug, enum, number or note —
+    # can turn a 200KB harness value into a 200KB journal line.
+    check_len "$1" "$2"
     case "$1" in
       --run-id) run_id="$2"; shift 2 ;;
       --capability-id) capability_id="$2"; shift 2 ;;
@@ -192,6 +248,13 @@ cmd_append() {
   if [ "$retry_attempt_set" = 1 ]; then
     is_nonneg_int "$retry_attempt_val" || { echo "--retry-attempt must be a non-negative integer, got: $retry_attempt_val" >&2; exit 1; }
   fi
+  # run_id, capability_id and agent are IDENTIFIER fields by nature and get the
+  # same guard as the v2 strings. This TIGHTENS the schema: a value with a space
+  # in it used to be accepted here and to pass validate. That was the hole the
+  # containment claim above denied having.
+  check_slug_flag --run-id         1                     "$run_id"
+  check_slug_flag --capability-id  1                     "$capability_id"
+  check_slug_flag --agent          "$agent_set"          "$agent_val"
   check_slug_flag --trace-id       "$trace_id_set"       "$trace_id_val"
   check_slug_flag --span-id        "$span_id_set"        "$span_id_val"
   check_slug_flag --parent-span-id "$parent_span_id_set" "$parent_span_id_val"
@@ -280,12 +343,15 @@ cmd_validate() {
         ((.cost_micros // 0) | is_nonneg_int) and
         ((.retry_attempt // 0) | is_nonneg_int) and
         ((.cache_hit // false) | type == "boolean") and
-        # `all`, not a bare generator: `X and (gen)` emits one result per gen
-        # output and `jq -e` reports only the LAST, so a bad trace_id followed
-        # by a good route would validate. Anchored with \z rather than $
-        # because Oniguruma matches $ before a trailing newline too, and a
-        # trailing newline is exactly the whitespace this class forbids.
-        ([.trace_id, .span_id, .parent_span_id, .tool, .provider, .model, .route]
+        # Every string field EXCEPT note. `all`, not a bare generator: `X and
+        # (gen)` emits one result per gen output and `jq -e` reports only the
+        # LAST, so a bad run_id followed by a good route would validate.
+        # Anchored with \z rather than $ because Oniguruma matches $ before a
+        # trailing newline too, and a trailing newline is exactly the whitespace
+        # this class forbids. note is absent from the list on purpose: it is the
+        # one documented free-text field, and a consumer treats it as untrusted.
+        ([.run_id, .capability_id, .agent,
+          .trace_id, .span_id, .parent_span_id, .tool, .provider, .model, .route]
           | all(. == null or ((type == "string") and test("^[A-Za-z0-9@_./:-]+\\z"))))' >/dev/null 2>&1; then
       echo "line $line_no: does not match the exec-journal schema" >&2
       bad=$((bad + 1))

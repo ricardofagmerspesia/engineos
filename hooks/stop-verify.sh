@@ -172,7 +172,10 @@ if [ "$HAVE_JQ" = 1 ] && [ "${ENGINEOS_TELEMETRY:-}" != "0" ]; then
   # model_tier is `cheap`: lint and typecheck are mechanical and invoke no model.
   LADDER_MS=$(( $(hook_now_ms) - LADDER_START ))
   [ "$LADDER_MS" -ge 0 ] || LADDER_MS=0
-  hook_span verification --capability-id verify --model-tier cheap \
+  # `validate` is the capabilities.json id for "run the target repo's own
+  # lint/typecheck/test checks" — exactly this gate. The earlier `verify`
+  # resolved against nothing and shadowed the real id (C27f now catches that).
+  hook_span verification --capability-id validate --model-tier cheap \
     --status "$([ "$FAILED" -eq 1 ] && echo FAILED || echo OK)" \
     --duration-ms "$LADDER_MS"
 fi

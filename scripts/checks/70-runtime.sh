@@ -859,7 +859,23 @@ check_C27() {
   elif [ ! -f "$helper" ]; then
     x_bad="$x_bad written_by_helper-names-a-missing-file:$helper"
   fi
-  [ -z "$x_bad" ] && ok "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds and statuses match exec-journal.sh's own constants, and every writer exists" \
+  # The per-value length bound is DATA here, not a literal in the CLI. The CLI
+  # still carries a fallback so it runs standalone without this registry, and
+  # the two must agree — otherwise a tree without policy.json quietly enforces a
+  # different bound from the one all three prose homes quote.
+  mvl=$(jq -r '.telemetry.exec_journal.max_value_length // empty' "$PJ")
+  case "$mvl" in
+    ''|*[!0-9]*|0)
+      x_bad="$x_bad max_value_length-not-a-positive-integer:${mvl:-missing}" ;;
+    *)
+      mfb=$(sed -n 's/^MAX_VALUE_LEN_FALLBACK="\(.*\)"$/\1/p' "$EJSH" 2>/dev/null | head -1)
+      if [ -z "$mfb" ]; then
+        x_bad="$x_bad cannot-read-MAX_VALUE_LEN_FALLBACK-from-exec-journal.sh"
+      elif [ "$mfb" != "$mvl" ]; then
+        x_bad="$x_bad max_value_length-disagrees-with-MAX_VALUE_LEN_FALLBACK(registry:$mvl script:$mfb)"
+      fi ;;
+  esac
+  [ -z "$x_bad" ] && ok "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses/max_value_length match exec-journal.sh's own constants, and every writer exists" \
                    || bad "exec_journal block problems:$x_bad"
 }
 
@@ -930,6 +946,33 @@ check_C27b() {
   # shellcheck disable=SC2086
   bash "$EJSH" append "$cf" $base --cache-hit yes >/dev/null 2>&1 \
     && c_bad="$c_bad non-boolean-cache_hit-was-not-rejected"
+  # Reject: the v1 IDENTIFIER fields, which used to admit a space and pass
+  # validate while three prose homes said no field did.
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --run-id "has space" >/dev/null 2>&1 \
+    && c_bad="$c_bad whitespace-run_id-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --capability-id "has space" >/dev/null 2>&1 \
+    && c_bad="$c_bad whitespace-capability_id-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --agent "$(printf 'agent\nSECRET=leaked prompt text')" >/dev/null 2>&1 \
+    && c_bad="$c_bad newline-agent-was-not-rejected"
+  # Reject: over the registry's own bound, read from the registry so the canary
+  # moves with the number rather than pinning a literal.
+  mvl=$(jq -r '.telemetry.exec_journal.max_value_length // 256' "$PJ")
+  case "$mvl" in ''|*[!0-9]*|0) mvl=256 ;; esac
+  long=$(awk -v n=$((mvl + 1)) 'BEGIN { while (i++ < n) printf "a" }')
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --trace-id "$long" >/dev/null 2>&1 \
+    && c_bad="$c_bad over-long-trace_id-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --note "$long" >/dev/null 2>&1 \
+    && c_bad="$c_bad over-long-note-was-not-rejected"
+  # ACCEPT: note is the one documented free-text field, and a guard that
+  # rejected everything would satisfy every reject case above.
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --note "a human annotation, with spaces" >/dev/null 2>&1 \
+    || c_bad="$c_bad free-text-note-was-rejected"
   rm -f "$cf"
   # Reject on the validate side too: that is the guard for journals this CLI did
   # not write, which is where the headless runner's spans will arrive from.
@@ -937,8 +980,17 @@ check_C27b() {
   printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null,"trace_id":"bad id","route":"good"}' > "$bf"
   bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
     && c_bad="$c_bad validate-accepted-a-whitespace-span-field"
+  # ... and on the v1 identifier fields, which is where a journal written by
+  # something other than this CLI would arrive with prompt text in it.
+  printf '%s\n' '{"timestamp":"t","run_id":"sess 1","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$bf"
+  bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
+    && c_bad="$c_bad validate-accepted-a-whitespace-run_id"
+  # ACCEPT on the validate side: a note carrying text is valid, by design.
+  printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":"a human annotation, with spaces"}' > "$bf"
+  bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
+    || c_bad="$c_bad validate-rejected-a-free-text-note"
   rm -f "$bf"
-  [ -z "$c_bad" ] && ok "scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, and refuses whitespace, an unknown kind, an unknown risk, a fractional cost and a non-boolean cache_hit" \
+  [ -z "$c_bad" ] && ok "scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, refuses whitespace in every field but note (run_id and agent included), refuses an over-long value, and still accepts a free-text note" \
                    || bad "exec-journal span canary failed:$c_bad"
 }
 
@@ -1026,6 +1078,18 @@ check_C27d() {
       printf '%s' "$asec" | grep -q "$k" \
         || p_bad="$p_bad Agent-traces-section-does-not-name-span-kind:$k"
     done
+    # ... and the alternation LINE itself, built from the registry. The loop
+    # above is substring-satisfiable: with that line deleted outright it fails
+    # only on `coordinator`, because `model` matches `model_tier` and
+    # tool/agent/router/verification each match another bullet. One rename away
+    # from vacuous, so the line is asserted as a whole and in registry order.
+    kalt=$(jq -r '[.telemetry.exec_journal.span_kinds[]?] | join(" | ")' "$PJ")
+    if [ -z "$kalt" ]; then
+      p_bad="$p_bad span_kinds-empty-see-C27a"
+    else
+      printf '%s' "$asec" | grep -qF "\`$kalt\`" \
+        || p_bad="$p_bad Agent-traces-section-lost-the-span-kind-alternation($kalt)"
+    fi
     ehome=$(jq -r '.telemetry.exec_journal.home // empty' "$PJ")
     if [ -z "$ehome" ]; then
       p_bad="$p_bad home-unusable-see-C27a"
@@ -1042,14 +1106,129 @@ check_C27d() {
       || p_bad="$p_bad Agent-traces-section-does-not-name:tokens_in"
     printf '%s' "$asec" | grep -qF '0 as free' \
       || p_bad="$p_bad Agent-traces-section-drops-the-0-is-not-free-caveat"
+    # The status FLOOR caveat, asserted the same way and for the same reason as
+    # the tokens one: the hooks read only structural sources, so a structured
+    # response with no error flag records OK. A consumer that builds the
+    # breaker's consecutive-failure count on this field without knowing that
+    # would count essentially zero envelope-level failures.
+    printf '%s' "$asec" | grep -qF 'FLOOR' \
+      || p_bad="$p_bad Agent-traces-section-drops-the-status-is-a-floor-caveat"
+    # The containment claim, in its narrow and TRUE form. The broad version
+    # ("no free-text field at all") was false while run_id, capability_id and
+    # agent admitted one, so the exception is what gets asserted.
+    printf '%s' "$asec" | grep -qF 'every field EXCEPT `note`' \
+      || p_bad="$p_bad Agent-traces-section-does-not-scope-the-slug-claim-to-all-but-note"
+    printf '%s' "$asec" | grep -qF 'max_value_length' \
+      || p_bad="$p_bad Agent-traces-section-does-not-state-the-length-bound"
+    # ... and the second-order version of the same overclaim. The slug guard
+    # bounds shape and size; it does NOT classify content, because the hook
+    # boundary sanitizes rather than rejects, so a value's characters still
+    # transit dash-joined. The first attempt at this section said a PII value
+    # "cannot be written through those" fields, which a two-line subagent_type
+    # refuted in one probe. Asserted so the honest form cannot quietly go back.
+    printf '%s' "$asec" | grep -qF 'does not classify the content' \
+      || p_bad="$p_bad Agent-traces-section-reclaims-the-slug-guard-classifies-content"
   fi
   # rules/parallelism.md's breaker section forward-references this section as
   # the source of its consecutive-failure count; the reference goes live with
   # the section and must not be left dangling in either direction.
   grep -q 'Agent traces' rules/parallelism.md 2>/dev/null \
     || p_bad="$p_bad parallelism.md-lost-its-Agent-traces-reference"
-  [ -z "$p_bad" ] && ok "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, every declared span kind, trace_id/span_kind/cost_micros and the tokens-are-0 caveat" \
+  [ -z "$p_bad" ] && ok "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-0 and status-is-a-floor caveats, and the all-but-note slug claim with its length bound" \
                    || bad "exec-journal prose-mirror problems:$p_bad"
+}
+
+# The set of fields the APPEND path guards as slugs, from its check_slug_flag
+# call sites, normalised to a sorted CSV of JSON field names. Prints nothing
+# when no call site can be read, which is how C27e turns an unparseable script
+# into a named finding instead of a vacuous match of two empty strings.
+ej_slug_flags() {
+  sed -n 's/^ *check_slug_flag  *--\([a-z-]*\) .*/\1/p' "$EJSH" 2>/dev/null \
+    | tr '-' '_' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The same set as VALIDATE guards, from the one `all(...)` field list in its jq
+# program. Read as data from the other side of the file, so neither half is a
+# literal here.
+ej_validated_fields() {
+  sed -n '/^ *(\[\.[a-z_]*,/,/all(\. == null/p' "$EJSH" 2>/dev/null \
+    | grep -o '\.[a-z_]\{2,\}' | sed 's/^\.//' \
+    | grep -vx 'all' | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+check_C27e() {
+  have_jq || return 0
+  have_exec_journal_inputs || return 0
+  # C27e: the containment claim, as a set comparison rather than a sentence.
+  # Three prose homes say "every field except note is a slug"; this asserts that
+  # the fields APPEND guards and the fields VALIDATE guards are the same set,
+  # and that note is in neither. The defect this exists for: --agent was the one
+  # string flag with no check_slug_flag call, so the claim was false at the
+  # append boundary and again at the validate boundary, and nothing noticed.
+  s_bad=""
+  appended=$(ej_slug_flags)
+  validated=$(ej_validated_fields)
+  if [ -z "$appended" ]; then
+    s_bad="$s_bad cannot-read-check_slug_flag-call-sites-from-exec-journal.sh"
+  elif [ -z "$validated" ]; then
+    s_bad="$s_bad cannot-read-the-validate-slug-field-list-from-exec-journal.sh"
+  elif [ "$appended" != "$validated" ]; then
+    s_bad="$s_bad append-and-validate-guard-different-fields(append:$appended validate:$validated)"
+  fi
+  # note is the documented exception and must stay out of both sets: adding it
+  # would be a silent compatibility event in the other direction.
+  case ",$appended,$validated," in
+    *,note,*) s_bad="$s_bad note-is-guarded-as-a-slug-but-documented-as-free-text" ;;
+  esac
+  # The three v1 identifier fields are the half that was missing; naming them
+  # explicitly means a future edit that drops one is its own finding rather than
+  # a set difference nobody reads.
+  for f in run_id capability_id agent; do
+    case ",$appended," in *",$f,"*) ;; *) s_bad="$s_bad append-does-not-guard:$f" ;; esac
+    case ",$validated," in *",$f,"*) ;; *) s_bad="$s_bad validate-does-not-guard:$f" ;; esac
+  done
+  [ -z "$s_bad" ] && ok "exec-journal.sh guards the same field set on append and on validate ($appended), note excluded from both — the containment claim its header, policy.json and rules/observability.md all make" \
+                   || bad "exec-journal slug-guard set problems:$s_bad"
+}
+
+check_C27f() {
+  have_jq || return 0
+  have_exec_journal_inputs || return 0
+  # C27f: every capability_id a hook writes into a span resolves against
+  # registries/capabilities.json. Two did not — the verification span wrote
+  # `verify`, which shadowed the real `validate`, and the agent span wrote
+  # `dispatch`, which exists nowhere — so a consumer joining spans to
+  # capabilities silently dropped the two highest-volume span kinds. C13 polices
+  # the registry's own entries; nothing looked at what the writers pass.
+  q_bad=""
+  ids=$(jq -r '[.capabilities[]?.id | select(type=="string")] | join(" ")' "$C" 2>/dev/null)
+  if [ -z "$ids" ]; then
+    q_bad="$q_bad cannot-read-capability-ids-from-$C"
+  else
+    seen=0
+    while IFS= read -r wb; do
+      [ -n "$wb" ] || continue
+      [ -f "$wb" ] || continue   # missing file is C27a's finding
+      while IFS= read -r cid; do
+        [ -n "$cid" ] || continue
+        seen=$((seen + 1))
+        case "$cid" in
+          # A computed value defeats this check, so it is a finding rather than
+          # a skip: whoever needs one updates this Check in the same change.
+          *'$'*|*'"'*) q_bad="$q_bad [$wb:capability-id-is-not-a-literal:$cid]"; continue ;;
+        esac
+        case " $ids " in
+          *" $cid "*) ;;
+          *) q_bad="$q_bad [$wb:capability-id-resolves-against-nothing:$cid]" ;;
+        esac
+      done < <(sed -n 's/.*--capability-id  *\([^ ]*\).*/\1/p' "$wb")
+    done < <(jq -r '.telemetry.exec_journal.written_by[]? | select(type=="string")' "$PJ")
+    # A writer set that yielded no id at all would pass the loop above without
+    # having checked anything.
+    [ "$seen" -gt 0 ] || q_bad="$q_bad no-capability-id-found-in-any-declared-writer"
+  fi
+  [ -z "$q_bad" ] && ok "every capability_id the declared span writers pass is a literal that resolves against $C" \
+                   || bad "exec-journal capability_id problems:$q_bad"
 }
 
 # ------------- C28: retrieval-metrics prose/data pair
@@ -1061,9 +1240,22 @@ check_C27d() {
 # machine without jq rather than skipping with the registry families.
 # Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 6
 RETRIEVAL_METRICS="Recall@K Precision@K MRR"
-RETRIEVAL_REF=skills/eval-harness/references/retrieval-metrics.md
+RETRIEVAL_REF_DIR=skills/eval-harness/references
+RETRIEVAL_REF="$RETRIEVAL_REF_DIR/retrieval-metrics.md"
+
+# The reference and the RAG-section metrics both arrive with Task 6, on its own
+# branch, so on this branch every finding below would fire at once and say
+# nothing about drift. Gated on the reference DIRECTORY rather than the file:
+# `rm` of the file is a planted negative case that must stay refutable, and no
+# finding below names the directory, so nothing here becomes vacuous.
+have_retrieval_metrics_inputs() {
+  [ -d "$RETRIEVAL_REF_DIR" ] && return 0
+  skip_pending retrieval-metrics "$RETRIEVAL_REF_DIR/ absent — retrieval-metrics checks skipped until it lands"
+  return 1
+}
 
 check_C28() {
+  have_retrieval_metrics_inputs || return 0
   r_bad=""
   if [ ! -f "$RETRIEVAL_REF" ]; then
     r_bad="$r_bad reference-missing:$RETRIEVAL_REF"
@@ -1104,13 +1296,25 @@ check_C28() {
 # and the document that tells a human which command to run. Each is its own
 # named finding: "adoption is broken" does not tell anyone which half to fix.
 # Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 7
+#
+# All four parts arrive with Task 7, on its own branch. Gated on the script
+# itself, the part the other three wire TO: absent, every finding fires at once
+# and none of them is about drift. The negative cases mutate the exec bit and
+# the other three parts, never the script's existence, so each stays refutable
+# once Task 7 lands. The cost of the gate, stated plainly: while the script is
+# absent this family reports a skip, and its own
+# `scripts/init-project.sh-missing` finding is therefore folded into the guard's
+# message rather than duplicated below.
+have_adoption_inputs() {
+  [ -f scripts/init-project.sh ] && return 0
+  skip_pending adoption "scripts/init-project.sh absent — adoption entrypoint checks skipped until it lands"
+  return 1
+}
+
 check_C29() {
+  have_adoption_inputs || return 0
   a_bad=""
-  if [ ! -f scripts/init-project.sh ]; then
-    a_bad="$a_bad scripts/init-project.sh-missing"
-  elif [ ! -x scripts/init-project.sh ]; then
-    a_bad="$a_bad scripts/init-project.sh-not-executable"
-  fi
+  [ -x scripts/init-project.sh ] || a_bad="$a_bad scripts/init-project.sh-not-executable"
   if [ ! -f commands/init.md ]; then
     a_bad="$a_bad commands/init.md-missing"
   elif ! grep -qF 'scripts/init-project.sh' commands/init.md; then

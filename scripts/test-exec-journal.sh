@@ -54,12 +54,88 @@ rm -f "$tmp"
 bash "$EJ" append /tmp/nonexistent-does-not-matter.jsonl --run-id >/dev/null 2>&1
 check "append rejects a flag given with no value, not a bash crash" 1 $?
 
+# What this pins is jq's own escaping: a value carrying a double quote must not
+# be hand-built into a JSON literal. It used to be asserted through --agent,
+# which is now a slug field (agent is an identifier, and admitting text there was
+# a prompt-text channel to disk). Retargeted at --note, the one field that still
+# takes such a value, so the escaping property keeps its test; the guard --agent
+# gained is asserted immediately below.
 tmp=$(mktemp)
-bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --agent 'foo"bar' \
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --note 'foo"bar' \
   --model-tier build --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
-check "append accepts an agent value containing a double quote" 0 $?
-[ "$(jq -r '.agent' "$tmp")" = 'foo"bar' ] && { pass=$((pass+1)); printf 'ok   %s\n' "a quoted agent value round-trips unescaped"; } \
-  || { fail=$((fail+1)); printf 'FAIL a quoted agent value round-trips unescaped — got %s\n' "$(jq -r '.agent' "$tmp")"; }
+check "append accepts a note value containing a double quote" 0 $?
+[ "$(jq -r '.note' "$tmp")" = 'foo"bar' ] && { pass=$((pass+1)); printf 'ok   %s\n' "a quoted note value round-trips unescaped"; } \
+  || { fail=$((fail+1)); printf 'FAIL a quoted note value round-trips unescaped — got %s\n' "$(jq -r '.note' "$tmp")"; }
+rm -f "$tmp"
+
+# The v1 identifier fields are slugs, at append and at validate. This is the
+# tightening item 2 of the fix brief rules for: run_id, capability_id and agent
+# used to accept a space, and `validate` used to call the result all valid.
+tmp=$(mktemp)
+bash "$EJ" append "$tmp" --run-id 'sess 1' --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append rejects whitespace in run_id" 1 $?
+
+bash "$EJ" append "$tmp" --run-id r1 --capability-id 'route thing' --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append rejects whitespace in capability_id" 1 $?
+
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --agent 'a b c' \
+  --model-tier build --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append rejects whitespace in agent" 1 $?
+
+# The exact payload both reviewers landed on disk through --agent: a newline,
+# then a second line of arbitrary text.
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement \
+  --agent "$(printf 'backend-coordinator\nSECRET=hunter2 leaked prompt text')" \
+  --model-tier build --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append rejects a newline in agent (no prompt-text channel through a v1 field)" 1 $?
+
+# ... and note still takes free text, because a guard that rejects everything is
+# not a guard.
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 \
+  --note 'a human annotation, with spaces' >/dev/null 2>&1
+check "append still accepts free text in note" 0 $?
+rm -f "$tmp"
+
+# validate is the guard for journals this CLI did not write, so the same three
+# fields are rejected there too.
+tmp=$(mktemp)
+printf '%s\n' '{"timestamp":"t","run_id":"sess 1","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects whitespace in run_id" 1 $?
+
+printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":"backend-coordinator\nSECRET=hunter2 leaked prompt text","model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects a newline in agent" 1 $?
+
+printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":"my SSN is 123-45-6789, and this is free text"}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate accepts free text in note, the one documented text field" 0 $?
+rm -f "$tmp"
+
+# The length bound, read from the registry so this test moves with the number.
+tmp=$(mktemp)
+MVL=$(jq -r '.telemetry.exec_journal.max_value_length // 256' "$ROOT/registries/policy.json" 2>/dev/null)
+case "$MVL" in ''|*[!0-9]*|0) MVL=256 ;; esac
+LONG=$(awk -v n=$((MVL + 1)) 'BEGIN { while (i++ < n) printf "a" }')
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 --trace-id "$LONG" >/dev/null 2>&1
+check "append rejects a value one character over max_value_length" 1 $?
+
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 --note "$LONG" >/dev/null 2>&1
+check "append rejects an over-long note too" 1 $?
+
+# Over-long is a REJECT, not a truncation: nothing was appended.
+[ ! -s "$tmp" ] && { pass=$((pass+1)); printf 'ok   %s\n' "an over-long value appends nothing at all (reject, not truncate)"; } \
+  || { fail=$((fail+1)); printf 'FAIL an over-long value was truncated instead of rejected — %s\n' "$(wc -c < "$tmp")"; }
+
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 \
+  --trace-id "$(printf %s "$LONG" | cut -c1-"$MVL")" >/dev/null 2>&1
+check "append accepts a value exactly at max_value_length" 0 $?
 rm -f "$tmp"
 
 tmp=$(mktemp)
