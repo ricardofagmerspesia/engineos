@@ -199,7 +199,21 @@ done
 # (every prompt, every edit, every stop) and stalls the tool that triggered it.
 # bash.exe is a plain console binary and stays invisible. Mirrors install.ps1.
 # On macOS/Linux the bare script path is correct and unchanged.
-chmod +x "$REPO_DIR"/hooks/*.sh
+# hooks/*.sh holds two kinds of file: hook entry points, which the harness
+# executes, and libraries that are only ever `.`-sourced. A blanket
+# `chmod +x hooks/*.sh` flips the tracked mode of every library committed 644,
+# so merely running the installer left ` M hooks/...` in the checkout. A library
+# declares itself in its own header with the shared phrase "Sourced only" (see
+# lib-common.sh, lib-runner.sh, layout-manifest.sh, scaffold-layout.sh); that
+# declaration is what is honoured here, so a library added later is excluded
+# without editing this file. Its mode stays the honest signal that it is not
+# an executable.
+for _hook in "$REPO_DIR"/hooks/*.sh; do
+  [ -f "$_hook" ] || continue
+  head -8 "$_hook" | grep -q 'Sourced only' && continue
+  chmod +x "$_hook"
+done
+unset _hook
 if command -v jq >/dev/null 2>&1; then
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
   # write-once backup: never clobber the last known-good with an already-bad file

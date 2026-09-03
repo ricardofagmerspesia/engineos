@@ -81,12 +81,23 @@ else
   echo "  would ensure: $manifest_dirs"
 fi
 
-# 7. Project CLAUDE.md — deltas only, never overwrite.
-if [ -f "$ROOT/CLAUDE.md" ]; then
+# 7. Project CLAUDE.md — deltas only, never overwrite. The existence test is
+# `-e || -L`, not `-f`: `-f` is FALSE for a dangling symlink, so a repo that
+# ships CLAUDE.md as a link to an absolute path elsewhere on the machine would
+# have had the template copied THROUGH it. The write itself goes through the
+# same guard hooks/scaffold-layout.sh uses for the manifest seeds — one
+# implementation for both write sites, so the two can never drift apart.
+if [ -e "$ROOT/CLAUDE.md" ] || [ -L "$ROOT/CLAUDE.md" ]; then
   echo "  CLAUDE.md: exists, left untouched (declare your stack there — see templates/project-claude.md)"
 elif [ "$DRY" -eq 0 ]; then
-  cp "$REPO_DIR/templates/project-claude.md" "$ROOT/CLAUDE.md"
-  echo "  CLAUDE.md: created from templates/project-claude.md — fill in the Stack and Commands sections"
+  if root_phys=$(engineos_scaffold_dir "$ROOT" ""); then
+    engineos_scaffold_seed "$root_phys" "CLAUDE.md" "$REPO_DIR/templates/project-claude.md"
+  fi
+  if [ -f "$ROOT/CLAUDE.md" ]; then
+    echo "  CLAUDE.md: created from templates/project-claude.md — fill in the Stack and Commands sections"
+  else
+    echo "  CLAUDE.md: skipped — the project root did not resolve to a directory inside itself"
+  fi
 else
   echo "  would create CLAUDE.md from templates/project-claude.md"
 fi
