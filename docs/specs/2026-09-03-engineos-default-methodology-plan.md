@@ -140,6 +140,8 @@ All malformed input → `{"error": "..."}` on stdout, exit 1 (existing `err` con
 
 ## A3. Decisions (each becomes an ADR in Task 1, with the rejected alternative recorded)
 
+ADRs: `docs/adr/2026-09-03-*.md` (branch `docs/adr-runtime-governance`).
+
 | Decision | Chosen | Rejected | Why |
 |---|---|---|---|
 | Where backpressure lives | `parallelism.backpressure` sub-block reusing `wave_concurrency_cap` | New top-level `backpressure` with its own `max_inflight` | Two copies of the same number drift; C16 already guards the cap. |
