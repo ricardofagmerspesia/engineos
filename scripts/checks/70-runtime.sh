@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # Checks on the runtime's own policy plumbing: the check-level repair loop
 # (C20*), telemetry (C22*), the constitution preamble mirrors (C23*), the
-# dispatch loop's backpressure (C24*) and the per-resource circuit breaker
-# (C25*).
+# dispatch loop's backpressure (C24*), the per-resource circuit breaker (C25*)
+# and human-in-the-loop (C26*).
 
 # Three of the families below gate on the same pair — the policy registry and
 # an executable kernel — and each carried a verbatim copy of this body until
@@ -140,12 +140,26 @@ check_C22() {
   [ "${nev:-0}" -ge 1 ] || t_bad="$t_bad events-missing-or-empty"
   dupev=$(jq -r '(.telemetry.events | map(.id) | length) - (.telemetry.events | map(.id) | unique | length)' "$PJ" 2>/dev/null)
   [ "${dupev:-0}" -eq 0 ] || t_bad="$t_bad event-ids-have-duplicates"
-  while IFS=$'\t' read -r eid keys_n wb; do
+  # written_by is an ARRAY: one event can have several producing hooks. A bare
+  # string is a named finding rather than something the loop below iterates
+  # character by character.
+  while IFS=$'\t' read -r eid keys_n nwb nstr; do
     [ "${keys_n:-0}" -ge 1 ] || t_bad="$t_bad [$eid:keys-missing-or-empty]"
-    [ -f "$wb" ] || t_bad="$t_bad [$eid:written_by-names-a-missing-file:$wb]"
+    if [ "${nwb:-0}" -lt 1 ]; then
+      t_bad="$t_bad [$eid:written_by-not-a-non-empty-array]"
+    else
+      [ "${nwb:-0}" = "${nstr:-0}" ] || t_bad="$t_bad [$eid:written_by-has-a-non-string-entry]"
+      while IFS= read -r wb; do
+        [ -n "$wb" ] || continue
+        [ -f "$wb" ] || t_bad="$t_bad [$eid:written_by-names-a-missing-file:$wb]"
+      done < <(jq -r --arg e "$eid" '.telemetry.events[] | select(.id==$e) | .written_by[]? | select(type=="string")' "$PJ")
+    fi
     skeys=$(jq -r --arg e "$eid" '[.telemetry.events[] | select(.id==$e) | .sample | keys[]?] - (.telemetry.events[] | select(.id==$e) | .keys) | length' "$PJ" 2>/dev/null)
     [ "${skeys:-0}" -eq 0 ] || t_bad="$t_bad [$eid:sample-keys-not-a-subset-of-keys]"
-  done < <(jq -r '.telemetry.events[] | [.id, (.keys|length), .written_by] | @tsv' "$PJ")
+  done < <(jq -r '.telemetry.events[]
+    | [.id, (.keys | length),
+       (if (.written_by | type) == "array" then (.written_by | length) else 0 end),
+       ([.written_by[]? | select(type == "string")] | length)] | @tsv' "$PJ")
   [ -z "$t_bad" ] && ok "policy.json.telemetry is well-formed" \
                    || bad "telemetry policy problems:$t_bad"
 }
@@ -179,6 +193,9 @@ check_C22c() {
   # no hook's append invocation sources $PROMPT/$INPUT, no private retention
   # copy, and both readers still mention the source.
   w_bad=""
+  # Forward: every hook the registry names as a writer really appends the
+  # event. written_by is an array, so an event with two producers gets both
+  # checked instead of only whichever one a scalar field could hold.
   while IFS=$'\t' read -r eid wb; do
     # The append invocation itself now lives in hooks/lib-common.sh
     # (hook_telemetry); a hook names its event at that helper instead of
@@ -190,7 +207,24 @@ check_C22c() {
     { grep -A2 'telemetry.sh" append' "$wb"; grep 'hook_telemetry ' "$wb"; } \
       | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
       && w_bad="$w_bad [$wb:append-invocation-references-prompt-text]"
-  done < <(jq -r '.telemetry.events[] | [.id, .written_by] | @tsv' "$PJ")
+  done < <(jq -r '.telemetry.events[] | .id as $i | .written_by[]? | select(type=="string") | [$i, .] | @tsv' "$PJ")
+  # Reverse: every hook that appends a registered event is declared as one of
+  # that event's writers. Without this half, a second hook could start emitting
+  # `route` and the registry — which skills/retro and usage-report.sh read to
+  # know where events come from — would never say so.
+  #
+  # hooks/test-*.sh are excluded: a test that names an event id asserts on it,
+  # it does not produce it. hooks/lib-common.sh passes the id through as "$1"
+  # and so never matches a literal.
+  for eid in $(jq -r '.telemetry.events[].id' "$PJ"); do
+    for hk in hooks/*.sh; do
+      case "$hk" in hooks/test-*) continue ;; esac
+      grep -qE -- "(--event|hook_telemetry)[[:space:]]+$eid([[:space:]]|\$)" "$hk" || continue
+      jq -e --arg e "$eid" --arg h "$hk" \
+        '.telemetry.events[] | select(.id==$e) | .written_by | index($h)' "$PJ" >/dev/null 2>&1 \
+        || w_bad="$w_bad [$hk:appends-$eid-but-is-not-in-its-written_by]"
+    done
+  done
   # The shared emitter is the real append site now, so the prompt-text ban has
   # to be enforced there too, not only at the hooks that call it.
   grep -A3 'telemetry.sh" append' hooks/lib-common.sh \
@@ -202,7 +236,7 @@ check_C22c() {
     && w_bad="$w_bad ensure-project-layout.sh-has-a-hardcoded-retention-literal"
   grep -q 'engineos-telemetry' skills/retro/SKILL.md || w_bad="$w_bad retro-SKILL.md-lost-the-telemetry-source"
   grep -q 'engineos-telemetry' scripts/usage-report.sh || w_bad="$w_bad usage-report.sh-lost-the-telemetry-source"
-  [ -z "$w_bad" ] && ok "telemetry wiring is complete, private-copy-free and prompt-text-free" \
+  [ -z "$w_bad" ] && ok "telemetry wiring is complete in both directions (every declared writer appends its event, every appending hook is declared), private-copy-free and prompt-text-free" \
                    || bad "telemetry wiring problems:$w_bad"
 }
 
@@ -492,4 +526,213 @@ check_C25c() {
   done
   [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state and a mention of every declared scope" \
                    || bad "breaker prose-mirror problems:$p_bad"
+}
+
+# ------------- C26: human-in-the-loop — data, canary, prose mirror, coupling
+# HITL is data (policy.json.hitl), answered by kernel.sh hitl, folded into
+# resolve-task, and stated in rules/risk-autonomy.md "Human-in-the-loop".
+# The same three-part shape as C24/C25 applied to a seventh prose/data pair,
+# plus a fourth part C24/C25 had no need for: C26d couples the reason id that
+# Task 2 left as a bare literal inside cmd_admit's reject message back to this
+# vocabulary, so the two cannot be renamed apart.
+#
+# reasons is a CLOSED vocabulary — a gate may cite nothing else — which is why
+# C26b asserts not only that the kernel demands a human when it should, but
+# that every reason it cites is declared here.
+# Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 4
+# ADR: docs/adr/2026-09-03-hitl-as-kernel-entity.md
+have_hitl_inputs() {
+  have_kernel_inputs hitl "policy.json or kernel.sh missing — human-in-the-loop checks skipped"
+}
+
+# The frozen floor on the reason vocabulary. Named once so C26a's condition and
+# its message cannot disagree.
+HITL_REASONS_MIN=8
+
+check_C26() {
+  have_jq || return 0
+  have_hitl_inputs || return 0
+  # C26a: the hitl block is well-formed
+  h_bad=""
+  nr=$(jq -r '[.hitl.reasons[]? | select(type == "string") | select(. != "")] | length' "$PJ" 2>/dev/null)
+  ur=$(jq -r '[.hitl.reasons[]? | select(type == "string") | select(. != "")] | unique | length' "$PJ" 2>/dev/null)
+  case "$nr" in
+    ''|*[!0-9]*) h_bad="$h_bad reasons-missing-or-not-an-array-of-strings" ;;
+    *) [ "$nr" -ge "$HITL_REASONS_MIN" ] \
+         || h_bad="$h_bad reasons-below-$HITL_REASONS_MIN-non-empty-strings(got:$nr)"
+       [ "$nr" = "${ur:-0}" ] || h_bad="$h_bad reasons-have-duplicates" ;;
+  esac
+  jq -e '(.hitl.situations | type == "array") and (.hitl.situations | length > 0)' "$PJ" >/dev/null 2>&1 \
+    || h_bad="$h_bad situations-missing-or-empty"
+  # cmd_hitl returns record_home verbatim, so an absent value ships a null home
+  # to the one caller that was just told to write the decision down somewhere.
+  rh=$(jq -r '.hitl.record_home // ""' "$PJ")
+  [ -n "$rh" ] || h_bad="$h_bad record_home-missing-or-empty"
+  # The two situation vocabularies must stay disjoint: cmd_hitl looks a
+  # situation up in `retry.never_retry + hitl.situations`, so an id in both
+  # would emit two reasons for one input.
+  ov=$(jq -r '(.retry.never_retry // []) as $n
+              | [(.hitl.situations // [])[] | select(. as $s | $n | index($s))] | join(",")' "$PJ" 2>/dev/null)
+  [ -z "$ov" ] || h_bad="$h_bad situations-overlap-retry.never_retry:$ov"
+  [ -z "$h_bad" ] && ok "policy.json.hitl is well-formed: reasons is $HITL_REASONS_MIN+ unique non-empty strings, situations is a non-empty array disjoint from retry.never_retry, record_home is set" \
+                   || bad "hitl block problems:$h_bad"
+}
+
+# One canary call, reported as required/autonomy_after. Those are the two
+# fields an orchestrator actually gates on, so asserting either alone would let
+# a kernel through — required alone misses a bogus autonomy drop, and
+# autonomy_after alone misses a kernel that never demands a human.
+hitl_answer() {
+  bash "$KSH" hitl "$@" 2>/dev/null | jq -r '[(.required | tostring), (.autonomy_after // "none")] | join("/")'
+}
+
+check_C26b() {
+  have_jq || return 0
+  have_hitl_inputs || return 0
+  # C26b: canary — a required:false case AND a required:true case, each pinned
+  # on both answer fields, so neither a kernel that always demands a human nor
+  # one that always drops to A1 can pass. Then the thin-evidence drop against
+  # the registry's own target, the two flag-driven reasons, every declared
+  # situation, and the resolve-task fold. Every tier, ceiling and situation
+  # comes from the registry, never a literal here.
+  d_bad=""
+  low_ceil=$(jq -r '.autonomy.ceiling_by_risk.low // ""' "$PJ")
+  med_ceil=$(jq -r '.autonomy.ceiling_by_risk.medium // ""' "$PJ")
+  high_ceil=$(jq -r '.autonomy.ceiling_by_risk.high // ""' "$PJ")
+  thin_target=$(jq -r '.autonomy.high_with_thin_evidence // ""' "$PJ")
+  if [ -z "$low_ceil" ] || [ -z "$med_ceil" ] || [ -z "$high_ceil" ]; then
+    d_bad="$d_bad autonomy-ceilings-unusable-see-C16"
+  else
+    # low risk with adequate evidence needs no human, and must hand back the
+    # ceiling it was given rather than inventing one
+    got=$(hitl_answer --risk low --autonomy "$low_ceil")
+    [ "$got" = "false/$low_ceil" ] || d_bad="$d_bad low-risk-expected-false/$low_ceil-got:${got:-none}"
+    got=$(hitl_answer --risk high --autonomy "$high_ceil")
+    [ "$got" = "true/$high_ceil" ] || d_bad="$d_bad high-risk-expected-true/$high_ceil-got:${got:-none}"
+    # An external effect is unreachable below A3, so it must NOT be a reason
+    # there — without the negative half a kernel ignoring --autonomy passes.
+    got=$(hitl_answer --risk medium --autonomy "$med_ceil" --external-effect true)
+    [ "$got" = "true/$med_ceil" ] || d_bad="$d_bad external-effect-at-$med_ceil-expected-true/$med_ceil-got:${got:-none}"
+    # The low tier's ceiling is the registry's own "below A3" value, so the
+    # negative half needs no literal. If a future policy raises it to A3+, an
+    # external effect IS reachable there and the case stops being about that
+    # boundary — skipped rather than asserted wrongly.
+    case "$low_ceil" in
+      A3|A4) ;;
+      *) got=$(hitl_answer --risk medium --autonomy "$low_ceil" --external-effect true)
+         [ "$got" = "false/$low_ceil" ] \
+           || d_bad="$d_bad external-effect-below-A3-expected-false/$low_ceil-got:${got:-none}" ;;
+    esac
+    got=$(hitl_answer --risk low --autonomy "$low_ceil" --conflict true)
+    [ "$got" = "true/$low_ceil" ] || d_bad="$d_bad policy-conflict-expected-true/$low_ceil-got:${got:-none}"
+    # An empty target would make the comparison below pass on "true/" for any
+    # answer, so an unusable value is its own finding.
+    if [ -z "$thin_target" ]; then
+      d_bad="$d_bad autonomy.high_with_thin_evidence-unusable"
+    else
+      got=$(hitl_answer --risk low --autonomy "$low_ceil" --evidence thin)
+      [ "$got" = "true/$thin_target" ] || d_bad="$d_bad thin-evidence-expected-true/$thin_target-got:${got:-none}"
+    fi
+    # Every declared situation must demand a human and cite only declared
+    # reasons. A situation the kernel accepts and then drops would answer
+    # required:false — "no human needed" for an input it did not act on.
+    for sit in $(jq -r '((.retry.never_retry // []) + (.hitl.situations // []))[]' "$PJ"); do
+      ans=$(bash "$KSH" hitl --risk low --autonomy "$low_ceil" --situation "$sit" 2>/dev/null)
+      req=$(printf '%s' "$ans" | jq -r '.required // "none"' 2>/dev/null)
+      [ "$req" = true ] || d_bad="$d_bad situation-$sit-expected-required-true-got:${req:-none}"
+      undecl=$(printf '%s' "$ans" | jq -r --slurpfile pol "$PJ" \
+        '[.reasons[]? | select(. as $r | $pol[0].hitl.reasons | index($r) | not)] | join(",")' 2>/dev/null)
+      [ -z "$undecl" ] || d_bad="$d_bad situation-$sit-cites-undeclared-reason:$undecl"
+    done
+    # An unknown situation is an error, not an ignored flag: a silently dropped
+    # situation would read as "no human needed".
+    bash "$KSH" hitl --risk low --autonomy "$low_ceil" --situation engineos-no-such-situation >/dev/null 2>&1 \
+      && d_bad="$d_bad unknown-situation-was-not-rejected"
+  fi
+  # The fold: resolve-task must carry the answer, or hooks/prompt-advisor.sh has
+  # nothing to announce. The prompt trips rule-destructive-ddl, whose risk=high
+  # is what forces the floor.
+  rt=$(bash "$KSH" resolve-task --prompt "drop the users table in production" 2>/dev/null \
+       | jq -r '.hitl.required // "none"' 2>/dev/null)
+  [ "$rt" = true ] || d_bad="$d_bad resolve-task-does-not-carry-hitl.required-got:${rt:-none}"
+  [ -z "$d_bad" ] && ok "kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, the evidence drop, both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer" \
+                  || bad "hitl canary:$d_bad"
+}
+
+check_C26c() {
+  have_jq || return 0
+  have_hitl_inputs || return 0
+  # C26c: prose mirror — rules/risk-autonomy.md carries a "Human-in-the-loop"
+  # section, names the subcommand an orchestrator is supposed to call, and
+  # carries a table row for every reason the registry declares; the gates.md
+  # release checklist and the change-record template carry the home the
+  # decision is written to.
+  #
+  # Every grep is scoped to its own section rather than run over the file:
+  # "high", "evidence", "budget" and "human approval" all appear elsewhere in
+  # risk-autonomy.md, and a file-wide grep would still pass with the mirror
+  # section deleted — which is not a mirror.
+  p_bad=""
+  hsec=$(sed -n '/^## Human-in-the-loop$/,/^## /p' rules/risk-autonomy.md 2>/dev/null)
+  if [ -z "$hsec" ]; then
+    p_bad="$p_bad risk-autonomy.md-has-no-Human-in-the-loop-section"
+  else
+    printf '%s' "$hsec" | grep -q 'kernel.sh hitl' \
+      || p_bad="$p_bad risk-autonomy.md-does-not-name-kernel.sh-hitl"
+    for r in $(jq -r '.hitl.reasons[]?' "$PJ"); do
+      printf '%s' "$hsec" | grep -qE "^\| \`$r\`" \
+        || p_bad="$p_bad risk-autonomy.md-has-no-table-row-for-reason:$r"
+    done
+    # record_home is the field with no kernel branch and no canary of its own,
+    # so this is the only thing holding it to the prose.
+    home_anchor=$(jq -r '.hitl.record_home // "" | split("#") | last' "$PJ")
+    if [ -z "$home_anchor" ]; then
+      p_bad="$p_bad record_home-unusable-see-C26a"
+    else
+      # ".engineos/changes/<record>.md#human-decisions" -> the "Human decisions"
+      # heading the other two mirrors carry.
+      home_heading=$(printf '%s' "$home_anchor" | tr '-' ' ')
+      printf '%s' "$hsec" | grep -qi "$home_heading" \
+        || p_bad="$p_bad risk-autonomy.md-does-not-name-the-record-home:$home_anchor"
+      rsec=$(sed -n '/^## Release gate — exit criteria$/,/^## /p' rules/gates.md 2>/dev/null)
+      { [ -n "$rsec" ] && printf '%s' "$rsec" | grep -qi "$home_heading"; } \
+        || p_bad="$p_bad gates.md-release-checklist-does-not-name:$home_anchor"
+      grep -qix "## $home_heading" "$CT" \
+        || p_bad="$p_bad change-template-has-no-section:$home_heading"
+    fi
+  fi
+  [ -z "$p_bad" ] && ok "rules/risk-autonomy.md mirrors hitl: a Human-in-the-loop section naming kernel.sh hitl, a row per declared reason and the record home, which the rules/gates.md release checklist and the change-record template also carry" \
+                   || bad "hitl prose-mirror problems:$p_bad"
+}
+
+check_C26d() {
+  have_jq || return 0
+  have_hitl_inputs || return 0
+  # C26d: the backpressure coupling. cmd_admit's reject message embeds
+  # "hitl: budget-exhausted" as prose, and nothing tied that string to this
+  # vocabulary — so renaming the reason id would have left Task 2's reject
+  # message citing a reason that no longer exists, in the one place a caller
+  # reads to find out why a human is needed. Three things must agree: the
+  # registry declares the id in BOTH reasons and situations, cmd_admit cites
+  # it, and kernel.sh hitl --situation reject answers with exactly it.
+  #
+  # The id is spelled once, here, because something has to say WHICH reason
+  # backpressure exhaustion maps to. A rename in the registry fails the first
+  # assertion by name, and the greps below are skipped rather than left to
+  # match an empty string.
+  k_bad=""
+  bx=budget-exhausted
+  if jq -e --arg b "$bx" \
+       '((.hitl.reasons // []) | index($b)) and ((.hitl.situations // []) | index($b))' "$PJ" >/dev/null 2>&1; then
+    grep -q "hitl: $bx" "$KSH" \
+      || k_bad="$k_bad kernel.sh-reject-message-does-not-cite-hitl:-$bx"
+    low_ceil=$(jq -r '.autonomy.ceiling_by_risk.low // ""' "$PJ")
+    got=$(bash "$KSH" hitl --risk low --autonomy "$low_ceil" --situation reject 2>/dev/null \
+          | jq -r '[.reasons[]?] | join(",")' 2>/dev/null)
+    [ "$got" = "$bx" ] || k_bad="$k_bad hitl--situation-reject-answered:${got:-none}-expected:$bx"
+  else
+    k_bad="$k_bad hitl-does-not-declare-$bx-in-both-reasons-and-situations"
+  fi
+  [ -z "$k_bad" ] && ok "the backpressure/hitl coupling holds: policy.json.hitl declares $bx in both reasons and situations, kernel.sh admit's reject message cites 'hitl: $bx', and kernel.sh hitl --situation reject answers with exactly that id" \
+                   || bad "hitl/backpressure coupling problems:$k_bad"
 }

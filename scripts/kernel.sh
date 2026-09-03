@@ -15,6 +15,8 @@
 #   kernel.sh breaker --state closed --failures <n>
 #   kernel.sh breaker --state open --cooldown-elapsed <true|false>
 #   kernel.sh breaker --state half-open --probe-result <ok|failed>
+#   kernel.sh hitl --risk <tier> --autonomy <A0..A4> [--evidence thin|adequate]
+#                  [--external-effect true|false] [--conflict true|false] [--situation <s>]
 #   kernel.sh capability <id>
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
@@ -423,6 +425,75 @@ cmd_breaker() {
   esac
 }
 
+# ---------------------------------------------------------------------- hitl
+# Human-in-the-loop as a queryable entity. autonomy.ceiling_by_risk answers
+# "how far may this unit go alone"; hitl answers "must a HUMAN decide, and for
+# which named reasons" — so a gate produces an auditable record instead of an
+# implication drawn from a tier. The reason vocabulary is the closed list in
+# policy.hitl.reasons and the emission order below is that list's order; a gate
+# may cite nothing else. rules/risk-autonomy.md "Human-in-the-loop" mirrors it.
+#
+# The four retry.never_retry ids collapse to the single reason
+# never-retry-situation — they are the same decision (stop, escalate to a
+# human, do not retry); the hitl.situations ids each carry their own reason.
+cmd_hitl() {
+  local risk="" autonomy="" evidence="adequate" external="false" conflict="false" situation=""
+  # Same fail-fast arg discipline as cmd_admit and cmd_breaker: a flag with no
+  # value must error rather than spin. `shift 2` on a single remaining argument
+  # fails silently (no set -e), $# never reaches 0, and the flag re-matches
+  # forever. Check before shifting.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --risk)            [ $# -ge 2 ] || err "hitl requires a value for --risk";            risk="$2";      shift 2 ;;
+      --autonomy)        [ $# -ge 2 ] || err "hitl requires a value for --autonomy";        autonomy="$2";  shift 2 ;;
+      --evidence)        [ $# -ge 2 ] || err "hitl requires a value for --evidence";        evidence="$2";  shift 2 ;;
+      --external-effect) [ $# -ge 2 ] || err "hitl requires a value for --external-effect"; external="$2";  shift 2 ;;
+      --conflict)        [ $# -ge 2 ] || err "hitl requires a value for --conflict";        conflict="$2";  shift 2 ;;
+      --situation)       [ $# -ge 2 ] || err "hitl requires a value for --situation";       situation="$2"; shift 2 ;;
+      *) err "hitl: unknown argument $1" ;;
+    esac
+  done
+  case "$risk"     in low|medium|high) ;; *) err "hitl requires --risk low|medium|high" ;; esac
+  case "$autonomy" in A0|A1|A2|A3|A4) ;;  *) err "hitl requires --autonomy A0..A4" ;; esac
+  case "$evidence" in thin|adequate) ;;   *) err "hitl --evidence must be thin|adequate" ;; esac
+  case "$external" in true|false) ;;      *) err "hitl --external-effect must be true|false" ;; esac
+  case "$conflict" in true|false) ;;      *) err "hitl --conflict must be true|false" ;; esac
+  need_reg policy.json
+  local P="$REG/policy.json"
+
+  # need_reg proves the FILE exists, not that this block does. Without the
+  # guard, .hitl.record_home is null and the situation allowlist below reduces
+  # to `null | index($s)` — so every situation reads as unknown, and any answer
+  # that got through would ship a null record_home with exit 0. Fail closed, as
+  # cmd_risk and cmd_breaker do.
+  jq -e '.hitl' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no hitl block — hitl cannot resolve its own reason vocabulary without it"
+
+  # An unknown situation is an error, never an ignored flag: a caller reporting
+  # a situation the kernel silently drops would read required:false as "no
+  # human needed", when the truth is "the kernel did not understand the input".
+  if [ -n "$situation" ]; then
+    jq -e --arg s "$situation" '(.retry.never_retry + .hitl.situations) | index($s)' "$P" >/dev/null 2>&1 \
+      || err "unknown situation: $situation (one of retry.never_retry or hitl.situations)"
+  fi
+
+  jq -n --arg r "$risk" --arg a "$autonomy" --arg e "$evidence" --arg s "$situation" \
+        --argjson x "$external" --argjson c "$conflict" --slurpfile pol "$P" '
+    $pol[0] as $p
+    | ([ (if $r == "high" then "high-risk" else empty end),
+         (if $e == "thin" then "evidence-insufficient" else empty end),
+         (if $x and ($a == "A3" or $a == "A4") then "external-effect" else empty end),
+         (if $c then "policy-conflict" else empty end),
+         (if $s != "" and ($p.retry.never_retry | index($s)) then "never-retry-situation" else empty end),
+         (if $s == "destructive" then "destructive-action" else empty end),
+         (if $s == "budget-exhausted" or $s == "reject" then "budget-exhausted" else empty end),
+         (if $s == "breaker-open" then "breaker-open" else empty end) ]) as $reasons
+    | {required: (($reasons | length) > 0),
+       reasons: $reasons,
+       autonomy_after: (if $e == "thin" then "A1" else $a end),
+       record_home: $p.hitl.record_home}'
+}
+
 # ---------------------------------------------------------------- capability
 cmd_capability() {
   require_positional capability "an id" "$@"
@@ -661,7 +732,38 @@ cmd_resolve_task() {
   decisions=$(cmd_decision_rules --prompt "$prompt"); rc=$?
   [ $rc -eq 0 ] || { printf '%s\n' "$decisions"; exit 1; }
 
+  # Human-in-the-loop, folded in so an adapter gets it from the same call
+  # instead of deriving a tier and then asking a second question. The floor and
+  # the ceiling are the same two values the output object carries below.
+  # any_high is passed as --conflict because a decision rule carrying risk=high
+  # on a prompt the route scored lower IS the policy conflict a human resolves.
+  #
+  # A null floor (no domain intent, no matched rule, no scale signal) is not
+  # "low risk" — it is no risk evidence, the distinction cmd_risk fails closed
+  # on. There is no tier to answer about, so hitl stays null and the advisor's
+  # `.hitl.required // false` reads it as "nothing to announce".
+  local any_high="" floor="" ceiling="" hitl=null
+  any_high=$(printf '%s' "$decisions" | jq -r '.any_high // false')
+  if [ "$any_high" = true ]; then
+    floor=high
+  else
+    floor=$(printf '%s' "$route" | jq -r '.risk_floor // empty')
+  fi
+  if [ -n "$floor" ]; then
+    ceiling=$(jq -r --arg t "$floor" '.autonomy.ceiling_by_risk[$t] // empty' "$REG/policy.json")
+    [ -n "$ceiling" ] || err "policy.json has no autonomy.ceiling_by_risk[$floor] — resolve-task cannot resolve the ceiling hitl needs"
+    if [ "$any_high" = true ]; then
+      hitl=$(cmd_hitl --risk "$floor" --autonomy "$ceiling" --conflict true); rc=$?
+    else
+      hitl=$(cmd_hitl --risk "$floor" --autonomy "$ceiling"); rc=$?
+    fi
+    # cmd_hitl's err exits its own subshell only, so the status is checked and
+    # re-raised here rather than trusted to abort the caller.
+    [ $rc -eq 0 ] || { printf '%s\n' "$hitl"; exit 1; }
+  fi
+
   jq -n --arg prompt "$prompt" --argjson route "$route" --argjson decisions "$decisions" \
+    --argjson hitl "$hitl" \
     --slurpfile intents "$REG/intents.json" --slurpfile pol "$REG/policy.json" '
     ($route.intents) as $ids
     | ([ $intents[0].intents[]
@@ -722,7 +824,9 @@ cmd_resolve_task() {
          gates: $gates,
          preferences: $preferences},
        route: $route,
-       decision_rules: $decisions}'
+       decision_rules: $decisions,
+       hitl: (if $hitl == null then null
+              else {required: $hitl.required, reasons: $hitl.reasons} end)}'
 }
 
 # ---------------------------------------------------------------- dispatcher
@@ -738,11 +842,12 @@ case "$cmd" in
   repair)         cmd_repair "$@" ;;
   admit)          cmd_admit "$@" ;;
   breaker)        cmd_breaker "$@" ;;
+  hitl)           cmd_hitl "$@" ;;
   capability)     cmd_capability "$@" ;;
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
   resolve-task)   cmd_resolve_task "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|admit|breaker|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|admit|breaker|hitl|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
 esac

@@ -630,6 +630,36 @@ case_ C22c "ensure-project-layout's registry read replaced with a hardcoded rete
       "telemetry wiring problems" \
       "sed -i.bak 's|-mtime \"+\$RET\"|-mtime \"+90\"|' hooks/ensure-project-layout.sh"
 
+case_ C22 "written_by demoted from an array back to a bare string is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+for e in d['telemetry']['events']:
+    if e['id']=='route': e['written_by']=e['written_by'][0]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C22 "a written_by entry naming a file that does not exist is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+for e in d['telemetry']['events']:
+    if e['id']=='hitl': e['written_by']=e['written_by']+['hooks/no-such-hook.sh']
+json.dump(d,open(p,'w'),indent=2)\""
+
+# The reverse half of C22c: a hook that appends a registered event without
+# being declared as one of its writers. Named zz- rather than test-, because
+# hooks/test-*.sh are excluded by design (a test asserts on an event, it does
+# not produce one).
+case_ C22c "a hook appending a registered event without being declared its writer is caught" \
+      "telemetry wiring problems" \
+      "printf '#!/usr/bin/env bash\\nhook_telemetry hitl \"\$DATA\"\\n' > hooks/zz-fake-writer.sh"
+
+case_ C22c "the hitl telemetry event removed from prompt-advisor.sh is caught" \
+      "telemetry wiring problems" \
+      "sed -i.bak 's|hook_telemetry hitl|hook_telemetry hitl-missing|' hooks/prompt-advisor.sh"
+
 # ---- C23: constitution preamble mirrors (P8, epic close) ----
 
 case_ C23 "a reordered precedence domain in CLAUDE.md's sentence is caught" \
@@ -687,6 +717,67 @@ import json
 p='registries/policy.json'; d=json.load(open(p))
 d['breaker']['failure_threshold']=d['breaker']['failure_threshold']+4
 json.dump(d,open(p,'w'),indent=2)\""
+
+# ---- C26: human-in-the-loop — data, canary, prose mirror, coupling ----
+
+case_ C26 "a reason removed from policy.json's hitl vocabulary is caught" \
+      "hitl block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['reasons']=[r for r in d['hitl']['reasons'] if r!='destructive-action']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C26 "an emptied record_home is caught" \
+      "hitl block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['record_home']=''
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C26 "a situation that also sits on retry.never_retry is caught" \
+      "hitl block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['situations']=d['hitl']['situations']+[d['retry']['never_retry'][0]]
+json.dump(d,open(p,'w'),indent=2)\""
+
+# A situation the kernel accepts and then silently drops answers required:false
+# -- "no human needed" for an input it did not act on.
+case_ C26b "a declared situation the kernel no longer maps to a reason is caught" \
+      "hitl canary" \
+      "sed -i.bak 's|if \$s == \"breaker-open\" then \"breaker-open\"|if false then \"breaker-open\"|' scripts/kernel.sh"
+
+case_ C26b "the high-risk reason removed from the kernel is caught" \
+      "hitl canary" \
+      "sed -i.bak 's@if \$r == \"high\" then \"high-risk\"@if false then \"high-risk\"@' scripts/kernel.sh"
+
+case_ C26c "a reason row deleted from rules/risk-autonomy.md is caught" \
+      "hitl prose-mirror problems" \
+      "sed -i.bak '/^| \`never-retry-situation\`/d' rules/risk-autonomy.md"
+
+case_ C26c "the Human-in-the-loop section renamed in rules/risk-autonomy.md is caught" \
+      "hitl prose-mirror problems" \
+      "sed -i.bak 's|^## Human-in-the-loop\$|## HITL|' rules/risk-autonomy.md"
+
+case_ C26c "the record home dropped from the gates.md release checklist is caught" \
+      "hitl prose-mirror problems" \
+      "sed -i.bak 's|\`## Human decisions\` in the change record|the change record|' rules/gates.md"
+
+case_ C26d "the reason id renamed in the registry without kernel.sh is caught" \
+      "hitl/backpressure coupling problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['reasons']=['budget-spent' if r=='budget-exhausted' else r for r in d['hitl']['reasons']]
+d['hitl']['situations']=['budget-spent' if s=='budget-exhausted' else s for s in d['hitl']['situations']]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C26d "admit's reject message losing the hitl reason id is caught" \
+      "hitl/backpressure coupling problems" \
+      "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' scripts/kernel.sh"
 
 flush_batch
 echo

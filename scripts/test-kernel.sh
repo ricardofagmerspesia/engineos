@@ -688,6 +688,129 @@ OUT=$(bash "$BRKT/scripts/kernel.sh" breaker --state closed --failures 0 2>&1); 
 assert_err "breaker with no breaker policy block errors (fail-closed, never a fabricated open)"
 rm -rf "$BRKT"
 
+# ------------------------------------------------------------------------ hitl
+
+echo "-- hitl --"
+
+# The record home, the situation list and the coupled reason id come from the
+# registry, so renaming a reason or adding a situation moves the fixtures rather
+# than turning them red. The tiers and autonomy levels stay literal on purpose:
+# they are the INPUTS the kernel is being asked about, not registry data being
+# mirrored back.
+RECORD_HOME=$(jq -r '.hitl.record_home' "$REG/policy.json")
+
+run hitl --risk low --autonomy A2
+assert_ok "hitl low/A2 exits 0"
+assert_eq "hitl low/A2 not required" "$(jqval .required)" "false"
+assert_eq "hitl low/A2 no reasons" "$(jqvalc .reasons)" "[]"
+# A no-HITL answer must still hand back the ceiling it was given, not "A0"
+# or the null a missing block would produce.
+assert_eq "hitl low/A2 keeps the given ceiling" "$(jqval .autonomy_after)" "A2"
+assert_eq "hitl record_home comes from the registry" "$(jqval .record_home)" "$RECORD_HOME"
+assert_eq "hitl answers exactly {autonomy_after, reasons, record_home, required}" \
+  "$(jqvalc '. | keys | sort')" '["autonomy_after","reasons","record_home","required"]'
+
+run hitl --risk high --autonomy A3
+assert_eq "hitl high required" "$(jqval .required)" "true"
+assert_eq "hitl high reason" "$(jqvalc .reasons)" '["high-risk"]'
+# required and autonomy_after are the two fields a gate switches on; asserting
+# only one would let a kernel that always dropped to A1 through.
+assert_eq "hitl high with adequate evidence keeps A3" "$(jqval .autonomy_after)" "A3"
+
+run hitl --risk medium --autonomy A3 --external-effect true
+assert_eq "hitl external effect at A3 required" "$(jqvalc .reasons)" '["external-effect"]'
+# below A3 an external effect is not reachable, so it must NOT be a reason --
+# without this case a kernel that ignored --autonomy would pass on the row above
+run hitl --risk medium --autonomy A2 --external-effect true
+assert_eq "hitl external effect below A3 is not a reason" "$(jqvalc .reasons)" "[]"
+assert_eq "hitl external effect below A3 not required" "$(jqval .required)" "false"
+
+run hitl --risk medium --autonomy A2 --evidence thin
+assert_eq "thin evidence drops autonomy to A1" "$(jqval .autonomy_after)" "A1"
+assert_eq "thin evidence reason" "$(jqvalc .reasons)" '["evidence-insufficient"]'
+
+run hitl --risk low --autonomy A2 --situation security-risk
+assert_eq "never-retry situation is a hitl reason" "$(jqvalc .reasons)" '["never-retry-situation"]'
+run hitl --risk low --autonomy A2 --situation reject
+assert_eq "backpressure reject maps to budget-exhausted" "$(jqvalc .reasons)" '["budget-exhausted"]'
+run hitl --risk low --autonomy A2 --situation breaker-open
+assert_eq "open breaker is a hitl reason" "$(jqvalc .reasons)" '["breaker-open"]'
+run hitl --risk high --autonomy A3 --conflict true --external-effect true
+assert_eq "reasons accumulate in fixed order" "$(jqvalc .reasons)" '["high-risk","external-effect","policy-conflict"]'
+
+# Every declared situation must produce at least one reason from the closed
+# vocabulary. A situation the kernel accepts and then drops would answer
+# required:false -- "no human needed" for an input the kernel did not act on.
+for sit in $(jq -r '(.retry.never_retry + .hitl.situations)[]' "$REG/policy.json"); do
+  run hitl --risk low --autonomy A2 --situation "$sit"
+  assert_eq "situation $sit requires a human" "$(jqval .required)" "true"
+  assert_eq "situation $sit cites only declared reasons" \
+    "$(printf '%s' "$OUT" | jq --slurpfile pol "$REG/policy.json" -c '[.reasons[] | select(. as $r | $pol[0].hitl.reasons | index($r) | not)]' 2>/dev/null)" "[]"
+done
+
+run hitl --risk low --autonomy A2 --situation nonsense
+assert_err "unknown situation is an error"
+run hitl --autonomy A2
+assert_err "hitl requires --risk"
+run hitl --risk low
+assert_err "hitl requires --autonomy"
+run hitl --risk low --autonomy A9
+assert_err "hitl rejects an autonomy level outside A0..A4"
+run hitl --risk low --autonomy A2 --evidence maybe
+assert_err "hitl rejects an unknown --evidence"
+run hitl --risk low --autonomy A2 --conflict yes
+assert_err "hitl rejects a non-boolean --conflict"
+run hitl --bogus x
+assert_err "hitl with an unknown argument errors"
+
+# a trailing flag with no value must error, not spin the arg loop forever
+run hitl --risk
+assert_err "hitl with a valueless --risk errors instead of hanging"
+run hitl --risk low --autonomy A2 --situation
+assert_err "hitl with a valueless --situation errors instead of hanging"
+
+# resolve-task carries the answer, so an adapter needs one call, not two.
+run resolve-task --prompt "drop the users table in production"
+assert_ok "resolve-task with a destructive prompt exits 0"
+assert_eq "resolve-task carries hitl" "$(jqval .hitl.required)" "true"
+assert_eq "resolve-task hitl cites the high-risk floor" \
+  "$(jqvalc '[.hitl.reasons[] | select(. == "high-risk")]')" '["high-risk"]'
+
+# Amendment 5 coupling, from the caller's side: cmd_admit's reject message
+# embeds the literal "hitl: budget-exhausted", and `hitl --situation reject`
+# must answer with that same id. The id is read from the registry rather than
+# spelled here, and an id missing from hitl.reasons is its own named failure
+# above -- never a grep that matches vacuously.
+BX=$(jq -r '.hitl.reasons[] | select(. == "budget-exhausted")' "$REG/policy.json")
+assert_eq "hitl.reasons declares the id admit's reject message cites" "$BX" "budget-exhausted"
+if [ -n "$BX" ]; then
+  cap=$(jq -r '.parallelism.wave_concurrency_cap' "$REG/policy.json")
+  maxq=$(jq -r '.parallelism.backpressure.max_queued_units' "$REG/policy.json")
+  run admit --inflight "$cap" --queued "$maxq"
+  assert_eq "admit's reject reason names hitl: $BX" \
+    "$(printf '%s' "$OUT" | jq -r --arg b "$BX" '.reason | test("hitl: " + $b)' 2>/dev/null)" "true"
+  run hitl --risk low --autonomy A2 --situation reject
+  assert_eq "hitl --situation reject answers with that same id" "$(jqvalc .reasons)" "[\"$BX\"]"
+fi
+
+# need_reg proves only that policy.json exists. With .hitl absent, the
+# situation allowlist is `null | index($s)` -- every situation reads as unknown
+# -- and any answer that got through would carry a null record_home with exit
+# 0. Fail closed instead.
+#
+# Built as a relocated kernel copy rather than by mutating $REG in place (the
+# breaker case above uses the same shape): a run that dies mid-fixture cannot
+# leave the repo's registries broken.
+HITLT=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$HITLT/scripts" "$HITLT/registries"
+cp "$KERNEL" "$HITLT/scripts/kernel.sh"
+jq 'del(.hitl)' "$REG/policy.json" > "$HITLT/registries/policy.json"
+OUT=$(bash "$HITLT/scripts/kernel.sh" hitl --risk low --autonomy A2 2>&1); RC=$?
+assert_err "hitl with no hitl policy block errors (fail-closed, never a null record_home)"
+OUT=$(bash "$HITLT/scripts/kernel.sh" hitl --risk high --autonomy A3 2>&1); RC=$?
+assert_err "hitl with no hitl policy block errors even on the required path"
+rm -rf "$HITLT"
+
 # ------------------------------------------------------- risk fail-closed fix
 
 echo "-- risk fail-closed --"

@@ -44,8 +44,9 @@ CTX=$(context "what does this function return?")
 CTX=$(ENGINEOS_BYPASS=1 context "deploy to production")
 case "$CTX" in *"BYPASS ACTIVE"*) ok ;; *) no "bypass announcement is preserved: $CTX" ;; esac
 
-# Adopted repos receive one route event for every prompt and one decision event
-# only when a decision rule matched.
+# Adopted repos receive one route event for every prompt, a decision event only
+# when a decision rule matched, and a hitl event only when a human is required.
+# rule-production-write carries risk=high, so this prompt fires all three.
 T=$(mktemp -d)
 (cd "$T" && git init -q) >/dev/null 2>&1
 mkdir -p "$T/.engineos"
@@ -53,8 +54,8 @@ jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s u
   '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
 TF="$T/.git/engineos-telemetry/unified1.jsonl"
 if [ -f "$TF" ] \
-   && [ "$(wc -l < "$TF" | tr -d ' ')" = "2" ] \
-   && [ "$(jq -r '.event' "$TF" | tr '\n' ',')" = "route,decision-rules," ] \
+   && [ "$(wc -l < "$TF" | tr -d ' ')" = "3" ] \
+   && [ "$(jq -r '.event' "$TF" | tr '\n' ',')" = "route,decision-rules,hitl," ] \
    && bash "$DIR/../scripts/telemetry.sh" validate "$TF" >/dev/null 2>&1; then
   ok
 else
@@ -150,14 +151,25 @@ want "unrouted-scale" "$(context "let's decompose this into smaller pieces")" \
 want "requires-dispatch-plan" "$(context "backfill the tenant column")" \
      "a dispatch-plan intent escalates with its reason"
 
-# A resolved single-domain prompt gets exactly one deterministic contract line,
-# no escalation and no second route pass.
+# A resolved single-domain prompt gets one deterministic contract line and no
+# escalation. The security-files intent carries risk_floor: high, so the HITL
+# gate line joins it — two lines, one contract and one gate, still no second
+# route pass. The count is asserted so a third line cannot creep in unnoticed.
 CTX=$(context "fix the auth guard bug")
 want "task contract (kernel, deterministic)" "$CTX" "a resolved prompt does not escalate"
 want "intents=security-files" "$CTX" "the deterministic line names the resolved intent"
 absent "route escalation" "$CTX" "a resolved prompt carries no escalation notice"
-[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 1 ] && ok \
-  || no "deterministic output is more than one line: [$CTX]"
+want "human-in-the-loop required — reasons: high-risk" "$CTX" \
+     "a high risk floor announces the HITL gate with its reason"
+[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 2 ] && ok \
+  || no "deterministic output is not exactly the contract line plus the HITL line: [$CTX]"
+
+# The mirror: a resolved prompt whose floor needs no human carries the contract
+# line alone. Without this case, a hitl_note that fired unconditionally would
+# still pass the assertion above.
+CTX=$(context "add a component for the user avatar")
+want "task contract (kernel, deterministic)" "$CTX" "a low-floor prompt still gets its contract"
+absent "human-in-the-loop required" "$CTX" "a low risk floor announces no HITL gate"
 
 # Exit codes: a hook that fails is a hook that blocks the prompt.
 jq -nc '{prompt:"add a paginated orders endpoint to the API and mirror the screen to mobile"}' \

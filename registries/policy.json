@@ -1,6 +1,6 @@
 {
   "version": "1.6.0",
-  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop, circuit-breaker and telemetry policy — ten blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, breaker, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure'); C25 checks breaker (the per-resource circuit breaker, answered by kernel.sh breaker and mirrored in rules/parallelism.md 'Circuit breaker') — so a future prose edit or block change that diverges fails CI.",
+  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop, circuit-breaker and telemetry policy — eleven blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, breaker, hitl, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure'); C25 checks breaker (the per-resource circuit breaker, answered by kernel.sh breaker and mirrored in rules/parallelism.md 'Circuit breaker'); C26 checks hitl (human-in-the-loop as a queryable entity, answered by kernel.sh hitl, folded into resolve-task as .hitl, and mirrored in rules/risk-autonomy.md 'Human-in-the-loop') — so a future prose edit or block change that diverges fails CI.",
   "risk": {
     "aggregation": "max",
     "inputs": [
@@ -204,6 +204,12 @@
     "states": ["closed", "half-open", "open"],
     "scopes": ["provider", "mcp", "tool", "agent"]
   },
+  "hitl": {
+    "note": "Human-in-the-loop as a queryable entity rather than a tier's implication. autonomy.ceiling_by_risk says how far a unit may go alone; this block says when a HUMAN must decide and names WHY, so the decision is auditable instead of inferred. Answered by scripts/kernel.sh hitl, folded into resolve-task as .hitl, announced by hooks/prompt-advisor.sh, mirrored in rules/risk-autonomy.md 'Human-in-the-loop'; C26 checks the block, the kernel's answers and the prose together. reasons is the CLOSED vocabulary a gate may cite — a gate citing anything else produces a record no one can argue with, which is the hole this block exists to close; the list order is the kernel's emission order. situations is what --situation accepts ON TOP OF retry.never_retry (whose ids all collapse to the single reason never-retry-situation), and the two lists are disjoint so the union lookup stays unambiguous. budget-exhausted is deliberately in BOTH reasons and situations: it is a reason a human is needed AND a situation a caller reports, and kernel.sh admit's reject message embeds the literal 'hitl: budget-exhausted' — C26d couples that literal to this list and to the kernel's own --situation reject answer so the three cannot drift apart. record_home is where the decision gets written down; a tier that required a human and carries no such record has not passed its gate. ADR: docs/adr/2026-09-03-hitl-as-kernel-entity.md.",
+    "reasons": ["high-risk", "evidence-insufficient", "external-effect", "policy-conflict", "never-retry-situation", "destructive-action", "budget-exhausted", "breaker-open"],
+    "situations": ["destructive", "budget-exhausted", "reject", "breaker-open"],
+    "record_home": ".engineos/changes/<record>.md#human-decisions"
+  },
   "telemetry": {
     "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/prompt-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",
     "home": ".git/engineos-telemetry/<session_id>.jsonl",
@@ -212,21 +218,26 @@
     "events": [
       {
         "id": "route",
-        "written_by": "hooks/prompt-advisor.sh",
+        "written_by": ["hooks/prompt-advisor.sh"],
         "keys": ["escalate", "reasons", "intents", "suppressed", "agents"],
         "sample": {"escalate": true, "reasons": ["multi-agent-dispatch"], "intents": ["backend", "mobile"], "suppressed": ["new-feature"], "agents": ["backend-coordinator", "mobile-coordinator"]}
       },
       {
         "id": "decision-rules",
-        "written_by": "hooks/prompt-advisor.sh",
+        "written_by": ["hooks/prompt-advisor.sh"],
         "keys": ["rules", "any_high"],
         "sample": {"rules": ["rule-spec-threshold", "rule-verification"], "any_high": false}
       },
       {
         "id": "verify",
-        "written_by": "hooks/stop-verify.sh",
+        "written_by": ["hooks/stop-verify.sh"],
         "keys": ["failed", "targets"],
-        "sample": {"failed": true, "targets": ["apps/api"]}
+        "sample": {"failed": true, "targets": ["apps/api"]}},
+      {
+        "id": "hitl",
+        "written_by": ["hooks/prompt-advisor.sh"],
+        "keys": ["required", "reasons"],
+        "sample": {"required": true, "reasons": ["high-risk", "policy-conflict"]}
       }
     ]
   },

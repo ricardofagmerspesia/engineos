@@ -33,6 +33,15 @@ if printf '%s' "$RESULT" | jq -e '.decision_rules.matches | length > 0' >/dev/nu
   hook_telemetry decision-rules "$DECISION_DATA"
 fi
 
+# `jq -e` on a false/null value exits 1, so this is the same "only when it
+# fired" gate the decision-rules block uses. Ids and booleans only, never the
+# reasons' surrounding prose and never the prompt.
+if printf '%s' "$RESULT" | jq -e '.hitl.required // false' >/dev/null 2>&1; then
+  HITL_DATA=$(printf '%s' "$RESULT" | jq -c \
+    '{required: .hitl.required, reasons: .hitl.reasons}' 2>/dev/null)
+  hook_telemetry hitl "$HITL_DATA"
+fi
+
 # Build a single context payload. The task_contract is the stable interface;
 # route and decision_rules remain attached only so this adapter can preserve
 # the existing human-readable guidance during the compatibility window.
@@ -64,13 +73,17 @@ NOTES=$(printf '%s' "$RESULT" | jq -r '
                "\n[engineos] a matched rule sets risk=high — autonomy ceiling A3 per rules/risk-autonomy.md: human approval before any external effect, and a rollback path before release."
              else "" end)])
     end;
+  def hitl_note:
+    if (.hitl.required // false) then
+      ["[engineos] human-in-the-loop required — reasons: \(.hitl.reasons | join(", ")). A human decides before any external effect; the autonomy ceiling does not cover this. Record who, when, which reason ids, and what was approved or refused under \"## Human decisions\" in the change record (rules/risk-autonomy.md \"Human-in-the-loop\"; rules/gates.md release checklist)."]
+    else [] end;
   def route_note:
     if .route.escalate then
       ["[engineos] route escalation — the kernel could not fully resolve this request: \(.route.reasons | join(", ")). Dispatch the `router` agent (agents/router.md, model opus) via the Task tool with the request text and follow its dispatch plan; do not fan out before it returns. Kernel facts so far: intents=\(csv(.route.intents)) agents=\(csv(.route.agents)) scale=(\(.route.scale | to_entries | map("\(.key)=\(.value)") | join(" "))). A hook cannot dispatch an agent — you must invoke it."]
     elif .task_contract.substantive then
       ["[engineos] task contract (kernel, deterministic): intents=\(csv(.task_contract.intents)) agents=\(csv(.task_contract.agents)) rules=\(csv(.task_contract.rules)) policy_rules=\(csv(.task_contract.policy_rules)) skills=\(csv(.task_contract.skills)) commands=\(csv(.task_contract.commands)) mcp=\(csv(.task_contract.mcp)) model_tier=\(.task_contract.model_tier // "-") risk_floor=\(.task_contract.risk_floor // "-") autonomy_ceiling_at_floor=\(.task_contract.autonomy_ceiling_at_floor // "-") — load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed."]
     else [] end;
-  (scale_notes + decision_note + route_note) as $notes
+  (scale_notes + decision_note + route_note + hitl_note) as $notes
   | if ($notes | length) == 0 then empty else ($notes | join("\n")) end')
 [ -n "$NOTES" ] || exit 0
 hook_context UserPromptSubmit "$NOTES"

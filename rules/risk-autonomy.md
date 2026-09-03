@@ -46,6 +46,33 @@ A4 requires a written policy, an audit trail, and a proven rollback. EngineOS
 grants none today — treat a task that seems to need A4 as a task that needs a
 human.
 
+## Human-in-the-loop
+
+The ceiling says how far you may go alone. HITL says when a human must decide,
+and names why, so the decision is auditable rather than implied by a tier.
+
+`scripts/kernel.sh hitl --risk <tier> --autonomy <ceiling> [--evidence thin] [--external-effect true] [--conflict true] [--situation <s>]`
+
+| Reason | Fires when |
+|---|---|
+| `high-risk` | tier is high |
+| `evidence-insufficient` | evidence is thin — autonomy drops to A1 |
+| `external-effect` | the action leaves the working tree at A3 or above (merge, deploy, publish, send) |
+| `policy-conflict` | decision rules disagree, or a matched rule carries risk=high on a lower-tier task |
+| `never-retry-situation` | the situation is on `retry.never_retry` |
+| `destructive-action` | destructive DDL/DML, secret rotation, data deletion |
+| `budget-exhausted` | the repair or retry bound is spent, or backpressure answered `reject` |
+| `breaker-open` | a needed resource's breaker is open with no alternative |
+
+Those eight ids are the whole vocabulary — a gate may cite nothing else, because
+a reason outside the list is one nobody can argue with or override.
+
+`resolve-task` carries `hitl.required` and `hitl.reasons` so the prompt advisor
+can announce them before the first write. The decision itself is recorded in
+the change record under `## Human decisions`: who, when, which reasons, what
+was approved or refused. A tier that requires a human and has no such record
+has not passed its gate.
+
 ## Rules
 
 - DO classify before the first write, not after. A risk tier assigned to justify
