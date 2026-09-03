@@ -177,7 +177,7 @@ M  scripts/test-validate-engineos.sh
 
 ```
 411949f feat(kernel): add admit backpressure resolver
-<fix round 1 commit — sha in the task-2 report, created by this record's own commit>
+04eaf7d fix(kernel): guard admit's arg loop, tighten C24
 ```
 
 (The record's own line count grew by these pastes; everything else is exact.)
@@ -185,6 +185,10 @@ M  scripts/test-validate-engineos.sh
 No renames, no deletions, no file moves.
 
 ## Notes
+- A third commit adds the trailing-flag fixture and derives the admit fixtures'
+  expected numbers from `wave_concurrency_cap` instead of hardcoding 3 and 7, so a
+  cap change moves the fixtures with the registry. Its own sha is not listed here
+  for the usual reason: a commit cannot contain it.
 - Deviation from the task brief, forced by jq syntax: the brief's `cmd_risk`
   guard ends with a bare `else` followed by a line starting with `|`, which jq
   refuses to parse. The guard is written `else .` so the existing pipeline

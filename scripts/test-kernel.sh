@@ -571,16 +571,20 @@ assert_eq "admit idle capacity == cap" "$(jqval .capacity)" "$cap"
 # report 3 remaining, which a hardcoded cap would get wrong.
 run admit --inflight 3 --queued 0
 assert_eq "admit with 3 inflight -> dispatch" "$(jqval .action)" "dispatch"
-assert_eq "admit capacity is cap minus inflight" "$(jqval .capacity)" "3"
+assert_eq "admit capacity is cap minus inflight" "$(jqval .capacity)" "$((cap - 3))"
 assert_eq "admit answers exactly {action, capacity, reason}" \
   "$(jqvalc '. | keys | sort')" '["action","capacity","reason"]'
+
+# a trailing flag with no value must error, not spin the arg loop forever
+run admit --inflight
+assert_err "admit with a valueless --inflight errors instead of hanging"
 
 run admit --inflight "$cap" --queued 0
 assert_eq "admit at cap -> overload_action" "$(jqval .action)" "$(jq -r '.parallelism.backpressure.overload_action' "$REG/policy.json")"
 assert_eq "admit at cap capacity 0" "$(jqval .capacity)" "0"
 
 # over the cap with room in the queue is still the overload action, not reject
-run admit --inflight 7 --queued 5
+run admit --inflight "$((cap + 1))" --queued 5
 assert_eq "admit over cap with a non-full queue -> defer" "$(jqval .action)" "defer"
 
 run admit --inflight "$cap" --queued "$maxq"
