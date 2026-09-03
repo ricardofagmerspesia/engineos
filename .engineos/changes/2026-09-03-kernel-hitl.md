@@ -42,7 +42,8 @@ the decision has one checked home.
 - `registries/intents.json` — `record-change.required_sections` gains
   `Human decisions` (forced by C21b, see Deviations).
 - `scripts/kernel.sh` — new `cmd_hitl`, usage header, dispatcher entry, usage
-  string; `cmd_resolve_task` computes the floor/ceiling and folds in `.hitl`.
+  string; `cmd_resolve_task` resolves the floor/ceiling, publishes `risk_floor`,
+  and folds in `.hitl` only for a classified tier (see Deviations 8).
 - `scripts/test-kernel.sh` — new `hitl` section.
 - `hooks/prompt-advisor.sh` — `hitl` telemetry event and a `hitl_note` in the
   context payload.
@@ -50,8 +51,10 @@ the decision has one checked home.
   design (see Deviations 7); updated, plus a new mirror case.
 - `scripts/checks/70-runtime.sh` — new C26/C26b/C26c/C26d; C22a reads
   `written_by` as an array; C22c iterates it and adds the reverse assertion.
-- `scripts/test-validate-engineos.sh` — 12 new negative cases (4x C22, 8x C26).
-- `rules/risk-autonomy.md` — new `## Human-in-the-loop` section.
+- `scripts/test-validate-engineos.sh` — 13 new negative cases (4x C22, 9x C26,
+  the last one pinning the fix-round-1 ruling from the failing side).
+- `rules/risk-autonomy.md` — new `## Human-in-the-loop` section, including the
+  rule that HITL is answered from a classified tier and never from a floor.
 - `rules/gates.md` — one release-checklist line.
 - `.engineos/changes/_template.md` — new `## Human decisions` section.
 
@@ -64,7 +67,8 @@ Not touched, and deliberately: `registries/routing.json`, the agent files, and
 - [x] `hitl` telemetry event registered with `keys` and a `sample`
 - [x] `cmd_hitl` added, fail-closed on a missing block, fail-fast on arg values
 - [x] `hitl` registered in the dispatcher, the usage string and the usage header
-- [x] `cmd_resolve_task` folds in `.hitl` (null when there is no risk floor)
+- [x] `cmd_resolve_task` folds in `.hitl` for a classified tier only, and
+      publishes `risk_floor` beside it (both null when there is no evidence)
 - [x] `hooks/prompt-advisor.sh` emits the event and the context line
 - [x] C26a/C26b/C26c/C26d added to `scripts/checks/70-runtime.sh`
 - [x] C22a accepts arrays; C22c iterates them and asserts the reverse direction
@@ -75,9 +79,15 @@ Not touched, and deliberately: `registries/routing.json`, the agent files, and
 - [x] `hooks/test-prompt-advisor.sh`'s two now-stale assertions updated to the
       new intended behaviour, with a mirror case so the new line cannot fire
       unconditionally and still pass
-- [ ] Final gate: `scripts/test-kernel.sh`, `scripts/validate-engineos.sh`,
-      `scripts/test-validate-engineos.sh`, `hooks/test-prompt-advisor.sh`,
-      shellcheck — NOT RUN, by the controller's ruling (see Verification)
+- [x] Fix round 1: HITL asks a classified tier only; `--conflict` no longer
+      synthesized; `risk_floor` published beside `hitl`; prose, canary and a
+      failing-side negative case all retargeted
+- [x] Fix round 1: `telemetry.note` records the `written_by` supersession
+- [x] `scripts/test-kernel.sh` (308 passed), `hooks/test-prompt-advisor.sh`
+      (50 passed) and `scripts/test-validate-engineos.sh` (103 passed) run
+      green in fix round 1
+- [ ] Final gate: `scripts/validate-engineos.sh` and shellcheck — NOT RUN;
+      they belong to the controller (see Verification)
 
 ## What was made
 `policy.hitl` carries the three frozen values verbatim: `reasons` (eight ids,
@@ -100,11 +110,17 @@ each with a fixture:
 3. An unknown `--situation` is an error, never an ignored flag — a silently
    dropped situation would read as `required: false`, "no human needed".
 
-`resolve-task` computes the floor the same way its output object already did
-(`any_high ? high : route.risk_floor`), reads the ceiling from
-`autonomy.ceiling_by_risk`, and passes `--conflict true` when `any_high`. When
-there is no risk floor at all, `.hitl` is `null` rather than an invented "low":
-no risk evidence is not low risk.
+`resolve-task` asks `hitl` only from a CLASSIFIED tier — `decisions.any_high`,
+a registered rule that matched this prompt's own text and declared risk=high.
+It reads the ceiling from `autonomy.ceiling_by_risk` for whatever floor it
+resolved (a floor with no entry there is a registry error, so the lookup and its
+`err` run either way), and publishes the floor as a top-level `risk_floor`
+sibling of `hitl`. A prompt whose only risk evidence is `route.risk_floor` gets
+`hitl: null` plus that floor: a classification is owed, and nothing about a
+human is claimed until someone does it. A prompt with no risk evidence at all
+gets `hitl: null` and `risk_floor: null` rather than an invented "low" — no risk
+evidence is not low risk. No `--conflict` is synthesized from `any_high`; see
+deviation 8.
 
 `hooks/prompt-advisor.sh` appends the `hitl` telemetry event (ids and booleans
 only) and adds a `hitl_note` to the context payload naming the reasons and the
@@ -119,10 +135,36 @@ flag-driven reasons, every declared situation, an unknown situation, and the
 section; (d) the backpressure coupling.
 
 ## Verification
-**Unverified by ruling.** The controller's brief forbade running
-`scripts/test-kernel.sh`, `scripts/validate-engineos.sh`,
-`scripts/test-validate-engineos.sh`, `hooks/test-*.sh` and shellcheck; they
-belong to the controller's own final gate. What was run:
+**Partially verified.** Fix round 1 was authorized to run the three suites that
+cover the changed surface; `scripts/validate-engineos.sh` itself and the final
+gate remain the controller's. What was run, in fix round 1:
+
+```
+$ bash scripts/test-kernel.sh
+passed 308, failed 0
+
+$ bash hooks/test-prompt-advisor.sh
+prompt-advisor: 50 passed, 0 failed
+
+$ bash scripts/test-validate-engineos.sh
+ok   resolve-task folding hitl off a bare risk floor is caught
+passed 103, failed 0
+
+$ bash -n scripts/kernel.sh scripts/test-kernel.sh \
+         scripts/test-validate-engineos.sh scripts/checks/70-runtime.sh \
+         hooks/prompt-advisor.sh hooks/test-prompt-advisor.sh
+bash-n-rc=0
+
+$ jq . registries/policy.json > /dev/null
+jq-rc=0
+```
+
+`scripts/validate-engineos.sh` was NOT run — C26's four checks are exercised
+here only through `scripts/test-validate-engineos.sh`, which drives them over
+mutated private copies of the tree. A green run of the validator against this
+branch is still owed at the final gate.
+
+What was run in the first round (the ruling then in force forbade every suite):
 
 ```
 $ bash -n scripts/kernel.sh scripts/test-kernel.sh \
@@ -198,6 +240,35 @@ No renames, no deletions, one addition
 the task report
 (`.superpowers/sdd/2026-09-03-engineos-default-methodology-plan/task-4-report.md`).
 
+Fix round 1 is a second commit on top. Real output, captured at `1feccb8` —
+before the amend that added this paragraph, which touched nothing but this file
+(so every number below is exact except this record's own line count):
+
+```
+$ git status --short
+?? .superpowers/          (untracked, deliberately not committed)
+
+$ git log --oneline 5fca050..HEAD
+1feccb8 fix(kernel): gate hitl on a classified tier
+66fd2d5 feat(kernel): make human-in-the-loop queryable
+
+$ git diff --stat 66fd2d5
+ .engineos/changes/2026-09-03-kernel-hitl.md | 176 +++++++++++++++++++++-------
+ hooks/test-prompt-advisor.sh                |  29 +++--
+ registries/policy.json                      |   4 +-
+ rules/risk-autonomy.md                      |  11 +-
+ scripts/checks/70-runtime.sh                |  24 +++-
+ scripts/kernel.sh                           |  50 +++++---
+ scripts/test-kernel.sh                      |  40 ++++++-
+ scripts/test-validate-engineos.sh           |   8 ++
+ 8 files changed, 259 insertions(+), 83 deletions(-)
+```
+
+`hooks/prompt-advisor.sh` is absent from that list on purpose: the HITL
+announcement and the telemetry event both already gated on
+`.hitl.required // false`, so narrowing what `resolve-task` puts there was
+enough. No second floor line was added.
+
 ## Notes
 
 ### Deviations from the brief, and why
@@ -234,10 +305,11 @@ the task report
    requiring a section on already-archived records would fail C21c for work
    that predates the concept.
 
-4. **`resolve-task` uses an explicit `if/else` for `--conflict`.** The brief
-   writes `$( [ "$any_high" = true ] && printf -- '--conflict true' )`, which
-   depends on unquoted word-splitting of a command substitution. The explicit
-   branch is equivalent and does not.
+4. **`resolve-task` uses an explicit branch, not a word-split substitution.**
+   The brief writes `$( [ "$any_high" = true ] && printf -- '--conflict true' )`,
+   which depends on unquoted word-splitting of a command substitution. An
+   explicit branch does not. (The `--conflict` argument itself was dropped in
+   fix round 1 — deviation 8.)
 
 5. **`.hitl` is `null` when there is no risk floor.** The brief does not say
    what `resolve-task` should do when `route.risk_floor` is null and no
@@ -261,16 +333,54 @@ the task report
      event now fires. Updated from `2` lines / `route,decision-rules,` to `3`
      lines / `route,decision-rules,hitl,`.
    - The "exactly one deterministic line" case uses "fix the auth guard bug",
-     which resolves to the `security-files` intent — `risk_floor: high` — so
-     the HITL line joins the contract line. Updated to assert exactly two
-     lines and to name the expected reason, and a mirror case was added on a
-     low-floor prompt so a `hitl_note` that fired unconditionally could not
-     pass the new count.
+     which resolves to the `security-files` intent — `risk_floor: high`. In
+     the first round the HITL line joined the contract line there and the case
+     was updated to two lines; fix round 1 put it back to one line, because a
+     floor no longer answers HITL at all. It now also asserts that the
+     contract line publishes `risk_floor=high` and that no HITL line appears,
+     and the mirror case moved to a prompt that trips a high-risk decision
+     rule, where the line must appear with its reason id.
 
    Neither existing assertion was weakened or deleted: both got tighter (the
    reason id and the second line are now named), per
    `rules/verification.md`'s prohibition on neutralizing tests to make a gate
    pass.
+
+8. **Fix round 1: HITL fires on a confirmed tier, never on a risk floor — and
+   no `--conflict` is synthesized.** The controller ruled on the concern this
+   record raised in the first round (see "Noise concern, resolved in fix round
+   1" below): a floor is an input to classification, not a classification, so
+   `cmd_resolve_task` no longer synthesizes `--risk <floor>`. It asks `hitl`
+   only on `decisions.any_high` — a registered rule that matched the prompt's
+   text and declared risk=high — and publishes `route.risk_floor` as a
+   top-level `risk_floor` sibling of `hitl` so a caller reading `hitl: null`
+   still sees that a classification is owed. Announcing a gate off a bare floor
+   is the gate theatre `rules/gates.md` names: "a gate you passed by lowering
+   its bar is worse than no gate", and its everyday form is a gate that fires
+   on everything, which teaches readers to skip the one that matters.
+
+   The `--conflict true` argument went with it. `policy-conflict` is the reason
+   for a decision rule demanding more than the CLASSIFIED tier permits; on a
+   task nobody has classified there is no tier to disagree with, so asserting a
+   conflict was the same unearned claim one level down. The flag stays on
+   `cmd_hitl`'s own surface for a caller that has actually observed both, and
+   `rules/risk-autonomy.md`'s `policy-conflict` row was reworded to say so —
+   it previously read "or a matched rule carries risk=high on a lower-tier
+   task", which described exactly the inference that was removed.
+
+   Pinned from the failing side rather than only asserted: C26b now requires
+   `resolve-task` on a floor-only prompt to answer `hitl: null` with the floor
+   the registry declares, and `scripts/test-validate-engineos.sh` carries a
+   negative case that widens the guard back to any floor and confirms C26b goes
+   red. A check that pinned the old behaviour would have been worse than no
+   check.
+
+9. **Fix round 1: `telemetry.note` records the `written_by` supersession.**
+   `docs/specs/2026-08-06-decision-kernel-p7-telemetry.md` carries a
+   one-writer-per-event invariant that this change's arrays supersede. The
+   historical spec was NOT rewritten — it records what was true then. One line
+   in `telemetry.note` names the supersession instead, so the registry (the
+   source of truth) is the place the two shapes are reconciled.
 
 ### The `budget-exhausted` coupling
 
@@ -308,24 +418,33 @@ one event would be the drift pair". That invariant is now superseded — the
 array plus C22c's new reverse assertion is the replacement, and it is strictly
 stronger (the old shape could not express a second writer at all, so the drift
 it feared was undetectable). The shipped spec was deliberately NOT rewritten: it
-is a historical record of the P7 decision, not a live contract.
+is a historical record of the P7 decision, not a live contract. Fix round 1
+added the supersession line to `telemetry.note` so the reconciliation lives in
+the registry that is the source of truth (deviation 9).
 
-### Noise concern, raised not fixed
+Fix round 1 adds a top-level `risk_floor` to `resolve-task`'s output and narrows
+what `.hitl` answers. Neither is a break: kernel subcommand output is not on
+`docs/COMPATIBILITY.md`'s public-surface list, the new field is additive, and
+the narrowed `.hitl` never shipped — `66fd2d5` is unmerged on this branch, so
+there is no released consumer to deprecate against. The only in-repo consumer,
+`hooks/prompt-advisor.sh`, already gated on `.hitl.required // false` and needed
+no edit.
 
-`resolve-task` passes the risk FLOOR to `hitl`, and `high-risk` fires on tier
-high, so every prompt resolving to a high-floor intent (`dba`, `devops`,
-`security-files`, `ios-release`, `android-release`, `critic-verification`) now
-gets a "human-in-the-loop required — reasons: high-risk" line. "Fix the auth
-guard bug" announces a human gate. The advisor's own contract line says "the
-risk floor is a floor, not the final tier", so firing HITL off the floor
-over-announces by construction.
+### Noise concern, resolved in fix round 1
 
-This is the brief's frozen contract and Task 5 stacks on it, so it was
-implemented verbatim rather than redesigned — `rules/subagents.md`: report a
-contract that looks wrong, never redefine one unilaterally. If the noise proves
-real in telemetry, the narrowest fix is for `resolve-task` to pass the floor
-only when it is also the resolved tier, or for `high-risk` to require a
-confirmed tier rather than a floor. Neither belongs in this task.
+The first round shipped the brief's frozen contract: `resolve-task` passed the
+risk FLOOR to `hitl`, and `high-risk` fires on tier high, so every prompt
+resolving to a high-floor intent (`dba`, `devops`, `security-files`,
+`ios-release`, `android-release`, `critic-verification`) got a
+"human-in-the-loop required — reasons: high-risk" line. "Fix the auth guard
+bug" announced a human gate nobody owed, while the advisor's own contract line
+in the same payload said "the risk floor is a floor, not the final tier". It
+was implemented verbatim and reported as a CRITICAL finding rather than
+redesigned mid-task — `rules/subagents.md`: report a contract that looks wrong,
+never redefine one unilaterally.
+
+The controller ruled in favour of the finding and assigned the fix to this same
+unit. Deviation 8 above is what shipped.
 
 ### Known accepted gap
 

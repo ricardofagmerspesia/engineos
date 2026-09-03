@@ -649,13 +649,29 @@ check_C26b() {
     bash "$KSH" hitl --risk low --autonomy "$low_ceil" --situation engineos-no-such-situation >/dev/null 2>&1 \
       && d_bad="$d_bad unknown-situation-was-not-rejected"
   fi
-  # The fold: resolve-task must carry the answer, or hooks/prompt-advisor.sh has
-  # nothing to announce. The prompt trips rule-destructive-ddl, whose risk=high
-  # is what forces the floor.
+  # The fold, both halves. resolve-task must carry the answer when a tier was
+  # actually CLASSIFIED, or hooks/prompt-advisor.sh has nothing to announce:
+  # this prompt trips rule-destructive-ddl, whose risk=high is the
+  # classification.
   rt=$(bash "$KSH" resolve-task --prompt "drop the users table in production" 2>/dev/null \
        | jq -r '.hitl.required // "none"' 2>/dev/null)
   [ "$rt" = true ] || d_bad="$d_bad resolve-task-does-not-carry-hitl.required-got:${rt:-none}"
-  [ -z "$d_bad" ] && ok "kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, the evidence drop, both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer" \
+  # And it must NOT carry one off a bare risk floor: a floor is an input to
+  # classification, not a classification, so announcing a human gate on every
+  # auth-guard edit is the gate theatre rules/gates.md names. The floor must
+  # still surface, so the caller knows a classification is owed. The expected
+  # floor comes from intents.json; an intent whose floor is not high would make
+  # the case assert nothing, so that is its own finding.
+  sec_floor=$(jq -r '.intents[] | select(.id == "security-files") | .risk_floor // ""' "$IJ" 2>/dev/null)
+  if [ "$sec_floor" != high ]; then
+    d_bad="$d_bad intents.json-security-files-risk_floor-is-not-high-got:${sec_floor:-none}"
+  else
+    rt=$(bash "$KSH" resolve-task --prompt "fix the auth guard bug" 2>/dev/null \
+         | jq -r '"\(.hitl // "null")/\(.risk_floor // "none")"' 2>/dev/null)
+    [ "$rt" = "null/$sec_floor" ] \
+      || d_bad="$d_bad resolve-task-on-a-bare-floor-expected-null/$sec_floor-got:${rt:-none}"
+  fi
+  [ -z "$d_bad" ] && ok "kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, the evidence drop, both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer for a classified tier while claiming none off a bare risk floor" \
                   || bad "hitl canary:$d_bad"
 }
 

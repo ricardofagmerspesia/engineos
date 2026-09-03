@@ -152,24 +152,27 @@ want "requires-dispatch-plan" "$(context "backfill the tenant column")" \
      "a dispatch-plan intent escalates with its reason"
 
 # A resolved single-domain prompt gets one deterministic contract line and no
-# escalation. The security-files intent carries risk_floor: high, so the HITL
-# gate line joins it — two lines, one contract and one gate, still no second
-# route pass. The count is asserted so a third line cannot creep in unnoticed.
+# escalation. The security-files intent carries risk_floor: high, but a floor is
+# an input to classification and not a classification, so the adapter announces
+# the floor on the contract line and no HITL gate at all — one line. The count
+# is asserted so a second line cannot creep back in unnoticed.
 CTX=$(context "fix the auth guard bug")
 want "task contract (kernel, deterministic)" "$CTX" "a resolved prompt does not escalate"
 want "intents=security-files" "$CTX" "the deterministic line names the resolved intent"
 absent "route escalation" "$CTX" "a resolved prompt carries no escalation notice"
-want "human-in-the-loop required — reasons: high-risk" "$CTX" \
-     "a high risk floor announces the HITL gate with its reason"
-[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 2 ] && ok \
-  || no "deterministic output is not exactly the contract line plus the HITL line: [$CTX]"
+want "risk_floor=high" "$CTX" "the contract line publishes the floor it resolved"
+absent "human-in-the-loop" "$CTX" \
+       "a high risk floor on its own announces no HITL gate"
+[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 1 ] && ok \
+  || no "deterministic output is not exactly the contract line: [$CTX]"
 
-# The mirror: a resolved prompt whose floor needs no human carries the contract
-# line alone. Without this case, a hitl_note that fired unconditionally would
-# still pass the assertion above.
-CTX=$(context "add a component for the user avatar")
-want "task contract (kernel, deterministic)" "$CTX" "a low-floor prompt still gets its contract"
-absent "human-in-the-loop required" "$CTX" "a low risk floor announces no HITL gate"
+# The mirror: a matched decision rule carrying risk=high IS a classification, so
+# the same adapter does announce the gate, with the reason id the kernel
+# resolved. Without this case, a hitl_note wired to nothing at all would still
+# pass the assertion above.
+CTX=$(context "drop the users table in production")
+want "human-in-the-loop required — reasons: high-risk" "$CTX" \
+     "a matched high-risk decision rule announces the HITL gate with its reason"
 
 # Exit codes: a hook that fails is a hook that blocks the prompt.
 jq -nc '{prompt:"add a paginated orders endpoint to the API and mirror the screen to mobile"}' \

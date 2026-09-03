@@ -733,30 +733,44 @@ cmd_resolve_task() {
   [ $rc -eq 0 ] || { printf '%s\n' "$decisions"; exit 1; }
 
   # Human-in-the-loop, folded in so an adapter gets it from the same call
-  # instead of deriving a tier and then asking a second question. The floor and
-  # the ceiling are the same two values the output object carries below.
-  # any_high is passed as --conflict because a decision rule carrying risk=high
-  # on a prompt the route scored lower IS the policy conflict a human resolves.
+  # instead of deriving a tier and then asking a second question.
+  #
+  # HITL is answered from a CLASSIFIED tier, never from a risk floor.
+  # decisions.any_high is a classification: a registered rule matched this
+  # prompt's own text and declared risk=high. route.risk_floor is not — it is
+  # an input to classification, inherited from whichever domain a path or a
+  # keyword landed in. Six intents carry risk_floor high, so folding the floor
+  # in made "fix the auth guard bug" announce a human gate nobody owed — the
+  # gate theatre rules/gates.md names, which teaches readers to skip the
+  # announcement that does matter. A floor-only prompt therefore gets
+  # hitl: null plus the risk_floor sibling below, which says a classification
+  # is still owed.
   #
   # A null floor (no domain intent, no matched rule, no scale signal) is not
-  # "low risk" — it is no risk evidence, the distinction cmd_risk fails closed
-  # on. There is no tier to answer about, so hitl stays null and the advisor's
+  # "low risk" either — it is no risk evidence, the distinction cmd_risk fails
+  # closed on. Same answer: hitl stays null and the advisor's
   # `.hitl.required // false` reads it as "nothing to announce".
   local any_high="" floor="" ceiling="" hitl=null
   any_high=$(printf '%s' "$decisions" | jq -r '.any_high // false')
-  if [ "$any_high" = true ]; then
-    floor=high
-  else
-    floor=$(printf '%s' "$route" | jq -r '.risk_floor // empty')
-  fi
+  floor=$(printf '%s' "$route" | jq -r '.risk_floor // empty')
+  # A matched high rule raises the published floor to high, which is what the
+  # contract object reports. Written as a guarded assignment, not an if block,
+  # so the `if` below is the file's only `any_high = true` branch and a check
+  # can pin that branch by name.
+  [ "$any_high" != true ] || floor=high
+  # The ceiling lookup runs for any floor, classified or not: a floor with no
+  # entry in autonomy.ceiling_by_risk is a broken registry, and the contract
+  # object below publishes that same value.
   if [ -n "$floor" ]; then
     ceiling=$(jq -r --arg t "$floor" '.autonomy.ceiling_by_risk[$t] // empty' "$REG/policy.json")
     [ -n "$ceiling" ] || err "policy.json has no autonomy.ceiling_by_risk[$floor] — resolve-task cannot resolve the ceiling hitl needs"
-    if [ "$any_high" = true ]; then
-      hitl=$(cmd_hitl --risk "$floor" --autonomy "$ceiling" --conflict true); rc=$?
-    else
-      hitl=$(cmd_hitl --risk "$floor" --autonomy "$ceiling"); rc=$?
-    fi
+  fi
+  if [ "$any_high" = true ]; then
+    # No --conflict here: a matched high rule on a task nobody has classified
+    # is not an observed disagreement between rule and tier, and asserting one
+    # would be the same unearned claim one level down. The flag stays on
+    # cmd_hitl's surface for a caller that has actually seen both.
+    hitl=$(cmd_hitl --risk high --autonomy "$ceiling"); rc=$?
     # cmd_hitl's err exits its own subshell only, so the status is checked and
     # re-raised here rather than trusted to abort the caller.
     [ $rc -eq 0 ] || { printf '%s\n' "$hitl"; exit 1; }
@@ -825,6 +839,10 @@ cmd_resolve_task() {
          preferences: $preferences},
        route: $route,
        decision_rules: $decisions,
+       # A floor is not a tier. It is published beside hitl so a caller reading
+       # hitl: null still sees that a classification is owed: classify per
+       # rules/risk-autonomy.md before making any HITL claim from this value.
+       risk_floor: $floor,
        hitl: (if $hitl == null then null
               else {required: $hitl.required, reasons: $hitl.reasons} end)}'
 }

@@ -754,6 +754,14 @@ case_ C26b "the high-risk reason removed from the kernel is caught" \
       "hitl canary" \
       "sed -i.bak 's@if \$r == \"high\" then \"high-risk\"@if false then \"high-risk\"@' scripts/kernel.sh"
 
+# The ruling, pinned from the failing side: a resolve-task that folds hitl off a
+# bare route.risk_floor again would announce a human gate on every auth-guard
+# edit. Widening the guard from the classified signal back to any floor is
+# exactly that regression, so C26b has to catch it.
+case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
+      "hitl canary" \
+      "sed -i.bak 's@if \[ \"\$any_high\" = true \]; then@if [ -n \"\$floor\" ]; then@' scripts/kernel.sh"
+
 case_ C26c "a reason row deleted from rules/risk-autonomy.md is caught" \
       "hitl prose-mirror problems" \
       "sed -i.bak '/^| \`never-retry-situation\`/d' rules/risk-autonomy.md"

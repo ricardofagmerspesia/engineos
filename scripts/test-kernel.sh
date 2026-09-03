@@ -769,12 +769,46 @@ assert_err "hitl with a valueless --risk errors instead of hanging"
 run hitl --risk low --autonomy A2 --situation
 assert_err "hitl with a valueless --situation errors instead of hanging"
 
-# resolve-task carries the answer, so an adapter needs one call, not two.
+# resolve-task carries the answer, so an adapter needs one call, not two — but
+# only for a CLASSIFIED tier. A matched decision rule carrying risk=high is a
+# classification: this prompt trips rule-destructive-ddl and rule-production-write.
 run resolve-task --prompt "drop the users table in production"
 assert_ok "resolve-task with a destructive prompt exits 0"
-assert_eq "resolve-task carries hitl" "$(jqval .hitl.required)" "true"
-assert_eq "resolve-task hitl cites the high-risk floor" \
+assert_eq "resolve-task confirms the classification" "$(jqval .decision_rules.any_high)" "true"
+assert_eq "resolve-task carries hitl for a classified tier" "$(jqval .hitl.required)" "true"
+assert_eq "resolve-task hitl cites the classified high risk" \
   "$(jqvalc '[.hitl.reasons[] | select(. == "high-risk")]')" '["high-risk"]'
+# Follow-on: no --conflict is synthesized from any_high, so a conflict nobody
+# observed is never claimed. This asserts the whole list, not a subset, so a
+# reason creeping back in fails here.
+assert_eq "resolve-task claims no unobserved policy conflict" \
+  "$(jqvalc .hitl.reasons)" '["high-risk"]'
+
+# The mirror, and the point of the whole distinction: a risk FLOOR is an input
+# to classification, not a classification. security-files carries risk_floor
+# high, so the old shape announced a human gate on every auth-guard edit — gate
+# theatre (rules/gates.md). hitl must be null and the floor must be published
+# beside it so the caller knows a classification is still owed. The expected
+# floor is read from intents.json; the intent id is named because the prompt has
+# to be written to match some specific intent, so it cannot be derived.
+FLOOR_EXP=$(jq -r '.intents[] | select(.id == "security-files") | .risk_floor' "$REG/intents.json")
+run resolve-task --prompt "fix the auth guard bug"
+assert_ok "resolve-task with a floor-only prompt exits 0"
+assert_eq "resolve-task resolves the security-files intent" \
+  "$(jqvalc .task_contract.intents)" '["security-files"]'
+assert_eq "resolve-task confirms no classification happened" \
+  "$(jqval .decision_rules.any_high)" "false"
+assert_eq "resolve-task claims no hitl off a bare floor" "$(jqvalc .hitl)" "null"
+assert_eq "resolve-task publishes the floor the registry declares" \
+  "$(jqval .risk_floor)" "$FLOOR_EXP"
+
+# No intent, no rule, no scale signal: no floor either, and still no hitl. This
+# separates "hitl null because the floor is unclassified" from "hitl null
+# because there is no risk evidence at all".
+run resolve-task --prompt "what does this function return?"
+assert_ok "resolve-task with no risk evidence exits 0"
+assert_eq "resolve-task reports no floor when there is none" "$(jqval .risk_floor)" "null"
+assert_eq "resolve-task claims no hitl with no risk evidence" "$(jqvalc .hitl)" "null"
 
 # Amendment 5 coupling, from the caller's side: cmd_admit's reject message
 # embeds the literal "hitl: budget-exhausted", and `hitl --situation reject`
