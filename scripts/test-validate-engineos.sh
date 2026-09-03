@@ -947,6 +947,27 @@ p='scripts/exec-journal.sh'; s=open(p).read()
 old='  check_slug_flag --route          '
 open(p,'w').write(s.replace(old, '  check_slug_flag --note           \\\"\\\$note_set\\\"           \\\"\\\$note_val\\\"\\n'+old, 1))\""
 
+# The case the previous round could not have written, because the check could
+# not have caught it. Both of C27e's original comparisons derive their halves
+# from the guards, so removing a field's guard from BOTH boundaries leaves the
+# two halves equal and the check green — which is how `timestamp` stayed a
+# newline-and-control-character channel to disk after `agent` was fixed. Two
+# edits, one invariant: "a declared string field guarded on neither boundary".
+# Removing only one of them would fire the parity comparison instead and prove
+# nothing about the coverage one, so the expected string names the finding only
+# the declaration-driven comparison can produce.
+case_ C27e "a declared string field guarded on NEITHER boundary is caught" \
+      "declared-slug-field-not-guarded-on-append:timestamp" \
+      "sed -i.bak '/^  check_slug_flag --timestamp /d' scripts/exec-journal.sh; sed -i.bak 's|(\[\.timestamp, \.run_id,|([.run_id,|' scripts/exec-journal.sh"
+
+# ... and the declaration is only worth having if it cannot fall behind the
+# code, so it is pinned against the object append actually emits. Otherwise the
+# blind spot would just move: a field added to the writer and forgotten in
+# EJ_SCHEMA_FIELDS would be invisible again.
+case_ C27e "a field the writer emits but the schema declaration drops is caught" \
+      "emitted-but-not-declared-in-EJ_SCHEMA_FIELDS:route" \
+      "sed -i.bak 's| route:slug||' scripts/exec-journal.sh"
+
 case_ C27f "a span writer passing an unregistered capability_id is caught" \
       "exec-journal capability_id problems" \
       "sed -i.bak 's|--capability-id validate|--capability-id verify|' hooks/stop-verify.sh"
@@ -1001,6 +1022,29 @@ if [ -f "$ROOT/scripts/init-project.sh" ]; then
 else
   tskip "C29 cases — scripts/init-project.sh is not in this tree yet"
 fi
+
+# ---- C30: hook file modes ----
+# hooks.json registers hooks BY PATH, so an entry point without +x dies with
+# "permission denied" on every fire — a guardrail lost silently and for good.
+# All four directions get a case: the two mode bits, the list the installer
+# reads, and the installer going back to reading each file's own header for the
+# answer. That last one is the anchor itself, and it is the only case here whose
+# breakage a tree with correct modes cannot hide.
+case_ C30 "a hook entry point losing its exec bit is caught" \
+      "hook-entry-point-is-not-executable:prompt-advisor.sh" \
+      "chmod -x hooks/prompt-advisor.sh"
+
+case_ C30 "a sourced-only library carrying the exec bit is caught" \
+      "library-carries-the-executable-bit:lib-common.sh" \
+      "chmod +x hooks/lib-common.sh"
+
+case_ C30 "a library dropped from install.sh's list is caught" \
+      "introduces-itself-as-a-library-but-is-not-listed:lib-runner.sh" \
+      "sed -i.bak 's| lib-runner.sh||' install.sh"
+
+case_ C30 "install.sh going back to deciding executability from a file's own header is caught" \
+      "install.sh-decides-executability-from-the-file's-own-text-again" \
+      "sed -i.bak \"s#^  case .*ENGINEOS_HOOK_LIBRARIES.*#  head -8 \\\"\\\$_hook\\\" | grep -q 'Sourced only' \\&\\& continue#\" install.sh"
 
 flush_batch
 echo

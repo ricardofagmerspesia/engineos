@@ -8,7 +8,13 @@
 # instrumentation write to, so the two join without translation.
 #
 # Schema (one JSON object per line):
-#   timestamp     ISO-8601 string, when the entry was appended
+#   timestamp     ISO-8601 slug, when the entry was appended. Guarded by SLUG_RE
+#                 like every other non-note field, which admits the `Z` form this
+#                 CLI writes (2026-09-03T12:00:00Z) and the offsetless form, but
+#                 NOT a numeric offset — `+` is not in the class, so
+#                 2026-09-03T12:00:00+00:00 is a reject. Stated here because the
+#                 guard is narrower than "ISO 8601" and a consumer writing
+#                 offsets needs to know that before validate tells it
 #   run_id        string, groups entries from the same run
 #   capability_id string, matches an id in registries/capabilities.json
 #   agent         string or null, matches an agent name in registries/agents.json
@@ -117,6 +123,25 @@ SLUG_RE='^[A-Za-z0-9@_./:-]+$'
 # because a schema contract must still run standalone. validate-engineos.sh
 # C27a asserts the registry value equals this constant, so they cannot drift.
 MAX_VALUE_LEN_FALLBACK="256"
+# The schema at the top of this file, DECLARED as data: every field the append
+# path emits, with the guard class it is contracted to get on BOTH boundaries.
+# Classes: slug = SLUG_RE's character class; enum = membership of one of the
+# vocabularies above (cache_hit's is `true false`); int = non-negative integer;
+# free = free text, deliberately guarded by neither boundary, and note is the
+# only field that may carry it.
+#
+# This constant exists because a parity check is not a coverage check. C27e
+# compared the fields append guards against the fields validate guards and
+# derived BOTH sets from the guards themselves, so a field guarded on NEITHER
+# side was absent from both and the comparison passed. `timestamp` was exactly
+# that field: declared a string in the header, named by no check_slug_flag call,
+# tested by validate for `type == "string"` and nothing more — and a value
+# carrying a newline, an ANSI escape and a double quote appended and validated
+# clean while the same payload in --run-id was rejected. A declaration the
+# guards do not produce is what lets the check fail on the next such field
+# instead of being blind to it. Keep it in sync with the schema above and with
+# the object the append path emits; validate-engineos.sh C27e asserts all three.
+EJ_SCHEMA_FIELDS="timestamp:slug run_id:slug capability_id:slug agent:slug model_tier:enum status:enum tokens_in:int tokens_out:int duration_ms:int note:free trace_id:slug span_id:slug parent_span_id:slug span_kind:enum tool:slug provider:slug model:slug cost_micros:int retry_attempt:int cache_hit:enum route:slug risk:enum"
 EJ_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() {
@@ -156,8 +181,10 @@ is_slug() {
 
 # check_slug_flag <flag-name> <set-flag> <value> -> no-op when the flag was not
 # given, otherwise aborts unless the value is a slug. Every string flag except
-# --note and --timestamp shares this body; spelling it out per flag is how
-# --agent silently lost its guard while three prose homes claimed it had one.
+# --note shares this body; spelling it out per flag is how --agent silently lost
+# its guard, and then --timestamp, while three prose homes claimed no field but
+# note admitted whitespace. EJ_SCHEMA_FIELDS above is the declaration that makes
+# an omission here a check failure rather than a discovery.
 check_slug_flag() {
   [ "$2" = 1 ] || return 0
   is_slug "$3" || { echo "$1 must match $SLUG_RE, got: $3" >&2; exit 1; }
@@ -261,6 +288,14 @@ cmd_append() {
   if [ "$retry_attempt_set" = 1 ]; then
     is_nonneg_int "$retry_attempt_val" || { echo "--retry-attempt must be a non-negative integer, got: $retry_attempt_val" >&2; exit 1; }
   fi
+  # timestamp is defaulted BEFORE its guard, not after, so the generated stamp
+  # goes through the same check as a caller-supplied one rather than being
+  # trusted for being ours. The class admits what
+  # `date -u +%Y-%m-%dT%H:%M:%SZ` produces. --timestamp used to be exempt from
+  # this block by name, which made it the third field to carry a newline and a
+  # control character to disk under a claim that none could.
+  [ -n "$timestamp" ] || timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  check_slug_flag --timestamp      1                     "$timestamp"
   # run_id, capability_id and agent are IDENTIFIER fields by nature and get the
   # same guard as the v2 strings. This TIGHTENS the schema: a value with a space
   # in it used to be accepted here and to pass validate. That was the hole the
@@ -275,8 +310,6 @@ cmd_append() {
   check_slug_flag --provider       "$provider_set"       "$provider_val"
   check_slug_flag --model          "$model_set"          "$model_val"
   check_slug_flag --route          "$route_set"          "$route_val"
-
-  [ -n "$timestamp" ] || timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   # agent/note go through --arg (jq's own escaping), never hand-built into a
   # JSON literal — a raw value containing a quote or a backslash-escape
@@ -342,6 +375,8 @@ cmd_validate() {
     if ! printf '%s' "$line" | jq -e \
         --arg statuses "$VALID_STATUSES" --arg tiers "$VALID_TIERS" '
         def is_nonneg_int: type == "number" and . >= 0 and (. | floor) == .;
+        # Present-and-a-string here; the slug CLASS is applied to it in the
+        # all(...) list below, which permits null and so cannot carry this half.
         (.timestamp | type) == "string" and
         (.run_id | type) == "string" and
         (.capability_id | type) == "string" and
@@ -373,7 +408,7 @@ cmd_validate() {
         # trailing newline too, and a trailing newline is exactly the whitespace
         # this class forbids. note is absent from the list on purpose: it is the
         # one documented free-text field, and a consumer treats it as untrusted.
-        ([.run_id, .capability_id, .agent,
+        ([.timestamp, .run_id, .capability_id, .agent,
           .trace_id, .span_id, .parent_span_id, .tool, .provider, .model, .route]
           | all(. == null or ((type == "string") and test("^[A-Za-z0-9@_./:-]+\\z"))))' >/dev/null 2>&1; then
       echo "line $line_no: does not match the exec-journal schema" >&2

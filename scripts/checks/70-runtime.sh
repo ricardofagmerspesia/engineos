@@ -3,7 +3,8 @@
 # (C20*), telemetry (C22*), the constitution preamble mirrors (C23*), the
 # dispatch loop's backpressure (C24*), the per-resource circuit breaker (C25*),
 # human-in-the-loop (C26*), the agent-span exec journal (C27*), the
-# retrieval-metrics prose/data pair (C28) and the adoption entrypoints (C29).
+# retrieval-metrics prose/data pair (C28), the adoption entrypoints (C29) and
+# the hook file modes the harness executes through (C30).
 
 # Three of the families below gate on the same pair — the policy registry and
 # an executable kernel — and each carried a verbatim copy of this body until
@@ -1212,6 +1213,52 @@ ej_validated_enums() {
     | sort -u | tr '\n' ',' | sed 's/,$//'
 }
 
+# The set of fields APPEND gates as non-negative integers, and the same set as
+# VALIDATE gates. The third guard class, extracted for the same reason as the
+# other two: a class the coverage comparison below cannot see is a class a field
+# can go unguarded in.
+ej_int_flags() {
+  sed -n 's/^ *is_nonneg_int "\$\([a-z_]*\)".*/\1/p' "$EJSH" 2>/dev/null \
+    | sed 's/_val$//' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+ej_validated_ints() {
+  sed -n '/^cmd_validate()/,/^}/p' "$EJSH" 2>/dev/null \
+    | grep -F '| is_nonneg_int)' \
+    | sed -n 's/^[^.]*\.\([a-z_]\{2,\}\).*/\1/p' \
+    | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The schema's own DECLARATION of its fields, from EJ_SCHEMA_FIELDS — the one
+# set below that is not derived from a guard, which is the entire point of it.
+# Every other function in this section reads the implementation, so a field the
+# implementation guards NOWHERE is absent from all of them and a comparison
+# among them cannot see it. `timestamp` was that field.
+ej_declared_fields() { # <class|all> -> sorted CSV of the fields declared with it
+  local decl
+  decl=$(sed -n 's/^EJ_SCHEMA_FIELDS="\(.*\)"$/\1/p' "$EJSH" 2>/dev/null | head -1)
+  [ -n "$decl" ] || return 0
+  if [ "$1" = all ]; then
+    printf '%s' "$decl" | tr ' ' '\n' | sed -n 's/:[a-z]*$//p'
+  else
+    printf '%s' "$decl" | tr ' ' '\n' | sed -n "s/:$1\$//p"
+  fi | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The set of keys the append path actually EMITS, from the jq object literal it
+# builds. The declaration above is only worth having if it cannot fall behind
+# the code, so the third side of the triangle is what reaches disk. Anchored on
+# the start of the jq program rather than on its first key: an anchor naming a
+# field is an anchor a reordering of that object silently breaks, and the
+# finding then reads "cannot read the object" instead of naming the new field.
+ej_emitted_fields() {
+  sed -n "/^ *'{/,/with_entries/p" "$EJSH" 2>/dev/null \
+    | grep -o '[a-z_]\{2,\}:' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# in_csv <field> <csv> -> 0 when the field is a member.
+in_csv() { case ",$2," in *",$1,"*) return 0 ;; esac; return 1; }
+
 check_C27e() {
   have_jq || return 0
   have_exec_journal_inputs || return 0
@@ -1263,7 +1310,61 @@ check_C27e() {
     case ",$appended_enums," in *",$f,"*) ;; *) s_bad="$s_bad append-does-not-enumerate:$f" ;; esac
     case ",$validated_enums," in *",$f,"*) ;; *) s_bad="$s_bad validate-does-not-enumerate:$f" ;; esac
   done
-  [ -z "$s_bad" ] && ok "exec-journal.sh guards the same field set on append and on validate — slugs ($appended), enumerations ($appended_enums) — with note excluded from both: the containment claim its header, policy.json and rules/observability.md all make" \
+  # The THIRD comparison, and the one the two above are structurally unable to
+  # make. Both of them derive their halves from the guards, so a field guarded
+  # on NEITHER boundary is in neither half and the sets match while the claim is
+  # false. `timestamp` was exactly that: declared a string, guarded nowhere, and
+  # a value carrying a newline and an ANSI escape appended and validated clean
+  # while the same payload in --run-id was rejected — with C27e green. So the
+  # field set is taken from the schema's own declaration (EJ_SCHEMA_FIELDS),
+  # which no guard produces, and every declared field is required to be covered
+  # on BOTH boundaries by the class it was declared with.
+  declared_all=$(ej_declared_fields all)
+  emitted=$(ej_emitted_fields)
+  if [ -z "$declared_all" ]; then
+    s_bad="$s_bad cannot-read-EJ_SCHEMA_FIELDS-from-exec-journal.sh"
+  elif [ -z "$emitted" ]; then
+    s_bad="$s_bad cannot-read-the-emitted-object-keys-from-exec-journal.sh"
+  else
+    # A declaration that may silently fall behind the code is no better than no
+    # declaration: it would just move the blind spot. So the declared set is
+    # pinned against what append actually writes, in both directions, before
+    # anything is asserted through it.
+    for f in $(printf '%s' "$emitted" | tr ',' ' '); do
+      in_csv "$f" "$declared_all" || s_bad="$s_bad emitted-but-not-declared-in-EJ_SCHEMA_FIELDS:$f"
+    done
+    for f in $(printf '%s' "$declared_all" | tr ',' ' '); do
+      in_csv "$f" "$emitted" || s_bad="$s_bad declared-in-EJ_SCHEMA_FIELDS-but-never-emitted:$f"
+    done
+    appended_ints=$(ej_int_flags)
+    validated_ints=$(ej_validated_ints)
+    # Each declared class is answered by the pair of sets that implements it.
+    # `free` is answered by every set at once: note's whole contract is that no
+    # boundary constrains its shape, so it must appear in none of the six.
+    for f in $(ej_declared_fields slug | tr ',' ' '); do
+      in_csv "$f" "$appended"  || s_bad="$s_bad declared-slug-field-not-guarded-on-append:$f"
+      in_csv "$f" "$validated" || s_bad="$s_bad declared-slug-field-not-guarded-on-validate:$f"
+    done
+    for f in $(ej_declared_fields enum | tr ',' ' '); do
+      in_csv "$f" "$appended_enums"  || s_bad="$s_bad declared-enum-field-not-enumerated-on-append:$f"
+      in_csv "$f" "$validated_enums" || s_bad="$s_bad declared-enum-field-not-enumerated-on-validate:$f"
+    done
+    for f in $(ej_declared_fields int | tr ',' ' '); do
+      in_csv "$f" "$appended_ints"  || s_bad="$s_bad declared-int-field-not-bounded-on-append:$f"
+      in_csv "$f" "$validated_ints" || s_bad="$s_bad declared-int-field-not-bounded-on-validate:$f"
+    done
+    for f in $(ej_declared_fields free | tr ',' ' '); do
+      for s in "$appended" "$validated" "$appended_enums" "$validated_enums" "$appended_ints" "$validated_ints"; do
+        in_csv "$f" "$s" && s_bad="$s_bad declared-free-text-field-is-guarded:$f"
+      done
+    done
+    # ... and the other direction, so a guard on a field nobody declared is a
+    # finding too: the declaration is the schema, not a subset of it.
+    for f in $(printf '%s,%s,%s' "$appended" "$appended_enums" "$appended_ints" | tr ',' ' '); do
+      in_csv "$f" "$declared_all" || s_bad="$s_bad append-guards-an-undeclared-field:$f"
+    done
+  fi
+  [ -z "$s_bad" ] && ok "exec-journal.sh guards the same field set on append and on validate — slugs ($appended), enumerations ($appended_enums) — and every field EJ_SCHEMA_FIELDS declares is covered on both boundaries by its declared class, with note guarded by neither: the containment claim its header, policy.json and rules/observability.md all make" \
                    || bad "exec-journal slug-guard set problems:$s_bad"
 }
 
@@ -1408,4 +1509,67 @@ check_C29() {
   fi
   [ -z "$a_bad" ] && ok "the adoption entrypoints are wired: scripts/init-project.sh is executable, commands/init.md invokes it, ensure-project-layout.sh sources hooks/scaffold-layout.sh, and docs/ADOPTION.md names /engineos:init" \
                    || bad "adoption entrypoint problems:$a_bad"
+}
+
+# ------------- C30: hook entry points are executable, libraries are not
+# hooks/hooks.json registers each hook BY PATH, so the harness executes the file
+# itself. An entry point that loses +x therefore does not degrade — it dies with
+# "permission denied" on every fire and the guardrail is gone, silently and
+# permanently. The mode bit is load-bearing, and nothing checked it.
+#
+# install.sh used to decide which files to chmod by searching each file's own
+# first eight lines for the phrase a library introduces itself with, unanchored,
+# so a header sentence that contained the phrase while DENYING it was enough to
+# leave an entry point at 644. It now reads an explicit list; this check is what
+# makes that list honest, in three directions at once:
+#   - every listed name exists, introduces itself as a library, and is NOT +x;
+#   - every other hooks/*.sh IS +x and does not introduce itself as a library;
+#   - install.sh does not go back to deciding it from the file's own text.
+# The last one is the anchor itself, and it is the only assertion here that a
+# tree with correct modes cannot satisfy by accident: revert the loop and every
+# mode above still agrees, because the files themselves have not moved.
+#
+# The self-introduction phrase is matched here the same loose way install.sh
+# used to match it, and that is deliberate: a false positive in THIS direction
+# fails the build, where a false positive in the installer silently disabled a
+# hook. Fail-closed and fail-open are not the same mistake.
+LIB_MARKER='Sourced only'
+have_hook_mode_inputs() {
+  [ -f install.sh ] && [ -d hooks ] && return 0
+  skip_once hook-modes "install.sh or hooks/ missing — hook mode checks skipped"
+  return 1
+}
+
+check_C30() {
+  have_hook_mode_inputs || return 0
+  h_bad=""
+  libs=$(sed -n 's/^ENGINEOS_HOOK_LIBRARIES="\(.*\)"$/\1/p' install.sh 2>/dev/null | head -1)
+  if [ -z "$libs" ]; then
+    bad "cannot read ENGINEOS_HOOK_LIBRARIES from install.sh — the hook library list has no home"
+    return 0
+  fi
+  for l in $libs; do
+    if [ ! -f "hooks/$l" ]; then
+      h_bad="$h_bad listed-library-does-not-exist:$l"
+      continue
+    fi
+    head -8 "hooks/$l" | grep -qF "$LIB_MARKER" \
+      || h_bad="$h_bad listed-library-does-not-introduce-itself-as-one:$l"
+    [ -x "hooks/$l" ] && h_bad="$h_bad library-carries-the-executable-bit:$l"
+  done
+  for f in hooks/*.sh; do
+    [ -f "$f" ] || continue
+    b="${f##*/}"
+    case " $libs " in *" $b "*) continue ;; esac
+    [ -x "$f" ] || h_bad="$h_bad hook-entry-point-is-not-executable:$b"
+    head -8 "$f" | grep -qF "$LIB_MARKER" \
+      && h_bad="$h_bad introduces-itself-as-a-library-but-is-not-listed:$b"
+  done
+  # The phrase may appear in install.sh's prose — this check's own reason for
+  # existing is written there — but never in a line it runs.
+  if grep -n "$LIB_MARKER" install.sh 2>/dev/null | grep -qvE '^[0-9]+:[[:space:]]*#'; then
+    h_bad="$h_bad install.sh-decides-executability-from-the-file's-own-text-again"
+  fi
+  [ -z "$h_bad" ] && ok "hook modes are the honest signal install.sh treats them as: every hooks/*.sh outside install.sh's library list is executable, every library in it exists, says so in its header and is not executable, and the list — not the files' own text — is what the installer reads" \
+                   || bad "hook mode problems:$h_bad"
 }

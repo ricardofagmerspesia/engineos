@@ -141,12 +141,28 @@ outset — there is no migration for it.
 ### Why the `exec-journal.sh validate` tightening is MINOR, not PATCH
 
 In 1.5.0, `scripts/exec-journal.sh validate` accepted any string in `run_id`,
-`capability_id` and `agent`. In 1.6.0 all three must match the slug class
-`^[A-Za-z0-9@_./:-]+$`, so a line that validated yesterday can fail today. Per
+`capability_id`, `agent` and `timestamp`, and checked `status` and `model_tier`
+for type only. In 1.6.0 the four slug fields must match the slug class
+`^[A-Za-z0-9@_./:-]+$` and the two enumerated fields must be members of their
+declared vocabularies, so a line that validated yesterday can fail today. Per
 **Semantic versioning** above, a rule tightened to flag more is MINOR and must
 be named in the release notes; it is named there.
 
-`note` is deliberately still free text and is the only field that admits it.
+One narrow break deserves its own sentence, because it is the only case where a
+*well-formed* value is now rejected: `+` is not in the slug class, so a
+`timestamp` carrying a numeric UTC offset — `2026-09-03T12:00:00+00:00` — fails
+validation where `2026-09-03T12:00:00Z` passes. Nothing in this repo writes the
+offset form (`exec-journal.sh` defaults to `date -u +%Y-%m-%dT%H:%M:%SZ`), so
+no EngineOS-written journal is affected; a third-party writer using offsets is.
+Widening the class for `+` is a compatibility event of its own and was not
+taken here.
+
+`note` is deliberately still free text and is the only field that admits it —
+which is not the same as being the only field a consumer must distrust. Every
+other field is shape-bounded, not classified: harness-supplied characters still
+reach disk dash-joined, and the class admits `.` and `/`, so a journal field is
+never safe as a filesystem path component without `hooks/lib-common.sh`'s
+`hook_path_slug`.
 Adding a second free-text field to the journal is a compatibility event, not a
 convenience. The guard bounds the shape and the size of what reaches disk; it
 does not classify content, and `hooks/lib-common.sh` sanitizes rather than

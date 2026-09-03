@@ -115,6 +115,48 @@ bash "$EJ" validate "$tmp" >/dev/null 2>&1
 check "validate accepts free text in note, the one documented text field" 0 $?
 rm -f "$tmp"
 
+# timestamp was the THIRD field to escape the containment claim, and it survived
+# the round that closed the first two: --timestamp was exempt from
+# check_slug_flag by name, and validate tested it for `type == "string"` only.
+# The payload below — a BEL, an ANSI colour sequence, a double quote and a
+# newline — appended rc=0 and validated "all valid" through --timestamp while
+# the SAME payload in --run-id was rejected. Both boundaries get the case,
+# because it passed both.
+tmp=$(mktemp)
+TS_PAYLOAD=$(printf '2026 \a\033[31mINJECTED\033[0m "q" \nsecond-line')
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 --timestamp "$TS_PAYLOAD" >/dev/null 2>&1
+check "append rejects a newline and control characters in timestamp" 1 $?
+
+# ... and rejects it rather than writing a truncated or escaped version of it.
+[ ! -s "$tmp" ] && { pass=$((pass+1)); printf 'ok   %s\n' "the rejected timestamp appended nothing at all"; } \
+  || { fail=$((fail+1)); printf 'FAIL the rejected timestamp still wrote %s bytes\n' "$(wc -c < "$tmp")"; }
+
+jq -nc --arg ts "$TS_PAYLOAD" '{timestamp:$ts, run_id:"r", capability_id:"c", agent:null,
+  model_tier:"build", status:"OK", tokens_in:0, tokens_out:0, duration_ms:1, note:null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects a newline and control characters in timestamp" 1 $?
+rm -f "$tmp"
+
+# The other direction, so the two rejects above cannot be satisfied by a guard
+# that refuses every timestamp: the stamps this repo actually writes must still
+# be accepted, at both boundaries. The format is generated the same way
+# cmd_append generates its default rather than pinned as a literal, so a change
+# to that format moves this test with it.
+tmp=$(mktemp)
+ISO_NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 --timestamp "$ISO_NOW" >/dev/null 2>&1
+check "append accepts the ISO 8601 stamp this CLI itself writes ($ISO_NOW)" 0 $?
+
+bash "$EJ" append "$tmp" --run-id r1 --capability-id implement --model-tier build \
+  --status OK --tokens-in 1 --tokens-out 1 --duration-ms 1 >/dev/null 2>&1
+check "append accepts its own defaulted timestamp" 0 $?
+
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate accepts both, so the timestamp guard is not a blanket refusal" 0 $?
+rm -f "$tmp"
+
 # The length bound, read from the registry so this test moves with the number.
 tmp=$(mktemp)
 MVL=$(jq -r '.telemetry.exec_journal.max_value_length // 256' "$ROOT/registries/policy.json" 2>/dev/null)
