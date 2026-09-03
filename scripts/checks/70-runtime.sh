@@ -261,12 +261,14 @@ have_backpressure_inputs() {
   return 1
 }
 
-# The queue bound C24a validates and C24b/C24c consume. Prints nothing when the
-# field is not a non-negative integer, which is exactly how C24a blanks it.
+# The queue bound C24a validates and C24b/C24c consume. Prints nothing unless
+# the field is an integer >= 1 — the same condition C24a fails on — so a bound
+# C24a has already condemned can never silently reach the checks downstream.
 backpressure_maxq() {
   local v
   v=$(jq -r '.parallelism.backpressure.max_queued_units' "$PJ" 2>/dev/null)
   case "$v" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$v" -ge 1 ] || return 0
   printf '%s' "$v"
 }
 
@@ -276,7 +278,12 @@ check_C24() {
   # C24a: the backpressure block is well-formed
   b_bad=""
   maxq=$(jq -r '.parallelism.backpressure.max_queued_units' "$PJ" 2>/dev/null)
-  case "$maxq" in ''|*[!0-9]*) b_bad="$b_bad max_queued_units-not-a-nonneg-integer" ;; esac
+  case "$maxq" in
+    ''|*[!0-9]*) b_bad="$b_bad max_queued_units-not-a-nonneg-integer"; maxq="" ;;
+    # A bound of 0 makes the overload action unreachable — the kernel would go
+    # straight from dispatch to reject and `defer` would be dead data.
+    *) [ "$maxq" -ge 1 ] || b_bad="$b_bad max_queued_units-below-1" ;;
+  esac
   oa=$(jq -r '.parallelism.backpressure.overload_action // ""' "$PJ")
   jq -e --arg a "$oa" '.parallelism.backpressure.actions | index($a)' "$PJ" >/dev/null 2>&1 \
     || b_bad="$b_bad overload_action-not-in-actions"
@@ -290,25 +297,46 @@ check_C24b() {
   have_jq || return 0
   have_backpressure_inputs || return 0
   # C24b: canary — the kernel rejects exactly when the registry says the queue
-  # is full. Cap and bound come from the registry, never from a literal here.
+  # is full, and still admits an idle orchestrator. Both ends are asserted so a
+  # kernel that answered one action unconditionally cannot pass. Cap and bound
+  # come from the registry, never from a literal here.
+  d_bad=""
   cap=$(jq -r '.parallelism.wave_concurrency_cap' "$PJ")
   maxq=$(backpressure_maxq)
   got=$(bash "$KSH" admit --inflight "$cap" --queued "${maxq:-0}" 2>/dev/null | jq -r '.action // empty')
-  [ "$got" = "reject" ] && ok "kernel.sh admit rejects at cap with a full queue" \
-                        || bad "admit canary: expected reject at cap/full-queue, got '$got'"
+  [ "$got" = "reject" ] || d_bad="$d_bad expected-reject-at-cap-with-full-queue-got:${got:-none}"
+  idle=$(bash "$KSH" admit --inflight 0 --queued 0 2>/dev/null | jq -r '.action // empty')
+  [ "$idle" = "dispatch" ] || d_bad="$d_bad expected-dispatch-when-idle-got:${idle:-none}"
+  [ -z "$d_bad" ] && ok "kernel.sh admit dispatches when idle and rejects at cap with a full queue" \
+                  || bad "admit canary:$d_bad"
 }
 
 check_C24c() {
   have_jq || return 0
   have_backpressure_inputs || return 0
   # C24c: prose mirror — rules/parallelism.md names the subcommand an
-  # orchestrator is supposed to call, and quotes the registry's queue bound
+  # orchestrator is supposed to call, quotes the registry's queue bound, and
+  # carries a table row for every action the registry declares.
   p_bad=""
   maxq=$(backpressure_maxq)
   grep -q 'kernel.sh admit' rules/parallelism.md 2>/dev/null \
     || p_bad="$p_bad parallelism.md-does-not-name-kernel.sh-admit"
-  grep -qE "max_queued_units[^0-9]*${maxq}\b" rules/parallelism.md 2>/dev/null \
-    || p_bad="$p_bad parallelism.md-queue-bound-disagrees-with-registry(${maxq})"
-  [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors policy.json.parallelism.backpressure" \
+  # An empty bound would make the grep below match vacuously — "[^0-9]*\b"
+  # hits any mention of the field name — so an unusable bound is its own
+  # finding rather than a silent pass.
+  if [ -z "$maxq" ]; then
+    p_bad="$p_bad queue-bound-unusable-see-C24a"
+  elif ! grep -qE "max_queued_units[^0-9]*${maxq}\b" rules/parallelism.md 2>/dev/null; then
+    p_bad="$p_bad parallelism.md-queue-bound-disagrees-with-registry(${maxq})"
+  fi
+  for act in $(jq -r '.parallelism.backpressure.actions[]?' "$PJ"); do
+    grep -qE "^\| \`$act\`" rules/parallelism.md 2>/dev/null \
+      || p_bad="$p_bad parallelism.md-has-no-table-row-for-action:$act"
+  done
+  # and the overload action is the row that explains the queue bound
+  oa=$(jq -r '.parallelism.backpressure.overload_action // ""' "$PJ")
+  { [ -n "$oa" ] && grep -qE "^\| \`$oa\`.*max_queued_units" rules/parallelism.md 2>/dev/null; } \
+    || p_bad="$p_bad parallelism.md-overload-row-does-not-explain-the-bound:${oa:-none}"
+  [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors backpressure: names kernel.sh admit, quotes the queue bound, one row per declared action" \
                    || bad "backpressure prose-mirror problems:$p_bad"
 }

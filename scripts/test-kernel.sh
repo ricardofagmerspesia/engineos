@@ -567,15 +567,38 @@ assert_ok "admit with idle capacity exits 0"
 assert_eq "admit idle -> dispatch" "$(jqval .action)" "dispatch"
 assert_eq "admit idle capacity == cap" "$(jqval .capacity)" "$cap"
 
+# capacity is cap - inflight, not a constant: 3 running under a cap of 6 must
+# report 3 remaining, which a hardcoded cap would get wrong.
+run admit --inflight 3 --queued 0
+assert_eq "admit with 3 inflight -> dispatch" "$(jqval .action)" "dispatch"
+assert_eq "admit capacity is cap minus inflight" "$(jqval .capacity)" "3"
+assert_eq "admit answers exactly {action, capacity, reason}" \
+  "$(jqvalc '. | keys | sort')" '["action","capacity","reason"]'
+
 run admit --inflight "$cap" --queued 0
 assert_eq "admit at cap -> overload_action" "$(jqval .action)" "$(jq -r '.parallelism.backpressure.overload_action' "$REG/policy.json")"
 assert_eq "admit at cap capacity 0" "$(jqval .capacity)" "0"
 
+# over the cap with room in the queue is still the overload action, not reject
+run admit --inflight 7 --queued 5
+assert_eq "admit over cap with a non-full queue -> defer" "$(jqval .action)" "defer"
+
 run admit --inflight "$cap" --queued "$maxq"
 assert_eq "admit at cap and queue full -> reject" "$(jqval .action)" "reject"
+# Task 4's `hitl --situation reject` keys on this literal
+assert_eq "admit reject reason names the HITL trigger" \
+  "$(jqval '.reason | test("budget-exhausted")')" "true"
+
+# a leading zero is a shell-ism, not a JSON number: it normalises, and must
+# never surface as a bare jq parse error
+run admit --inflight 02 --queued 0
+assert_ok "admit normalises a leading-zero --inflight"
+assert_eq "admit treats 02 as 2" "$(jqval .capacity)" "$((cap - 2))"
 
 run admit --inflight abc --queued 0
 assert_err "admit rejects a non-numeric --inflight"
+run admit --inflight 1 --queued abc
+assert_err "admit rejects a non-numeric --queued"
 run admit --inflight 1
 assert_err "admit requires --queued"
 

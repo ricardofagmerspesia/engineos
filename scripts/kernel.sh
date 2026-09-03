@@ -11,6 +11,7 @@
 #   kernel.sh gates --risk <tier>
 #   kernel.sh retry --status <s> --attempt <n> [--situation <sit>]
 #   kernel.sh repair --check <id> --attempt <n> [--situation <sit>]
+#   kernel.sh admit --inflight <n> --queued <n>
 #   kernel.sh capability <id>
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
@@ -320,18 +321,26 @@ cmd_repair() {
 # rules/parallelism.md "Backpressure" is the prose mirror; C24 guards both.
 cmd_admit() {
   local inflight="" queued=""
+  # A flag whose value is missing must error, never spin: `shift 2` with one
+  # argument left fails silently (no set -e), $# never reaches 0, and the same
+  # flag re-matches forever. Check before shifting.
   while [ $# -gt 0 ]; do
     case "$1" in
-      --inflight) inflight="${2:-}"; shift 2 ;;
-      --queued)   queued="${2:-}"; shift 2 ;;
+      --inflight) [ $# -ge 2 ] || err "admit requires a value for --inflight"; inflight="$2"; shift 2 ;;
+      --queued)   [ $# -ge 2 ] || err "admit requires a value for --queued";   queued="$2";   shift 2 ;;
       *) err "admit: unknown argument $1" ;;
     esac
   done
   case "$inflight" in ''|*[!0-9]*) err "admit requires a numeric --inflight" ;; esac
   case "$queued"   in ''|*[!0-9]*) err "admit requires a numeric --queued" ;; esac
   need_reg policy.json
-  jq -n --argjson i "$inflight" --argjson q "$queued" --slurpfile pol "$REG/policy.json" '
-    $pol[0].parallelism as $par
+  # --arg + tonumber, not --argjson: "06" passes the digits-only check above but
+  # is not valid JSON, and --argjson would fail inside jq with a parse error on
+  # stderr instead of the kernel's {"error": ...} contract on stdout.
+  jq -n --arg i "$inflight" --arg q "$queued" --slurpfile pol "$REG/policy.json" '
+    ($i | tonumber) as $i
+    | ($q | tonumber) as $q
+    | $pol[0].parallelism as $par
     | $par.wave_concurrency_cap as $cap
     | $par.backpressure.max_queued_units as $maxq
     | ($cap - $i) as $capacity
