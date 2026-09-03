@@ -796,6 +796,108 @@ case_ C26d "admit's reject message losing the hitl reason id is caught" \
       "hitl/backpressure coupling problems" \
       "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' scripts/kernel.sh"
 
+# ---- C27: the agent-span exec journal ----
+# The registry half and the script half declare the same span vocabulary, so
+# either one moving alone is drift. Both directions get a case: a check that
+# only reads the registry would pass against a renamed constant.
+case_ C27 "a span kind renamed in the registry without exec-journal.sh is caught" \
+      "exec_journal block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['telemetry']['exec_journal']['span_kinds']=[('verify' if k=='verification' else k) for k in d['telemetry']['exec_journal']['span_kinds']]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C27 "a span kind renamed in exec-journal.sh without the registry is caught" \
+      "exec_journal block problems" \
+      "sed -i.bak 's|^VALID_SPAN_KINDS=\"router |VALID_SPAN_KINDS=\"routing |' scripts/exec-journal.sh"
+
+case_ C27 "a home that no longer names the .exec.jsonl journal is caught" \
+      "exec_journal block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['telemetry']['exec_journal']['home']='.git/engineos-telemetry/<session_id>.jsonl'
+json.dump(d,open(p,'w'),indent=2)\""
+
+# The invariant the whole schema exists for. is_slug weakened to accept
+# whitespace is a prompt-text channel straight to disk, and it is a one-line
+# edit, so it gets its own behavioral case rather than trusting the unit suite.
+case_ C27b "is_slug weakened to accept whitespace is caught by the live canary" \
+      "exec-journal span canary failed" \
+      "python3 -c \"
+p='scripts/exec-journal.sh'; s=open(p).read()
+s=s.replace(\\\"''|*[!A-Za-z0-9@_./:-]*) return 1 ;;\\\", \\\"'') return 1 ;;\\\")
+open(p,'w').write(s)\""
+
+case_ C27b "an unknown span_kind silently accepted is caught by the live canary" \
+      "exec-journal span canary failed" \
+      "sed -i.bak 's|in_list \"\$span_kind_val\" \"\$VALID_SPAN_KINDS\"|true|' scripts/exec-journal.sh"
+
+case_ C27c "the router span removed from prompt-advisor.sh is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/^hook_span router /,+1d' hooks/prompt-advisor.sh"
+
+case_ C27c "the verification span removed from stop-verify.sh is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/^  hook_span verification /,+2d' hooks/stop-verify.sh"
+
+case_ C27c "the span start marker no longer opened at dispatch is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/hook_span_open/d' hooks/announce-agent-dispatch.sh"
+
+case_ C27c "the span start markers no longer reaped is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/engineos-telemetry\/spans/d' hooks/ensure-project-layout.sh"
+
+case_ C27d "the Agent traces section renamed in rules/observability.md is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|^## Agent traces\$|## Traces|' rules/observability.md"
+
+case_ C27d "a span kind dropped from the Agent traces section is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|\`router \| coordinator \| agent \| tool \| model \| verification\`|\`router \| agent\`|' rules/observability.md"
+
+case_ C27d "the 0-is-not-free caveat dropped from the Agent traces section is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|; do not read 0 as free||' rules/observability.md"
+
+case_ C27d "tokens_in dropped from the Agent traces field list is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|\`tokens_in\`, \`tokens_out\`, ||' rules/observability.md"
+
+# ---- C28 / C29: the pairs Tasks 6 and 7 landed ----
+# NOTE: these two checks are RED until this branch is merged with the branches
+# that carry those artifacts, so on the stack's own tip the cases below pass on
+# the missing-file finding rather than on the planted one. They become
+# refutable at the merge, which is the only tree where the checks are green.
+case_ C28 "the RAG section deleted from rules/llm-apps.md is caught" \
+      "retrieval-metrics prose/data problems" \
+      "python3 -c \"
+import re
+p='rules/llm-apps.md'; s=open(p).read()
+open(p,'w').write(re.sub(r'## RAG\n(.*\n)*?(?=## )', '', s))\""
+
+case_ C28 "a metric name dropped from the RAG section is caught" \
+      "retrieval-metrics prose/data problems" \
+      "sed -i.bak 's| and \*\*MRR\*\*||' rules/llm-apps.md"
+
+case_ C28 "the retrieval-metrics reference deleted is caught" \
+      "retrieval-metrics prose/data problems" \
+      "rm -f skills/eval-harness/references/retrieval-metrics.md"
+
+case_ C29 "init-project.sh losing its exec bit is caught" \
+      "adoption entrypoint problems" \
+      "chmod -x scripts/init-project.sh 2>/dev/null; rm -f commands/init.md"
+
+case_ C29 "ensure-project-layout no longer sourcing scaffold-layout.sh is caught" \
+      "adoption entrypoint problems" \
+      "sed -i.bak '/scaffold-layout.sh/d' hooks/ensure-project-layout.sh"
+
+case_ C29 "docs/ADOPTION.md losing the /engineos:init command is caught" \
+      "adoption entrypoint problems" \
+      "sed -i.bak 's|/engineos:init|/engineos:setup|g' docs/ADOPTION.md"
+
 flush_batch
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"

@@ -32,3 +32,29 @@ reference this instead of restating logging guidance.
 ## Health & readiness
 - DO expose liveness and readiness checks; readiness must reflect real
   dependencies (DB, queue) so orchestrators route traffic correctly.
+
+## Agent traces
+
+Structured logging above is for the systems we build. This section is for the
+agents that build them. One session is one trace; every dispatched agent, the
+router decision and the verification gate are spans in it.
+
+- Home: `.git/engineos-telemetry/<session_id>.exec.jsonl`, schema
+  `scripts/exec-journal.sh` (v2 fields optional, v1 lines stay valid).
+- Correlation: `trace_id` = session id, `span_id` = the harness tool-use id,
+  `parent_span_id` for nested spans. `span_kind` is one of
+  `router | coordinator | agent | tool | model | verification`.
+- Per span: `agent`, `model_tier`, `status` (the return-envelope vocabulary),
+  `tokens_in`, `tokens_out`, `duration_ms`, `cost_micros` (integer micro-USD,
+  absent when unknown), `retry_attempt`, `cache_hit`, `route`, `risk`,
+  `tool`, `provider`, `model`.
+- Never content: every string field is a slug (`^[A-Za-z0-9@_./:-]+$`). A
+  prompt, a file body or a PII value cannot be written — the validator rejects
+  it, the same invariant as the kernel-decision events.
+- Who writes what: the dispatch/return hooks write `agent` spans (duration and
+  status only — `tokens_*` are 0 there because the hook cannot see the
+  subagent's usage; do not read 0 as free); the prompt advisor writes `router`;
+  the Stop gate writes `verification`. `tool` and `model` spans, and real token
+  and cost figures, come from a headless runner that owns the model call.
+- Consumers: the breaker's consecutive-failure count (`rules/parallelism.md`),
+  `scripts/usage-report.sh`, the retro.

@@ -21,6 +21,7 @@ IJ=registries/intents.json
 PJ=registries/policy.json
 KSH=scripts/kernel.sh
 TSH=scripts/telemetry.sh
+EJSH=scripts/exec-journal.sh
 ROUTER_MD=agents/router.md
 PROMPT_ADVISOR=hooks/prompt-advisor.sh
 HOOKS_JSON=hooks/hooks.json

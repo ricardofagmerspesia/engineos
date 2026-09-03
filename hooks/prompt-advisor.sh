@@ -16,7 +16,10 @@ if engineos_bypass_active "$HOOK_CWD"; then
 fi
 
 [ -n "$HOOK_PROMPT" ] || exit 0
+ROUTE_START=$(hook_now_ms)
 RESULT=$("$DIR/../scripts/kernel.sh" resolve-task --prompt "$HOOK_PROMPT" 2>/dev/null) || exit 0
+ROUTE_MS=$(( $(hook_now_ms) - ROUTE_START ))
+[ "$ROUTE_MS" -ge 0 ] || ROUTE_MS=0
 printf '%s' "$RESULT" | jq -e . >/dev/null 2>&1 || exit 0
 
 # Telemetry is best-effort and stores registry ids only, never prompt text.
@@ -25,6 +28,19 @@ ROUTE_DATA=$(printf '%s' "$RESULT" | jq -c \
     intents: .route.intents, suppressed: [.route.suppressed[]?.id],
     agents: .route.agents}' 2>/dev/null)
 hook_telemetry route "$ROUTE_DATA"
+
+# The same decision as a span: what the kernel decided is the event above, how
+# long resolving it took is this line (rules/observability.md "Agent traces").
+# model_tier is `cheap` because resolve-task is a deterministic registry lookup
+# with no model call at all — claiming `build` here would invent model spend in
+# every consumer that sums by tier. Ids only, exactly like the event: the first
+# intent and the risk FLOOR, never the prompt.
+ROUTE_ID=$(hook_slug "$(printf '%s' "$RESULT" | jq -r '(.route.intents[0] // .task_contract.intents[0]) // "none"' 2>/dev/null)")
+ROUTE_RISK=$(printf '%s' "$RESULT" | jq -r '.task_contract.risk_floor // "low"' 2>/dev/null)
+case "$ROUTE_RISK" in low|medium|high) ;; *) ROUTE_RISK=low ;; esac
+[ -n "$ROUTE_ID" ] || ROUTE_ID=none
+hook_span router --capability-id route --model-tier cheap --status OK \
+  --duration-ms "$ROUTE_MS" --route "$ROUTE_ID" --risk "$ROUTE_RISK"
 
 if printf '%s' "$RESULT" | jq -e '.decision_rules.matches | length > 0' >/dev/null 2>&1; then
   DECISION_DATA=$(printf '%s' "$RESULT" | jq -c \

@@ -223,3 +223,121 @@ hook_telemetry() {
     --session "$HOOK_SID" --event "$1" --data "$2" >/dev/null 2>&1 || true
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# Agent spans
+#
+# The events above record what EngineOS DECIDED. The four helpers below record
+# what actually HAPPENED when agents ran: one session is one trace, and every
+# dispatched agent, router decision and verification gate is a span in it
+# (rules/observability.md "Agent traces"). Same opt-in gates as hook_telemetry,
+# a different file — <session>.exec.jsonl, whose schema is scripts/exec-journal.sh.
+# ---------------------------------------------------------------------------
+
+# hook_slug <value> -> the value with every character outside the span slug
+# class (registries/policy.json telemetry.value_pattern) replaced by '-'. The
+# span writer REJECTS anything else, and a rejected span is a silently lost one,
+# so a hook sanitizes a harness-supplied value here rather than gambling. \n
+# stays in the class so command substitution strips the trailing newline instead
+# of the class turning it into a '-'.
+hook_slug() {
+  printf '%s' "${1:-}" | tr -c 'A-Za-z0-9@_./:-\n' '-'
+}
+
+# hook_now_ms -> epoch milliseconds, through three rungs in order of accuracy:
+#   1. bash 5's EPOCHREALTIME — microseconds, no process spawn. Its decimal
+#      separator is locale-dependent, hence the [.,] split. Absent on the bash
+#      3.2 that ships as /bin/bash on macOS, which is why there are two more.
+#   2. GNU `date +%s%3N` — real milliseconds. BSD date has no sub-second format
+#      and echoes the literal "%3N" back, which is exactly how rung 3 gets
+#      selected: a non-digit in the answer.
+#   3. whole seconds scaled by 1000. A span measured here is accurate to the
+#      second, and the trailing zeros make that visible rather than hide it.
+# Deliberately no perl/python rung: spawning an interpreter to time a
+# sub-second call costs more than the imprecision it removes.
+hook_now_ms() {
+  local r="${EPOCHREALTIME:-}" s f n
+  if [ -n "$r" ]; then
+    s=${r%%[.,]*}
+    f=${r#*[.,]}
+    f="${f}000000"
+    printf '%s%s' "$s" "${f:0:3}"
+    return 0
+  fi
+  n=$(date +%s%3N 2>/dev/null)
+  case "$n" in
+    ''|*[!0-9]*) printf '%s000' "$(date +%s)" ;;
+    *) printf '%s' "$n" ;;
+  esac
+}
+
+# hook_span_open <span-id> -> record this span's start time so a LATER hook can
+# close it. PreToolUse and PostToolUse are separate processes, so the start
+# instant has to survive on disk; the file is named by the span id and removed
+# by hook_span_close. Silent no-op when the project has not opted in.
+hook_span_open() {
+  [ "${ENGINEOS_TELEMETRY:-}" = "0" ] && return 0
+  [ -n "${1:-}" ] || return 0
+  # The span id names a file, and it arrives from the harness. `.` and `/` are
+  # inside the slug class (correct for a field value), so the marker path is
+  # guarded here instead: no separators, no parent-dir hops.
+  case "$1" in */*|*..*) return 0 ;; esac
+  hook_telemetry_dir || return 0
+  mkdir -p "$HOOK_TELEMETRY_DIR/spans" 2>/dev/null || return 0
+  hook_now_ms > "$HOOK_TELEMETRY_DIR/spans/$1" 2>/dev/null || true
+  return 0
+}
+
+# hook_span_close <span-id> -> echo the span's duration in ms and consume its
+# start marker. Non-zero when there is no marker to close, so a PostToolUse
+# without a matching PreToolUse writes nothing rather than a fabricated
+# duration. The clamp guards a clock that moved backwards (NTP step, DST on a
+# non-UTC clock); exec-journal.sh rejects a negative duration outright.
+hook_span_close() {
+  local start now dur
+  # Checked here as well as in hook_span_open: this is the half that calls
+  # hook_telemetry_dir, which CREATES the telemetry directory, so skipping the
+  # switch here would have ENGINEOS_TELEMETRY=0 still touch the repo.
+  [ "${ENGINEOS_TELEMETRY:-}" = "0" ] && return 1
+  [ -n "${1:-}" ] || return 1
+  case "$1" in */*|*..*) return 1 ;; esac   # same guard as hook_span_open
+  hook_telemetry_dir || return 1
+  [ -f "$HOOK_TELEMETRY_DIR/spans/$1" ] || return 1
+  start=$(cat "$HOOK_TELEMETRY_DIR/spans/$1" 2>/dev/null)
+  rm -f "$HOOK_TELEMETRY_DIR/spans/$1" 2>/dev/null || true
+  case "${start:-}" in ''|*[!0-9]*) return 1 ;; esac
+  now=$(hook_now_ms)
+  dur=$((now - start))
+  [ "$dur" -ge 0 ] || dur=0
+  printf '%s' "$dur"
+}
+
+# hook_span <span-kind> [exec-journal flags...] -> append one span line to this
+# session's exec journal. Off when ENGINEOS_TELEMETRY=0 and off in any project
+# that never adopted EngineOS, exactly like hook_telemetry; always returns 0,
+# because evidence must not become a gate.
+#
+# run_id and trace_id are both the session id, so every span of one session
+# joins without four call sites repeating it, and tokens are 0 because a hook
+# cannot see a subagent's usage — a caller that CAN (the headless runner) passes
+# its own --tokens-in/--tokens-out after the kind and wins, last flag set.
+# Callers supply what only they know: --span-id, --capability-id, --model-tier,
+# --status, --duration-ms and the fields specific to their kind.
+hook_span() {
+  local kind="${1:-}" sid name
+  shift || true
+  [ "${ENGINEOS_TELEMETRY:-}" = "0" ] && return 0
+  [ -n "$kind" ] || return 0
+  hook_telemetry_dir || return 0
+  sid=$(hook_slug "${HOOK_SID:-nosession}")
+  # The slug class permits `.` and `/` — correct for a FIELD value, wrong for a
+  # file name, where a session id of "../x" would write outside the telemetry
+  # dir. The name is narrowed further; the trace_id keeps the fuller class.
+  name=$(printf '%s' "$sid" | tr -c 'A-Za-z0-9@_:-' '-')
+  [ -n "$name" ] || name=nosession
+  "$LIB_DIR/../scripts/exec-journal.sh" append \
+    "$HOOK_TELEMETRY_DIR/$name.exec.jsonl" \
+    --run-id "$sid" --trace-id "$sid" \
+    --span-kind "$kind" --tokens-in 0 --tokens-out 0 "$@" >/dev/null 2>&1 || true
+  return 0
+}

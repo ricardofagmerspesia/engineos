@@ -58,7 +58,18 @@ fi
 if command -v jq >/dev/null 2>&1 && [ -n "$GITDIR" ] && [ -d "$GITDIR/engineos-telemetry" ]; then
   RET=$(jq -r '.telemetry.retention_days // empty' "$REPO_DIR/registries/policy.json" 2>/dev/null)
   case "$RET" in ''|*[!0-9]*) : ;; *)
-    find "$GITDIR/engineos-telemetry" -maxdepth 1 -name '*.jsonl' -mtime "+$RET" -exec rm -f {} + 2>/dev/null || true ;;
+    # The '*.jsonl' glob already covers the agent-span journals as well —
+    # <session>.exec.jsonl ends in .jsonl (rules/observability.md "Agent
+    # traces") — so both streams retire on the one registry window.
+    find "$GITDIR/engineos-telemetry" -maxdepth 1 -name '*.jsonl' -mtime "+$RET" -exec rm -f {} + 2>/dev/null || true
+    # Span start markers are one file per in-flight dispatch, removed by
+    # hooks/announce-agent-return.sh when the span closes. A dispatch whose
+    # return hook never fired leaves one behind, and maxdepth 1 above never
+    # descends into their directory, so they retire on the same window rather
+    # than accumulating for the life of the repo.
+    if [ -d "$GITDIR/engineos-telemetry/spans" ]; then
+      find "$GITDIR/engineos-telemetry/spans" -type f -mtime "+$RET" -exec rm -f {} + 2>/dev/null || true
+    fi ;;
   esac
 fi
 

@@ -126,6 +126,10 @@ TARGETS="lint typecheck"
 
 FAILED=0
 OUT=""
+# Wall clock around the whole ladder, for the verification span below. Started
+# here and not at the top of the hook: the span measures the checks, not the
+# transcript parsing that decided which packages to check.
+LADDER_START=$(hook_now_ms)
 while IFS= read -r PKG_DIR; do
   [ -n "$PKG_DIR" ] || continue
   [ -d "$PKG_DIR" ] || continue
@@ -161,6 +165,16 @@ if [ "$HAVE_JQ" = 1 ] && [ "${ENGINEOS_TELEMETRY:-}" != "0" ]; then
     | jq -R . | jq -cs --argjson f "$([ "$FAILED" -eq 1 ] && echo true || echo false)" \
       '{failed: $f, targets: .}')
   hook_telemetry verify "$TDATA"
+  # The same stop cycle, as a span: the event above says WHICH packages went
+  # red, this line says how long the gate took and whether it passed
+  # (rules/observability.md "Agent traces"). Inside this block on purpose, so it
+  # inherits the one-event-per-stop-cycle guard the loop guard above provides.
+  # model_tier is `cheap`: lint and typecheck are mechanical and invoke no model.
+  LADDER_MS=$(( $(hook_now_ms) - LADDER_START ))
+  [ "$LADDER_MS" -ge 0 ] || LADDER_MS=0
+  hook_span verification --capability-id verify --model-tier cheap \
+    --status "$([ "$FAILED" -eq 1 ] && echo FAILED || echo OK)" \
+    --duration-ms "$LADDER_MS"
 fi
 
 [ "$FAILED" -eq 1 ] || exit 0

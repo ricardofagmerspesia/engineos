@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # Checks on the runtime's own policy plumbing: the check-level repair loop
 # (C20*), telemetry (C22*), the constitution preamble mirrors (C23*), the
-# dispatch loop's backpressure (C24*), the per-resource circuit breaker (C25*)
-# and human-in-the-loop (C26*).
+# dispatch loop's backpressure (C24*), the per-resource circuit breaker (C25*),
+# human-in-the-loop (C26*), the agent-span exec journal (C27*), the
+# retrieval-metrics prose/data pair (C28) and the adoption entrypoints (C29).
 
 # Three of the families below gate on the same pair — the policy registry and
 # an executable kernel — and each carried a verbatim copy of this body until
@@ -767,4 +768,364 @@ check_C26d() {
   fi
   [ -z "$k_bad" ] && ok "the backpressure/hitl coupling holds: policy.json.hitl declares $bx in both reasons and situations, kernel.sh admit's reject message cites 'hitl: $bx', and kernel.sh hitl --situation reject answers with exactly that id" \
                    || bad "hitl/backpressure coupling problems:$k_bad"
+}
+
+# ------------- C27: the agent-span exec journal — data, canary, wiring, prose
+# The C22* family checks what EngineOS DECIDED; this one checks the record of
+# what HAPPENED when agents ran. Same three-part shape as C24/C25/C26 over an
+# eighth prose/data pair, plus a wiring part in both directions like C22c.
+# Spans live in .git/ on developer machines and a CI clone has none by
+# construction, so this validates the registry, the CLI's behaviour and the
+# plumbing — never the data.
+# Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 5
+# ADR: docs/adr/2026-09-03-spans-extend-exec-journal.md
+have_exec_journal_inputs() {
+  # Deliberately NOT delegating to have_kernel_inputs: this family reads
+  # exec-journal.sh, and gating on kernel.sh would be a guard that passes while
+  # the real input is missing. Mirrors have_telemetry_inputs, its true analogue.
+  [ -f "$PJ" ] && [ -x "$EJSH" ] && return 0
+  skip_once exec-journal "policy.json or exec-journal.sh missing — exec-journal span checks skipped"
+  return 1
+}
+
+# The span vocabulary as the SCRIPT declares it, normalised to a sorted CSV.
+# Prints nothing when the constant cannot be read, which is how C27a turns an
+# unparseable script into its own named finding instead of a vacuous match
+# against an empty list.
+ej_constant() { # <constant-name>
+  local v
+  v=$(sed -n "s/^$1=\"\\(.*\\)\"\$/\\1/p" "$EJSH" 2>/dev/null | head -1)
+  [ -n "$v" ] || return 0
+  printf '%s' "$v" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ',' | sed 's/,$//'
+}
+
+# The same list as the REGISTRY declares it, so the two are compared as data
+# and neither side is a literal in this file.
+ej_registry_list() { # <field-name>
+  jq -r --arg f "$1" '[.telemetry.exec_journal[$f][]? | select(type=="string")] | sort | join(",")' "$PJ" 2>/dev/null
+}
+
+check_C27() {
+  have_jq || return 0
+  have_exec_journal_inputs || return 0
+  # C27a: the exec_journal block is well-formed and agrees with the script's
+  # own constants. need_reg-style file presence proves nothing about the block,
+  # so its absence is checked explicitly before anything reads through it —
+  # jq sorts null below every value and would answer confidently otherwise.
+  x_bad=""
+  if ! jq -e '.telemetry.exec_journal' "$PJ" >/dev/null 2>&1; then
+    bad "policy.json has no telemetry.exec_journal block"
+    return 0
+  fi
+  home=$(jq -r '.telemetry.exec_journal.home // empty' "$PJ")
+  case "$home" in
+    '') x_bad="$x_bad home-missing" ;;
+    *.exec.jsonl) ;;
+    *) x_bad="$x_bad home-does-not-end-in-.exec.jsonl:$home" ;;
+  esac
+  schema=$(jq -r '.telemetry.exec_journal.schema // empty' "$PJ")
+  if [ -z "$schema" ]; then
+    x_bad="$x_bad schema-missing"
+  elif [ ! -x "$schema" ]; then
+    x_bad="$x_bad schema-names-a-non-executable-file:$schema"
+  fi
+  # Both halves of each pair are read from their own source. A blank on either
+  # side is its own finding: comparing two empty strings is the vacuous match
+  # that would let a renamed span kind through.
+  for pair in "span_kinds:VALID_SPAN_KINDS" "statuses:VALID_STATUSES"; do
+    field="${pair%%:*}"; constant="${pair##*:}"
+    from_script=$(ej_constant "$constant")
+    from_registry=$(ej_registry_list "$field")
+    if [ -z "$from_script" ]; then
+      x_bad="$x_bad cannot-read-$constant-from-exec-journal.sh"
+    elif [ -z "$from_registry" ]; then
+      x_bad="$x_bad $field-missing-or-empty-in-the-registry"
+    elif [ "$from_script" != "$from_registry" ]; then
+      x_bad="$x_bad $field-disagrees-with-$constant(registry:$from_registry script:$from_script)"
+    fi
+  done
+  nwb=$(jq -r '[.telemetry.exec_journal.written_by[]? | select(type=="string")] | length' "$PJ")
+  if [ "${nwb:-0}" -lt 1 ]; then
+    x_bad="$x_bad written_by-not-a-non-empty-array-of-strings"
+  else
+    while IFS= read -r wb; do
+      [ -n "$wb" ] || continue
+      [ -f "$wb" ] || x_bad="$x_bad written_by-names-a-missing-file:$wb"
+    done < <(jq -r '.telemetry.exec_journal.written_by[]? | select(type=="string")' "$PJ")
+  fi
+  helper=$(jq -r '.telemetry.exec_journal.written_by_helper // empty' "$PJ")
+  if [ -z "$helper" ]; then
+    x_bad="$x_bad written_by_helper-missing"
+  elif [ ! -f "$helper" ]; then
+    x_bad="$x_bad written_by_helper-names-a-missing-file:$helper"
+  fi
+  [ -z "$x_bad" ] && ok "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds and statuses match exec-journal.sh's own constants, and every writer exists" \
+                   || bad "exec_journal block problems:$x_bad"
+}
+
+check_C27b() {
+  have_jq || return 0
+  have_exec_journal_inputs || return 0
+  # C27b: the writer is live — a behavioural canary against the running CLI,
+  # in BOTH directions. The accept half alone would pass against a CLI that
+  # accepts everything, and the reject half alone against one that accepts
+  # nothing, so each declared span kind is exercised and each malformed value
+  # is asserted to be refused. Every field a consumer gates on is asserted,
+  # not just the exit code.
+  c_bad=""
+  cf=$(mktemp)
+  base="--run-id canary --capability-id route --model-tier build --status OK --tokens-in 0 --tokens-out 0 --duration-ms 1"
+  # Accept: one line with every v2 field set, then read each one back.
+  # shellcheck disable=SC2086
+  if bash "$EJSH" append "$cf" $base --status FAILED --duration-ms 900 \
+       --trace-id canary-session --span-id tu-1 --parent-span-id tu-0 --span-kind tool \
+       --tool mcp.postgres --provider anthropic --model claude-opus-5 \
+       --cost-micros 1200 --retry-attempt 1 --cache-hit false --route dba --risk medium >/dev/null 2>&1; then
+    bash "$EJSH" validate "$cf" >/dev/null 2>&1 || c_bad="$c_bad full-v2-line-did-not-validate"
+    tail -1 "$cf" | jq -e '.trace_id=="canary-session" and .span_id=="tu-1" and .parent_span_id=="tu-0"
+      and .span_kind=="tool" and .tool=="mcp.postgres" and .provider=="anthropic"
+      and .model=="claude-opus-5" and .cost_micros==1200 and .retry_attempt==1
+      and .cache_hit==false and .route=="dba" and .risk=="medium" and .status=="FAILED"' >/dev/null 2>&1 \
+      || c_bad="$c_bad full-v2-line-did-not-round-trip"
+  else
+    c_bad="$c_bad full-v2-line-was-rejected"
+  fi
+  # Accept: every span kind the registry declares, read from the registry so a
+  # renamed kind moves this canary with it.
+  for k in $(jq -r '.telemetry.exec_journal.span_kinds[]?' "$PJ"); do
+    # shellcheck disable=SC2086
+    bash "$EJSH" append "$cf" $base --span-kind "$k" >/dev/null 2>&1 \
+      || c_bad="$c_bad declared-span-kind-rejected:$k"
+  done
+  # Accept: a v1 line, carrying no v2 key at all. Backward compatibility is the
+  # contract, and a v2 field emitted as an explicit null would still validate,
+  # so the SHAPE is asserted and not only the exit code.
+  vf=$(mktemp)
+  # shellcheck disable=SC2086
+  if bash "$EJSH" append "$vf" $base >/dev/null 2>&1; then
+    jq -e 'has("span_kind") or has("trace_id") or has("cost_micros") | not' "$vf" >/dev/null 2>&1 \
+      || c_bad="$c_bad a-v1-line-now-carries-v2-keys"
+  else
+    c_bad="$c_bad v1-line-was-rejected"
+  fi
+  rm -f "$vf"
+  # Reject: the outcomes that must NOT be accepted. The whitespace case is the
+  # invariant the whole schema exists for — no span field admits a space, so
+  # prompt text and PII cannot reach disk through one.
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --trace-id "has space" >/dev/null 2>&1 \
+    && c_bad="$c_bad whitespace-trace_id-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --trace-id "$(printf 'clean\nthen arbitrary text')" >/dev/null 2>&1 \
+    && c_bad="$c_bad newline-trace_id-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --span-kind bogus-kind >/dev/null 2>&1 \
+    && c_bad="$c_bad unknown-span_kind-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --risk critical >/dev/null 2>&1 \
+    && c_bad="$c_bad unknown-risk-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --cost-micros 1.5 >/dev/null 2>&1 \
+    && c_bad="$c_bad fractional-cost_micros-was-not-rejected"
+  # shellcheck disable=SC2086
+  bash "$EJSH" append "$cf" $base --cache-hit yes >/dev/null 2>&1 \
+    && c_bad="$c_bad non-boolean-cache_hit-was-not-rejected"
+  rm -f "$cf"
+  # Reject on the validate side too: that is the guard for journals this CLI did
+  # not write, which is where the headless runner's spans will arrive from.
+  bf=$(mktemp)
+  printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null,"trace_id":"bad id","route":"good"}' > "$bf"
+  bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
+    && c_bad="$c_bad validate-accepted-a-whitespace-span-field"
+  rm -f "$bf"
+  [ -z "$c_bad" ] && ok "scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, and refuses whitespace, an unknown kind, an unknown risk, a fractional cost and a non-boolean cache_hit" \
+                   || bad "exec-journal span canary failed:$c_bad"
+}
+
+check_C27c() {
+  have_jq || return 0
+  have_exec_journal_inputs || return 0
+  # C27c: wiring, in both directions — every declared writer really writes a
+  # span, every hook that writes one is declared, the shared append site cannot
+  # see prompt text, and the reaper covers the new file.
+  w_bad=""
+  kinds=$(jq -r '[.telemetry.exec_journal.span_kinds[]?] | join("|")' "$PJ")
+  if [ -z "$kinds" ]; then
+    # An empty alternation matches every line, so the greps below would pass
+    # against a hook that writes nothing at all.
+    w_bad="$w_bad span_kinds-empty-cannot-check-wiring"
+  else
+    # Forward. The append itself lives in hooks/lib-common.sh (hook_span); a
+    # writer names its span KIND at that helper rather than spelling out the
+    # CLI call, and either form counts as wired.
+    while IFS= read -r wb; do
+      [ -n "$wb" ] || continue
+      [ -f "$wb" ] || continue   # missing file is C27a's finding, not a second one here
+      grep -qE 'exec-journal\.sh|hook_span' "$wb" \
+        || w_bad="$w_bad [$wb:does-not-write-a-span]"
+      grep -qE -- "(hook_span|hook_span_open|hook_span_close)[[:space:]]" "$wb" \
+        || w_bad="$w_bad [$wb:names-no-span-helper]"
+    done < <(jq -r '.telemetry.exec_journal.written_by[]? | select(type=="string")' "$PJ")
+    # The dispatch hook opens a span it cannot close and the return hook closes
+    # it; one without the other leaks markers or fabricates durations.
+    grep -q 'hook_span_open' hooks/announce-agent-dispatch.sh 2>/dev/null \
+      || w_bad="$w_bad announce-agent-dispatch.sh-does-not-open-a-span"
+    grep -q 'hook_span_close' hooks/announce-agent-return.sh 2>/dev/null \
+      || w_bad="$w_bad announce-agent-return.sh-does-not-close-a-span"
+    # Reverse: a hook that emits a span kind is declared as a writer. Without
+    # this half a second hook could start writing `router` spans and the
+    # registry — which the retro and the breaker count read to know where spans
+    # come from — would never say so. test-*.sh assert on a kind, they do not
+    # produce it; lib-common.sh passes the kind through as "$kind".
+    for hk in hooks/*.sh; do
+      case "$hk" in hooks/test-*|hooks/lib-common.sh) continue ;; esac
+      grep -qE -- "hook_span[[:space:]]+($kinds)([[:space:]]|\$)" "$hk" || continue
+      jq -e --arg h "$hk" '.telemetry.exec_journal.written_by | index($h)' "$PJ" >/dev/null 2>&1 \
+        || w_bad="$w_bad [$hk:writes-a-span-but-is-not-in-written_by]"
+    done
+  fi
+  # The shared append site is where a prompt-text leak would actually happen,
+  # so the ban is enforced there and not only at the callers (mirrors C22c).
+  helper=$(jq -r '.telemetry.exec_journal.written_by_helper // empty' "$PJ")
+  if [ -n "$helper" ] && [ -f "$helper" ]; then
+    grep -A6 'exec-journal.sh" append' "$helper" \
+      | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
+      && w_bad="$w_bad [$helper:span-append-references-prompt-text]"
+  fi
+  # The reaper: <session>.exec.jsonl is covered by the existing '*.jsonl' glob,
+  # and the span start markers live one level down where that glob never looks.
+  grep -q 'exec\.jsonl' hooks/ensure-project-layout.sh 2>/dev/null \
+    || w_bad="$w_bad ensure-project-layout.sh-does-not-account-for-.exec.jsonl"
+  grep -q 'engineos-telemetry/spans' hooks/ensure-project-layout.sh 2>/dev/null \
+    || w_bad="$w_bad ensure-project-layout.sh-does-not-reap-the-span-start-markers"
+  [ -z "$w_bad" ] && ok "exec-journal span wiring is complete in both directions (every declared writer writes a span, every span-writing hook is declared), prompt-text-free at the shared append site, and reaped by ensure-project-layout.sh" \
+                   || bad "exec-journal wiring problems:$w_bad"
+}
+
+check_C27d() {
+  have_jq || return 0
+  have_exec_journal_inputs || return 0
+  # C27d: prose mirror — rules/observability.md carries an "Agent traces"
+  # section and states the field vocabulary a consumer codes against. Scoped to
+  # that section, never the file: `trace_id` and `provider` occur elsewhere in
+  # the rules tree, so a file-wide grep would pass with the section deleted.
+  p_bad=""
+  grep -qE '^## Agent traces$' rules/observability.md 2>/dev/null \
+    || p_bad="$p_bad observability.md-has-no-Agent-traces-section"
+  asec=$(sed -n '/^## Agent traces$/,/^## /p' rules/observability.md 2>/dev/null)
+  if [ -z "$asec" ]; then
+    p_bad="$p_bad Agent-traces-section-is-empty"
+  else
+    for term in trace_id span_kind cost_micros; do
+      printf '%s' "$asec" | grep -q "$term" \
+        || p_bad="$p_bad Agent-traces-section-does-not-name:$term"
+    done
+    # Every declared span kind, read from the registry, so a renamed kind has
+    # to be renamed in the prose too.
+    for k in $(jq -r '.telemetry.exec_journal.span_kinds[]?' "$PJ"); do
+      printf '%s' "$asec" | grep -q "$k" \
+        || p_bad="$p_bad Agent-traces-section-does-not-name-span-kind:$k"
+    done
+    ehome=$(jq -r '.telemetry.exec_journal.home // empty' "$PJ")
+    if [ -z "$ehome" ]; then
+      p_bad="$p_bad home-unusable-see-C27a"
+    else
+      printf '%s' "$asec" | grep -qF "$ehome" \
+        || p_bad="$p_bad Agent-traces-section-does-not-name-the-registry-home($ehome)"
+    fi
+    # The 0-is-not-free caveat: the dispatch hooks cannot see a subagent's
+    # usage, and a consumer that reads those zeros as real spend is the one
+    # misreading this schema can actually cause. Both the field name and the
+    # caveat itself, because the field list without the warning is the exact
+    # shape of the misreading.
+    printf '%s' "$asec" | grep -q 'tokens_in' \
+      || p_bad="$p_bad Agent-traces-section-does-not-name:tokens_in"
+    printf '%s' "$asec" | grep -qF '0 as free' \
+      || p_bad="$p_bad Agent-traces-section-drops-the-0-is-not-free-caveat"
+  fi
+  # rules/parallelism.md's breaker section forward-references this section as
+  # the source of its consecutive-failure count; the reference goes live with
+  # the section and must not be left dangling in either direction.
+  grep -q 'Agent traces' rules/parallelism.md 2>/dev/null \
+    || p_bad="$p_bad parallelism.md-lost-its-Agent-traces-reference"
+  [ -z "$p_bad" ] && ok "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, every declared span kind, trace_id/span_kind/cost_micros and the tokens-are-0 caveat" \
+                   || bad "exec-journal prose-mirror problems:$p_bad"
+}
+
+# ------------- C28: retrieval-metrics prose/data pair
+# The eval-harness reference defines how retrieval quality is measured; the
+# `## RAG` section of rules/llm-apps.md is the rule that says to measure it.
+# Neither half is useful alone: a reference nothing links to is dead, and a rule
+# naming metrics nothing defines is a slogan. Both directions are checked.
+# No have_jq: nothing here reads a registry, so the pair stays checked on a
+# machine without jq rather than skipping with the registry families.
+# Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 6
+RETRIEVAL_METRICS="Recall@K Precision@K MRR"
+RETRIEVAL_REF=skills/eval-harness/references/retrieval-metrics.md
+
+check_C28() {
+  r_bad=""
+  if [ ! -f "$RETRIEVAL_REF" ]; then
+    r_bad="$r_bad reference-missing:$RETRIEVAL_REF"
+  else
+    for m in $RETRIEVAL_METRICS; do
+      grep -qF "$m" "$RETRIEVAL_REF" || r_bad="$r_bad reference-does-not-define:$m"
+    done
+  fi
+  if [ ! -f skills/eval-harness/SKILL.md ]; then
+    r_bad="$r_bad eval-harness-SKILL.md-missing"
+  else
+    grep -qF 'references/retrieval-metrics.md' skills/eval-harness/SKILL.md \
+      || r_bad="$r_bad SKILL.md-does-not-link-the-reference"
+  fi
+  # Sliced to the section, never the file: every one of these metric names also
+  # occurs in the reference and in prose elsewhere, so a file-wide grep would
+  # pass with the `## RAG` section deleted outright.
+  if [ ! -f rules/llm-apps.md ]; then
+    r_bad="$r_bad llm-apps.md-missing"
+  else
+    ragsec=$(sed -n '/^## RAG$/,/^## /p' rules/llm-apps.md 2>/dev/null)
+    if [ -z "$ragsec" ]; then
+      r_bad="$r_bad llm-apps.md-has-no-RAG-section"
+    else
+      for m in $RETRIEVAL_METRICS; do
+        printf '%s' "$ragsec" | grep -qF "$m" \
+          || r_bad="$r_bad RAG-section-does-not-name:$m"
+      done
+    fi
+  fi
+  [ -z "$r_bad" ] && ok "the retrieval-metrics pair holds: $RETRIEVAL_REF defines Recall@K/Precision@K/MRR, skills/eval-harness/SKILL.md links it, and the RAG section of rules/llm-apps.md names all three" \
+                   || bad "retrieval-metrics prose/data problems:$r_bad"
+}
+
+# ------------- C29: adoption entrypoint wiring
+# Adopting EngineOS in a new project has four moving parts — the script, the
+# command that invokes it, the SessionStart hook that keeps the layout in place,
+# and the document that tells a human which command to run. Each is its own
+# named finding: "adoption is broken" does not tell anyone which half to fix.
+# Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 7
+check_C29() {
+  a_bad=""
+  if [ ! -f scripts/init-project.sh ]; then
+    a_bad="$a_bad scripts/init-project.sh-missing"
+  elif [ ! -x scripts/init-project.sh ]; then
+    a_bad="$a_bad scripts/init-project.sh-not-executable"
+  fi
+  if [ ! -f commands/init.md ]; then
+    a_bad="$a_bad commands/init.md-missing"
+  elif ! grep -qF 'scripts/init-project.sh' commands/init.md; then
+    a_bad="$a_bad commands/init.md-does-not-name-scripts/init-project.sh"
+  fi
+  if [ ! -f hooks/scaffold-layout.sh ]; then
+    a_bad="$a_bad hooks/scaffold-layout.sh-missing"
+  elif ! grep -qF 'scaffold-layout.sh' hooks/ensure-project-layout.sh; then
+    a_bad="$a_bad ensure-project-layout.sh-does-not-source-scaffold-layout.sh"
+  fi
+  if [ ! -f docs/ADOPTION.md ]; then
+    a_bad="$a_bad docs/ADOPTION.md-missing"
+  elif ! grep -qF '/engineos:init' docs/ADOPTION.md; then
+    a_bad="$a_bad docs/ADOPTION.md-does-not-name-the-/engineos:init-command"
+  fi
+  [ -z "$a_bad" ] && ok "the adoption entrypoints are wired: scripts/init-project.sh is executable, commands/init.md invokes it, ensure-project-layout.sh sources hooks/scaffold-layout.sh, and docs/ADOPTION.md names /engineos:init" \
+                   || bad "adoption entrypoint problems:$a_bad"
 }

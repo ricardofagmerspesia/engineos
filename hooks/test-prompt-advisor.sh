@@ -237,5 +237,85 @@ jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s u
 [ -e "$T/.git/engineos-telemetry" ] && no "non-adopted repo wrote a telemetry file" || ok
 rm -rf "$T"
 
+# Agent traces: the same resolve-task call that produces the route EVENT also
+# produces a router SPAN — the event carries the decision, the span carries how
+# long it took (rules/observability.md "Agent traces"). Ids only: the routed
+# intent and the risk floor, never the prompt.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "add a paginated orders endpoint to the API" --arg c "$T" --arg s spans1 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans1.exec.jsonl"
+if [ -f "$XF" ] \
+   && [ "$(wc -l < "$XF" | tr -d ' ')" = "1" ] \
+   && jq -e '.span_kind == "router" and .capability_id == "route" and .trace_id == "spans1"
+             and .route == "backend" and .risk == "medium" and (.duration_ms | type) == "number"' "$XF" >/dev/null 2>&1 \
+   && bash "$DIR/../scripts/exec-journal.sh" validate "$XF" >/dev/null 2>&1; then
+  ok
+else
+  no "a resolved prompt writes one valid router span: $([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+fi
+rm -rf "$T"
+
+# The other risk direction, so the span cannot be a hardcoded "medium".
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans2 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans2.exec.jsonl"
+jq -e '.risk == "high"' "$XF" >/dev/null 2>&1 && ok \
+  || no "a high-floor prompt writes risk=high on its router span: $([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+rm -rf "$T"
+
+# No span field may carry prompt text. Asserted on the file, not on the fields
+# we happen to set: the slug class is the whole guarantee, so a future field
+# that leaked the prompt has to fail here.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "add a paginated orders endpoint to the API zqxjkw" --arg c "$T" --arg s spans3 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans3.exec.jsonl"
+grep -q 'zqxjkw' "$XF" 2>/dev/null && no "the router span leaked prompt text" || ok
+rm -rf "$T"
+
+# A pure question resolves nothing worth announcing, but the resolve-task call
+# still happened, so its span is still the honest record of it.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "what does this function return?" --arg c "$T" --arg s spans4 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans4.exec.jsonl"
+jq -e '.span_kind == "router"' "$XF" >/dev/null 2>&1 && ok \
+  || no "a silent prompt still writes its router span: $([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+rm -rf "$T"
+
+# The two off-switches, for the span file specifically.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans5 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | ENGINEOS_TELEMETRY=0 bash "$HOOK" >/dev/null
+[ -e "$T/.git/engineos-telemetry" ] && no "ENGINEOS_TELEMETRY=0 wrote a span file" || ok
+rm -rf "$T"
+
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans6 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+[ -e "$T/.git/engineos-telemetry" ] && no "non-adopted repo wrote a span file" || ok
+rm -rf "$T"
+
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans7 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | ENGINEOS_BYPASS=1 bash "$HOOK" >/dev/null
+[ -e "$T/.git/engineos-telemetry" ] && no "a bypassed session wrote a span file" || ok
+rm -rf "$T"
+
 printf 'prompt-advisor: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
