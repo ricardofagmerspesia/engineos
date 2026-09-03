@@ -625,14 +625,29 @@ check_C26b() {
     esac
     got=$(hitl_answer --risk low --autonomy "$low_ceil" --conflict true)
     [ "$got" = "true/$low_ceil" ] || d_bad="$d_bad policy-conflict-expected-true/$low_ceil-got:${got:-none}"
-    # An empty target would make the comparison below pass on "true/" for any
-    # answer, so an unusable value is its own finding.
-    if [ -z "$thin_target" ]; then
-      d_bad="$d_bad autonomy.high_with_thin_evidence-unusable"
-    else
-      got=$(hitl_answer --risk low --autonomy "$low_ceil" --evidence thin)
-      [ "$got" = "true/$thin_target" ] || d_bad="$d_bad thin-evidence-expected-true/$thin_target-got:${got:-none}"
-    fi
+    # The thin-evidence DROP, tier by tier. Every case in this family used to
+    # pass --autonomy A2 and only A2 — the one input where an unconditional
+    # "A1" was right — so a field that RAISED A0 to A1 and dropped medium/A3
+    # two levels passed clean. The expectations here are derived from the rule
+    # in rules/risk-autonomy.md (drop one level, never raise), not from the
+    # kernel, so this stays a canary rather than a second implementation.
+    for tcase in low/A2/A1 medium/A2/A1 medium/A3/A2 low/A4/A3 medium/A1/A1 low/A0/A0 high/A0/A0; do
+      t_tier=${tcase%%/*}; t_rest=${tcase#*/}; t_in=${t_rest%%/*}; t_want=${t_rest##*/}
+      got=$(hitl_answer --risk "$t_tier" --autonomy "$t_in" --evidence thin)
+      [ "$got" = "true/$t_want" ] \
+        || d_bad="$d_bad thin-$t_tier-$t_in-expected-true/$t_want-got:${got:-none}"
+    done
+    # Risk high is the one tier whose landing is a registry value, so it is read
+    # rather than spelled. An empty target would make the comparison pass on
+    # "true/" for any answer, and a target of A4 would not be a drop at all —
+    # both are their own findings.
+    case "$thin_target" in
+      "") d_bad="$d_bad autonomy.high_with_thin_evidence-unusable" ;;
+      A4) d_bad="$d_bad autonomy.high_with_thin_evidence-is-A4-which-cannot-be-a-drop" ;;
+      *)  got=$(hitl_answer --risk high --autonomy A4 --evidence thin)
+          [ "$got" = "true/$thin_target" ] \
+            || d_bad="$d_bad thin-high-A4-expected-true/$thin_target-got:${got:-none}" ;;
+    esac
     # Every declared situation must demand a human and cite only declared
     # reasons. A situation the kernel accepts and then drops would answer
     # required:false — "no human needed" for an input it did not act on.
@@ -658,20 +673,21 @@ check_C26b() {
   [ "$rt" = true ] || d_bad="$d_bad resolve-task-does-not-carry-hitl.required-got:${rt:-none}"
   # And it must NOT carry one off a bare risk floor: a floor is an input to
   # classification, not a classification, so announcing a human gate on every
-  # auth-guard edit is the gate theatre rules/gates.md names. The floor must
-  # still surface, so the caller knows a classification is owed. The expected
-  # floor comes from intents.json; an intent whose floor is not high would make
-  # the case assert nothing, so that is its own finding.
+  # auth-guard edit is the gate theatre rules/gates.md names. task_contract's
+  # own risk_floor is read alongside, because `hitl == null` on a prompt that
+  # stopped resolving a high floor would satisfy this for the wrong reason. The
+  # expected floor comes from intents.json; an intent whose floor is not high
+  # would make the case assert nothing, so that is its own finding.
   sec_floor=$(jq -r '.intents[] | select(.id == "security-files") | .risk_floor // ""' "$IJ" 2>/dev/null)
   if [ "$sec_floor" != high ]; then
     d_bad="$d_bad intents.json-security-files-risk_floor-is-not-high-got:${sec_floor:-none}"
   else
     rt=$(bash "$KSH" resolve-task --prompt "fix the auth guard bug" 2>/dev/null \
-         | jq -r '"\(.hitl // "null")/\(.risk_floor // "none")"' 2>/dev/null)
+         | jq -r '"\(.hitl // "null")/\(.task_contract.risk_floor // "none")"' 2>/dev/null)
     [ "$rt" = "null/$sec_floor" ] \
       || d_bad="$d_bad resolve-task-on-a-bare-floor-expected-null/$sec_floor-got:${rt:-none}"
   fi
-  [ -z "$d_bad" ] && ok "kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, the evidence drop, both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer for a classified tier while claiming none off a bare risk floor" \
+  [ -z "$d_bad" ] && ok "kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, drops autonomy exactly one level on thin evidence at low and medium and to autonomy.high_with_thin_evidence at high without ever raising it, cites both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer for a classified tier while claiming none off a bare risk floor" \
                   || bad "hitl canary:$d_bad"
 }
 

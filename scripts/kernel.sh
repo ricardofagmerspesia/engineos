@@ -477,7 +477,24 @@ cmd_hitl() {
       || err "unknown situation: $situation (one of retry.never_retry or hitl.situations)"
   fi
 
+  # The thin-evidence landing at risk high is a registry value with a
+  # self-describing name -- autonomy.high_with_thin_evidence -- not a literal
+  # here. Read only on the path that uses it, and fail closed twice: a missing
+  # value would make jq index the level list with null, and a value that is not
+  # a level id would do the same, both producing a confident wrong ceiling.
+  local thin_target=""
+  if [ "$evidence" = thin ] && [ "$risk" = high ]; then
+    thin_target=$(jq -r '.autonomy.high_with_thin_evidence // empty' "$P")
+    [ -n "$thin_target" ] \
+      || err "policy.json has no autonomy.high_with_thin_evidence — hitl cannot resolve the thin-evidence ceiling at risk high"
+    case "$thin_target" in
+      A0|A1|A2|A3|A4) ;;
+      *) err "policy.json autonomy.high_with_thin_evidence is not an autonomy level: $thin_target" ;;
+    esac
+  fi
+
   jq -n --arg r "$risk" --arg a "$autonomy" --arg e "$evidence" --arg s "$situation" \
+        --arg thin "$thin_target" \
         --argjson x "$external" --argjson c "$conflict" --slurpfile pol "$P" '
     $pol[0] as $p
     | ([ (if $r == "high" then "high-risk" else empty end),
@@ -488,9 +505,31 @@ cmd_hitl() {
          (if $s == "destructive" then "destructive-action" else empty end),
          (if $s == "budget-exhausted" or $s == "reject" then "budget-exhausted" else empty end),
          (if $s == "breaker-open" then "breaker-open" else empty end) ]) as $reasons
+    # Thin evidence DROPS autonomy; it can never raise it. The old expression
+    # assigned "A1" unconditionally, which turned A0 ("explain only, no
+    # writes") into A1 in response to WEAKER evidence -- inverting the rule the
+    # field exists to enforce -- and applied the landing of the high row to
+    # every tier, while rules/risk-autonomy.md says "drop autonomy one level".
+    #
+    # One level down, then two clamps: never above the level passed in (so A0
+    # stays A0), and never below A1, the lowest level at which "draft, do not
+    # apply" is still an answer -- A0 is a consequence of the task being a
+    # question, not of thin evidence. At risk high the registry value
+    # autonomy.high_with_thin_evidence caps the result, so that target lives in
+    # exactly one place. (No apostrophes in this comment: the jq program is a
+    # single-quoted shell string.)
+    | (["A0", "A1", "A2", "A3", "A4"]) as $levels
+    | ($levels | index($a)) as $ai
+    | (if $e != "thin" then $a
+       else ([$ai, ([1, ($ai - 1)] | max)] | min) as $dropped
+            | (if $r == "high"
+                 then ([$dropped, ($levels | index($thin))] | min)
+                 else $dropped end)
+            | $levels[.]
+       end) as $after
     | {required: (($reasons | length) > 0),
        reasons: $reasons,
-       autonomy_after: (if $e == "thin" then "A1" else $a end),
+       autonomy_after: $after,
        record_home: $p.hitl.record_home}'
 }
 
@@ -839,10 +878,11 @@ cmd_resolve_task() {
          preferences: $preferences},
        route: $route,
        decision_rules: $decisions,
-       # A floor is not a tier. It is published beside hitl so a caller reading
-       # hitl: null still sees that a classification is owed: classify per
-       # rules/risk-autonomy.md before making any HITL claim from this value.
-       risk_floor: $floor,
+       # No second risk_floor here: task_contract.risk_floor above already
+       # carries the value of this same jq binding, and a second name for it is
+       # surface with no caller (rules/base.md). The signal a floor-only prompt needs is
+       # emitted by hooks/prompt-advisor.sh, which reads that field and says a
+       # classification is owed -- as an instruction to classify, not as a gate.
        hitl: (if $hitl == null then null
               else {required: $hitl.required, reasons: $hitl.reasons} end)}'
 }

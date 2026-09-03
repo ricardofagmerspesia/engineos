@@ -762,6 +762,15 @@ case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
       "hitl canary" \
       "sed -i.bak 's@if \[ \"\$any_high\" = true \]; then@if [ -n \"\$floor\" ]; then@' scripts/kernel.sh"
 
+# The other ruling, same treatment: restoring the unconditional "A1" makes
+# autonomy_after RAISE A0 to A1 on weaker evidence and drop medium/A3 two
+# levels. Every fixture in that family used to pass --autonomy A2 and only A2,
+# where the literal happened to be right, so this is the case that proves the
+# tier-scoped assertions are load-bearing.
+case_ C26b "autonomy_after reverting to an unconditional A1 is caught" \
+      "hitl canary" \
+      "sed -i.bak 's@autonomy_after: \$after,@autonomy_after: (if \$e == \"thin\" then \"A1\" else \$a end),@' scripts/kernel.sh"
+
 case_ C26c "a reason row deleted from rules/risk-autonomy.md is caught" \
       "hitl prose-mirror problems" \
       "sed -i.bak '/^| \`never-retry-situation\`/d' rules/risk-autonomy.md"

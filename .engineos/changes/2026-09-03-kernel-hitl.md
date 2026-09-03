@@ -45,8 +45,9 @@ the decision has one checked home.
   string; `cmd_resolve_task` resolves the floor/ceiling, publishes `risk_floor`,
   and folds in `.hitl` only for a classified tier (see Deviations 8).
 - `scripts/test-kernel.sh` — new `hitl` section.
-- `hooks/prompt-advisor.sh` — `hitl` telemetry event and a `hitl_note` in the
-  context payload.
+- `hooks/prompt-advisor.sh` — `hitl` telemetry event, a `hitl_note` in the
+  context payload, and (fix round 2) a `classify_note` for a high floor with no
+  classified tier.
 - `hooks/test-prompt-advisor.sh` — two existing assertions became stale by
   design (see Deviations 7); updated, plus a new mirror case.
 - `scripts/checks/70-runtime.sh` — new C26/C26b/C26c/C26d; C22a reads
@@ -57,6 +58,8 @@ the decision has one checked home.
   rule that HITL is answered from a classified tier and never from a floor.
 - `rules/gates.md` — one release-checklist line.
 - `.engineos/changes/_template.md` — new `## Human decisions` section.
+- `skills/record-change/SKILL.md` — step 3 names `## Human decisions` so the
+  section cannot archive with its placeholder (fix round 2, Deviations 12).
 
 Not touched, and deliberately: `registries/routing.json`, the agent files, and
 `CLAUDE.md`. HITL adds no router row and no new domain.
@@ -83,6 +86,13 @@ Not touched, and deliberately: `registries/routing.json`, the agent files, and
       synthesized; `risk_floor` published beside `hitl`; prose, canary and a
       failing-side negative case all retargeted
 - [x] Fix round 1: `telemetry.note` records the `written_by` supersession
+- [x] Fix round 2: `autonomy_after` is a clamped one-level drop that never
+      raises, with the high landing read from
+      `autonomy.high_with_thin_evidence` and fail-closed on a bad read
+- [x] Fix round 2: the dead top-level `risk_floor` deleted; the advisor emits a
+      classification-owed instruction instead, asserted present by the tests
+- [x] Fix round 2: `skills/record-change/SKILL.md` step 3 names
+      `## Human decisions`
 - [x] `scripts/test-kernel.sh` (308 passed), `hooks/test-prompt-advisor.sh`
       (50 passed) and `scripts/test-validate-engineos.sh` (103 passed) run
       green in fix round 1
@@ -159,10 +169,32 @@ $ jq . registries/policy.json > /dev/null
 jq-rc=0
 ```
 
-`scripts/validate-engineos.sh` was NOT run — C26's four checks are exercised
-here only through `scripts/test-validate-engineos.sh`, which drives them over
-mutated private copies of the tree. A green run of the validator against this
-branch is still owed at the final gate.
+Fix round 2 re-ran the same three suites after its changes:
+
+```
+$ bash scripts/test-kernel.sh
+passed 322, failed 0
+
+$ bash hooks/test-prompt-advisor.sh
+prompt-advisor: 58 passed, 0 failed
+
+$ bash scripts/test-validate-engineos.sh
+passed 104, failed 0
+```
+
+The two items round 1 left open were closed by the task reviewer, not by this
+agent, and are recorded here as the reviewer reported them:
+
+```
+$ bash scripts/validate-engineos.sh
+passed 98, failed 0
+
+$ shellcheck -S warning <the six changed shell files>
+(clean)
+```
+
+What remains outside this record is the merged-tree gate, which the controller
+runs once every branch of the epic is integrated.
 
 What was run in the first round (the ruling then in force forbade every suite):
 
@@ -203,71 +235,64 @@ evaluating it.
 
 ## Human decisions
 <!-- date | who | reasons (from registries/policy.json hitl.reasons) | approved/refused | note -->
-2026-09-03 | controller (dispatching agent) | `external-effect` | approved with a bound | The brief grants autonomy A2 inside this worktree: commit locally, never push, never merge. No external effect was taken.
-2026-09-03 | controller (dispatching agent) | `evidence-insufficient` | refused | Running the suites was refused by ruling, so this record ships with parse-only evidence and status DEGRADED rather than a green claim. Verification moves to the controller's final gate.
+2026-09-03 | controller (dispatching agent) | `external-effect` | approved with a bound | Autonomy A2 inside this worktree: commit locally, never push, never merge. No external effect was taken — nothing pushed, nothing merged, no other branch touched.
+2026-09-03 | controller (dispatching agent) | `evidence-insufficient` | refused at dispatch, withdrawn in fix round 1 | The first commit shipped on parse-only evidence because the dispatch brief refused every suite. Fix round 1 authorized the three suites covering the changed surface, fix round 2 re-ran them, and the task reviewer ran `scripts/validate-engineos.sh` (98 passed, 0 failed) and `shellcheck -S warning` (clean on all six changed shell files). The refusal no longer applies; `## Verification` records what was run and by whom.
 
 ## Changes registered
-One commit. Real output, captured at `287d9d0` — the commit this record was
-part of, before the amend that added this section's own text. The amend touched
-nothing but this file, so every number below is exact except this record's own
-line count, which grew.
+Three commits on `feat/kernel-hitl`, base `5fca050` (which carries Tasks 2 and
+3). Real output, captured at `3642ba6` — before the amend that added this
+section's own text, which touched nothing but this file, so every number below
+is exact except this record's own line count.
 
 ```
 $ git status --short
-(empty — working tree clean)
+?? .superpowers/          (untracked, deliberately never committed)
 
 $ git log --oneline 5fca050..HEAD
-287d9d0 feat(kernel): make human-in-the-loop queryable
-
-$ git diff --stat 5fca050
- .engineos/changes/2026-09-03-kernel-hitl.md | 279 ++++++++++++++++++++++++++++
- .engineos/changes/_template.md              |   4 +
- hooks/prompt-advisor.sh                     |  15 +-
- hooks/test-prompt-advisor.sh                |  28 ++-
- registries/intents.json                     |   1 +
- registries/policy.json                      |  21 ++-
- rules/gates.md                              |   3 +
- rules/risk-autonomy.md                      |  27 +++
- scripts/checks/70-runtime.sh                | 257 ++++++++++++++++++++++++-
- scripts/kernel.sh                           | 109 ++++++++++-
- scripts/test-kernel.sh                      | 123 ++++++++++++
- scripts/test-validate-engineos.sh           |  91 +++++++++
- 12 files changed, 935 insertions(+), 23 deletions(-)
-```
-
-No renames, no deletions, one addition
-(`.engineos/changes/2026-09-03-kernel-hitl.md`). The post-amend diffstat is in
-the task report
-(`.superpowers/sdd/2026-09-03-engineos-default-methodology-plan/task-4-report.md`).
-
-Fix round 1 is a second commit on top. Real output, captured at `1feccb8` —
-before the amend that added this paragraph, which touched nothing but this file
-(so every number below is exact except this record's own line count):
-
-```
-$ git status --short
-?? .superpowers/          (untracked, deliberately not committed)
-
-$ git log --oneline 5fca050..HEAD
-1feccb8 fix(kernel): gate hitl on a classified tier
+3642ba6 fix(kernel): clamp the thin-evidence autonomy drop
+58504dd fix(kernel): gate hitl on a classified tier
 66fd2d5 feat(kernel): make human-in-the-loop queryable
 
-$ git diff --stat 66fd2d5
- .engineos/changes/2026-09-03-kernel-hitl.md | 176 +++++++++++++++++++++-------
- hooks/test-prompt-advisor.sh                |  29 +++--
- registries/policy.json                      |   4 +-
- rules/risk-autonomy.md                      |  11 +-
- scripts/checks/70-runtime.sh                |  24 +++-
- scripts/kernel.sh                           |  50 +++++---
- scripts/test-kernel.sh                      |  40 ++++++-
- scripts/test-validate-engineos.sh           |   8 ++
- 8 files changed, 259 insertions(+), 83 deletions(-)
+$ git diff --stat 58504dd
+ .engineos/changes/2026-09-03-kernel-hitl.md | 195 +++++++++++++++++-----------
+ hooks/prompt-advisor.sh                     |  14 +-
+ hooks/test-prompt-advisor.sh                |  41 ++++--
+ registries/policy.json                      |   2 +-
+ rules/risk-autonomy.md                      |   9 +-
+ scripts/checks/70-runtime.sh                |  44 +++++--
+ scripts/kernel.sh                           |  50 ++++++-
+ scripts/test-kernel.sh                      |  80 ++++++++++--
+ scripts/test-validate-engineos.sh           |   9 ++
+ skills/record-change/SKILL.md               |   9 ++
+ 10 files changed, 335 insertions(+), 118 deletions(-)
+
+$ git diff --stat 5fca050
+ .engineos/changes/2026-09-03-kernel-hitl.md | 545 ++++++++++++++++++++++++++++
+ .engineos/changes/_template.md              |   4 +
+ hooks/prompt-advisor.sh                     |  29 +-
+ hooks/test-prompt-advisor.sh                |  53 ++-
+ registries/intents.json                     |   1 +
+ registries/policy.json                      |  23 +-
+ rules/gates.md                              |   3 +
+ rules/risk-autonomy.md                      |  36 ++
+ scripts/checks/70-runtime.sh                | 290 ++++++++++++++-
+ scripts/kernel.sh                           | 164 +++++++-
+ scripts/test-kernel.sh                      | 225 +++++++++++
+ scripts/test-validate-engineos.sh           | 108 ++++++
+ skills/record-change/SKILL.md               |   9 +
+ 13 files changed, 1430 insertions(+), 24 deletions(-)
 ```
 
-`hooks/prompt-advisor.sh` is absent from that list on purpose: the HITL
-announcement and the telemetry event both already gated on
-`.hitl.required // false`, so narrowing what `resolve-task` puts there was
-enough. No second floor line was added.
+The whole-branch stat above is reproduced from `git diff --stat 5fca050` at the
+same sha; the per-file numbers for the twelve files other than this record are
+exact, and this record's own line grew by the length of this section.
+
+No renames, no deletions. Two additions across the three commits:
+`.engineos/changes/2026-09-03-kernel-hitl.md` (this record) and nothing else —
+every other path already existed.
+
+`58504dd` was NOT amended: fix round 2 is its own commit so the review of round
+1 stays reviewable against the sha it was written for.
 
 ## Notes
 
@@ -382,6 +407,62 @@ enough. No second floor line was added.
    in `telemetry.note` names the supersession instead, so the registry (the
    source of truth) is the place the two shapes are reconciled.
 
+10. **Fix round 2: `autonomy_after` is a clamped one-level DROP, never an
+    assignment.** The reviewer refuted the shipped expression
+    `(if $e == "thin" then "A1" else $a end)` from two directions and both were
+    real: at `--autonomy A0` it RAISED the ceiling from "explain only, no
+    writes" to "propose a diff" in response to WEAKER evidence, inverting the
+    rule the field exists to enforce; and at `medium/A3` it dropped two levels
+    where `rules/risk-autonomy.md` says "drop autonomy one level" and scopes
+    the A1 landing to the high row. It also hardcoded a literal the registry
+    already carries under the self-describing name
+    `autonomy.high_with_thin_evidence`.
+
+    Now: one level below the ceiling passed in, never above it (so A0 stays
+    A0), never below A1, and at risk high capped by
+    `autonomy.high_with_thin_evidence` read from the registry — with two
+    fail-closed guards on that read, because a missing value or a value that is
+    not a level id would make jq index the level list with `null` and answer a
+    confident wrong ceiling. Fixtures cover low/medium/high across A0..A4 plus
+    the identity case for adequate evidence, and C26b asserts seven tier/level
+    pairs derived from the rule rather than from the kernel.
+
+    One disclosure. The ruling's step 1 said "clamped so `A0` stays `A0`",
+    which taken alone sends `A1` to `A0`; its enumerated expectations said
+    "any tier+A1 to A1". Those two cannot both hold, and the enumerated list
+    was implemented: the drop bottoms out at A1 because A0 ("explain only") is
+    a consequence of the task being a question rather than of thin evidence,
+    and because `rules/risk-autonomy.md`'s high row lands thin evidence on A1
+    and not A0. Flagged here rather than silently chosen.
+
+11. **Fix round 2: the top-level `risk_floor` was deleted and replaced with a
+    signal.** Round 1 added `risk_floor` beside `hitl` so a caller would see
+    that a classification was owed. The reviewer showed it had no reader:
+    `hooks/prompt-advisor.sh` reads `task_contract.risk_floor` and always did,
+    so the second name was exported surface with no caller outside its own
+    tests (`rules/base.md`). Worse, the compensating control was inert —
+    `rotate the stripe secret key` and `fix the auth guard bug` produced
+    byte-identical advisor output, and secret rotation is a shortcut floor
+    `rules/risk-autonomy.md` calls high outright.
+
+    The field is gone. In its place `hooks/prompt-advisor.sh` gained a
+    `classify_note` def — inside the same `NOTES` pipeline, so there is still
+    one `hook_context` call and no printf — which fires when
+    `task_contract.risk_floor == "high"` and `hitl == null`. It is worded as an
+    instruction to classify and says in the line itself that it is not an
+    approval gate: re-announcing a gate off a floor under another name would
+    reintroduce exactly the theatre round 1 removed. The advisor test asserts
+    the line IS present on a high-floor prompt (including the secret-rotation
+    prompt), that no HITL line joins it, that a classified prompt gets the HITL
+    line and NOT the classify line, and that a low-floor prompt gets neither.
+
+12. **Fix round 2: `skills/record-change/SKILL.md` was edited, though no brief
+    listed it.** `rules/gates.md` requires the `## Human decisions` section to
+    exist and nothing required it to be filled, so a record could archive with
+    the template placeholder verbatim — an unrecorded human decision wearing
+    the shape of a recorded one. Step 3 now names the section alongside the
+    checklist and "what was made".
+
 ### The `budget-exhausted` coupling
 
 Task 2's `cmd_admit` reject message embeds the literal `hitl:
@@ -446,12 +527,28 @@ never redefine one unilaterally.
 The controller ruled in favour of the finding and assigned the fix to this same
 unit. Deviation 8 above is what shipped.
 
-### Known accepted gap
+### Known accepted gap — only one reason has a producer
 
-No hook writes breaker failure counts yet, so `--situation breaker-open` has
-no production producer this cycle. The situation is exercised by the kernel
-fixtures and by C26b, and the orchestrator can pass it by hand, but nothing
-emits it automatically. Accepted, not fixed here.
+Stated in full, because the earlier version of this section named only
+`breaker-open` and that understated it. `resolve-task` can emit exactly ONE of
+the eight declared `hitl.reasons`: `high-risk`, on `decision_rules.any_high`.
+The other seven are reachable only by a caller invoking `kernel.sh hitl`
+directly with the matching flag or situation.
+
+| Reason | In-repo producer |
+|---|---|
+| `high-risk` | `resolve-task`, via `decision_rules.any_high` |
+| `evidence-insufficient` | none — no hook passes `--evidence thin` |
+| `external-effect` | none — no hook passes `--external-effect true` |
+| `policy-conflict` | none — no hook passes `--conflict true`; round 1 removed the synthesized one deliberately |
+| `never-retry-situation` | none — no hook passes `--situation` |
+| `destructive-action` | none — same |
+| `budget-exhausted` | none — `admit` embeds the literal in its reject MESSAGE, but nothing turns that into a `hitl` call |
+| `breaker-open` | none, and no hook even writes breaker failure counts |
+
+This is a vocabulary landed ahead of its producers, which was the intent of the
+task (Task 5 and the runner follow-on consume it), not a regression. Recorded
+so nobody later reads the gap as one.
 
 ### Dangling forward references
 

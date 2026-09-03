@@ -62,7 +62,7 @@ readers to ignore the gate that matters.
 | Reason | Fires when |
 |---|---|
 | `high-risk` | tier is high |
-| `evidence-insufficient` | evidence is thin — autonomy drops to A1 |
+| `evidence-insufficient` | evidence is thin — autonomy drops one level, and no lower than A1; at risk high it drops to `autonomy.high_with_thin_evidence`. A drop never raises the level it was given |
 | `external-effect` | the action leaves the working tree at A3 or above (merge, deploy, publish, send) |
 | `policy-conflict` | a matched rule demands more than the classified tier permits — the caller has observed both |
 | `never-retry-situation` | the situation is on `retry.never_retry` |
@@ -74,9 +74,10 @@ Those eight ids are the whole vocabulary — a gate may cite nothing else, becau
 a reason outside the list is one nobody can argue with or override.
 
 `resolve-task` carries `hitl.required` and `hitl.reasons` so the prompt advisor
-can announce them before the first write, and `risk_floor` beside them for the
-floor-only case — there `hitl` is null and the floor is the whole answer. The decision itself is recorded in
-the change record under `## Human decisions`: who, when, which reasons, what
+can announce them before the first write. On a floor-only prompt `hitl` is null
+and `task_contract.risk_floor` is the whole answer; the advisor turns that into
+an instruction to classify, never into a gate. The decision itself is recorded
+in the change record under `## Human decisions`: who, when, which reasons, what
 was approved or refused. A tier that requires a human and has no such record
 has not passed its gate.
 

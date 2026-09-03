@@ -151,11 +151,12 @@ want "unrouted-scale" "$(context "let's decompose this into smaller pieces")" \
 want "requires-dispatch-plan" "$(context "backfill the tenant column")" \
      "a dispatch-plan intent escalates with its reason"
 
-# A resolved single-domain prompt gets one deterministic contract line and no
+# A resolved single-domain prompt gets the deterministic contract line and no
 # escalation. The security-files intent carries risk_floor: high, but a floor is
-# an input to classification and not a classification, so the adapter announces
-# the floor on the contract line and no HITL gate at all — one line. The count
-# is asserted so a second line cannot creep back in unnoticed.
+# an input to classification and not a classification, so there is no HITL gate.
+# What there IS, and what asserting only the absence would let a defeated-in-
+# effect fix pass, is the classification instruction: two lines, contract plus
+# classify. The count is asserted so a third cannot creep in unnoticed.
 CTX=$(context "fix the auth guard bug")
 want "task contract (kernel, deterministic)" "$CTX" "a resolved prompt does not escalate"
 want "intents=security-files" "$CTX" "the deterministic line names the resolved intent"
@@ -163,16 +164,38 @@ absent "route escalation" "$CTX" "a resolved prompt carries no escalation notice
 want "risk_floor=high" "$CTX" "the contract line publishes the floor it resolved"
 absent "human-in-the-loop" "$CTX" \
        "a high risk floor on its own announces no HITL gate"
-[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 1 ] && ok \
-  || no "deterministic output is not exactly the contract line: [$CTX]"
+want "no tier has been classified" "$CTX" \
+     "a high floor with no classified tier is told to classify"
+want "not an approval gate" "$CTX" \
+     "the classification instruction says it is not a human-approval gate"
+[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 2 ] && ok \
+  || no "deterministic output is not exactly the contract line plus the classify line: [$CTX]"
+
+# The same shape for the reason the compensating control exists: secret rotation
+# is a shortcut floor rules/risk-autonomy.md calls high outright, and it must be
+# told to classify rather than left with a bare contract line.
+CTX=$(context "rotate the stripe secret key")
+want "no tier has been classified" "$CTX" \
+     "a secret-rotation prompt is told to classify its tier"
+absent "human-in-the-loop" "$CTX" \
+       "a secret-rotation prompt still gets no gate off the floor alone"
 
 # The mirror: a matched decision rule carrying risk=high IS a classification, so
-# the same adapter does announce the gate, with the reason id the kernel
-# resolved. Without this case, a hitl_note wired to nothing at all would still
-# pass the assertion above.
+# the same adapter announces the gate with the reason id the kernel resolved,
+# and does NOT also tell the reader to classify — the classification happened.
+# Without this case, a hitl_note wired to nothing at all, or a classify_note
+# that fired unconditionally, would still pass the assertions above.
 CTX=$(context "drop the users table in production")
 want "human-in-the-loop required — reasons: high-risk" "$CTX" \
      "a matched high-risk decision rule announces the HITL gate with its reason"
+absent "no tier has been classified" "$CTX" \
+       "a classified prompt is not also told to classify"
+
+# And the low-floor mirror: neither line fires when the floor is not high.
+CTX=$(context "add a component for the user avatar")
+want "task contract (kernel, deterministic)" "$CTX" "a low-floor prompt still gets its contract"
+absent "no tier has been classified" "$CTX" "a low floor is not told to classify"
+absent "human-in-the-loop" "$CTX" "a low floor announces no HITL gate"
 
 # Exit codes: a hook that fails is a hook that blocks the prompt.
 jq -nc '{prompt:"add a paginated orders endpoint to the API and mirror the screen to mobile"}' \

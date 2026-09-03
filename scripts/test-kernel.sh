@@ -725,9 +725,47 @@ run hitl --risk medium --autonomy A2 --external-effect true
 assert_eq "hitl external effect below A3 is not a reason" "$(jqvalc .reasons)" "[]"
 assert_eq "hitl external effect below A3 not required" "$(jqval .required)" "false"
 
+# Thin evidence DROPS autonomy one level and never raises it. Every case here
+# used to pass --autonomy A2 and only A2, the single input where the old
+# unconditional "A1" happened to be right; at A0 that literal RAISED the
+# ceiling from "explain only, no writes" to "propose a diff" in response to
+# weaker evidence, and at medium/A3 it dropped two levels where
+# rules/risk-autonomy.md says one. The target at risk high comes from the
+# registry, never a literal here.
+THIN_HIGH=$(jq -r '.autonomy.high_with_thin_evidence' "$REG/policy.json")
+
 run hitl --risk medium --autonomy A2 --evidence thin
-assert_eq "thin evidence drops autonomy to A1" "$(jqval .autonomy_after)" "A1"
+assert_eq "thin evidence at medium/A2 drops one level" "$(jqval .autonomy_after)" "A1"
 assert_eq "thin evidence reason" "$(jqvalc .reasons)" '["evidence-insufficient"]'
+run hitl --risk low --autonomy A2 --evidence thin
+assert_eq "thin evidence at low/A2 drops one level" "$(jqval .autonomy_after)" "A1"
+run hitl --risk medium --autonomy A3 --evidence thin
+assert_eq "thin evidence at medium/A3 drops ONE level, not to A1" \
+  "$(jqval .autonomy_after)" "A2"
+run hitl --risk low --autonomy A4 --evidence thin
+assert_eq "thin evidence at low/A4 drops one level" "$(jqval .autonomy_after)" "A3"
+# The inversion this field existed to prevent: a drop must never hand back MORE
+# autonomy than it was given.
+run hitl --risk low --autonomy A0 --evidence thin
+assert_eq "thin evidence at low/A0 stays A0 and never raises" "$(jqval .autonomy_after)" "A0"
+run hitl --risk high --autonomy A0 --evidence thin
+assert_eq "thin evidence at high/A0 stays A0 and never raises" "$(jqval .autonomy_after)" "A0"
+run hitl --risk medium --autonomy A1 --evidence thin
+assert_eq "thin evidence at medium/A1 bottoms out at A1" "$(jqval .autonomy_after)" "A1"
+# Risk high is the one tier the registry overrides, and the expected value is
+# read from the field itself so a policy change moves the fixture with it.
+run hitl --risk high --autonomy A3 --evidence thin
+assert_eq "thin evidence at high/A3 lands on autonomy.high_with_thin_evidence" \
+  "$(jqval .autonomy_after)" "$THIN_HIGH"
+run hitl --risk high --autonomy A4 --evidence thin
+assert_eq "thin evidence at high/A4 lands on autonomy.high_with_thin_evidence" \
+  "$(jqval .autonomy_after)" "$THIN_HIGH"
+# Adequate evidence is the identity: without this half a kernel that always
+# dropped would pass every case above.
+run hitl --risk medium --autonomy A3
+assert_eq "adequate evidence at medium/A3 keeps the given ceiling" "$(jqval .autonomy_after)" "A3"
+run hitl --risk low --autonomy A0
+assert_eq "adequate evidence at low/A0 keeps A0" "$(jqval .autonomy_after)" "A0"
 
 run hitl --risk low --autonomy A2 --situation security-risk
 assert_eq "never-retry situation is a hitl reason" "$(jqvalc .reasons)" '["never-retry-situation"]'
@@ -787,10 +825,13 @@ assert_eq "resolve-task claims no unobserved policy conflict" \
 # The mirror, and the point of the whole distinction: a risk FLOOR is an input
 # to classification, not a classification. security-files carries risk_floor
 # high, so the old shape announced a human gate on every auth-guard edit — gate
-# theatre (rules/gates.md). hitl must be null and the floor must be published
-# beside it so the caller knows a classification is still owed. The expected
-# floor is read from intents.json; the intent id is named because the prompt has
-# to be written to match some specific intent, so it cannot be derived.
+# theatre (rules/gates.md). hitl must be null even though the floor is high.
+#
+# task_contract.risk_floor is asserted alongside because otherwise `hitl: null`
+# proves nothing: a prompt that stopped resolving a high floor would satisfy the
+# assertion for the wrong reason. The expected floor is read from intents.json;
+# the intent id is named because the prompt has to be written to match some
+# specific intent, so it cannot be derived.
 FLOOR_EXP=$(jq -r '.intents[] | select(.id == "security-files") | .risk_floor' "$REG/intents.json")
 run resolve-task --prompt "fix the auth guard bug"
 assert_ok "resolve-task with a floor-only prompt exits 0"
@@ -798,16 +839,22 @@ assert_eq "resolve-task resolves the security-files intent" \
   "$(jqvalc .task_contract.intents)" '["security-files"]'
 assert_eq "resolve-task confirms no classification happened" \
   "$(jqval .decision_rules.any_high)" "false"
+assert_eq "resolve-task still resolves the floor the registry declares" \
+  "$(jqval .task_contract.risk_floor)" "$FLOOR_EXP"
 assert_eq "resolve-task claims no hitl off a bare floor" "$(jqvalc .hitl)" "null"
-assert_eq "resolve-task publishes the floor the registry declares" \
-  "$(jqval .risk_floor)" "$FLOOR_EXP"
+# The floor is carried in exactly one place. A second top-level copy shipped in
+# 58504dd with no reader outside its own tests (rules/base.md), so its absence
+# is asserted rather than left to drift back in.
+assert_eq "resolve-task publishes no second top-level risk_floor" \
+  "$(jqvalc 'has("risk_floor")')" "false"
 
 # No intent, no rule, no scale signal: no floor either, and still no hitl. This
 # separates "hitl null because the floor is unclassified" from "hitl null
 # because there is no risk evidence at all".
 run resolve-task --prompt "what does this function return?"
 assert_ok "resolve-task with no risk evidence exits 0"
-assert_eq "resolve-task reports no floor when there is none" "$(jqval .risk_floor)" "null"
+assert_eq "resolve-task reports no floor when there is none" \
+  "$(jqval .task_contract.risk_floor)" "null"
 assert_eq "resolve-task claims no hitl with no risk evidence" "$(jqvalc .hitl)" "null"
 
 # Amendment 5 coupling, from the caller's side: cmd_admit's reject message
@@ -844,6 +891,23 @@ assert_err "hitl with no hitl policy block errors (fail-closed, never a null rec
 OUT=$(bash "$HITLT/scripts/kernel.sh" hitl --risk high --autonomy A3 2>&1); RC=$?
 assert_err "hitl with no hitl policy block errors even on the required path"
 rm -rf "$HITLT"
+
+# Same shape for the other registry value the answer depends on. Without the
+# guard, jq indexes the level list with null and autonomy_after comes back as a
+# confident wrong ceiling instead of an error. The adequate-evidence path does
+# not read the field, so it must still answer.
+THINT=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$THINT/scripts" "$THINT/registries"
+cp "$KERNEL" "$THINT/scripts/kernel.sh"
+jq 'del(.autonomy.high_with_thin_evidence)' "$REG/policy.json" > "$THINT/registries/policy.json"
+OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 --evidence thin 2>&1); RC=$?
+assert_err "hitl errors when autonomy.high_with_thin_evidence is missing"
+OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 2>&1); RC=$?
+assert_ok "hitl still answers with adequate evidence, which does not read that field"
+jq '.autonomy.high_with_thin_evidence = "sideways"' "$REG/policy.json" > "$THINT/registries/policy.json"
+OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 --evidence thin 2>&1); RC=$?
+assert_err "hitl errors when autonomy.high_with_thin_evidence is not a level id"
+rm -rf "$THINT"
 
 # ------------------------------------------------------- risk fail-closed fix
 
