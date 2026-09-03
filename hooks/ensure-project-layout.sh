@@ -75,35 +75,8 @@ if [ ! -d "$ROOT/.engineos" ] && [ "${ENGINEOS_SCAFFOLD:-}" != "1" ]; then
   exit 0
 fi
 
-# shellcheck source=/dev/null
-source "$REPO_DIR/hooks/layout-manifest.sh" 2>/dev/null || exit 0
-
-resolve_src() {  # $1 = src token -> absolute path or empty
-  case "$1" in
-    @*) printf '%s/%s' "$REPO_DIR" "${1#@}" ;;
-    *)  printf '%s/templates/project-layout/%s' "$REPO_DIR" "$1" ;;
-  esac
-}
-
-created=()
-for entry in "${LAYOUT_MANIFEST[@]}"; do
-  dir="${entry%%|*}"; seeds="${entry#*|}"
-  target="$ROOT/$dir"
-  if [ ! -d "$target" ]; then
-    mkdir -p "$target" 2>/dev/null || continue
-    created+=("$dir")
-  fi
-  IFS=',' read -ra pairs <<< "$seeds"
-  for pair in "${pairs[@]}"; do
-    src="${pair%%:*}"; dest="${pair#*:}"
-    abs=$(resolve_src "$src")
-    [ -n "$abs" ] && [ -f "$abs" ] && [ ! -f "$target/$dest" ] \
-      && cp "$abs" "$target/$dest" 2>/dev/null || true
-  done
-done
-
-if [ "${#created[@]}" -gt 0 ]; then
-  # subshell scopes IFS to this one printf — must not leak into the rest of the script
-  ( IFS=', '; printf '[engineos] scaffolded standard layout: %s (review seeded READMEs)\n' "${created[*]}" )
-fi
+# shellcheck source=hooks/scaffold-layout.sh
+. "$REPO_DIR/hooks/scaffold-layout.sh"
+created=$(engineos_scaffold_layout "$ROOT" "$REPO_DIR" | paste -sd, -)
+[ -n "$created" ] && printf '[engineos] scaffolded standard layout: %s (review seeded READMEs)\n' "${created//,/, }"
 exit 0

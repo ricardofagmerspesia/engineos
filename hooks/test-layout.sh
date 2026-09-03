@@ -92,5 +92,36 @@ fi
 rm -rf "$NOJQ_BIN"
 unset NOJQ_BIN _t _p
 
+# --- init-project: one-command adoption ---
+# A fake HOME carries the machine-install import line the script gates on, so the
+# suite never depends on (or touches) the operator's real ~/.claude/CLAUDE.md.
+IP=$(mktemp -d); ( cd "$IP" && git init -q )
+HOME_FAKE=$(mktemp -d); mkdir -p "$HOME_FAKE/.claude"
+printf '@%s/CLAUDE.md\n' "$REPO" > "$HOME_FAKE/.claude/CLAUDE.md"
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && ok || no "init did not exit 0 on a fresh git repo (rc=$rc)"
+[ -d "$IP/.engineos/changes" ] && ok || no "init did not create .engineos/changes"
+[ -f "$IP/CLAUDE.md" ] && ok || no "init did not copy CLAUDE.md"
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null \
+  && ok || no "second init failed (not idempotent)"
+printf '# mine\n' > "$IP/CLAUDE.md"
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null
+[ "$(cat "$IP/CLAUDE.md")" = "# mine" ] && ok || no "init overwrote an existing CLAUDE.md"
+
+EMPTY_HOME=$(mktemp -d); mkdir -p "$EMPTY_HOME/.claude"; : > "$EMPTY_HOME/.claude/CLAUDE.md"
+HOME="$EMPTY_HOME" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 1 ] && ok || no "init did not exit 1 without the machine install (rc=$rc)"
+
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$REPO" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 3 ] && ok || no "init did not refuse the engineos repo (rc=$rc)"
+
+# the SessionStart hook now scaffolds without the hint, because .engineos/ exists
+OUT6=$(printf '{"cwd":"%s","session_id":"S1"}' "$IP" | bash "$DIR/ensure-project-layout.sh")
+case "$OUT6" in
+  *"not scaffolded"*) no "hook still shows the opt-in hint after init" ;;
+  *) ok ;;
+esac
+rm -rf "$IP" "$HOME_FAKE" "$EMPTY_HOME"
+
 echo "---"; echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]
