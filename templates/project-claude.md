@@ -9,7 +9,7 @@
 - Mobile: <yes/no — React Native app lives in ...> — `rules/frontend.md` + `rules/backend.md` (API-consumption parts), `mobile-coordinator` agent
 - DBA / data: <Postgres/Oracle/... — schema + migrations live in ...> — `rules/architecture.md` + `rules/data.md`, `dba-coordinator` agent
 - DevOps: <CI/CD + infra — pipelines/IaC live in ...> — `rules/architecture.md` + `rules/observability.md`, `devops-coordinator` agent
-- LLM: <yes/no — agents, RAG, prompts live in ...> — `rules/llm-apps.md` + `llm-engineering`
+- LLM: <yes/no — agents, RAG, prompts live in ...> — `rules/llm-apps.md` + `llm-engineering`; RAG features keep `evals/<feature>/retrieval/BASELINE.md`
 
 ## Commands
 - Typecheck: `npm run typecheck`
@@ -26,3 +26,7 @@
 
 ## ADRs
 Decisions live in `docs/adr/`. Read related ADRs before structural changes.
+
+## EngineOS
+Adopted with `scripts/init-project.sh` (EngineOS 1.6.0). Tests are opt-in per `rules/verification.md`;
+list any area where this project requires them: <none | e.g. "apps/api/src/billing/**">.

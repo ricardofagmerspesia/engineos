@@ -318,3 +318,4 @@ echo "MCP baseline: see templates/mcp.template.json — add servers with 'claude
 echo "or copy entries into settings.json. Use env var references, never literal tokens."
 echo ""
 green "EngineOS installed. Restart Claude Code sessions to pick up changes."
+echo "Next, per project: cd <project> && $REPO_DIR/scripts/init-project.sh   (or /engineos:init inside a session)"
