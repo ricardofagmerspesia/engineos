@@ -68,6 +68,11 @@ Notes on the mapping, so it is not read as more than it is:
 - **Nothing here is a new store.** Every cell names a path that exists at
   `ef387ee`. The tier names are analytic; they let sections 3–6 say "write policy
   for episodic" instead of re-listing three paths each time.
+- **This table says where a tier lives and how long; section 3's Promotion
+  column says how a fact leaves it.** The two are read together — and the
+  Promotion column is where the missing mechanisms are named against their
+  follow-up units (section 8), rather than being implied by this table's
+  existence.
 - **Personal memory is deliberately absent.** `~/.claude/.../memory/` is
   personal recall (`rules/memory.md:19`, `:30`) and never the team's source of
   truth. It is out of this architecture; a fact that matters to the team gets
@@ -87,15 +92,23 @@ Notes on the mapping, so it is not read as more than it is:
 
 ## Write policy
 
-One writer per tier. The column that matters is the third: the mechanism through
-which a write is legitimate.
+One writer per tier. Two columns carry the weight: **Mechanism**, which is what
+makes a write legitimate, and **Promotion**, which is the path out of the tier
+and upward. Where a promotion path has no mechanism in the tree today, the cell
+says so and names the follow-up unit rather than describing an intention as if
+it were behaviour.
 
-| Tier | Who may write | Mechanism | What a write costs |
-|---|---|---|---|
-| Short-term | the session itself | ordinary tool use within the turn | nothing — it is discarded |
-| Episodic | `record-change` skill; `task-observer` skill; the hooks | `record-change` on close (`rules/memory.md:14`); `task-observer` appends OPEN entries (`skills/task-observer/SKILL.md:63-94`); `hooks/prompt-advisor.sh` / `hooks/stop-verify.sh` append telemetry ids (`registries/policy.json:194`) | an append. Cheap by design — appends are the safe mutation (`skills/task-observer/SKILL.md:120-123`) |
-| Semantic | `adr` skill; the spec workflow; a PR to the project | `rules/memory.md:9-11`, `:26` ("record decisions when made") | a reviewed commit in the consuming project |
-| Procedural | a PR to the engineos repo | `rules/memory.md:7-8`; `skills/retro` proposes and **a human merges** (`skills/retro/SKILL.md:13-15`, `:112-117`) | a PR, CI green, human approval, and a COMPATIBILITY assessment if it touches public surface |
+| Tier | Who may write | Mechanism | Promotion (path upward) | What a write costs |
+|---|---|---|---|---|
+| Short-term | the session itself | ordinary tool use within the turn | → **episodic**, via the change record at close (`record-change` skill, `rules/memory.md:14`). This path works today and is the only one that does not depend on counting | nothing — it is discarded |
+| Episodic | `record-change` skill; `task-observer` skill; the hooks | `record-change` on close (`rules/memory.md:14`); `task-observer` appends OPEN entries (`skills/task-observer/SKILL.md:63-94`); `hooks/prompt-advisor.sh` / `hooks/stop-verify.sh` append telemetry ids (`registries/policy.json:194`) | → **semantic**, via `skills/retro` clustering plus the `adr` skill or a project PR. The clustering step exists; the three things it needs to be mechanical do not — grouping key: **no mechanism today — follow-up unit 1**; threshold as data: **no mechanism today — follow-up unit 2**; the count itself: **no mechanism today — follow-up unit 3** | an append. Cheap by design — appends are the safe mutation (`skills/task-observer/SKILL.md:120-123`) |
+| Semantic | `adr` skill; the spec workflow; a PR to the project | `rules/memory.md:9-11`, `:26` ("record decisions when made") | → **procedural**, via a PR to the engineos repo: `skills/retro` proposes, a human merges (`skills/retro/SKILL.md:112-117`). The path exists; what it lacks is the evidence to trigger it, which is the same three units above | a reviewed commit in the consuming project |
+| Procedural | a PR to the engineos repo | `rules/memory.md:7-8`; `skills/retro` proposes and **a human merges** (`skills/retro/SKILL.md:13-15`, `:112-117`) | **none — this is the top tier.** Its lifecycle is forgetting (section 6), not promotion: a rule that never fires gets proposed for deletion (`skills/retro/SKILL.md:145-146`) | a PR, CI green, human approval, and a COMPATIBILITY assessment if it touches public surface |
+
+Read down the Promotion column and the shape of the problem in section 1 is
+visible in one place: the two upward paths that need a count are both blocked on
+the same three missing pieces, which is why section 8 ships them as one plan in
+dependency order.
 
 **The rule that governs all four: nothing writes upward without evidence.**
 
@@ -153,8 +166,9 @@ and nothing else.
 
 ## Promotion mechanism
 
-The missing detector. One new kernel subcommand, one new policy key, one new log
-field — and `skills/retro` stops eyeballing.
+The missing detector. One new log field, one new policy key, one new kernel
+subcommand — in that dependency order (section 8, units 1 → 2 → 3) — and
+`skills/retro` stops eyeballing.
 
 ```
 scripts/kernel.sh promote-candidates --since <date>
@@ -166,15 +180,32 @@ scripts/kernel.sh promote-candidates --since <date>
    `OPEN`. Resolved entries are excluded: `ACTIONED` means a proposal already
    covered it and `DECLINED` means it was triaged out
    (`skills/task-observer/SKILL.md:158-160`, `skills/retro/SKILL.md:119-127`).
-2. `.engineos/archived/**/*.md` — records with a `completed:` date at or after
-   `--since`, matching the frontmatter shape at
+2. `.engineos/archived/**/*.md` — records whose `completed:` frontmatter date is
+   at or after `--since`, matching the shape at
    `.engineos/archived/2026/08/general/2026-08-26-degraded-status-scope.md:1-8`.
+
+**Where the `--since` filter's date comes from, and where its guarantee stops.**
+`completed:` is not part of the record template — `.engineos/changes/_template.md`
+carries `name`, `status`, `owner`, `spec` and `domain`, and no completion date,
+because an active record does not have one. The `record-change` skill adds it at
+close: `skills/record-change/SKILL.md:54` — "set front matter `status: done` and
+add `completed: <YYYY-MM-DD>`" — and only after `## What was made` is written and
+the checklist is fully resolved. In practice the field is universal today: all 26
+records under `.engineos/archived/2026/08/` carry it.
+
+The guarantee is therefore **procedural, not structural**: it holds for records
+closed through the skill, and nothing in the repository's shape enforces it on a
+record archived by hand. A record without `completed:` cannot be placed in the
+window, so the detector **skips it and reports the skipped count** — on stderr,
+leaving the stdout shape exactly as frozen below. Silently dropping undated
+records would let the window under-count, which is the same failure mode this
+detector exists to remove.
 
 **How it groups:** by a `tag:` field — a stable kebab-case key naming the
 recurring thing, added to the observation template and available in record
-frontmatter. Grouping by `tag:` rather than by the existing free-text `Skill:`
-line is the entire point: three occurrences only cluster if all three spell the
-key identically, and free text does not.
+frontmatter (follow-up unit 1, section 8). Grouping by `tag:` rather than by the
+existing free-text `Skill:` line is the entire point: three occurrences only
+cluster if all three spell the key identically, and free text does not.
 
 **What it returns:** groups whose occurrence count is at or above the threshold.
 
@@ -203,7 +234,8 @@ cite them (`skills/retro/SKILL.md:95` requires the occurrence ids) and so
 detector rather than by whoever runs it. An empty `candidates` array is a valid,
 informative answer: nothing has recurred three times in the window.
 
-**The threshold lives in the registry, not in the script:**
+**The threshold lives in the registry, not in the script** (follow-up unit 2,
+section 8):
 
 - Key: **`policy.memory.promotion_threshold`**
 - Default: **3**
@@ -220,7 +252,9 @@ duplicated in prose. The subcommand slots into the dispatch table at
 sources to read and step 2 says "cluster, do not list". The change is that step 1
 calls `promote-candidates --since <last retro date>` and step 2 clusters **its
 output**, so the three-occurrence rule is applied by a counter instead of by
-recall. Two properties are preserved deliberately:
+recall. That edit ships with the subcommand (follow-up unit 3, section 8), which
+is the only unit permitted to write `skills/retro/SKILL.md`. Two properties are
+preserved deliberately:
 
 - **Sub-threshold groups still exist.** They go on the watch list
   (`skills/retro/SKILL.md:68`); the detector reporting them is a later
@@ -314,22 +348,32 @@ point.
 ## Out of scope / next plan
 
 Nothing in this document is implemented. A follow-up plan implements exactly
-three things:
+three things, **in the order given below.** The order is a dependency, not a
+preference: the detector is untestable without both the grouping key it clusters
+on and the threshold key it compares against, so the two data changes land
+before the code that reads them.
 
-1. **The `promote-candidates` subcommand** — `scripts/kernel.sh promote-candidates
-   --since <date>`, emitting the section 5 shape
-   (`{candidates: [{tag, count, first_seen, last_seen, sources: [...]}]}`),
-   registered in the dispatch table at `scripts/kernel.sh:618-630`, with kernel
-   tests, and `skills/retro/SKILL.md` step 1 calling it.
+1. **The `tag:` convention** — a `tag:` field in the observation-log template
+   (`skills/task-observer/SKILL.md:96-113`) and in change-record frontmatter, so
+   occurrences group on a stable key instead of free text. Includes the
+   backfill question for existing entries: leave them untagged and let the
+   detector ignore them, or tag them once. Validate the value against a
+   kebab-case slug pattern, the way `telemetry.value_pattern`
+   (`registries/policy.json:197`) constrains telemetry values — a grouping key
+   that accepts free text is the problem it was added to solve.
 2. **The `policy.memory` block** — a new top-level key in
    `registries/policy.json` carrying `promotion_threshold` (default 3), with the
    validator mirror-check that keeps it agreeing with `rules/memory.md:24` and
    `skills/retro/SKILL.md:53-57`, and a COMPATIBILITY entry (additive, MINOR).
-3. **The `tag:` convention** — a `tag:` field in the observation-log template
-   (`skills/task-observer/SKILL.md:96-113`) and in change-record frontmatter, so
-   occurrences group on a stable key instead of free text. Includes the
-   backfill question for existing entries: leave them untagged and let the
-   detector ignore them, or tag them once.
+   The check **reads** those two files to compare the numbers and **does not
+   edit either.** Editing `skills/retro/SKILL.md` belongs to unit 3, which owns
+   that file — two units writing one file is the collision `rules/parallelism.md`
+   forbids.
+3. **The `promote-candidates` subcommand** — `scripts/kernel.sh promote-candidates
+   --since <date>`, emitting the section 5 shape
+   (`{candidates: [{tag, count, first_seen, last_seen, sources: [...]}]}`),
+   registered in the dispatch table at `scripts/kernel.sh:618-630`, with kernel
+   tests, and `skills/retro/SKILL.md` step 1 calling it. Owns the retro edit.
 
 Explicitly **not** in that plan, and not in this design:
 

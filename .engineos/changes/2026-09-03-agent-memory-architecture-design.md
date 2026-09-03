@@ -27,7 +27,8 @@ entry.
 
 ## Scope
 
-- Create: `docs/specs/2026-09-03-agent-memory-architecture-design.md`
+- Create: `docs/specs/2026-09-03-agent-memory-architecture-design.md`, plus this
+  record.
 
 No rule, skill, registry, kernel or hook file is touched. Task 8 of the
 2026-09-03 "EngineOS as the default methodology" plan is a design deliverable by
@@ -55,6 +56,22 @@ follow-up plan.
       (`docs/specs/2026-09-02-deepen-runtime-modules-design.md:1-6`: no YAML
       frontmatter, `# <Title> — design`, `Source:` line, then `## Problem`)
 - [x] Change record created from `.engineos/changes/_template.md`
+
+Fix round 1 (coordinator review):
+
+- [x] Section 8 units renumbered into dependency order (tag convention → policy
+      key + validator → detector), with one sentence stating the order and why
+- [x] Unit-number cross-references updated in section 5 (three sites) and
+      section 2's notes
+- [x] Section 5 states the `completed:` provenance (`skills/record-change/SKILL.md:54`),
+      that the template does not carry it, and that undated records are skipped
+      with the skipped count reported
+- [x] Unit 2 states it reads `skills/retro/SKILL.md` and does not edit it; unit 3
+      owns that file
+- [x] "Promotion (path upward)" column added to the section 3 table, with
+      "no mechanism today — follow-up unit N" in each absent cell
+- [x] This record's `## Scope` says "plus this record"; `## Changes registered`
+      carries real `git log --oneline` and `git diff --stat` output
 
 ## What was made
 
@@ -138,13 +155,27 @@ What was verified instead:
 
 ## Changes registered
 
+Branch `docs/agent-memory-architecture`, cut from `ef387ee` (origin/main).
+
 ```
-?? .engineos/changes/2026-09-03-agent-memory-architecture-design.md
-?? docs/specs/2026-09-03-agent-memory-architecture-design.md
+$ git log --oneline ef387ee..HEAD
+<HEAD>  docs(specs): fix memory design unit order      <- carries this record
+5f86dd9 docs(specs): design the agent memory tiers over existing homes
+
+$ git diff --stat=140 ef387ee..HEAD
+.engineos/changes/2026-09-03-agent-memory-architecture-design.md | 211 +++++++++
+ docs/specs/2026-09-03-agent-memory-architecture-design.md        | 388 ++++++++
+ 2 files changed, 599 insertions(+)
 ```
 
-Commit: `docs(specs): design the agent memory tiers over existing homes`, on
-branch `docs/agent-memory-architecture` cut from `ef387ee` (origin/main).
+(`--stat=140` rather than plain `--stat` so the paths are not abbreviated; the
+`+` runs are truncated here for width, the counts are verbatim. The top commit's
+own sha is written `<HEAD>`: pasting it would make the record claim a sha that
+the paste itself changes, and a stale sha in a record is worse than an honest
+placeholder. `git log -1` on the branch is the authority; the sha is reported in
+the task report.)
+
+No renames, no deletions — both files are additions.
 
 ## Notes
 
@@ -165,3 +196,16 @@ branch `docs/agent-memory-architecture` cut from `ef387ee` (origin/main).
   backfill question is called out as part of unit 3 rather than assumed away.
 - No rule, skill, registry or agent file was touched — the design records what a
   future PR would change, and changes nothing itself.
+- **Fix round 1 corrected a real dependency inversion.** Section 8's original
+  numbering had the detector as unit 1, grouping by a `tag:` field created by
+  unit 3 and reading a threshold key created by unit 2 — a plan that could not be
+  executed in its own order. Renumbered to tag convention → policy key →
+  detector.
+- **The `--since` filter's guarantee is procedural.** `completed:` is added by
+  `skills/record-change/SKILL.md:54` at close and is absent from
+  `.engineos/changes/_template.md`; all 26 archived records under
+  `.engineos/archived/2026/08/` carry it today, but nothing structural enforces
+  it. The spec now says so and specifies that undated records are skipped with
+  the count reported on stderr, keeping the frozen stdout shape intact. (The
+  review brief said 23 records; the measured count in this worktree at `ef387ee`
+  is 26, and 26 of 26 carry the field — the spec cites the measured number.)
