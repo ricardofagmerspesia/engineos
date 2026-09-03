@@ -17,6 +17,7 @@ export function recallAtK(relevant: Set<string>, ranked: string[], k: number): n
   const hits = ranked.slice(0, k).filter((id) => relevant.has(id)).length;
   return relevant.size === 0 ? 0 : hits / relevant.size;
 }
+// Precondition: ranked.length >= k, otherwise the short window inflates precision.
 export function precisionAtK(relevant: Set<string>, ranked: string[], k: number): number {
   const hits = ranked.slice(0, k).filter((id) => relevant.has(id)).length;
   return k === 0 ? 0 : hits / k;
@@ -26,7 +27,7 @@ export function reciprocalRank(relevant: Set<string>, ranked: string[]): number 
   return idx === -1 ? 0 : 1 / (idx + 1);
 }
 export function meanReciprocalRank(cases: Array<{ relevant: Set<string>; ranked: string[] }>): number {
-  return cases.length === 0 ? 0 : cases.reduce((s, c) => s + reciprocalRank(c.relevant, c.ranked), 0) / cases.length;
+  return cases.length === 0 ? 0 : cases.reduce((sum, testCase) => sum + reciprocalRank(testCase.relevant, testCase.ranked), 0) / cases.length;
 }
 ```
 

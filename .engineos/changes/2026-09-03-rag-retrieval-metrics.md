@@ -68,17 +68,31 @@ code paths touched (the TypeScript in the new reference is illustrative, not
 compiled by this repo).
 
 ## Changes registered
-```
- M rules/llm-apps.md
- M skills/eval-harness/SKILL.md
- M skills/llm-engineering/SKILL.md
-?? skills/eval-harness/references/
-```
-Plus this record (`.engineos/changes/2026-09-03-rag-retrieval-metrics.md`), added
-after the status above was captured. Untracked path expands to the single new file
-`skills/eval-harness/references/retrieval-metrics.md`.
-
 Branch `feat/rag-retrieval-metrics`, based on `ef387ee`.
+
+`ea8c37c` — docs(llm): name the retrieval metrics, prescribe hybrid search and
+re-ranking, define freshness policy
+
+```
+M  rules/llm-apps.md
+M  skills/eval-harness/SKILL.md
+M  skills/llm-engineering/SKILL.md
+A  skills/eval-harness/references/retrieval-metrics.md
+A  .engineos/changes/2026-09-03-rag-retrieval-metrics.md
+```
+
+Fix round 1 (this commit, one on top of `ea8c37c`) — review findings applied:
+
+```
+M  rules/llm-apps.md
+M  skills/eval-harness/references/retrieval-metrics.md
+M  .engineos/changes/2026-09-03-rag-retrieval-metrics.md
+```
+
+A commit cannot carry its own sha, so the fix-round-1 sha is reported in
+`.superpowers/sdd/2026-09-03-engineos-default-methodology-plan/task-6-report.md`
+and should be pasted here by whoever archives this record (`git log --oneline
+ef387ee..HEAD` resolves both).
 
 ## Notes
 - Controller ruling amended the brief: Step 5 (validate check C28 in
