@@ -31,11 +31,17 @@ failed and what to try, not just "error":
 
 ## RAG checklist
 
-Chunking, caching, retrieval-vs-generation evaluation, and source citation are ruled by
+Chunking, metrics, hybrid retrieval, re-ranking, freshness and source citation are ruled by
 `rules/llm-apps.md` (RAG + Reliability sections). Team additions:
 
 - Store the chunking version alongside the embedding, so re-chunking invalidates the right cache entries.
-- When evaluating retrieval, check per golden question whether the right chunk lands in top-k — fix retrieval before touching the generation prompt.
+- Pipeline shape: `query -> [dense search, lexical search] -> merge (RRF) -> re-rank -> top-N -> generator`.
+  Dense and lexical run in parallel; Reciprocal Rank Fusion merges without score calibration; the
+  re-ranker (cross-encoder or LLM pointwise) sees ~3-5x N candidates and returns N.
+- Diagnose in this order, never the reverse: Recall@K low -> fix chunking/index/hybrid weights;
+  Recall fine but Precision@K low -> add or tune the re-ranker; retrieval fine but groundedness
+  low -> fix the generation prompt. Touching the prompt while Recall@K is low hides the real fault.
+- Formulas, K choice and the scorer implementation: `skills/eval-harness/references/retrieval-metrics.md`.
 
 ## Eval harness
 
