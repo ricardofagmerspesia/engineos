@@ -70,11 +70,21 @@ see Notes.
       unit; see that section
 - [x] Commit `docs(release): record the 1.6.0 surface, release notes and
       control-loop update` — NOT DONE, same reason
-- [ ] Final gate (`shellcheck`, `validate-engineos.sh` and the eight suites) —
-      Task 10 owns it
-- [ ] Independent review (`critic`, `security-reviewer`) — Task 10 owns it
-- [ ] Merge approval recorded under `## Human decisions` — PENDING, no human has
-      approved anything in this epic
+- [x] Final gate (`shellcheck`, `validate-engineos.sh` and the eight suites) —
+      run at the barrier on the merged tree: `validate-engineos.sh` 107/0 with
+      zero skips, `test-validate-engineos.sh` 143/0, `test-kernel.sh` 339/0,
+      `test-exec-journal.sh` 56/0, all 11 hook suites 0 failures,
+      `shellcheck -S error -x` rc=0 on every changed shell file
+- [x] Independent review (`critic`, `security-reviewer`) — both ran on the
+      integrated branch. `security-reviewer` returned BLOCK (1 HIGH, 3 MEDIUM,
+      1 LOW); `critic` returned NOT PROVEN (1 blocking, 2 serious, 5 minor).
+      Two fix rounds and a scoped security re-review closed them; the re-review
+      returned MERGE WITH FIXES and those fixes shipped in `c7f8342`. The HIGH
+      (scaffolder writing outside the project through symlinks) was reproduced
+      three ways against the pre-fix tree and refuted against the post-fix tree
+- [ ] Merge approval recorded under `## Human decisions` — PENDING. PR
+      ricardofagmer/engineer-spec-ia-pattern#33 is open and NOT merged; the
+      approval is the human's and has not been given
 
 ## What was made
 `docs/COMPATIBILITY.md` gained `## 1.6.0 additions` as its last section, placed
