@@ -39,7 +39,19 @@ Created `docs/adr/` with a README and five ADRs, all dated 2026-09-03 and marked
 Not run — docs-only change; no lint/typecheck/test applies to the new files. `scripts/validate-engineos.sh` is expected to be unaffected (no registry, rule or hook touched); the controller runs it at the final gate.
 
 ## Changes registered
-Pending commit by the controller (Step 4). Working tree: 7 new files, 0 modified.
+Committed by the controller as `7402750` on `docs/adr-runtime-governance` (base `ef387ee`); review fixes follow in a second commit.
+
+```
+$ git diff --stat ef387ee..7402750
+ .engineos/changes/2026-09-03-runtime-governance-adrs.md
+ docs/adr/2026-09-03-backpressure-reuses-wave-cap.md
+ docs/adr/2026-09-03-circuit-breaker-separate-from-retry.md
+ docs/adr/2026-09-03-hitl-as-kernel-entity.md
+ docs/adr/2026-09-03-init-project-over-env-flag.md
+ docs/adr/2026-09-03-spans-extend-exec-journal.md
+ docs/adr/README.md
+ 7 files changed (all new)
+```
 
 ## Notes
 - Deviation from the `adr` skill: filenames use `YYYY-MM-DD-<slug>.md` per the brief's README, not `NNNN-short-title.md`; Status is `accepted` at creation because Part A3 is the reviewed decision table, not a proposal.

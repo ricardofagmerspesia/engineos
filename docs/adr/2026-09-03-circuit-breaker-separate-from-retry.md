@@ -56,7 +56,7 @@ Further obligations:
 - Ordering is part of the contract: the orchestrator calls `breaker` first; only `allow: true` reaches `retry`.
 - The kernel holds no breaker state. State and failure count live in the exec journal as `span_kind=tool|model`, `status=FAILED` entries (see `2026-09-03-spans-extend-exec-journal.md`) and are passed in on each call.
 - `breaker-open` is both a `hitl` reason and a `hitl` situation (see `2026-09-03-hitl-as-kernel-entity.md`): an open breaker that does not recover after its half-open probe is reported to a human, not retried around.
-- `rules/parallelism.md` gains a "Circuit breaker" section mirroring the block, checked as a prose/data pair like C16–C19.
+- `rules/parallelism.md` gains a "Circuit breaker" section mirroring the block, the implementing task adds a validator check for the prose/data pair (C25 in the plan), in the style of the existing C16–C19 pairs.
 - What becomes harder: three failure-policy blocks must stay conceptually distinct in prose; the `note` fields carry that burden and the validator carries the numeric mirrors.
 
 Revisit triggers: a runtime that supplies provider-level breakers natively (then the kernel block becomes a mirror of the runtime's config), or a need for breaker state the orchestrator cannot carry in the journal (which would force the kernel to become stateful and reopen option 2's core objection from the other side).

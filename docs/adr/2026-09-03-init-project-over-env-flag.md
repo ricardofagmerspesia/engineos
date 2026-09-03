@@ -48,7 +48,7 @@ Further obligations:
 - Idempotent means a second run on an initialised project changes nothing and exits 0; `--dry-run` prints what would be created and writes nothing.
 - The script never overwrites an existing `CLAUDE.md`; a project's own conventions outrank EngineOS (non-negotiable #4).
 - The existing `.engineos/`-present gate and the `ENGINEOS_SCAFFOLD` variable are not removed or changed by this decision. Retiring the variable would be a public-surface deprecation under `docs/COMPATIBILITY.md` and is not decided here.
-- `docs/ADOPTION.md` §2–3 are rewritten around the one command; the three manual steps become the script's printed follow-ups.
+- `docs/ADOPTION.md` §2–3 are rewritten around the one command (owned by the adoption task that ships `scripts/init-project.sh`); the three manual steps become the script's printed follow-ups.
 - What becomes harder: `init-project.sh`, `/engineos:init` and `hooks/scaffold-layout.sh` are versioned surface from the day they land; renaming any of them later is a deprecation with a window.
 
 Revisit triggers: the machine install becoming per-project (then `init` and `install` merge into one entry point), or a second adoption path (for example a GitHub template repository) that would make the shared scaffold the wrong abstraction level.

@@ -71,7 +71,7 @@ All malformed input → `{"error": "..."}` on stdout, exit 1 (existing `err` con
 Further obligations:
 
 - Every `reasons[]` value the kernel emits is a member of `hitl.reasons`; a gate that needs a reason outside the list changes the registry (with a compatibility window), never free text.
-- `--situation` accepts exactly `retry.never_retry` ∪ `hitl.situations`; the four `never_retry` values from `policy.json:170-175` map to the `never-retry-situation` reason.
+- `--situation` accepts exactly `retry.never_retry` ∪ `hitl.situations`; every `retry.never_retry` value maps to the `never-retry-situation` reason.
 - The human's decision is written at `record_home` — a `## Human decisions` section (anchor `#human-decisions`) of the change record — so the audit trail lives with the change, not in chat.
 - `rules/risk-autonomy.md` gains a "Human-in-the-loop" section and `rules/gates.md`'s release checklist cites the reason vocabulary; both are checked prose/data mirrors.
 - `hooks/prompt-advisor.sh` emits the `hitl` telemetry event with `required` and `reasons` only — ids and outcomes, never prompt text (`value_pattern` invariant).

@@ -54,7 +54,7 @@ All malformed input → `{"error": "..."}` on stdout, exit 1 (existing `err` con
 Further obligations:
 
 - `capacity` in the `admit` output is read from `parallelism.wave_concurrency_cap`; the kernel never hard-codes it.
-- `rules/parallelism.md` gains a "Backpressure" section that mirrors the block; the prose/data pair is checked the same way C16–C19 check the other pairs.
+- `rules/parallelism.md` gains a "Backpressure" section that mirrors the block; the implementing task adds a validator check for the prose/data pair (C24 in the plan), in the style of the existing C16–C19 pairs.
 - `reject` is a human-in-the-loop trigger: it appears in `hitl.situations` (see `2026-09-03-hitl-as-kernel-entity.md`) and the orchestrator reports `BLOCKED` rather than re-planning alone.
 - What becomes harder: any future change to the cap changes admission capacity at the same time. That is the intended coupling.
 
