@@ -37,18 +37,24 @@ line. A high-risk release needs the full contract.
 
 ```mermaid
 flowchart LR
-    A["Frame objective and acceptance"] --> B["Resolve route, risk, autonomy, and gates"]
+    A["Frame objective and acceptance"] --> B["Resolve route, risk, autonomy, gates, HITL"]
     B --> C{"Design required?"}
     C -- "yes" --> D["Design and freeze contracts"]
-    C -- "no" --> E["Execute in bounded scope"]
-    D --> E
+    C -- "no" --> E0
+    D --> E0["Admit: capacity? (backpressure)"]
+    E0 -- "dispatch" --> E["Execute in bounded scope"]
+    E0 -- "defer" --> E0
+    E0 -- "reject" --> H
+    E -- "resource failing" --> BR{"Breaker open?"}
+    BR -- "yes" --> H
+    BR -- "no" --> E
     E --> F["Verify with declared checks"]
     F -- "red, repair budget remains" --> E
     F -- "scope or risk changed" --> B
-    F -- "blocked or budget exhausted" --> H["Human decision"]
+    F -- "blocked or budget exhausted" --> H["Human decision (hitl reasons recorded)"]
     F -- "green" --> G{"External effect?"}
     G -- "yes" --> I["Release gate and approval"]
-    G -- "no" --> J["Record evidence and close"]
+    G -- "no" --> J["Record evidence, spans and close"]
     I --> J
     J --> K["Retro: learn from repeated evidence"]
     K -- "approved policy delta" --> B
@@ -57,6 +63,21 @@ flowchart LR
 The gates form a ladder, but execution is a feedback loop. A changed scope goes
 back through policy resolution. A failed check returns to bounded repair. A
 blocked or exhausted task stops for a human; it does not sample until green.
+
+Three of the boxes above are kernel answers rather than judgement.
+`kernel.sh admit` answers admission — `dispatch`, `defer` or `reject` against
+the wave cap and the queue bound. `kernel.sh breaker` answers whether a failing
+resource is still worth calling, per resource and separately from the per-unit
+`retry` and the per-check `repair`. `kernel.sh hitl` answers whether a human must
+decide and names why, from a closed reason vocabulary
+(`registries/policy.json` `hitl.reasons`) — so every human stop carries a reason
+id and a record home rather than an inference from the tier, and a gate citing
+anything outside that list is not citing policy. The kernel resolves these; it
+does not enforce them, and nothing in the repo calls `admit` before a dispatch
+today. Only `high-risk` has an automatic producer (`resolve-task`, via
+`decision_rules.any_high`); the other reasons arrive from a caller that
+observed the situation. `kernel.sh` is the resolver for all three and
+`registries/policy.json` owns the values.
 
 ## Policy ownership
 

@@ -92,5 +92,95 @@ fi
 rm -rf "$NOJQ_BIN"
 unset NOJQ_BIN _t _p
 
+# --- init-project: one-command adoption ---
+# A fake HOME carries the machine-install import line the script gates on, so the
+# suite never depends on (or touches) the operator's real ~/.claude/CLAUDE.md.
+IP=$(mktemp -d); ( cd "$IP" && git init -q )
+HOME_FAKE=$(mktemp -d); mkdir -p "$HOME_FAKE/.claude"
+printf '@%s/CLAUDE.md\n' "$REPO" > "$HOME_FAKE/.claude/CLAUDE.md"
+
+# --dry-run first, on the still-untouched project: reports, writes nothing
+OUTD=$(HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" --dry-run); rc=$?
+[ "$rc" -eq 0 ] && printf '%s' "$OUTD" | grep -q 'dry run' && [ ! -d "$IP/.engineos" ] \
+  && ok || no "--dry-run did not report cleanly without writing (rc=$rc)"
+
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null; rc=$?
+[ "$rc" -eq 0 ] && ok || no "init did not exit 0 on a fresh git repo (rc=$rc)"
+[ -d "$IP/.engineos/changes" ] && ok || no "init did not create .engineos/changes"
+[ -f "$IP/CLAUDE.md" ] && ok || no "init did not copy CLAUDE.md"
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null \
+  && ok || no "second init failed (not idempotent)"
+printf '# mine\n' > "$IP/CLAUDE.md"
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null
+[ "$(cat "$IP/CLAUDE.md")" = "# mine" ] && ok || no "init overwrote an existing CLAUDE.md"
+
+EMPTY_HOME=$(mktemp -d); mkdir -p "$EMPTY_HOME/.claude"; : > "$EMPTY_HOME/.claude/CLAUDE.md"
+HOME="$EMPTY_HOME" bash "$REPO/scripts/init-project.sh" --dir "$IP" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 1 ] && ok || no "init did not exit 1 without the machine install (rc=$rc)"
+
+HOME="$HOME_FAKE" bash "$REPO/scripts/init-project.sh" --dir "$REPO" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 3 ] && ok || no "init did not refuse the engineos repo (rc=$rc)"
+
+# the SessionStart hook now scaffolds without the hint, because .engineos/ exists
+OUT6=$(printf '{"cwd":"%s","session_id":"S1"}' "$IP" | bash "$DIR/ensure-project-layout.sh")
+case "$OUT6" in
+  *"not scaffolded"*) no "hook still shows the opt-in hint after init" ;;
+  *) ok ;;
+esac
+rm -rf "$IP" "$HOME_FAKE" "$EMPTY_HOME"
+
+# --- containment: a DANGLING symlink at a manifest destination is never written through ---
+# The hostile-repo case: a clone ships .engineos/ (the opt-in signal this hook gates
+# on) plus docs/specs/README.md as a symlink to an absolute path outside the project.
+# `[ -f ]` is FALSE for a dangling link, so the unguarded scaffolder's `&&` chain
+# proceeded and cp wrote the template THROUGH the link, creating the attacker's file.
+OUTSIDE=$(mktemp -d)
+S=$(mktemp -d); ( cd "$S" && git init -q ); mkdir -p "$S/.engineos" "$S/docs/specs"
+ln -s "$OUTSIDE/pwned.md" "$S/docs/specs/README.md"
+printf '{"cwd":"%s","session_id":"S1"}' "$S" | bash "$DIR/ensure-project-layout.sh" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 0 ] && ok || no "scaffolder did not exit 0 on a dangling-symlink destination (rc=$rc)"
+[ ! -e "$OUTSIDE/pwned.md" ] && ok || no "scaffolder wrote through a dangling symlink to $OUTSIDE/pwned.md"
+[ -L "$S/docs/specs/README.md" ] && [ ! -e "$S/docs/specs/README.md" ] \
+  && ok || no "planted dangling symlink was written to instead of skipped"
+[ -d "$S/docs/prds" ] && ok || no "one refused destination aborted the rest of the scaffold"
+rm -rf "$S" "$OUTSIDE"
+
+# --- containment: a symlinked DIRECTORY component is refused, not followed ---
+# `mkdir -p` follows a symlinked component without complaint, so an unguarded
+# scaffolder creates docs/specs INSIDE the attacker's directory and seeds it there.
+OUTSIDE2=$(mktemp -d); mkdir -p "$OUTSIDE2/docs"
+L=$(mktemp -d); ( cd "$L" && git init -q ); mkdir -p "$L/.engineos"
+ln -s "$OUTSIDE2/docs" "$L/docs"
+printf '{"cwd":"%s","session_id":"S1"}' "$L" | bash "$DIR/ensure-project-layout.sh" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 0 ] && ok || no "scaffolder did not exit 0 on a symlinked directory component (rc=$rc)"
+[ ! -e "$OUTSIDE2/docs/specs" ] && ok || no "scaffolder followed a symlinked directory out of the project"
+[ -d "$L/.engineos/changes" ] && ok || no "a refused directory component aborted the rest of the scaffold"
+rm -rf "$L" "$OUTSIDE2"
+
+# --- init-project: the CLAUDE.md seed is never written through a dangling symlink ---
+OUTSIDE3=$(mktemp -d)
+C=$(mktemp -d); ( cd "$C" && git init -q )
+CHOME=$(mktemp -d); mkdir -p "$CHOME/.claude"
+printf '@%s/CLAUDE.md\n' "$REPO" > "$CHOME/.claude/CLAUDE.md"
+ln -s "$OUTSIDE3/planted.md" "$C/CLAUDE.md"
+HOME="$CHOME" bash "$REPO/scripts/init-project.sh" --dir "$C" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 0 ] && ok || no "init-project did not exit 0 on a dangling CLAUDE.md symlink (rc=$rc)"
+[ ! -e "$OUTSIDE3/planted.md" ] && ok || no "init-project wrote CLAUDE.md through a dangling symlink"
+rm -rf "$C" "$CHOME" "$OUTSIDE3"
+
+# --- regression: the guarded happy path still seeds the real template content ---
+H=$(mktemp -d); ( cd "$H" && git init -q )
+printf '{"cwd":"%s","session_id":"S1"}' "$H" | ENGINEOS_SCAFFOLD=1 bash "$DIR/ensure-project-layout.sh" >/dev/null
+hmiss=0
+for d in .engineos/changes .engineos/archived .engineos/memory docs/specs docs/prds docs/rules; do
+  [ -d "$H/$d" ] || { hmiss=1; echo "  missing $d"; }
+done
+[ "$hmiss" -eq 0 ] && ok || no "guarded scaffold did not create all dirs"
+cmp -s "$H/docs/specs/README.md" "$REPO/templates/project-layout/specs-README.md" \
+  && ok || no "seeded docs/specs/README.md is not the template byte for byte"
+cmp -s "$H/.engineos/changes/_template.md" "$REPO/.engineos/changes/_template.md" \
+  && ok || no "seeded .engineos/changes/_template.md is not the in-repo template"
+rm -rf "$H"
+
 echo "---"; echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

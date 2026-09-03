@@ -82,3 +82,89 @@ unrelated work.
 - [ ] `scripts/validate-engineos.sh` passes with both old and new surfaces present.
 - [ ] MAJOR version bumped in `.claude-plugin/plugin.json`.
 - [ ] Consumers who need to act are told what to change, not just what broke.
+
+## 1.6.0 additions
+
+`1.6.0` is a MINOR release. Everything below is added or tightened: **nothing in
+the public surface is removed, nothing is renamed, and no deprecation window is
+opened**, so the breaking-change checklist above does not apply to it. The
+per-release account lives in `docs/release-notes/1.6.0.md`.
+
+| Surface | 1.6.0 change | Kind |
+|---|---|---|
+| `scripts/kernel.sh` subcommands | `admit`, `breaker`, `hitl` | added |
+| `registries/policy.json` | new keys `parallelism.backpressure`, `breaker`, `hitl`, `telemetry.exec_journal` | added |
+| `registries/policy.json` | `telemetry.events[].written_by` string -> array | shape change, see below |
+| `registries/policy.json` | new telemetry event `hitl` | added |
+| `scripts/exec-journal.sh` | twelve optional v2 span fields on `append`, validated by `validate` | added |
+| `scripts/exec-journal.sh` | `validate` rejects a non-slug `run_id`, `capability_id` or `agent` | tightened |
+| `commands/init.md` | new slash command `/engineos:init` | added |
+| `scripts/init-project.sh` | project-scoped adoption bootstrap | added |
+| `hooks/scaffold-layout.sh` | shared scaffold function, sourced by `hooks/ensure-project-layout.sh` and `scripts/init-project.sh`. It is NOT registered in `hooks/hooks.json`, so the hook event contract is unchanged | added |
+| `rules/parallelism.md` | `## Backpressure`, `## Circuit breaker` | added |
+| `rules/risk-autonomy.md` | `## Human-in-the-loop` | added |
+| `rules/observability.md` | `## Agent traces` | added |
+| `rules/llm-apps.md` | `## RAG` rewritten to name required metrics and artifacts | tightened |
+| `.engineos/changes/_template.md` | `## Human decisions` section, declared in `registries/intents.json` `record-change.required_sections` | added |
+
+The three kernel subcommands, the `/engineos:init` command,
+`scripts/init-project.sh` and `hooks/scaffold-layout.sh` are versioned surface
+from the day they land. Renaming any of them later is a deprecation with a
+window, not an edit.
+
+### The one shape change consumers can break on
+
+`telemetry.events[].written_by` was a string and is now an array of strings, on
+all four events (`route`, `decision-rules`, `verify`, `hitl`).
+
+This is not a breaking change under the surface table above, which names the
+`registries/*.json` **top-level shape** — `written_by` is nested two levels
+inside `telemetry`. It is still the only value in 1.6.0 whose type changed, so a
+reader outside this repo that assumed a string gets an array and no warning.
+What to change:
+
+```bash
+# 1.5.0 printed one path; 1.6.0 prints a JSON array
+jq -r '.telemetry.events[] | select(.id == "route") | .written_by' registries/policy.json
+
+# 1.6.0 equivalent of the old output
+jq -r '.telemetry.events[] | select(.id == "route") | .written_by[]' registries/policy.json
+```
+
+A comparison of the form `.written_by == "hooks/prompt-advisor.sh"` becomes
+`.written_by | index("hooks/prompt-advisor.sh")`. In-repo the only readers are
+the C22 integrity checks, which were updated in the same release.
+
+`telemetry.exec_journal.written_by` is a new key and is an array from the
+outset — there is no migration for it.
+
+### Why the `exec-journal.sh validate` tightening is MINOR, not PATCH
+
+In 1.5.0, `scripts/exec-journal.sh validate` accepted any string in `run_id`,
+`capability_id`, `agent` and `timestamp`, and checked `status` and `model_tier`
+for type only. In 1.6.0 the four slug fields must match the slug class
+`^[A-Za-z0-9@_./:-]+$` and the two enumerated fields must be members of their
+declared vocabularies, so a line that validated yesterday can fail today. Per
+**Semantic versioning** above, a rule tightened to flag more is MINOR and must
+be named in the release notes; it is named there.
+
+One narrow break deserves its own sentence, because it is the only case where a
+*well-formed* value is now rejected: `+` is not in the slug class, so a
+`timestamp` carrying a numeric UTC offset — `2026-09-03T12:00:00+00:00` — fails
+validation where `2026-09-03T12:00:00Z` passes. Nothing in this repo writes the
+offset form (`exec-journal.sh` defaults to `date -u +%Y-%m-%dT%H:%M:%SZ`), so
+no EngineOS-written journal is affected; a third-party writer using offsets is.
+Widening the class for `+` is a compatibility event of its own and was not
+taken here.
+
+`note` is deliberately still free text and is the only field that admits it —
+which is not the same as being the only field a consumer must distrust. Every
+other field is shape-bounded, not classified: harness-supplied characters still
+reach disk dash-joined, and the class admits `.` and `/`, so a journal field is
+never safe as a filesystem path component without `hooks/lib-common.sh`'s
+`hook_path_slug`.
+Adding a second free-text field to the journal is a compatibility event, not a
+convenience. The guard bounds the shape and the size of what reaches disk; it
+does not classify content, and `hooks/lib-common.sh` sanitizes rather than
+rejects at the hook boundary, so a harness-supplied value's characters still
+transit dash-joined.

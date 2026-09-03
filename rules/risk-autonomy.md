@@ -46,6 +46,41 @@ A4 requires a written policy, an audit trail, and a proven rollback. EngineOS
 grants none today — treat a task that seems to need A4 as a task that needs a
 human.
 
+## Human-in-the-loop
+
+The ceiling says how far you may go alone. HITL says when a human must decide,
+and names why, so the decision is auditable rather than implied by a tier.
+
+HITL is answered from a **classified tier**, never from a risk floor. A floor is
+an input to classification: on its own it requires no human, it only marks a
+classification as owed — classify per the table above first. A gate announced
+off a bare floor is the gate theatre `rules/gates.md` warns about, and it teaches
+readers to ignore the gate that matters.
+
+`scripts/kernel.sh hitl --risk <tier> --autonomy <ceiling> [--evidence thin] [--external-effect true] [--conflict true] [--situation <s>]`
+
+| Reason | Fires when |
+|---|---|
+| `high-risk` | tier is high |
+| `evidence-insufficient` | evidence is thin — autonomy drops one level, and no lower than A1; at risk high it drops to `autonomy.high_with_thin_evidence`. A drop never raises the level it was given |
+| `external-effect` | the action leaves the working tree at A3 or above (merge, deploy, publish, send) |
+| `policy-conflict` | a matched rule demands more than the classified tier permits — the caller has observed both |
+| `never-retry-situation` | the situation is on `retry.never_retry` |
+| `destructive-action` | destructive DDL/DML, secret rotation, data deletion |
+| `budget-exhausted` | the repair or retry bound is spent, or backpressure answered `reject` |
+| `breaker-open` | a needed resource's breaker is open with no alternative |
+
+Those eight ids are the whole vocabulary — a gate may cite nothing else, because
+a reason outside the list is one nobody can argue with or override.
+
+`resolve-task` carries `hitl.required` and `hitl.reasons` so the prompt advisor
+can announce them before the first write. On a floor-only prompt `hitl` is null
+and `task_contract.risk_floor` is the whole answer; the advisor turns that into
+an instruction to classify, never into a gate. The decision itself is recorded
+in the change record under `## Human decisions`: who, when, which reasons, what
+was approved or refused. A tier that requires a human and has no such record
+has not passed its gate.
+
 ## Rules
 
 - DO classify before the first write, not after. A risk tier assigned to justify

@@ -39,6 +39,15 @@ Track each step in the session's task list, in order.
    every item ticked `- [x]`, or struck through with a one-line reason if dropped.
    A record with unticked, unexplained checklist items is not done.
 
+   Fill `## Human decisions` in the same pass. If any human-in-the-loop reason
+   fired for this work (`scripts/kernel.sh hitl`, or the advisor announced one),
+   write the real row: date, who, the reason ids from
+   `registries/policy.json` `hitl.reasons`, approved or refused, and a note. If
+   none fired, say so in one line. `rules/gates.md` enforces that the section
+   exists; nothing enforces its content, so a record archived with the
+   template's placeholder comment left verbatim is an unrecorded human decision
+   wearing the shape of a recorded one.
+
 4. **Register changes and movements.** Capture the real diff into the record under
    a `## Changes registered` section:
    ```bash
