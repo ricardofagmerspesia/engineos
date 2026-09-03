@@ -718,6 +718,40 @@ p='registries/policy.json'; d=json.load(open(p))
 d['breaker']['failure_threshold']=d['breaker']['failure_threshold']+4
 json.dump(d,open(p,'w'),indent=2)\""
 
+# A scope id dropped from the vocabulary sentence. The three cases above mutate
+# the state list, the threshold and the threshold prose; none of them touches a
+# scope id, which is the one breaker field with no kernel consumer and no
+# canary — its prose mirror is the entire guard.
+case_ C25c "a scope id removed from the breaker's vocabulary sentence is caught" \
+      "parallelism.md-does-not-name-scope:mcp" \
+      "python3 - <<'EOF'
+p='rules/parallelism.md'
+s=open(p).read()
+s=s.replace('\`mcp\` (an MCP server), ', '')
+open(p,'w').write(s)
+EOF"
+
+# The vacuity proof itself: delete the scope vocabulary outright and extend the
+# span-kind list in the SAME section so every id still appears somewhere inside
+# it — a plausible documentation edit, since `agent` is a real span_kind. While
+# the scope grep was scoped to the section rather than to the sentence, C25c
+# reported ok on this tree, which defines no breaker scope at all.
+case_ C25c "deleting the scope vocabulary while every id survives elsewhere in the section is caught" \
+      "parallelism.md-has-no-breaker-scope-vocabulary-sentence" \
+      "python3 - <<'EOF'
+import re
+p='rules/parallelism.md'
+s=open(p).read()
+i=s.index('## Circuit breaker')
+j=s.index('## ', i + 5)
+sec=s[i:j]
+sec=re.sub(r'The breaker is per resource.*?\.\s', '', sec, flags=re.S)
+sec=re.sub(r'Those scope ids.*?\n\n', '', sec, flags=re.S)
+sec=sec.replace('\`span_kind\` \`tool\` or \`model\`',
+                '\`span_kind\` \`tool\`, \`mcp\`, \`agent\`, \`provider\` or \`model\`')
+open(p,'w').write(s[:i] + sec + s[j:])
+EOF"
+
 # ---- C26: human-in-the-loop — data, canary, prose mirror, coupling ----
 
 case_ C26 "a reason removed from policy.json's hitl vocabulary is caught" \

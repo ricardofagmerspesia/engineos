@@ -517,15 +517,34 @@ check_C25c() {
     grep -qE "^\| \`$st\`" rules/parallelism.md 2>/dev/null \
       || p_bad="$p_bad parallelism.md-has-no-table-row-for-state:$st"
   done
-  # Scoped to the section, not the file: `provider` and `tool` also appear in the
-  # exec-journal paragraph further down, so a file-wide grep would pass even with
-  # the breaker's own scope line deleted.
+  # Anchored on the scope-vocabulary SENTENCE, not on the section. Scoping to
+  # the section is not narrow enough to be a mirror, and the comment that used
+  # to sit here had the reason backwards: the exec-journal paragraph it blamed
+  # ("same `tool`/`provider`") is INSIDE this section, so `provider` and `tool`
+  # matched it whether or not the breaker's own vocabulary survived, and `mcp`
+  # and `agent` passed only by being unique strings in the section. Deleting the
+  # vocabulary outright while naming both ids in the span-kind list beside it —
+  # a plausible documentation edit, since `agent` is a real span_kind — left
+  # this Check reporting ok on a tree that defined no breaker scope at all.
+  # scopes has no kernel consumer and no canary, so a vacuous grep here is the
+  # whole guard gone.
+  #
+  # The claim is about one sentence, so one sentence is what gets read: the
+  # section is flattened to a line, split on sentence boundaries, and only the
+  # fragment enumerating the scopes is searched. That fragment is identified by
+  # the phrase "scopes over" — rewording it is a prose change that must keep the
+  # anchor — and its absence is its own finding rather than a silent pass.
   bsec=$(sed -n '/^## Circuit breaker$/,/^## /p' rules/parallelism.md 2>/dev/null)
-  for sc in $(jq -r '.breaker.scopes[]?' "$PJ"); do
-    printf '%s' "$bsec" | grep -qE "\`$sc\`" 2>/dev/null \
-      || p_bad="$p_bad parallelism.md-does-not-name-scope:$sc"
-  done
-  [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state and a mention of every declared scope" \
+  bvocab=$(printf '%s' "$bsec" | tr '\n' ' ' | tr '.' '\n' | grep -F 'scopes over')
+  if [ -z "$bvocab" ]; then
+    p_bad="$p_bad parallelism.md-has-no-breaker-scope-vocabulary-sentence"
+  else
+    for sc in $(jq -r '.breaker.scopes[]?' "$PJ"); do
+      printf '%s' "$bvocab" | grep -qE "\`$sc\`" 2>/dev/null \
+        || p_bad="$p_bad parallelism.md-does-not-name-scope:$sc"
+    done
+  fi
+  [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state, and a scope-vocabulary sentence naming every declared scope" \
                    || bad "breaker prose-mirror problems:$p_bad"
 }
 
@@ -985,12 +1004,28 @@ check_C27b() {
   printf '%s\n' '{"timestamp":"t","run_id":"sess 1","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$bf"
   bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
     && c_bad="$c_bad validate-accepted-a-whitespace-run_id"
+  # ... and on the ENUMERATED v1 fields, which append gates through in_list and
+  # validate checked for type only: prose in status and a newline in model_tier
+  # used to validate clean on a journal this CLI did not write.
+  printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"it went fine, mostly","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$bf"
+  bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
+    && c_bad="$c_bad validate-accepted-free-text-in-status"
+  printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build\nSECRET=leaked","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$bf"
+  bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
+    && c_bad="$c_bad validate-accepted-a-newline-in-model_tier"
+  # ACCEPT: every status the registry declares still validates, so the two
+  # rejects above cannot be satisfied by a guard that refuses everything.
+  for st in $(jq -r '.telemetry.exec_journal.statuses[]?' "$PJ"); do
+    printf '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"%s","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}\n' "$st" > "$bf"
+    bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
+      || c_bad="$c_bad validate-rejected-a-declared-status:$st"
+  done
   # ACCEPT on the validate side: a note carrying text is valid, by design.
   printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":"a human annotation, with spaces"}' > "$bf"
   bash "$EJSH" validate "$bf" >/dev/null 2>&1 \
     || c_bad="$c_bad validate-rejected-a-free-text-note"
   rm -f "$bf"
-  [ -z "$c_bad" ] && ok "scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, refuses whitespace in every field but note (run_id and agent included), refuses an over-long value, and still accepts a free-text note" \
+  [ -z "$c_bad" ] && ok "scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, refuses whitespace in every field but note (run_id and agent included), refuses an over-long value, refuses a status or model_tier outside its enumeration on validate as well as on append, and still accepts a free-text note" \
                    || bad "exec-journal span canary failed:$c_bad"
 }
 
@@ -1156,6 +1191,27 @@ ej_validated_fields() {
     | grep -vx 'all' | sort -u | tr '\n' ',' | sed 's/,$//'
 }
 
+# The set of fields APPEND gates against an ENUMERATION, from its in_list call
+# sites (the _val suffix is the shell variable's, not the field's). Slug shape
+# and enum membership are different guards, so they get different set
+# comparisons: ej_slug_flags above answers "is it in the class", this one
+# answers "is it one of the declared values".
+ej_enum_flags() {
+  sed -n 's/^ *in_list "\$\([a-z_]*\)".*/\1/p' "$EJSH" 2>/dev/null \
+    | sed 's/_val$//' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+# The same set as VALIDATE gates, from the enumerated predicates in its jq
+# program — `IN(...)` for the vocabularies and the boolean type test for
+# cache_hit. Read from the other side of the file so neither half is a literal
+# here, and empty is a named finding rather than a vacuous match.
+ej_validated_enums() {
+  sed -n '/^cmd_validate()/,/^}/p' "$EJSH" 2>/dev/null \
+    | grep -E 'IN\(|type == "boolean"' \
+    | sed -n 's/^[^.]*\.\([a-z_]\{2,\}\).*/\1/p' \
+    | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
 check_C27e() {
   have_jq || return 0
   have_exec_journal_inputs || return 0
@@ -1187,7 +1243,27 @@ check_C27e() {
     case ",$appended," in *",$f,"*) ;; *) s_bad="$s_bad append-does-not-guard:$f" ;; esac
     case ",$validated," in *",$f,"*) ;; *) s_bad="$s_bad validate-does-not-guard:$f" ;; esac
   done
-  [ -z "$s_bad" ] && ok "exec-journal.sh guards the same field set on append and on validate ($appended), note excluded from both — the containment claim its header, policy.json and rules/observability.md all make" \
+  # The SECOND half of the same claim, and the one that was false: the slug set
+  # is not the whole guard, because status and model_tier are enumerated rather
+  # than shape-checked. append gated both through in_list; validate checked them
+  # for `type == "string"`, so a hand-forged line carrying prose in status and a
+  # newline in model_tier validated clean. Compared as sets for the same reason
+  # as above, with both vocabularies named explicitly so dropping one is its own
+  # finding.
+  appended_enums=$(ej_enum_flags)
+  validated_enums=$(ej_validated_enums)
+  if [ -z "$appended_enums" ]; then
+    s_bad="$s_bad cannot-read-in_list-call-sites-from-exec-journal.sh"
+  elif [ -z "$validated_enums" ]; then
+    s_bad="$s_bad cannot-read-the-validate-enum-predicates-from-exec-journal.sh"
+  elif [ "$appended_enums" != "$validated_enums" ]; then
+    s_bad="$s_bad append-and-validate-enumerate-different-fields(append:$appended_enums validate:$validated_enums)"
+  fi
+  for f in status model_tier; do
+    case ",$appended_enums," in *",$f,"*) ;; *) s_bad="$s_bad append-does-not-enumerate:$f" ;; esac
+    case ",$validated_enums," in *",$f,"*) ;; *) s_bad="$s_bad validate-does-not-enumerate:$f" ;; esac
+  done
+  [ -z "$s_bad" ] && ok "exec-journal.sh guards the same field set on append and on validate — slugs ($appended), enumerations ($appended_enums) — with note excluded from both: the containment claim its header, policy.json and rules/observability.md all make" \
                    || bad "exec-journal slug-guard set problems:$s_bad"
 }
 

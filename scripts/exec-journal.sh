@@ -43,9 +43,22 @@
 #
 #   Every field except `note` is a slug (SLUG_RE below, the same no-whitespace
 #   class as registries/policy.json telemetry.value_pattern), and the validator
-#   rejects a line where one of them is not. `note` is the single field that
-#   admits text, so a consumer forwarding this journal must treat `note` — and
-#   only `note` — as untrusted. Every value, `note` included, is capped at
+#   rejects a line where one of them is not. `note` is the only field that
+#   admits FREE TEXT. It is NOT the only field carrying attacker-influenced
+#   content, and "treat `note`, and only `note`, as untrusted" is a false
+#   reading of this guard: a harness-supplied value transits dash-joined
+#   through hook_slug (below), so its characters still reach disk through a
+#   slug field. The class bounds which characters may appear, never what they
+#   mean.
+#
+#   One consequence has to be stated, because the class hides it: SLUG_RE
+#   admits `.` and `/`, so `../../../../etc/cron.d/x` is a valid slug and
+#   passes `validate` clean. No journal field is ever safe as a filesystem path
+#   component. A consumer that builds a path out of one must narrow it itself —
+#   `hooks/lib-common.sh hook_path_slug` ([A-Za-z0-9@_:-]) is that narrowing,
+#   and it exists precisely because this class is unsafe as a path.
+#
+#   Every value, `note` included, is capped at
 #   telemetry.exec_journal.max_value_length characters on append; over-long is a
 #   reject, never a truncation, because a truncated value that still validates
 #   is the same unbounded-input bug with the evidence removed.
@@ -326,13 +339,23 @@ cmd_validate() {
   while IFS= read -r line || [ -n "$line" ]; do
     line_no=$((line_no + 1))
     [ -z "$line" ] && continue
-    if ! printf '%s' "$line" | jq -e '
+    if ! printf '%s' "$line" | jq -e \
+        --arg statuses "$VALID_STATUSES" --arg tiers "$VALID_TIERS" '
         def is_nonneg_int: type == "number" and . >= 0 and (. | floor) == .;
         (.timestamp | type) == "string" and
         (.run_id | type) == "string" and
         (.capability_id | type) == "string" and
-        (.model_tier | type) == "string" and
-        (.status | type) == "string" and
+        # status and model_tier are ENUMERATED on append (in_list against the
+        # two constants above) and were checked here for type only, so a
+        # hand-forged line carrying prose in status and a newline in model_tier
+        # validated clean while the header, policy.json and
+        # rules/observability.md all claimed append and validate guard the same
+        # fields. The two constants are passed in rather than restated as jq
+        # literals: a third copy of either vocabulary would be a drift source
+        # that nothing checks, and C27a already pins these two against the
+        # registry.
+        (.model_tier | IN($tiers | split(" ")[])) and
+        (.status | IN($statuses | split(" ")[])) and
         (.tokens_in | is_nonneg_int) and
         (.tokens_out | is_nonneg_int) and
         (.duration_ms | is_nonneg_int) and

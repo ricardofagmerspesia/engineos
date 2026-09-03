@@ -271,6 +271,43 @@ check "validate rejects an unknown span_kind" 1 $?
 printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null,"cache_hit":"true"}' > "$tmp"
 bash "$EJ" validate "$tmp" >/dev/null 2>&1
 check "validate rejects a string cache_hit" 1 $?
+
+# The enumerated v1 fields. append gates status and model_tier through in_list;
+# validate checked them for `type == "string"` only, so a journal this CLI did
+# not write could carry prose in status and a newline in model_tier and
+# validate clean — while the header, policy.json and rules/observability.md all
+# say the two boundaries guard the same fields. These are the cases that fail
+# without that parity.
+printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"it went fine, mostly","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects free text in status, as append does" 1 $?
+
+printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build\nSECRET=leaked prompt text","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects a newline in model_tier, as append does" 1 $?
+
+printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"wizard","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects an undeclared model_tier" 1 $?
+
+printf '%s\n' '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"ok","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}' > "$tmp"
+bash "$EJ" validate "$tmp" >/dev/null 2>&1
+check "validate rejects a lowercased status, as append does" 1 $?
+
+# ... and the other direction, so the guard above cannot be satisfied by one
+# that rejects everything: every status and every tier the CLI declares must
+# still validate. Read from the constants, so renaming one moves this fixture.
+ev_bad=""
+for st in $(sed -n 's/^VALID_STATUSES="\(.*\)"$/\1/p' "$EJ"); do
+  printf '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"%s","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}\n' "$st" > "$tmp"
+  bash "$EJ" validate "$tmp" >/dev/null 2>&1 || ev_bad="$ev_bad status:$st"
+done
+for tr in $(sed -n 's/^VALID_TIERS="\(.*\)"$/\1/p' "$EJ"); do
+  printf '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"%s","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}\n' "$tr" > "$tmp"
+  bash "$EJ" validate "$tmp" >/dev/null 2>&1 || ev_bad="$ev_bad tier:$tr"
+done
+[ -z "$ev_bad" ]
+check "validate accepts every declared status and model tier ($ev_bad)" 0 $?
 rm -f "$tmp"
 
 echo

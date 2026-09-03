@@ -339,10 +339,37 @@ cmd_admit() {
   case "$inflight" in ''|*[!0-9]*) err "admit requires a numeric --inflight" ;; esac
   case "$queued"   in ''|*[!0-9]*) err "admit requires a numeric --queued" ;; esac
   need_reg policy.json
+  local P="$REG/policy.json"
+
+  # need_reg proves the FILE exists, not that these fields do — and admit read
+  # through all three without checking any of them, unlike cmd_breaker and
+  # cmd_hitl. Two verified failures came out of that:
+  #   - a missing wave_concurrency_cap made jq abort on `null - 0` at exit 5
+  #     with EMPTY stdout and a raw jq message on stderr, which is precisely the
+  #     {"error": ...}-on-stdout contract the header states and the --arg +
+  #     tonumber comment below claims to be protecting;
+  #   - a missing (or hand-edited) overload_action was emitted VERBATIM at exit
+  #     0, so admit answered with an action outside the registry's own declared
+  #     `actions` vocabulary — up to and including a value nothing in EngineOS
+  #     can execute.
+  # Each field is therefore checked before anything reads through it. Fail
+  # closed, as every other registry-reading subcommand does.
+  jq -e '.parallelism.backpressure' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no parallelism.backpressure block — admit cannot resolve its own policy without it"
+  jq -e '.parallelism.wave_concurrency_cap | type == "number"' "$P" >/dev/null 2>&1 \
+    || err "policy.json parallelism.wave_concurrency_cap is not a number — admit cannot compute capacity without it"
+  jq -e '.parallelism.backpressure.max_queued_units | type == "number"' "$P" >/dev/null 2>&1 \
+    || err "policy.json parallelism.backpressure.max_queued_units is not a number — admit cannot compare the queue against it"
+  # The overload action is DATA, so it is checked against the registry's own
+  # declared vocabulary rather than against a second list spelled here.
+  jq -e '.parallelism.backpressure as $b
+         | ($b.actions | type == "array") and (($b.actions | index($b.overload_action)) != null)' "$P" >/dev/null 2>&1 \
+    || err "policy.json parallelism.backpressure.overload_action is not one of the declared backpressure.actions — admit will not emit an action the registry does not declare"
+
   # --arg + tonumber, not --argjson: "06" passes the digits-only check above but
   # is not valid JSON, and --argjson would fail inside jq with a parse error on
   # stderr instead of the kernel's {"error": ...} contract on stdout.
-  jq -n --arg i "$inflight" --arg q "$queued" --slurpfile pol "$REG/policy.json" '
+  jq -n --arg i "$inflight" --arg q "$queued" --slurpfile pol "$P" '
     ($i | tonumber) as $i
     | ($q | tonumber) as $q
     | $pol[0].parallelism as $par
@@ -462,12 +489,21 @@ cmd_hitl() {
   local P="$REG/policy.json"
 
   # need_reg proves the FILE exists, not that this block does. Without the
-  # guard, .hitl.record_home is null and the situation allowlist below reduces
-  # to `null | index($s)` — so every situation reads as unknown, and any answer
-  # that got through would ship a null record_home with exit 0. Fail closed, as
-  # cmd_risk and cmd_breaker do.
+  # guard, the situation allowlist below reduces to `null | index($s)` — so
+  # every situation reads as unknown. Fail closed, as cmd_risk and cmd_breaker
+  # do.
   jq -e '.hitl' "$P" >/dev/null 2>&1 \
     || err "policy.json has no hitl block — hitl cannot resolve its own reason vocabulary without it"
+
+  # record_home gets its OWN guard, because `jq -e '.hitl'` tests the BLOCK and
+  # the comment above used to claim it tested the key. It did not: deleting
+  # hitl.record_home alone left the block truthy and shipped
+  # {"required":true, ..., "record_home":null} at exit 0 — a caller told a human
+  # must decide, and given nowhere to record the decision, while
+  # rules/risk-autonomy.md holds that a tier requiring a human with no such
+  # record has not passed its gate. Now the guard matches the sentence.
+  jq -e '.hitl.record_home | (type == "string") and (length > 0)' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no hitl.record_home — hitl will not require a human decision without naming where it is recorded"
 
   # An unknown situation is an error, never an ignored flag: a caller reporting
   # a situation the kernel silently drops would read required:false as "no
