@@ -482,8 +482,12 @@ check_C25c() {
     grep -qE "^\| \`$st\`" rules/parallelism.md 2>/dev/null \
       || p_bad="$p_bad parallelism.md-has-no-table-row-for-state:$st"
   done
+  # Scoped to the section, not the file: `provider` and `tool` also appear in the
+  # exec-journal paragraph further down, so a file-wide grep would pass even with
+  # the breaker's own scope line deleted.
+  bsec=$(sed -n '/^## Circuit breaker$/,/^## /p' rules/parallelism.md 2>/dev/null)
   for sc in $(jq -r '.breaker.scopes[]?' "$PJ"); do
-    grep -qE "\`$sc\`" rules/parallelism.md 2>/dev/null \
+    printf '%s' "$bsec" | grep -qE "\`$sc\`" 2>/dev/null \
       || p_bad="$p_bad parallelism.md-does-not-name-scope:$sc"
   done
   [ -z "$p_bad" ] && ok "rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state and a mention of every declared scope" \

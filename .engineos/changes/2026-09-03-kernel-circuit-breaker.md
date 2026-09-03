@@ -255,6 +255,10 @@ stable identifiers are the parent (`17f0399`) and the first commit
 No renames, no deletions, no moves.
 
 ## Notes
+- **C25c's scope assertion is section-scoped, not file-wide.** Found in the fix-round
+  re-review: `provider` and `tool` also appear in the exec-journal paragraph of
+  `rules/parallelism.md`, so a file-wide grep passed even with the breaker's own
+  scope line deleted. The check now slices the `## Circuit breaker` section first.
 
 - **Frozen-contract breach, found in review and corrected.** The plan's frozen
   contract and the accepted ADR name the breaker scope ids `provider`, `mcp`,
