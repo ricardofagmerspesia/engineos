@@ -17,7 +17,7 @@ export function recallAtK(relevant: Set<string>, ranked: string[], k: number): n
   const hits = ranked.slice(0, k).filter((id) => relevant.has(id)).length;
   return relevant.size === 0 ? 0 : hits / relevant.size;
 }
-// Precondition: ranked.length >= k, otherwise the short window inflates precision.
+// Precondition: ranked.length >= k, otherwise the short window undercounts precision (hits / k with fewer than k candidates).
 export function precisionAtK(relevant: Set<string>, ranked: string[], k: number): number {
   const hits = ranked.slice(0, k).filter((id) => relevant.has(id)).length;
   return k === 0 ? 0 : hits / k;
