@@ -45,7 +45,7 @@ src/kernel/{index,context,resolve,cli}.ts                          public: resol
 src/kernel/{route,risk,model,scale,decisions,hitl,admit,breaker,waves,repair}.ts   internal seams, not exported
 src/kernel/{resolve,cli,parity}.test.ts, test/fixtures/legacy-kernel/{kernel.sh,registries/}
 src/journal/{schema,exec-journal,telemetry,cli}.ts
-src/hooks/{envelope,bypass,telemetry,scaffold,runner,cache,cli}.ts
+src/hooks/{envelope,output,bypass,telemetry,scaffold,runner,cache,cli}.ts
 src/hooks/{ensure-project-layout,prompt-advisor,route-before-change,announce-agent-dispatch,mark-unrecorded,announce-agent-return,stop-verify,record-verify,post-edit-check}.ts
 src/gen/{agent-commands,agent-registry,frontmatter}.ts
 src/init/project.ts
@@ -55,6 +55,7 @@ src/checks/{index,lib,10-rules,20-registries,30-agents-skills,40-decision-regist
 src/validate/cli.ts
 src/bench/run.ts
 src/report/usage.ts
+src/testing/{harness,harness.test}.ts   test-only; never imported from src/cli.ts, so never bundled
 registries/layout-manifest.json, registries/docs-ledger.json
 dist/engineos.cjs
 ```
@@ -970,7 +971,103 @@ git add src/registry
 git commit -m "feat(kernel): resolve the runtime root and load routing.json"
 ```
 
-### Task 7: `resolve` skeleton and the route section (path form)
+### Task 6b: Shared test harness (`src/testing/harness.ts`)
+
+Amended 2026-09-04 (architecture review, candidate 7). Every bash suite today
+rebuilds the same five fixtures by hand: a temp root with an EXIT trap
+(`scripts/test-kernel.sh` 14-24), a relocated kernel copy whose `policy.json` is
+mutated in place (`scripts/test-kernel.sh` 73-90, `relocated_kernel`), a hook
+envelope, a transcript in the legacy `tool_input` shape, and a per-case
+`mktemp` + `git init` repo (`hooks/test-verify.sh` 25-60: `invoke`,
+`make_transcript`, `make_mixed_transcript`). The port would copy that idiom into
+16 `*.e2e.test.ts` files. This task lands the idiom once, before Task 7, so
+every kernel and hook test from here on speaks one fixture vocabulary;
+`src/kernel/resolve.test.ts` and `src/kernel/parity.test.ts` (Wave 1(a)) are its
+first consumers.
+
+**Files:**
+- Create: `src/testing/harness.ts`, `src/testing/harness.test.ts`
+- Nothing under `src/testing/` is imported from `src/cli.ts`, so esbuild never
+  bundles it. `harness.test.ts` asserts that by reading `dist/engineos.cjs` and
+  failing on the string `src/testing/`.
+
+**Interface (frozen — seven exports, nothing else):**
+```ts
+// src/testing/harness.ts
+import type { TestContext } from 'node:test';
+import type { Command } from '../dispatch';
+
+export type HookEvent = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Stop' | 'SubagentStart' | 'SubagentStop';
+export interface ToolUse { name: string; input: Record<string, unknown> }
+export interface RunResult { status: number; stdout: string; stderr: string }
+export interface RunOptions { stdin?: string; env?: Record<string, string>; cwd?: string }
+
+// One fresh directory per test, removed by t.after. Throws when the resolved path
+// lies under the EngineOS checkout, so a test can never dirty the repo.
+export function tempRoot(t: TestContext): string
+// A git-initialised project under root with an optional package.json, nx.json and
+// extra files. Returns the repo path. Enough for the runner probes in stop-verify.
+export function fixtureRepo(root: string, opts?: { pkg?: Record<string, unknown>; nx?: Record<string, unknown>; files?: Record<string, string> }): string
+// Copies registries/ (and the bash shim while it exists) under root, applies
+// mutate to the COPY of policy.json, returns the new ENGINEOS_ROOT. The checkout's
+// registries are never written.
+export function relocatedRoot(root: string, opts?: { mutate?: (policy: Record<string, unknown>) => void }): string
+// The stdin JSON a hook receives for one event (design "Hook envelope").
+export function envelope(opts: { event: HookEvent; cwd: string; sid: string; tool?: ToolUse; transcript?: string; stopHookActive?: boolean }): string
+// A Claude transcript JSONL with one tool_use per entry. Default is the real
+// harness shape (`input`); { legacy: true } emits the older `tool_input` key the
+// bash suites still exercise. stop-verify e2e runs one case per form.
+export function transcript(toolUses: ToolUse[], opts?: { legacy?: boolean }): string
+// Black-box drive: spawnSync(process.execPath, ['dist/engineos.cjs', ...args]).
+export function runCli(args: string[], opts?: RunOptions): RunResult
+// White-box drive: calls a Command with memoryIo(opts); stdout/stderr joined.
+export function runInProcess(command: Command, argv: string[], opts?: RunOptions): RunResult
+```
+
+**Discipline the harness enforces (not just offers):**
+- One temp root per test, bound to `t.after`. No suite-level `TMPROOT`, no
+  process `exit` handler — `node:test` runs files in parallel and a shared root
+  is a shared bug.
+- `tempRoot` and `relocatedRoot` throw if the target resolves under
+  `resolveRoot(process.env, __dirname)` (Task 6). Registry mutation happens on
+  the copy or not at all.
+- Both drives return the same `RunResult`, so a suite can start white-box on
+  `runInProcess` and switch to `runCli` for its e2e cases without rewriting
+  assertions. Which drive a suite uses is chosen per suite: kernel and pure
+  hooks in-process, anything that probes git or the runner through `runCli`.
+
+- [ ] **Step 1: Failing tests** — `harness.test.ts`: `tempRoot` returns a fresh
+  absolute path each call and the path is gone after the test; `tempRoot` throws
+  for a `TMPDIR` pointing inside the checkout; `fixtureRepo` yields a directory
+  where `git rev-parse --show-toplevel` equals the repo path and `package.json`
+  round-trips; `relocatedRoot` leaves the checkout's `registries/policy.json`
+  byte-identical while the copy carries the mutation; `envelope` parses back to
+  the fields `HookEnvelope` decodes (Task 15 shape); `transcript` default emits
+  `input` and `{ legacy: true }` emits `tool_input`, one line per tool use;
+  `runCli(['--version'])` and `runInProcess(version, [])` return the same
+  stdout; `dist/engineos.cjs` does not contain `src/testing/`.
+- [ ] **Step 2: Run** — `npm test`, new file fails.
+- [ ] **Step 3: Implement** — `mkdtempSync` under `os.tmpdir()` with
+  `t.after(() => rmSync(dir, { recursive: true, force: true }))`; `git init -q`
+  via `spawnSync`; `cpSync(registries, ..., { recursive: true })` then
+  `readJsonFile` → `mutate` → `writeFileSync` on the copy; `JSON.stringify` for
+  `envelope`; `transcript` maps each tool use to
+  `{ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } }`
+  and renames `input` to `tool_input` under `legacy`.
+- [ ] **Step 4: Run tests** — `npm test`, all pass.
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/testing
+git commit -m "test: shared fixture harness for kernel and hook tests"
+```
+
+Tasks 5 and 6 predate this task and keep their inline `mkdtempSync`; their
+fixtures are one file each and porting them buys nothing. From Task 7 on, a
+test that builds a temp root, relocated registries, an envelope or a transcript
+by hand instead of through the harness is a review defect.
+
+### Task 7: `kernel route-path`
 
 **Files:**
 - Create: `src/kernel/context.ts`, `src/kernel/index.ts`, `src/kernel/resolve.ts`, `src/kernel/route.ts`, `src/kernel/resolve.test.ts`
@@ -1379,15 +1476,29 @@ Barrier 2 (with Barrier 1): handoff.
 
 # Wave 3 — hooks
 
-### Task 16: hook library, part 1 — envelope, bypass, telemetry writer
+### Task 16: hook library, part 1 — envelope, output, bypass, telemetry writer
 
-**Files:** Create `src/hooks/envelope.ts`, `src/hooks/bypass.ts`, `src/hooks/telemetry.ts`, `src/lib/git.ts`, `src/lib/slug.ts`, `src/lib/time.ts` + tests. Delete nothing yet.
+**Files:** Create `src/hooks/envelope.ts`, `src/hooks/output.ts`, `src/hooks/bypass.ts`, `src/hooks/telemetry.ts`, `src/lib/git.ts`, `src/lib/slug.ts`, `src/lib/time.ts` + tests. Delete nothing yet.
 **Source:** `hooks/lib-common.sh` (`hook_read_envelope`, `hook_context`, `hook_telemetry_dir`, `hook_telemetry`, `hook_slug`, `hook_path_slug`, `hook_now_ms`, `hook_span_open/close`, `hook_span`, `git_dir`, `repo_root`, `find_up`, `find_up_file`), `hooks/bypass.sh`.
 **Interfaces:**
 ```ts
 export interface HookEnvelope { cwd: string; sessionId: string; prompt: string; file: string; tool: string; transcriptPath: string; stopHookActive: boolean; raw: unknown }
 export function readEnvelope(io: Io): HookEnvelope | null            // null when stdin is not a JSON object (caller decides: most hooks exit 0)
-export function hookContext(event: string, text: string): { hookSpecificOutput: { hookEventName: string; additionalContext: string } }
+// src/hooks/output.ts — the output half of the hook contract (design "Hook decision"). Imports nothing.
+export type HookEventName = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Stop' | 'SubagentStart' | 'SubagentStop'
+export type HookDecision =
+  | { kind: 'silent' }
+  | { kind: 'context'; event: HookEventName; text: string }
+  | { kind: 'block'; reason: string }
+  | { kind: 'message'; text: string }
+  | { kind: 'fail'; stderr: string }
+export const silent: HookDecision
+export function context(event: HookEventName, text: string): HookDecision
+export function block(reason: string): HookDecision
+export function message(text: string): HookDecision
+export function fail(stderr: string): HookDecision
+export function render(decision: HookDecision, io: Io): number   // context/block/message -> stdout JSON + 0; fail -> stderr + 2; silent -> 0
+export interface HookContext { io: Io; root: string; now: () => number; spawn: typeof spawnSync }
 export function bypassMarker(cwd: string): string | null             // <gitdir>/ENGINEOS_BYPASS
 export function bypassActive(cwd: string, env: NodeJS.ProcessEnv): boolean   // env ENGINEOS_BYPASS=1 > flag file (ENGINEOS_BYPASS_FLAG or ~/.claude/engineos.bypass) > marker
 export function telemetryDir(cwd: string): string | null            // only when the repo has .engineos/; creates <gitdir>/engineos-telemetry
@@ -1396,8 +1507,8 @@ export function spanOpen(dir, id, env): void; export function spanClose(dir, id,
 export function span(dir, sid, kind, fields: SpanFields, env): void   // SpanFields from journal/schema.ts; sanitizes per row class (slug -> hookSlug, enum -> member or drop, int -> non-negative or drop), then journal/appendLine with tokens 0
 export const hookSlug = (v: string) => string; export const hookPathSlug = (v: string) => string | null
 ```
-**Invariants:** telemetry writes only when the consumer repo carries `.engineos/`; every writer swallows its own errors; slug classes exact; `spanClose` clamps negative durations to 0. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `bypass.test.ts`, `telemetry.test.ts` covering each of its 13 assertions; remove the suite's CI step in the same PR.
-**Commit:** `feat(hooks): port the hook envelope, bypass and telemetry library`.
+**Invariants:** telemetry writes only when the consumer repo carries `.engineos/`; every writer swallows its own errors; slug classes exact; `spanClose` clamps negative durations to 0. `render` is the only function in `src/` that writes a hook's stdout or chooses its exit code; `output.ts` has no imports so `src/cli.ts`'s node guard can call `render(message(...), io)` for the deviation-2 `systemMessage` — this task re-points the guard's `skip` branch (Task 3) to it and deletes the inline `writeJson`. `output.test.ts` asserts the exact JSON text and exit code of each of the five kinds; no other test in `src/hooks/` asserts stdout. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `output.test.ts`, `bypass.test.ts`, `telemetry.test.ts` covering each of its 13 assertions; remove the suite's CI step in the same PR.
+**Commit:** `feat(hooks): port the hook envelope, decision output, bypass and telemetry library`.
 
 ### Task 17: hook library, part 2 — scaffold, runner, cache, manifests as data
 
@@ -1432,7 +1543,8 @@ Common shape for every hook task:
   ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   exec node "$ROOT/dist/engineos.cjs" hook <name>
   ```
-- **Interface:** `export function <camelName>(io: Io): number` reading the envelope via Task 16 and returning the exit code; the CLI adapter maps it.
+- **Interface:** `export function run(env: HookEnvelope, ctx: HookContext): HookDecision` (Task 16 types). The hook never writes stdout and never picks an exit code. `src/hooks/cli.ts` is the one adapter: `readEnvelope(io)` → `null` means `silent` → `run` → `render` → exit code. Side effects (telemetry, markers, cache, runner) go through `ctx`, so `<name>.test.ts` calls `run` with a harness `envelope()` and a `memoryIo`-backed `ctx` and `deepEqual`s the decision.
+- **Tests:** assert on the returned `HookDecision`, never on stdout text (`output.test.ts` owns that, Task 16). The Wave 6 e2e port of the hook's bash suite keeps its stdout assertions through `runCli`.
 - **Check re-point (spec deviation 3):** every `scripts/checks/*.sh` assertion that greps `hooks/<name>.sh` changes its target path to `src/hooks/<name>.ts` in the same PR, keeping the literal it looks for (the TS module carries the same `--event <id>` strings as constants, the same `hook_span`/`hook_span_open` function names as imports, the same registry key text). The last column of the table names the checks; C22c and C27c list every writer, so most hook PRs touch both.
 - **Acceptance:** the named bash suite green in the same PR; `bash scripts/validate-engineos.sh` green in the same PR.
 - **Commit:** `refactor(hooks): port <name> to the node runtime`.
@@ -1441,14 +1553,14 @@ Common shape for every hook task:
 |---|---|---|---|---|---|
 | 18 | `ensure-project-layout` | 96 | `hooks/test-layout.sh` | bypass marker removed and stale `ENGINEOS_UNRECORDED.*` (+7 days) reaped BEFORE the self-repo skip; route cache wiped every start; telemetry reaped by `policy.json .telemetry.retention_days`; `ENGINEOS_SCAFFOLD` tri-state; exact hint text; always exit 0; grep/sed `cwd` fallback becomes lenient JSON decode | C29 (`scaffold-layout.sh` sourced -> `./scaffold` imported), C22c (`--event` ids), C27c (`exec.jsonl`, `engineos-telemetry/spans`) |
 | 19 | `mark-unrecorded` | 51 | `hooks/test-governance.sh` | extension allowlist `ts tsx js jsx py go rs sql` shared constant; skips `*/.engineos/*`; self_dirs from `routing.json` resolved against the plugin root; marker `ENGINEOS_UNRECORDED.<sid>`; silent | C22c if listed as a writer |
-| 20 | `record-verify` | 34 | `hooks/test-governance.sh` | bypass, then `stop_hook_active` guard; `.deferred` marker silences; block reason text verbatim with the `touch "<path>"` suggestion; exit 0 with `{"decision":"block"}` | C22c if listed as a writer |
-| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached `.output` fast path only when project and change notes are empty; bypass checks before any kernel call; default guide `base.md+git.md only`; never sets `permissionDecision` | C22c (`--event` ids) |
+| 20 | `record-verify` | 34 | `hooks/test-governance.sh` | bypass, then `stop_hook_active` guard; `.deferred` marker silences; block reason text verbatim with the `touch "<path>"` suggestion, returned as `block(reason)` (the adapter renders `{"decision":"block"}` and exits 0) | C22c if listed as a writer |
+| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached fast path only when project and change notes are empty — the cache stores the `HookDecision` JSON, not the rendered payload, and the hit path returns it to the adapter to render (cache format is internal, wiped every SessionStart); bypass checks before any kernel call; default guide `base.md+git.md only`; never sets `permissionDecision` | C22c (`--event` ids) |
 | 22 | `prompt-advisor` | 118 | `hooks/test-prompt-advisor.sh` | calls `resolveTask` in-process; guidance strings verbatim (copy from the jq program lines 64-115); telemetry ids only, never prompt text; `route` id slugged, default `none`; risk allowlisted to low/medium/high; span `--model-tier cheap` | C18f (`resolve-task` literal: the TS imports `resolveTask` from `../kernel/resolve-task`, which contains it), C22c, C27c |
 | 23 | `announce-agent-dispatch` | 39 | `hooks/test-agent-announce.sh` | opens a span keyed by tool-use id; banner text verbatim; under an unusable node prints the `systemMessage` (not in the silent set) | C27c (`hook_span_open`, `--capability-id` literals) |
 | 24 | `announce-agent-return` | 77 | `hooks/test-agent-announce.sh` | status floor derived only from structure (error flag, top-level `.status`, first token of a string response); `model_tier` from `agents.json`; closes the span | C27c (`hook_span`, `exec-journal` literals) |
-| 25 | `stop-verify` | 203 | `hooks/test-verify.sh`, `hooks/test-bypass.sh` | reads stdin and transcript leniently (never exits on decode failure); bypass then loop guard; runner spawned with `runnerEnv` (node-20 PATH fix); node < 18 on the runner PATH after that fix is an infra skip; `Edit|Write|NotebookEdit` tool_use only; `ts tsx js jsx` only; targets `lint typecheck` (+`test` when `ENGINEOS_VERIFY_TESTS=1`); timeouts 90 s / 180 s; infra-skip after a non-zero run; block reason with repair-bound text from `policy.json .repair`; telemetry once per stop cycle | C20d (`repair.max_fix_attempts_per_check` literal, no hardcoded bound), C22c, C27c |
+| 25 | `stop-verify` | 203 | `hooks/test-verify.sh`, `hooks/test-bypass.sh` | reads stdin and transcript leniently (never exits on decode failure); bypass then loop guard; runner spawned with `runnerEnv` (node-20 PATH fix); node < 18 on the runner PATH after that fix is an infra skip; `Edit|Write|NotebookEdit` tool_use only; `ts tsx js jsx` only; targets `lint typecheck` (+`test` when `ENGINEOS_VERIFY_TESTS=1`); timeouts 90 s / 180 s; infra-skip after a non-zero run; one `block(reason)` with the repair-bound text from `policy.json .repair` — the bash file's second, jq-less literal with different reason text disappears with jq; telemetry once per stop cycle | C20d (`repair.max_fix_attempts_per_check` literal, no hardcoded bound), C22c, C27c |
 
-Also port `post-edit-check` (81 lines, unregistered) as Task 25b in the same PR as Task 25 if the size allows; suite `hooks/test-post-edit.sh`; keeps `exit 2`.
+Also port `post-edit-check` (81 lines, unregistered) as Task 25b in the same PR as Task 25 if the size allows; suite `hooks/test-post-edit.sh`; returns `fail(stderr)`, which `render` maps to stderr + `exit 2`.
 
 ### Task 26: `init` (moved here from wave 4: it needs `scaffold.ts`)
 
@@ -1534,7 +1646,7 @@ Barrier 5: handoff.
 
 ### Tasks 42-57: port the 16 suites to `node:test`
 
-One PR per suite (largest first: `test-validate-engineos.sh` 1076 -> `src/validate/validate.e2e.test.ts` may take two PRs; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box, `spawnSync(process.execPath, [dist/engineos.cjs, ...])` with `input` for stdin, temp git repos via `mkdtempSync` + `spawnSync('git', ['init', '-q'])`, assertions on stdout JSON and marker files. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
+One PR per suite (largest first: `test-validate-engineos.sh` 1076 -> `src/validate/validate.e2e.test.ts` may take two PRs; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box through the shared harness (Task 6b) — `runCli` for the drive, `tempRoot(t)` + `fixtureRepo` for the repo, `relocatedRoot` where a suite mutates a registry (`test-kernel.sh` `relocated_kernel`, `test-route.sh` fixtures), `envelope` and `transcript` for hook stdin — with assertions on stdout JSON and marker files. Suites that exercise a transcript (`test-verify.sh`) run each case in both transcript forms, default `input` and `{ legacy: true }`. No suite reintroduces `mkdtempSync` + `git init` inline; the harness is where that idiom lives. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
 
 Mapping: `test-route.sh`, `test-governance.sh`, `test-prompt-advisor.sh`, `test-install-hooks.sh` (keeps spawning `bash install.sh`), `test-layout.sh`, `test-verify.sh`, `test-bypass.sh`, `test-docs.sh` (reads `registries/docs-ledger.json`), `test-agent-announce.sh`, `test-post-edit.sh`, `test-exec-journal.sh`, `test-gen-agent-registry.sh`, `test-telemetry.sh`, `test-kernel.sh`, `test-validate-engineos.sh`. `test-lib-common.sh` was already replaced in Task 16.
 

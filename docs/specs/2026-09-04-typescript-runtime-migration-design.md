@@ -89,6 +89,7 @@ src/
     scaffold.ts       symlink-safe directory + seed creation, manifest as data
     runner.ts         nx / npm-family detection, target probe, run with timeout, infra-skip regexes
     cache.ts          route cache keyed by sid + routing.json signature + buster
+    output.ts         HookDecision (silent | context | block | message | fail) + render(): the one writer of hook stdout and exit codes
     <hook-name>.ts    one per registered hook (8)
   gen/                agent-commands, agent-registry
   init/               project adoption
@@ -96,6 +97,7 @@ src/
   checks/             one module per family + index.ts (explicit registry) + lib
   bench/              runtime budgets
   report/             usage report
+  testing/            test-only fixture harness (temp roots, fixture repos, relocated registries, envelopes, transcripts, two drives); never bundled
 dist/engineos.cjs     esbuild bundle, target node18, committed
 package.json          devDependencies only: typescript, esbuild, @types/node
 tsconfig.json         strict, ES2022 lib, CommonJS output for tests
@@ -234,7 +236,9 @@ re-executes itself with `spawnSync(newer, [__filename, ...argv], { stdio:
   (`stop-verify`, `ensure-project-layout`, `post-edit-check`) and the two announce
   hooks print `{"systemMessage": "[engineos] <hook> skipped: node >= 18 required
   (found v16.x)"}` and exit 0, so the user sees the Validation gate did not run
-  instead of a green silence. This is deviation 2 below;
+  instead of a green silence. This is deviation 2 below. The guard builds that as
+  a `message` hook decision and hands it to `hooks/output.ts` `render`, the same
+  writer every hook uses, so `output.ts` imports nothing and runs on any node;
 - every other subcommand prints `{"error": "node >= 18 required, found vX"}` and
   exits 1.
 
@@ -412,8 +416,11 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
   the projection; JSON deep-equal and exit code equal. It needs `bash` and `jq`
   in CI until 2.0, when it is deleted with the shim.
 - `hooks/test-lib-common.sh` (white-box) is replaced by unit tests for
-  `hooks/envelope.ts`, `hooks/bypass.ts` and `hooks/telemetry.ts` in the PR that
-  ports the hook library.
+  `hooks/envelope.ts`, `hooks/bypass.ts`, `hooks/output.ts` and
+  `hooks/telemetry.ts` in the PR that ports the hook library.
+- Hook tests assert on the `HookDecision` a hook returns, never on stdout text;
+  `hooks/output.test.ts` is the one place the harness JSON and exit code per
+  kind are asserted ("Hook decision" above).
 - Wave 6 ports each bash suite to a `node:test` file in the same black-box style
   (spawn the CLI, feed stdin, assert stdout and state files), deletes the `.sh`
   suite, and removes `shellcheck` and `jq` from CI when the last one lands.
@@ -422,6 +429,14 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - `bench` keeps the published budgets: route-intent 250 ms, resolve-task 500 ms,
   prompt-advisor 600 ms, route-before-change cache hit 150 ms, always-on context
   32,000 bytes. `ENGINEOS_PERF_MULTIPLIER` keeps its meaning.
+- One fixture harness, `src/testing/harness.ts` (plan Task 6b, Wave 1(a)), owns
+  the idiom every suite repeats: a per-test temp root bound to `t.after`, a
+  git-initialised fixture repo, a relocated registry copy that is mutated instead
+  of the checkout, the hook envelope, the transcript in both the real (`input`)
+  and legacy (`tool_input`) shapes, and two drives with one result type —
+  `runCli` (spawn the bundle) and `runInProcess` (a `Command` over `memoryIo`).
+  It throws on any path under the checkout. Seven exports; it is the test surface
+  for every kernel and hook module and is never bundled.
 
 ## Waves
 
