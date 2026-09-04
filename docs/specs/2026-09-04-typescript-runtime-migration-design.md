@@ -94,7 +94,7 @@ src/
   gen/                agent-commands, agent-registry
   init/               project adoption
   evals/              deterministic + live tiers
-  checks/             one module per family + index.ts (explicit registry) + lib
+  checks/             one module per family + index.ts (explicit registry) + lib; mirror.ts runs the typed MirrorPair table in mirrors.ts
   bench/              runtime budgets
   report/             usage report
   testing/            test-only fixture harness (temp roots, fixture repos, relocated registries, envelopes, transcripts, two drives); never bundled
@@ -306,6 +306,60 @@ export const SLUG_RE = /^[A-Za-z0-9@_./:-]+$/
   pinned to `policy.json` by a `journal schema` JSON arm (a new public arm to
   keep a copy honest); keeping C27e as a behavioural check (overlaps C27b).
 
+### Mirror table (amended 2026-09-04, architecture review)
+
+The Rule-to-registry mirror relation — a passage in a rule, `CLAUDE.md`, a
+template or a skill must name or quote what a registry declares — is written
+by hand in fifteen checks across five check files (C16's nine pairs, C19b/c,
+C20c, C21b/e, C23, C24c, C25c, C26c, C27d, C28). Every copy re-derives section
+slicing and the vacuous-grep defence; the defence's rationale comment is
+repeated four times in `70-runtime.sh`; one copy never opens the document it
+claims to mirror (deviation 5). The port declares the relation once.
+
+```ts
+// src/checks/mirrors.ts — the table; src/checks/mirror.ts — the runner
+export type Direction = 'doc-names-registry' | 'registry-names-doc' | 'both'
+export interface MirrorBase {
+  id: string                      // row id, reported on failure: [<id>: <reason>]
+  check: CheckId                  // the check that runs this row (`--only` and the mutation cases key on it)
+  registry: RegistryPath          // typed against the loaders, e.g. 'policy.hitl.reasons[].id'
+  doc: string                     // 'rules/risk-autonomy.md'
+  anchor?: string                 // '## Human-in-the-loop'; absent only with scope: 'file'
+  scope?: 'file'                  // explicit opt-in to a whole-file search
+  direction: Direction
+}
+export type MirrorPair = MirrorBase & (
+  | { kind: 'names'; element: string }    // every registry element appears as element with {x} substituted, e.g. '^\| `{x}`'
+  | { kind: 'quotes'; pattern: string }   // one registry scalar equals the {n} capture, e.g. 'Cap concurrency at ~{n}'
+)
+export const MIRRORS = [ … ] satisfies readonly MirrorPair[]
+export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): MirrorFailure[]   // [] means the rows hold
+```
+
+- The runner enforces, for every row and with no opt-out: the anchor section
+  exists and is non-empty (whole file only under `scope: 'file'`); the registry
+  list is non-empty; a `{n}` capture matches exactly one number; `both` checks
+  the reverse direction by slicing the section for elements the registry does
+  not declare. The rationale lives once, in `mirror.ts`.
+- `element` and `pattern` are today's exact grep strings with a placeholder, so
+  plan Task 37's "keep the exact grep strings" holds as data.
+- Check ids do not change. C16 is `runMirrors(rowsOf('C16'))` plus its
+  registry-to-registry assertions; the same for the other fourteen. A failure
+  reads `FAIL <check message>: [<row id>: <reason>]`, so `--only` and the 141
+  mutation cases in `test-validate-engineos.sh` keep their keys.
+- Registry-to-registry checks (intents vs routing foreign keys, JSON
+  well-formedness, canaries that call the kernel) are not mirrors and stay code.
+- Tests: `mirror.test.ts` drives the runner against fixture docs and fixture
+  registries built with the shared harness — one case per rule (missing
+  section, empty section, empty list, vacuous match, reverse direction, `{n}`
+  ambiguity); `mirrors.test.ts` asserts every row's `doc` exists and every
+  `registry` path resolves against the shipped registries.
+- Deletion test: remove the table and slicing, the vacuity guard and the pair
+  list reappear in fifteen checks. Rejected: a `registries/mirrors.json` data
+  file (needs its own check to stay honest and loses typed paths); one new
+  check id for all mirrors (fifteen ids change meaning, mutation cases move);
+  a single pattern kind (a scalar is not a list, and `both` has no meaning for it).
+
 ### Shims and compatibility
 
 Every bash entry point becomes a shim:
@@ -400,6 +454,10 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    `policy.json` well-formedness and writer existence; C27b (behavioural
    round-trip), C27c, C27d and C27f stay. Check ids are not versioned surface
    in `docs/COMPATIBILITY.md`; the removal is recorded in the change record.
+5. C16's "gate ladder matches rules/gates.md" compares `policy.json` against a
+   literal string and never opens `rules/gates.md`. As a mirror row it reads the
+   `## The ladder` table for real. The check gets stricter; if the prose fails
+   it, the PR that ports C16 fixes the prose, never the row.
 
 ## Testing
 
@@ -437,6 +495,9 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
   `runCli` (spawn the bundle) and `runInProcess` (a `Command` over `memoryIo`).
   It throws on any path under the checkout. Seven exports; it is the test surface
   for every kernel and hook module and is never bundled.
+- Mirror rows are tested as data: the runner once per rule against fixture
+  docs, the table once for resolvable paths ("Mirror table" above). No check
+  test re-asserts section slicing.
 
 ## Waves
 

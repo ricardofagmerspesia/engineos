@@ -51,7 +51,7 @@ src/gen/{agent-commands,agent-registry,frontmatter}.ts
 src/init/project.ts
 src/install/settings-merge.ts
 src/evals/{run,deterministic,live}.ts
-src/checks/{index,lib,10-rules,20-registries,30-agents-skills,40-decision-registries,50-kernel,60-contracts,70-runtime}.ts
+src/checks/{index,lib,mirror,mirrors,10-rules,20-registries,30-agents-skills,40-decision-registries,50-kernel,60-contracts,70-runtime}.ts
 src/validate/cli.ts
 src/bench/run.ts
 src/report/usage.ts
@@ -1623,6 +1623,32 @@ export function skipOnce(ctx, token, message), skipPending(ctx, token, message),
 **Acceptance:** `bash scripts/test-validate-engineos.sh` — the harness cases (`hok`/`hno`); the 141 mutation cases pass as each family lands.
 **Commit:** `feat(checks): explicit check registry and validate harness`.
 
+### Task 33b: mirror runner and table (`src/checks/mirror.ts`, `mirrors.ts`)
+
+Amended 2026-09-04 (architecture review, candidate 2). Fifteen checks across
+five families hand-write the same relation: a document names or quotes what a
+registry declares. Land the relation once, before the families, so their
+mirror halves port as rows.
+
+**Files:** Create `src/checks/mirror.ts`, `src/checks/mirrors.ts`, `src/checks/mirror.test.ts`, `src/checks/mirrors.test.ts`.
+**Source:** `40-decision-registries.sh` 55-234 (C16's nine pairs), `60-contracts.sh` C19b/c, C21b/e, `70-runtime.sh` C20c, C23, C24c, C25c, C26c, C27d, C28; the four copies of the vacuous-grep comment at `70-runtime.sh` 503-505, 711-714, 1096-1098, 1450-1452.
+**Interfaces:** the `MirrorPair`, `MIRRORS` and `runMirrors` contract in the design ("Mirror table"), verbatim.
+**Invariants:** no row without `anchor` unless `scope: 'file'`; runner refuses an empty section, an empty registry list, and a `{n}` pattern matching zero or several numbers; `element`/`pattern` strings are the bash grep strings with `{x}`/`{n}` substituted for the interpolated value; the gate-ladder row reads `rules/gates.md` `## The ladder` (deviation 5); registry paths are typed against the loaders, so a renamed key fails `tsc`.
+
+- [ ] **Step 1: Failing tests** — `mirror.test.ts`: one case per runner rule using `tempRoot(t)` + fixture docs and a fixture registry object (missing section, empty section, empty list, element present, element absent, reverse direction finds an undeclared element, `{n}` equal, `{n}` unequal, `{n}` ambiguous, `scope: 'file'` searches the whole file); `mirrors.test.ts`: every `MIRRORS[].doc` exists in the checkout and every `registry` path resolves against `registries/`.
+- [ ] **Step 2: Run** — `npm test`, new files fail.
+- [ ] **Step 3: Implement** — slice by anchor to the next `^## ` line; substitute placeholders and compile to a `RegExp` with metacharacters escaped outside the placeholder; collect failures as `{ id, reason }`.
+- [ ] **Step 4: Run tests** — `npm test`, all pass.
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/checks/mirror.ts src/checks/mirrors.ts src/checks/mirror.test.ts src/checks/mirrors.test.ts
+git commit -m "feat(checks): mirror runner and the registry-to-doc pair table"
+```
+
+The families that follow port each mirror half as `runMirrors(rowsOf('<id>'))`
+inside the existing check; the non-mirror assertions port as code beside it.
+
 ### Tasks 34-41: check families, one PR each
 
 | Task | Family | Source LOC | Checks | Notes |
@@ -1630,11 +1656,11 @@ export function skipOnce(ctx, token, message), skipPending(ctx, token, message),
 | 34 | `10-rules` | 89 | C1 (becomes "node >= 18 present"), C2, C3, C5, C5b | C1's message changes: say so in release notes |
 | 35 | `20-registries` | 172 | C6, C7, C8, C14, C15, C15b | pure JSON |
 | 36 | `30-agents-skills` | 107 | C9, C10, C11, C12, C13, C31 | frontmatter via `src/gen/frontmatter.ts` |
-| 37 | `40-decision-registries` | 238 | C16, C19*, C21*, C23* | prose mirrors: keep the exact grep strings |
+| 37 | `40-decision-registries` | 238 | C16, C19*, C21*, C23* | C16's nine pairs become `MIRRORS` rows (Task 33b) with today's grep strings as `element`/`pattern`; the gate-ladder row reads `rules/gates.md` for real (deviation 5); intent/routing FKs and JSON shape checks stay code |
 | 38 | `50-kernel` | 229 | C17*, C18* | call kernel functions in-process, not the shim |
-| 39 | `60-contracts` | 205 | C21b/c/e, handoff and change-record mirrors | walks `.engineos/archived/**` |
-| 40 | `70-runtime` part 1 | ~800 | C20*, C22*, C24*, C25*, C26* | canaries call `admit`/`breaker`/`hitl`/`repair`/telemetry in-process; C26d keeps the `hitl: budget-exhausted` literal coupling, now against `src/kernel/admit.ts` |
-| 41 | `70-runtime` part 2 | ~775 | C27*, C28, C29, C30 | C27e set-equality now reads `EXEC_JOURNAL_FIELDS` directly; C29/C30 re-pointed to the TS modules and to shim file modes |
+| 39 | `60-contracts` | 205 | C21b/c/e, handoff and change-record mirrors | C19b/c and C21b/e template and prose mirrors are rows; C21 and C21c walk `.engineos/archived/**` as code |
+| 40 | `70-runtime` part 1 | ~800 | C20*, C22*, C24*, C25*, C26* | C20c, C23, C24c, C25c, C26c prose mirrors are rows; canaries call `admit`/`breaker`/`hitl`/`repair`/telemetry in-process; C26d keeps the `hitl: budget-exhausted` literal coupling, now against `src/kernel/admit.ts` |
+| 41 | `70-runtime` part 2 | ~775 | C27*, C28, C29, C30 | C27d and C28 prose mirrors are rows; C27e is already gone (Task 14, deviation 4); C27 ports as policy well-formedness + writer existence; C29/C30 re-pointed to the TS modules and to shim file modes |
 
 Each PR: `feat(checks): port family <name>`; acceptance `bash scripts/test-validate-engineos.sh` (all cases whose ids belong to ported families). When Task 41 lands, `scripts/checks/*.sh` are deleted and the shellcheck CI step drops `scripts/checks/*.sh`.
 

@@ -95,3 +95,8 @@ _Avoid_: Output, response, exit code, payload
 The tool that executes a project's verification targets, such as lint,
 typecheck, and tests — Nx or a package-manager script runner.
 _Avoid_: Build tool, task runner, toolchain
+
+**Mirror**:
+A passage in a rule, constitution, template, or skill that must name or quote
+what a registry declares, kept equal by a check.
+_Avoid_: Copy, duplicate, sync, prose check
