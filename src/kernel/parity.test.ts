@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { isRecord } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
 import { runInProcess, tempRoot, type RunResult } from '../testing/harness';
 import { runKernel } from './cli';
@@ -249,6 +250,61 @@ function wavesPayloads(): string[] {
   ];
 }
 
+// The `run decision-rules` and `run scale` blocks of scripts/test-kernel.sh,
+// plus the arm alone (bash's own missing-flag message). The four prompt arms
+// share two deliberate non-cases, for the reasons the flag-taking arms above
+// already document:
+//   - `--prompt` with no value. bash binds ${2:-} and `shift 2` runs off the
+//     end, so the flag re-matches and the loop spins forever: there is no answer
+//     to compare against, and the process has to be killed. cli.test.ts asserts
+//     the TypeScript refusal instead.
+//   - an unknown argument (`scale --bogus x`). bash says "unknown argument",
+//     parseFlags says "unknown flag" — both exit 1 with a JSON error, only the
+//     text differs, and cli.test.ts asserts the TypeScript one.
+const DECISION_RULES_CASES = [
+  ['--prompt', 'drop the users table in production'],
+  ['--prompt', "let's write a friendly test"],
+  ['--prompt', 'deploy the billing service to production'],
+  [],
+];
+
+const SCALE_CASES = [
+  ['--prompt', 'implement all the endpoints across the codebase'],
+  ['--prompt', 'write a spec for the payment flow'],
+  ['--prompt', 'what time is it'],
+  // design_weak ("design") with no action verb must not count as design work.
+  ['--prompt', 'the button design looks good'],
+  [],
+];
+
+// Every prompt of the `run route-escalate` block, plus every
+// policy.json .router.fixtures[] prompt read from the fixture's own registry —
+// a new fixture is covered automatically, exactly as the bash suite loops it.
+function routeEscalateCases(): string[][] {
+  const prompts = [
+    'add a paginated orders endpoint to the API and mirror the screen to mobile',
+    'publish to App Store the iOS app screen',
+    'zzqq wibble frobnicate',
+    'why does the login handler fail with a 500',
+    'improve query perf on the orders table',
+    'build the ios release and upload to TestFlight',
+    ...fixtureRegistries.policy.router.fixtures.map((fixture) => fixture.prompt),
+  ];
+  return [...unique(prompts).map((prompt) => ['--prompt', prompt]), []];
+}
+
+// The `run resolve-task` block: a routed prompt whose floor comes from an
+// intent, a prompt a decision rule classifies high (the only shape that folds
+// hitl in), a prompt that requests no work, and an unrouted action.
+const RESOLVE_TASK_PROMPTS = [
+  'add a paginated orders endpoint and mirror the screen to mobile',
+  'deploy the billing service to production',
+  'the weather is nice today',
+  'update the prose in this document',
+];
+
+const RESOLVE_TASK_CASES = [...RESOLVE_TASK_PROMPTS.map((prompt) => ['--prompt', prompt]), []];
+
 // Probed once: both tools are external, and a missing one skips rather than
 // fails the suite (plan Task 8b).
 const MISSING_TOOL = firstMissingTool(['bash', 'jq']);
@@ -293,6 +349,57 @@ test('waves answers identically to the pinned bash kernel', (t) => {
   runArm(t, 'waves', wavesCases());
 });
 
+test('decision-rules answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'decision-rules', DECISION_RULES_CASES);
+});
+
+test('scale answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'scale', SCALE_CASES);
+});
+
+test('route-escalate answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'route-escalate', routeEscalateCases());
+});
+
+test('resolve-task answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'resolve-task', RESOLVE_TASK_CASES);
+});
+
+// The `resolve` arm has no bash counterpart — it is the one arm this migration
+// ADDS — so its parity case asserts the thing that would otherwise go unchecked:
+// every section of the sparse Answer deep-equals the legacy projection that owns
+// it, over the same registries. A composite that drifts from its own parts is
+// exactly what a caller trading four processes for one would not notice.
+test('resolve answers each section identically to the legacy projection that owns it', (t) => {
+  if (MISSING_TOOL !== null) {
+    t.skip(`parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
+    return;
+  }
+  const root = stageFixture(t);
+  if (!armIsPorted('resolve', root)) {
+    t.skip('resolve is not ported yet — parity is skipped by name, not asserted');
+    return;
+  }
+  for (const prompt of RESOLVE_TASK_PROMPTS) {
+    const label = `resolve --facts (${prompt})`;
+    const composite = portedFacts(root, { prompt, taskContract: true });
+    const task = legacyAnswer(root, ['resolve-task', '--prompt', prompt]);
+
+    assertSame(field(composite, 'route', label), legacyAnswer(root, ['route-escalate', '--prompt', prompt]), `${label}: route`);
+    assertSame(field(composite, 'decision_rules', label), legacyAnswer(root, ['decision-rules', '--prompt', prompt]), `${label}: decision_rules`);
+    assertSame(field(composite, 'task_contract', label), field(task, 'task_contract', label), `${label}: task_contract`);
+    // A null hitl in the legacy composite is an ABSENT hitl in the sparse
+    // Answer, and the composite publishes two of the section's four fields. The
+    // projection performs both conversions, so the comparison is on the
+    // converted pair rather than on the section.
+    assertSame(narrowedHitl(field(composite, 'hitl', label)), field(task, 'hitl', label), `${label}: hitl`);
+
+    // The two sections a prompt answers on its own, against their own arms.
+    assertSame(field(portedFacts(root, { prompt }), 'route', label), legacyAnswer(root, ['route-intent', prompt]), `${label}: route (intent form)`);
+    assertSame(field(portedFacts(root, { scale: { prompt } }), 'scale', label), legacyAnswer(root, ['scale', '--prompt', prompt]), `${label}: scale`);
+  }
+});
+
 // ------------------------------------------------------------------ internals
 
 function runArm(t: TestContext, arm: string, cases: string[][]): void {
@@ -335,6 +442,37 @@ function parityCase(root: string, arm: string, args: string[]): void {
   // exactly when the key order does.
   assert.equal(JSON.stringify(portedAnswer), JSON.stringify(legacyAnswer), `${label}: key order differs`);
   assert.equal(ported.status, legacy.status, `${label}: exit codes differ`);
+}
+
+function portedFacts(root: string, facts: Record<string, unknown>): unknown {
+  const argv = ['resolve', '--facts', JSON.stringify(facts)];
+  return parseAnswer(runPorted(root, argv), `${argv.join(' ')} (typescript resolve)`);
+}
+
+function legacyAnswer(root: string, argv: string[]): unknown {
+  return parseAnswer(runLegacy(root, argv), `${argv.join(' ')} (pinned bash kernel)`);
+}
+
+function field(answer: unknown, key: string, label: string): unknown {
+  if (!isRecord(answer)) assert.fail(`${label}: expected an object, got ${JSON.stringify(answer)}`);
+  return answer[key];
+}
+
+// An absent section is the composite's null, and only two of the section's four
+// fields were ever published there.
+function narrowedHitl(section: unknown): unknown {
+  if (section === undefined) return null;
+  if (!isRecord(section)) return section;
+  return { required: section['required'], reasons: section['reasons'] };
+}
+
+function assertSame(ported: unknown, legacy: unknown, label: string): void {
+  assert.deepEqual(ported, legacy, `${label}: answers differ`);
+  assert.equal(JSON.stringify(ported), JSON.stringify(legacy), `${label}: key order differs`);
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }
 
 function runLegacy(root: string, argv: string[]): RunResult {

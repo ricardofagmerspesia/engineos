@@ -1,5 +1,5 @@
 export { resolve } from './resolve';
-export type { Answer, DeclaredFacts } from './resolve';
+export type { Answer, DeclaredFacts, TaskContractSection } from './resolve';
 export type { KernelContext, Registries } from './context';
 export type { ModelEscalation, ModelSection } from './model';
 export type { ClassifiedRiskSection, RiskSection, TierRiskSection } from './risk';
@@ -8,3 +8,6 @@ export type { AdmitFacts, AdmitSection } from './admit';
 export type { BreakerFacts, BreakerSection } from './breaker';
 export type { HitlFacts, HitlSection } from './hitl';
 export type { WaveViolation, WavesFacts, WavesSection } from './waves';
+export type { EscalateRouteSection, SuppressedIntent } from './route';
+export type { DecisionMatch, DecisionsFacts, DecisionsSection } from './decisions';
+export type { ScaleFacts, ScaleSection } from './scale';

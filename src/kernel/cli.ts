@@ -1,11 +1,12 @@
 import { writeJson, type Io } from '../io';
-import { KernelError } from '../lib/json';
+import { isRecord, KernelError } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
+import type { AdmitFacts } from './admit';
 import type { BreakerFacts } from './breaker';
-import { isRiskTier, lazyRegistries, type KernelContext } from './context';
+import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from './context';
 import type { HitlFacts } from './hitl';
 import type { RepairFacts } from './repair';
-import { resolve } from './resolve';
+import { resolve, type DeclaredFacts } from './resolve';
 
 type Sub = (ctx: KernelContext, args: string[]) => unknown;
 
@@ -36,7 +37,8 @@ export function parseFlags(cmd: string, args: string[], allowed: readonly string
 }
 
 // Projection table: each arm parses its flags into DeclaredFacts, calls resolve
-// once, and emits its section with the legacy key order. Task 12 adds the rest.
+// once, and emits its section with the legacy key order. `resolve` is the one
+// arm with no legacy counterpart: it emits the sparse Answer itself.
 const SUBCOMMANDS: Record<string, Sub> = {
   'route-path': (ctx, args) => routePathSection(ctx, requirePositional('route-path', 'a file path', args)),
   'route-intent': (ctx, args) => routeIntentSection(ctx, requirePositional('route-intent', 'the request text', args)),
@@ -48,6 +50,11 @@ const SUBCOMMANDS: Record<string, Sub> = {
   breaker: breakerProjection,
   hitl: hitlProjection,
   waves: wavesProjection,
+  'decision-rules': decisionRulesProjection,
+  scale: scaleProjection,
+  'route-escalate': routeEscalateProjection,
+  'resolve-task': resolveTaskProjection,
+  resolve: resolveProjection,
 };
 
 export function runKernel(argv: string[], io: Io): number {
@@ -205,6 +212,183 @@ function wavesProjection(ctx: KernelContext, args: string[]): unknown {
   const section = resolve({ waves: { units: parseUnitsJson(units) } }, ctx).waves;
   if (section === undefined) throw new KernelError('waves: the kernel answered no waves section');
   return section;
+}
+
+// The four prompt arms bound their flag with ${2:-} and then checked it with
+// `[ -n ... ]`, so an absent flag and an empty value reached one guard and got
+// one message per arm. The message is the arm's own name, verbatim.
+function promptOf(cmd: string, args: string[]): string {
+  const flags = parseFlags(cmd, args, ['--prompt']);
+  const prompt = flags.get('--prompt');
+  if (prompt === undefined || prompt === '') throw new KernelError(`${cmd} requires --prompt <text>`);
+  return prompt;
+}
+
+function decisionRulesProjection(ctx: KernelContext, args: string[]): unknown {
+  const prompt = promptOf('decision-rules', args);
+  const section = resolve({ decisions: { prompt } }, ctx).decision_rules;
+  if (section === undefined) throw new KernelError('decision-rules: the kernel answered no decision-rules section');
+  return section;
+}
+
+function scaleProjection(ctx: KernelContext, args: string[]): unknown {
+  const prompt = promptOf('scale', args);
+  const section = resolve({ scale: { prompt } }, ctx).scale;
+  if (section === undefined) throw new KernelError('scale: the kernel answered no scale section');
+  return section;
+}
+
+// The escalate composite is a FORM of the route section, so this arm declares
+// the modifier that selects it and narrows on the key only that form carries.
+function routeEscalateProjection(ctx: KernelContext, args: string[]): unknown {
+  const prompt = promptOf('route-escalate', args);
+  const section = resolve({ prompt, escalate: true }, ctx).route;
+  if (section === undefined || !('escalate' in section)) {
+    throw new KernelError('route-escalate: the kernel answered no escalate route section');
+  }
+  return section;
+}
+
+// The legacy composite: four sections of one Answer, re-ordered into the key
+// order the bash arm emitted. `hitl` is null rather than absent — a projection
+// emits every key its callers parse — and it is narrowed to the two fields the
+// bash arm published, not the whole section.
+function resolveTaskProjection(ctx: KernelContext, args: string[]): unknown {
+  const prompt = promptOf('resolve-task', args);
+  const answer = resolve({ prompt, taskContract: true }, ctx);
+  const contract = answer.task_contract;
+  const route = answer.route;
+  const decisions = answer.decision_rules;
+  if (contract === undefined || decisions === undefined || route === undefined || !('escalate' in route)) {
+    throw new KernelError('resolve-task: the kernel answered no task contract');
+  }
+  const hitl = answer.hitl;
+  return {
+    task_contract: contract,
+    route,
+    decision_rules: decisions,
+    hitl: hitl === undefined ? null : { required: hitl.required, reasons: hitl.reasons },
+  };
+}
+
+// The one arm that is not a projection: it declares the facts it was given and
+// emits the sparse Answer verbatim, so a caller that needs four sections pays
+// for one process instead of four.
+function resolveProjection(ctx: KernelContext, args: string[]): unknown {
+  const flags = parseFlags('resolve', args, ['--facts']);
+  const facts = flags.get('--facts');
+  if (facts === undefined || facts === '') throw new KernelError('resolve requires --facts <json>');
+  return resolve(parseFacts(facts), ctx);
+}
+
+// The fact vocabulary, read key by key rather than cast: an unknown key is a
+// caller asking a question this kernel does not answer, and accepting it
+// silently would report the absence of a section as the absence of an answer.
+function parseFacts(raw: string): DeclaredFacts {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new KernelError('resolve --facts must be a JSON object');
+  }
+  if (!isRecord(parsed)) throw new KernelError('resolve --facts must be a JSON object');
+  const facts: DeclaredFacts = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    switch (key) {
+      case 'path': facts.path = factString(key, value); break;
+      case 'prompt': facts.prompt = factString(key, value); break;
+      case 'escalate': facts.escalate = factBoolean(key, value); break;
+      case 'taskContract': facts.taskContract = factBoolean(key, value); break;
+      case 'workType': facts.workType = factString(key, value); break;
+      // Passed through unread, exactly as the risk arm passes its parsed
+      // --signals payload: the risk section owns what a well-formed one is.
+      case 'signals': facts.signals = value; break;
+      case 'riskTier': facts.riskTier = factTier(key, value); break;
+      case 'scale': facts.scale = { prompt: factString('scale.prompt', factRecord(key, value)['prompt']) }; break;
+      case 'decisions': facts.decisions = { prompt: factString('decisions.prompt', factRecord(key, value)['prompt']) }; break;
+      case 'repair': facts.repair = repairFacts(factRecord(key, value)); break;
+      case 'admit': facts.admit = admitFacts(factRecord(key, value)); break;
+      case 'breaker': facts.breaker = breakerFacts(factRecord(key, value)); break;
+      case 'hitl': facts.hitl = hitlFacts(factRecord(key, value)); break;
+      // `units` travels unread for the same reason `signals` does; an absent one
+      // reaches the waves section, which owns the message for it.
+      case 'waves': facts.waves = { units: factRecord(key, value)['units'] }; break;
+      default: throw new KernelError(`resolve --facts: unknown fact ${key}`);
+    }
+  }
+  return facts;
+}
+
+function repairFacts(row: Record<string, unknown>): RepairFacts {
+  const facts: RepairFacts = { check: factString('repair.check', row['check']) };
+  if (row['attempt'] !== undefined) facts.attempt = factNumber('repair.attempt', row['attempt']);
+  if (row['situation'] !== undefined) facts.situation = factString('repair.situation', row['situation']);
+  return facts;
+}
+
+function admitFacts(row: Record<string, unknown>): AdmitFacts {
+  return {
+    inflight: factNumber('admit.inflight', row['inflight']),
+    queued: factNumber('admit.queued', row['queued']),
+  };
+}
+
+function breakerFacts(row: Record<string, unknown>): BreakerFacts {
+  const facts: BreakerFacts = { state: factString('breaker.state', row['state']) };
+  if (row['failures'] !== undefined) facts.failures = factNumber('breaker.failures', row['failures']);
+  if (row['cooldownElapsed'] !== undefined) {
+    facts.cooldownElapsed = factBoolean('breaker.cooldownElapsed', row['cooldownElapsed']);
+  }
+  if (row['probeResult'] !== undefined) facts.probeResult = factString('breaker.probeResult', row['probeResult']);
+  return facts;
+}
+
+function hitlFacts(row: Record<string, unknown>): HitlFacts {
+  const facts: HitlFacts = {
+    riskTier: factTier('hitl.riskTier', row['riskTier']),
+    autonomy: factString('hitl.autonomy', row['autonomy']),
+  };
+  // The three flag-shaped fields keep the section's own vocabulary checks: a
+  // string reaches the verbatim bash message, a boolean is what JSON has.
+  if (row['evidence'] !== undefined) facts.evidence = factString('hitl.evidence', row['evidence']);
+  if (row['externalEffect'] !== undefined) {
+    facts.externalEffect = factFlag('hitl.externalEffect', row['externalEffect']);
+  }
+  if (row['conflict'] !== undefined) facts.conflict = factFlag('hitl.conflict', row['conflict']);
+  if (row['situation'] !== undefined) facts.situation = factString('hitl.situation', row['situation']);
+  return facts;
+}
+
+function factRecord(at: string, value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new KernelError(`resolve --facts: ${at} must be an object`);
+  return value;
+}
+
+function factString(at: string, value: unknown): string {
+  if (typeof value !== 'string') throw new KernelError(`resolve --facts: ${at} must be a string`);
+  return value;
+}
+
+function factBoolean(at: string, value: unknown): boolean {
+  if (typeof value !== 'boolean') throw new KernelError(`resolve --facts: ${at} must be a boolean`);
+  return value;
+}
+
+function factNumber(at: string, value: unknown): number {
+  if (typeof value !== 'number') throw new KernelError(`resolve --facts: ${at} must be a number`);
+  return value;
+}
+
+function factFlag(at: string, value: unknown): boolean | string {
+  if (typeof value !== 'boolean' && typeof value !== 'string') {
+    throw new KernelError(`resolve --facts: ${at} must be a boolean or a string`);
+  }
+  return value;
+}
+
+function factTier(at: string, value: unknown): RiskTier {
+  if (!isRiskTier(value)) throw new KernelError(`resolve --facts: ${at} must be low|medium|high`);
+  return value;
 }
 
 function parseSignals(raw: string): unknown {

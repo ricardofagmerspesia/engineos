@@ -6,7 +6,7 @@ import { resolveRoot } from '../registry/paths';
 import { lazyRegistries, type KernelContext, type RiskTier } from './context';
 import { resolve } from './resolve';
 import type { ClassifiedRiskSection, TierRiskSection } from './risk';
-import type { IntentRouteSection, PathRouteSection } from './route';
+import type { EscalateRouteSection, IntentRouteSection, PathRouteSection } from './route';
 
 const root = resolveRoot(process.env, __dirname);
 const ctx: KernelContext = { root, registries: lazyRegistries(root) };
@@ -262,5 +262,119 @@ function forTier(riskTier: RiskTier): TierRiskSection {
   const section = resolve({ riskTier }, ctx).risk;
   if (section === undefined) throw new Error(`no risk section for tier ${riskTier}`);
   if (!('spec_threshold' in section)) throw new Error('a tier fact answered the classified form');
+  return section;
+}
+
+// Wave 1(d)'s three sections and the composite. As above, the section modules own
+// what each answer MEANS (scale.test.ts, decisions.test.ts, route.test.ts); these
+// cases own the wiring — that a declared fact reaches its section, that the
+// answer lands under the right key, and that the composite composes what the
+// bash arm composed.
+
+test('a scale fact answers the scale section, and nothing else', () => {
+  const answer = resolve({ scale: { prompt: 'implement all the endpoints across the codebase' } }, ctx);
+  assert.deepEqual(Object.keys(answer), ['scale']);
+  assert.deepEqual(answer.scale, { big_task: true, spec_authoring: false, design_work: false });
+});
+
+test('a decisions fact answers the decision-rules section under its legacy key', () => {
+  const answer = resolve({ decisions: { prompt: "let's write a friendly test" } }, ctx);
+  assert.deepEqual(Object.keys(answer), ['decision_rules']);
+  assert.deepEqual(answer.decision_rules, { matches: [], any_high: false });
+});
+
+test('a decisions match carries the five fields in jq key order', () => {
+  const section = resolve({ decisions: { prompt: 'drop the users table in production' } }, ctx).decision_rules;
+  if (section === undefined) throw new Error('no decision-rules section for a decisions fact');
+  const [first] = section.matches;
+  if (first === undefined) throw new Error('a destructive prompt matched no rule');
+  assert.deepEqual(Object.keys(first), ['id', 'require', 'prefer', 'gate', 'risk']);
+  assert.equal(section.any_high, true);
+});
+
+test('the escalate modifier selects the escalate form of the route section', () => {
+  const section = escalateRoute('add a paginated orders endpoint to the API and mirror the screen to mobile');
+  assert.deepEqual(Object.keys(section), [
+    'escalate', 'reasons', 'intents', 'suppressed', 'agents', 'model_tier', 'risk_floor', 'scale', 'ambiguous',
+  ]);
+  assert.deepEqual(section.intents, ['backend', 'mobile']);
+  assert.deepEqual(section.suppressed, [{ id: 'new-feature', by: 'more-specific-match' }]);
+});
+
+test('without the modifier the same prompt still answers the intent form', () => {
+  const section = routeIntent('add a paginated orders endpoint to the API and mirror the screen to mobile');
+  assert.deepEqual(Object.keys(section), ['matches', 'ambiguous']);
+});
+
+test('a modifier without a prompt fact is refused rather than ignored', () => {
+  assert.throws(() => resolve({ escalate: true }, ctx), KernelError);
+  assert.throws(() => resolve({ taskContract: true }, ctx), KernelError);
+});
+
+test('a task-contract fact answers route, decision_rules and task_contract together', () => {
+  const answer = resolve({ prompt: 'add a paginated orders endpoint and mirror the screen to mobile', taskContract: true }, ctx);
+  assert.deepEqual(Object.keys(answer), ['route', 'decision_rules', 'task_contract']);
+  const contract = answer.task_contract;
+  if (contract === undefined) throw new Error('no task contract for a task-contract fact');
+  assert.deepEqual(Object.keys(contract), [
+    'substantive', 'intents', 'escalates', 'escalation_reasons', 'suppressed', 'agents', 'rules',
+    'policy_rules', 'skills', 'commands', 'mcp', 'model_tier', 'risk_floor', 'autonomy_ceiling_at_floor',
+    'scale', 'decision_rules', 'required', 'gates', 'preferences',
+  ]);
+  assert.deepEqual(contract.intents, ['mobile']);
+  assert.deepEqual(contract.agents, ['mobile-coordinator']);
+  assert.ok(contract.required.includes('design-doc'));
+  // policy_rules is jq's `unique`, which sorts as well as de-duplicates.
+  assert.deepEqual(contract.policy_rules, ['gates', 'models', 'parallelism', 'risk-autonomy', 'subagents', 'verification']);
+});
+
+// The distinction the composite exists to keep: a floor is an INPUT to
+// classification, so it never folds hitl in on its own.
+test('a floor-only prompt carries the floor and answers no hitl section', () => {
+  const answer = resolve({ prompt: 'add a paginated orders endpoint and mirror the screen to mobile', taskContract: true }, ctx);
+  assert.equal(answer.hitl, undefined);
+  assert.equal(answer.task_contract?.risk_floor, 'medium');
+  assert.equal(answer.task_contract?.autonomy_ceiling_at_floor, 'A3');
+});
+
+test('a matched high rule raises the floor and folds the hitl section in', () => {
+  const answer = resolve({ prompt: 'deploy the billing service to production', taskContract: true }, ctx);
+  assert.deepEqual(Object.keys(answer), ['route', 'decision_rules', 'hitl', 'task_contract']);
+  assert.equal(answer.task_contract?.risk_floor, 'high');
+  assert.deepEqual(answer.hitl, {
+    required: true,
+    reasons: ['high-risk'],
+    // The autonomy hitl is asked about is the ceiling at the raised floor, so
+    // adequate evidence leaves it where the registry puts it.
+    autonomy_after: ctx.registries.policy.autonomy.ceiling_by_risk.high,
+    record_home: ctx.registries.policy.hitl.record_home,
+  });
+});
+
+test('a prompt requesting no work is not substantive and loads no policy rules', () => {
+  const contract = resolve({ prompt: 'the weather is nice today', taskContract: true }, ctx).task_contract;
+  assert.equal(contract?.substantive, false);
+  assert.deepEqual(contract?.policy_rules, []);
+});
+
+test('an unrouted action is substantive through the registry action expression', () => {
+  const contract = resolve({ prompt: 'update the prose in this document', taskContract: true }, ctx).task_contract;
+  assert.equal(contract?.substantive, true);
+  assert.deepEqual(contract?.intents, []);
+  assert.deepEqual(contract?.policy_rules, ['gates', 'models', 'parallelism', 'risk-autonomy', 'verification']);
+});
+
+// Two facts answering one key are refused rather than resolved, the same rule the
+// two route forms and the two risk forms already follow.
+test('a task-contract fact refuses the two facts that would answer its own keys', () => {
+  const prompt = 'deploy the billing service to production';
+  assert.throws(() => resolve({ prompt, taskContract: true, decisions: { prompt } }, ctx), KernelError);
+  assert.throws(() => resolve({ prompt, taskContract: true, hitl: { riskTier: 'low', autonomy: 'A2' } }, ctx), KernelError);
+});
+
+function escalateRoute(prompt: string): EscalateRouteSection {
+  const section = resolve({ prompt, escalate: true }, ctx).route;
+  if (section === undefined) throw new Error(`no route section for ${prompt}`);
+  if (!('escalate' in section)) throw new Error(`the escalate modifier answered another form for ${prompt}`);
   return section;
 }

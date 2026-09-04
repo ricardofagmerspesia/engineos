@@ -450,3 +450,189 @@ function keysOf(argv: string[]): string[] {
   if (!isRecord(answer)) throw new Error(`${argv.join(' ')} did not answer an object`);
   return Object.keys(answer);
 }
+
+test('decision-rules answers the section and its matches in the legacy key order', () => {
+  assert.deepEqual(keysOf(['decision-rules', '--prompt', 'drop the users table in production']), ['matches', 'any_high']);
+  const answer = answerOf(['decision-rules', '--prompt', 'drop the users table in production'], 0);
+  if (!isRecord(answer)) throw new Error('decision-rules did not answer an object');
+  const matches = answer['matches'];
+  if (!Array.isArray(matches)) throw new Error('decision-rules did not answer a matches array');
+  const first: unknown = matches[0];
+  if (!isRecord(first)) throw new Error('a destructive prompt matched no rule');
+  assert.deepEqual(Object.keys(first), ['id', 'require', 'prefer', 'gate', 'risk']);
+  assert.equal(answer['any_high'], true);
+});
+
+test('decision-rules answers an innocuous prompt with no matches at exit 0', () => {
+  assert.deepEqual(answerOf(['decision-rules', '--prompt', "let's write a friendly test"], 0), {
+    matches: [],
+    any_high: false,
+  });
+});
+
+test('scale answers the section in the legacy key order', () => {
+  assert.deepEqual(keysOf(['scale', '--prompt', 'implement all the endpoints across the codebase']), [
+    'big_task', 'spec_authoring', 'design_work',
+  ]);
+  assert.deepEqual(answerOf(['scale', '--prompt', 'implement all the endpoints across the codebase'], 0), {
+    big_task: true,
+    spec_authoring: false,
+    design_work: false,
+  });
+});
+
+test('route-escalate answers the escalate composite in the legacy key order', () => {
+  const argv = ['route-escalate', '--prompt', 'add a paginated orders endpoint to the API and mirror the screen to mobile'];
+  assert.deepEqual(keysOf(argv), [
+    'escalate', 'reasons', 'intents', 'suppressed', 'agents', 'model_tier', 'risk_floor', 'scale', 'ambiguous',
+  ]);
+  const answer = answerOf(argv, 0);
+  if (!isRecord(answer)) throw new Error('route-escalate did not answer an object');
+  assert.deepEqual(answer['intents'], ['backend', 'mobile']);
+  assert.deepEqual(answer['suppressed'], [{ id: 'new-feature', by: 'more-specific-match' }]);
+});
+
+test('resolve-task answers the four sections in the legacy key order', () => {
+  const argv = ['resolve-task', '--prompt', 'deploy the billing service to production'];
+  assert.deepEqual(keysOf(argv), ['task_contract', 'route', 'decision_rules', 'hitl']);
+  const answer = answerOf(argv, 0);
+  if (!isRecord(answer)) throw new Error('resolve-task did not answer an object');
+  // The composite publishes two hitl fields, not the whole section.
+  assert.deepEqual(answer['hitl'], { required: true, reasons: ['high-risk'] });
+  const contract = answer['task_contract'];
+  if (!isRecord(contract)) throw new Error('resolve-task did not answer a task contract');
+  assert.equal(contract['risk_floor'], 'high');
+  assert.equal(contract['autonomy_ceiling_at_floor'], policy.autonomy.ceiling_by_risk.high);
+});
+
+test('resolve-task answers a floor-only prompt with a null hitl, not an absent one', () => {
+  const answer = answerOf(['resolve-task', '--prompt', 'add a paginated orders endpoint and mirror the screen to mobile'], 0);
+  if (!isRecord(answer)) throw new Error('resolve-task did not answer an object');
+  assert.equal(answer['hitl'], null);
+  const contract = answer['task_contract'];
+  if (!isRecord(contract)) throw new Error('resolve-task did not answer a task contract');
+  assert.equal(contract['risk_floor'], 'medium');
+});
+
+// bash bound --prompt with ${2:-} and checked it with `[ -n ... ]`, so an absent
+// flag and an empty value got one message per arm.
+test('the four prompt arms give an absent and an empty --prompt the one legacy message', () => {
+  for (const arm of ['decision-rules', 'scale', 'route-escalate', 'resolve-task']) {
+    const expected = { error: `${arm} requires --prompt <text>` };
+    assert.deepEqual(answerOf([arm], 1), expected, arm);
+    assert.deepEqual(answerOf([arm, '--prompt', ''], 1), expected, arm);
+  }
+});
+
+// The arms where bash could not refuse at all: `--prompt` with no value bound ""
+// and then `shift 2` ran off the end, so the flag re-matched and the loop spun
+// forever. parseFlags answers instead, which is why parity.test.ts cannot carry
+// these cases.
+test('the four prompt arms refuse --prompt with no value rather than spinning', () => {
+  for (const arm of ['decision-rules', 'scale', 'route-escalate', 'resolve-task']) {
+    assert.deepEqual(answerOf([arm, '--prompt'], 1), { error: `${arm}: --prompt requires a value` }, arm);
+  }
+});
+
+test('the four prompt arms refuse an unknown flag', () => {
+  for (const arm of ['decision-rules', 'scale', 'route-escalate', 'resolve-task']) {
+    assert.deepEqual(answerOf([arm, '--bogus', 'x'], 1), { error: `${arm}: unknown flag --bogus` }, arm);
+  }
+});
+
+// The one arm with no bash counterpart: it emits the sparse Answer itself, so a
+// caller that needs several sections declares several facts and pays for one
+// process.
+test('resolve answers only the sections whose facts were declared', () => {
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"workType":"build"}'], 0), {
+    model: { work: 'build', tier: 'build', model: 'opus', escalates_to: { tier: 'design', model: 'opus' } },
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{}'], 0), {});
+});
+
+test('resolve answers several declared facts in the Answer key order', () => {
+  const facts = JSON.stringify({
+    path: 'README.md',
+    workType: 'mechanical',
+    riskTier: 'low',
+    scale: { prompt: 'write a spec for the payment flow' },
+    decisions: { prompt: 'drop the users table in production' },
+    waves: { units: [] },
+  });
+  assert.deepEqual(keysOf(['resolve', '--facts', facts]), [
+    'route', 'model', 'risk', 'scale', 'decision_rules', 'waves',
+  ]);
+});
+
+test('resolve answers the task-contract composite through one call', () => {
+  const facts = JSON.stringify({ prompt: 'deploy the billing service to production', taskContract: true });
+  assert.deepEqual(keysOf(['resolve', '--facts', facts]), ['route', 'decision_rules', 'hitl', 'task_contract']);
+});
+
+test('resolve refuses an absent, empty or valueless --facts', () => {
+  assert.deepEqual(answerOf(['resolve'], 1), { error: 'resolve requires --facts <json>' });
+  assert.deepEqual(answerOf(['resolve', '--facts', ''], 1), { error: 'resolve requires --facts <json>' });
+  assert.deepEqual(answerOf(['resolve', '--facts'], 1), { error: 'resolve: --facts requires a value' });
+});
+
+// Text that is not JSON and JSON that is not an object fail the same guard: both
+// mean "these are not declared facts".
+test('resolve refuses a payload that is not a JSON object', () => {
+  const expected = { error: 'resolve --facts must be a JSON object' };
+  assert.deepEqual(answerOf(['resolve', '--facts', 'not json'], 1), expected);
+  assert.deepEqual(answerOf(['resolve', '--facts', '[]'], 1), expected);
+  assert.deepEqual(answerOf(['resolve', '--facts', '"prompt"'], 1), expected);
+});
+
+// An unknown key is a caller asking a question this kernel does not answer.
+// Accepting it silently would report the absence of a section as an answer.
+test('resolve names the fact it does not know', () => {
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"bogus":1}'], 1), {
+    error: 'resolve --facts: unknown fact bogus',
+  });
+});
+
+test('resolve narrows each fact by type and names the one that is wrong', () => {
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"prompt":123}'], 1), {
+    error: 'resolve --facts: prompt must be a string',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"prompt":"x","escalate":"yes"}'], 1), {
+    error: 'resolve --facts: escalate must be a boolean',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"riskTier":"banana"}'], 1), {
+    error: 'resolve --facts: riskTier must be low|medium|high',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"scale":"x"}'], 1), {
+    error: 'resolve --facts: scale must be an object',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"admit":{"inflight":0}}'], 1), {
+    error: 'resolve --facts: admit.queued must be a number',
+  });
+});
+
+// The sections keep their own messages: a fact the parser accepts by type and the
+// section refuses by value is refused by the section, not re-validated here.
+test('resolve lets a section refuse its own fact', () => {
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"waves":{}}'], 1), {
+    error: 'waves --units must be a JSON array',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"breaker":{"state":"bogus"}}'], 1), {
+    error: 'breaker requires --state closed|open|half-open',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"hitl":{"riskTier":"low","autonomy":"A2","evidence":"maybe"}}'], 1), {
+    error: 'hitl --evidence must be thin|adequate',
+  });
+});
+
+// The refusals resolve() owns rather than any section: two facts answering one key.
+test('resolve refuses two facts that would answer one key', () => {
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"path":"a.ts","prompt":"add a thing"}'], 1), {
+    error: 'a path fact and a prompt fact cannot be declared together',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"escalate":true}'], 1), {
+    error: 'an escalate fact cannot be declared without a prompt fact',
+  });
+  assert.deepEqual(answerOf(['resolve', '--facts', '{"prompt":"x","taskContract":true,"decisions":{"prompt":"x"}}'], 1), {
+    error: 'a task-contract fact and a decisions fact cannot be declared together',
+  });
+});
