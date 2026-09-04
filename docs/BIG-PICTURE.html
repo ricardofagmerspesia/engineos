@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EngineOS Big Picture</title>
+<!-- Standalone copy of docs/BIG-PICTURE.md. Open directly in a browser; diagrams render via mermaid from cdnjs. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F5F6F3; --bg-2:#ECEEE9; --ink:#1A2028; --ink-2:#5C6570; --line:#D6DAD3;
+  --accent:#0E7C73; --accent-soft:#D9EEEB; --amber:#B4610A; --amber-soft:#F6E6D2;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#10151B; --bg-2:#171D25; --ink:#E4E8EC; --ink-2:#98A2AD; --line:#263038;
+  --accent:#34C9B9; --accent-soft:#12302E; --amber:#F0A032; --amber-soft:#3A2A12;
+}}
+:root[data-theme="dark"]{
+  --bg:#10151B; --bg-2:#171D25; --ink:#E4E8EC; --ink-2:#98A2AD; --line:#263038;
+  --accent:#34C9B9; --accent-soft:#12302E; --amber:#F0A032; --amber-soft:#3A2A12;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
+.prose{max-width:720px}
+header .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font-size:clamp(30px,4vw,44px);line-height:1.1;font-weight:600;margin:8px 0 12px;text-wrap:balance;letter-spacing:-.01em}
+.lede{font-size:18px;color:var(--ink-2);margin:0 0 20px}
+nav.toc{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 48px}
+nav.toc a{font-family:var(--mono);font-size:12.5px;color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--bg-2)}
+nav.toc a:hover,nav.toc a:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
+section{border-top:1px solid var(--line);padding-top:32px;margin-top:48px}
+section .owner{font-family:var(--mono);font-size:12px;color:var(--ink-2);margin:0 0 6px}
+section .owner b{color:var(--accent);font-weight:500}
+h2{font-size:26px;line-height:1.2;font-weight:600;margin:0 0 12px;text-wrap:balance}
+p{margin:0 0 14px}
+code{font-family:var(--mono);font-size:.92em;background:var(--bg-2);padding:1px 5px;border-radius:4px}
+figure.diagram{margin:24px 0 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:16px;overflow-x:auto}
+figure.diagram pre.mermaid{margin:0;min-width:640px}
+figcaption{font-family:var(--mono);font-size:12px;color:var(--ink-2);margin-top:10px}
+ul{padding-left:20px;margin:0 0 14px} li{margin:0 0 6px}
+.table-wrap{overflow-x:auto;margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:14.5px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-family:var(--mono);font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--ink)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td:first-child{white-space:nowrap}
+.callout{border-left:3px solid var(--amber);background:var(--amber-soft);padding:12px 16px;border-radius:0 6px 6px 0;margin:20px 0}
+.callout.kernel{border-color:var(--accent);background:var(--accent-soft)}
+dl.gloss{display:grid;grid-template-columns:max-content 1fr;gap:8px 20px;margin:20px 0 0}
+dl.gloss dt{font-family:var(--mono);font-size:14px;color:var(--accent);font-weight:500}
+dl.gloss dd{margin:0}
+footer{margin-top:56px;font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+@media (prefers-reduced-motion:no-preference){ nav.toc a{transition:border-color .15s,color .15s} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="prose">
+  <div class="eyebrow">engineos / docs / BIG-PICTURE.md</div>
+  <h1>EngineOS Big Picture</h1>
+  <p class="lede">How the pieces fit and how a request travels through them. Every box names the file that owns it; the file is the source of truth, this page is the map.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#layers">layers</a><a href="#lifecycle">request lifecycle</a><a href="#hooks">hook events</a><a href="#risk">risk → gates</a><a href="#kernel">kernel</a><a href="#fanout">fan-out</a><a href="#agents">agents</a><a href="#knowledge">knowledge</a><a href="#record">change record</a><a href="#integrity">self-integrity</a><a href="#glossary">glossary</a>
+  </nav>
+</header>
+
+<section id="layers">
+  <p class="owner">owner <b>CLAUDE.md</b> · registries/*.json · scripts/kernel.sh · hooks/hooks.json</p>
+  <div class="prose"><h2>The system in one picture</h2>
+  <p>Six layers. Prose at the top decides <em>what</em> should happen; data in the middle makes it deterministic; hooks and scripts at the bottom enforce it at runtime.</p></div>
+  <figure class="diagram"><pre class="mermaid">flowchart TB
+    subgraph L1["1 · Constitution (prose, always on)"]
+        CLAUDE["CLAUDE.md&lt;br/&gt;router table + non-negotiables"]
+        RULES["rules/*.md&lt;br/&gt;base · security · git · context (always on)&lt;br/&gt;gates · models · parallelism · risk-autonomy · verification (task bundle)&lt;br/&gt;architecture · backend · frontend · data · llm-apps · observability · testing (per intent)"]
+    end
+
+    subgraph L2["2 · Registries (policy as data)"]
+        INTENTS["intents.json&lt;br/&gt;31 intents → rules/skills/agents"]
+        ROUTING["routing.json&lt;br/&gt;file path → domain"]
+        POLICY["policy.json&lt;br/&gt;risk · autonomy · gates · retry · repair&lt;br/&gt;admit · breaker · hitl · telemetry"]
+        MODELS["models.json&lt;br/&gt;tier → model binding"]
+        AGENTSR["agents.json&lt;br/&gt;roster · aliases · tiers"]
+        CAPS["capabilities.json&lt;br/&gt;workflow step → agent"]
+        DRULES["decision-rules.json&lt;br/&gt;when → require artifact"]
+    end
+
+    subgraph L3["3 · Kernel (deterministic decisions)"]
+        KERNEL["scripts/kernel.sh&lt;br/&gt;resolve-task · route-path · route-intent · risk · gates&lt;br/&gt;model · retry · repair · admit · breaker · hitl · waves · scale"]
+    end
+
+    subgraph L4["4 · Hooks (runtime enforcement)"]
+        HOOKS["hooks/*.sh wired by hooks.json&lt;br/&gt;SessionStart · UserPromptSubmit · PreToolUse · PostToolUse · Stop"]
+    end
+
+    subgraph L5["5 · Executors"]
+        AGENTS["agents/*.md — 22 specialists&lt;br/&gt;coordinators · leaf specialists · reviewers · builders"]
+        SKILLS["skills/ — procedures&lt;br/&gt;record-change · adr · retro · task-observer · release-notes&lt;br/&gt;strategy · eval-harness · nestjs/react/llm patterns"]
+        COMMANDS["commands/ — entry points&lt;br/&gt;/route /implement /audit /init /bypass&lt;br/&gt;/analyze-architecture /talk-about-the-system /agents:*"]
+    end
+
+    subgraph L6["6 · Project state &amp; evidence"]
+        ENGINEOS[".engineos/&lt;br/&gt;changes · archived · memory · audits · skill-observations"]
+        DOCS["docs/&lt;br/&gt;specs · prds · adr · rules · strategy · release-notes"]
+        TELEM[".git/engineos-telemetry/&lt;br/&gt;exec journal spans"]
+    end
+
+    subgraph L0["Self-integrity"]
+        VALIDATE["scripts/validate-engineos.sh&lt;br/&gt;hooks/test-*.sh · scripts/test-*.sh&lt;br/&gt;evals/ + scripts/run-evals.sh"]
+    end
+
+    CLAUDE --&gt;|"human mirror of"| ROUTING
+    CLAUDE --&gt;|"human mirror of"| INTENTS
+    RULES --&gt;|"numbers live in"| POLICY
+    L2 --&gt; KERNEL
+    KERNEL --&gt; HOOKS
+    HOOKS --&gt;|"inject context / block"| L5
+    CLAUDE --&gt;|"router row names"| AGENTS
+    L5 --&gt; ENGINEOS
+    L5 --&gt; DOCS
+    HOOKS --&gt; TELEM
+    VALIDATE -.-&gt;|"fails CI on drift"| L1
+    VALIDATE -.-&gt;|"fails CI on drift"| L2
+</pre><figcaption>Layered view. Solid arrows: who reads whom. Dashed: the validator fails CI when prose and data disagree.</figcaption></figure>
+  <div class="prose callout kernel"><p><strong>Reading the picture.</strong> A rule says "cap concurrency at ~6"; the number lives in <code>registries/policy.json</code>; <code>kernel.sh admit</code> reads it; <code>rules/parallelism.md</code> tells the orchestrator to ask the kernel before dispatching. Prose, data, decision, enforcement: one fact, four homes, one owner each.</p></div>
+</section>
+
+<section id="lifecycle">
+  <p class="owner">owner <b>CLAUDE.md</b> router · rules/risk-autonomy.md · rules/verification.md · hooks/hooks.json</p>
+  <div class="prose"><h2>Request lifecycle</h2>
+  <p>What happens between "you type a request" and "done".</p></div>
+  <figure class="diagram"><pre class="mermaid">flowchart TD
+    U([You type a request]) --&gt; UPS
+
+    subgraph UPS["UserPromptSubmit"]
+        PA["hooks/prompt-advisor.sh"] --&gt; RT["kernel.sh resolve-task"]
+        RT --&gt; TC["task contract injected:&lt;br/&gt;intents · policy rules · skills · agents&lt;br/&gt;risk floor · autonomy ceiling · gates · hitl"]
+    end
+
+    TC --&gt; BYP{bypass active?}
+    BYP --&gt;|yes| BYPASSED["reply opens '[engineos] bypassed'&lt;br/&gt;no router, no agents, no gates"]
+    BYPASSED --&gt; WORK
+
+    BYP --&gt;|no| Q{pure question&lt;br/&gt;or explanation?}
+    Q --&gt;|yes| ANSWER([answer directly, no routing])
+    Q --&gt;|no| ROUTER["[router] line:&lt;br/&gt;intent · risk · autonomy · loaded · agent"]
+
+    ROUTER --&gt; RISK["classify risk BEFORE first write&lt;br/&gt;rules/risk-autonomy.md"]
+    RISK --&gt; ESC{kernel says&lt;br/&gt;escalate=true?}
+    ESC --&gt;|yes| RA["router agent → dispatch plan&lt;br/&gt;(never edits, never dispatches)"]
+    ESC --&gt;|no| SPEC
+    RA --&gt; SPEC
+
+    SPEC{"&gt; 2 files or&lt;br/&gt;new feature?"}
+    SPEC --&gt;|yes| BRAIN["superpowers:brainstorming&lt;br/&gt;→ docs/specs/ design + plan"]
+    SPEC --&gt;|no| REC
+    BRAIN --&gt; REC["open change record&lt;br/&gt;.engineos/changes/&amp;lt;date&amp;gt;-&amp;lt;slug&amp;gt;.md"]
+
+    REC --&gt; FAN{"&gt; 3 files, &gt; 1 domain,&lt;br/&gt;or ≥ 3 independent tasks?"}
+    FAN --&gt;|yes| WAVES["freeze contracts → waves&lt;br/&gt;kernel.sh admit per dispatch&lt;br/&gt;rules/parallelism.md"]
+    FAN --&gt;|no| ONE["dispatch the agent the row names&lt;br/&gt;rules/subagents.md"]
+    WAVES --&gt; WORK
+    ONE --&gt; WORK
+
+    subgraph WORK["Work — every edit passes through hooks"]
+        direction TB
+        PRE["PreToolUse Edit|Write&lt;br/&gt;route-before-change.sh → kernel route-path&lt;br/&gt;injects domain rules / specialist"]
+        EDIT["edit lands"]
+        POST["PostToolUse Edit|Write&lt;br/&gt;mark-unrecorded.sh sets the flag"]
+        PRE --&gt; EDIT --&gt; POST
+        AD["PreToolUse Agent|Task&lt;br/&gt;announce-agent-dispatch.sh (green banner)"]
+        AR["PostToolUse Agent|Task&lt;br/&gt;announce-agent-return.sh (status, span)"]
+        AD --&gt; AR
+    end
+
+    WORK --&gt; INT["integrate at wave barrier&lt;br/&gt;handoff per templates/handoff.md"]
+    INT --&gt; GATE["FINAL GATE — once, at the end&lt;br/&gt;lint and typecheck, tests only if ON&lt;br/&gt;rules/verification.md"]
+    GATE --&gt;|red| FIX["bounded fix loop&lt;br/&gt;kernel.sh repair: 2 attempts, 1 escalation"]
+    FIX --&gt;|still red| RED([report red honestly])
+    FIX --&gt;|green| RECORD
+    GATE --&gt;|green| RECORD["skills/record-change&lt;br/&gt;fill 'what was made', move to .engineos/archived/"]
+
+    RECORD --&gt; STOP
+
+    subgraph STOP["Stop hooks"]
+        SV["stop-verify.sh&lt;br/&gt;code changed but gate not run? → block once"]
+        RV["record-verify.sh&lt;br/&gt;code changed but not recorded? → block once"]
+    end
+
+    STOP --&gt;|blocked| GATE
+    STOP --&gt;|pass| OFFER["offer the output artifact&lt;br/&gt;(CLAUDE.md · Output artifact)"]
+    OFFER --&gt; DONE([done])
+</pre><figcaption>Main flow. The middle of the diagram is skipped entirely when /engineos:bypass is on.</figcaption></figure>
+  <div class="prose"><ul>
+    <li><strong>Classification precedes writing.</strong> The <code>[router]</code> line and the risk tier come before the first edit, never after.</li>
+    <li><strong>Verification happens once.</strong> No per-edit test runs; the final gate is the single verification point, and the Stop hooks only check that it ran.</li>
+    <li><strong>Every change leaves a record.</strong> <code>mark-unrecorded.sh</code> raises a flag on the first edit; <code>record-verify.sh</code> refuses "done" until <code>record-change</code> clears it.</li>
+    <li><strong>Bypass is loud.</strong> The reply opens with <code>[engineos] bypassed</code> so nobody mistakes an unguarded session for a guarded one.</li>
+  </ul></div>
+</section>
+
+<section id="hooks">
+  <p class="owner">owner <b>hooks/hooks.json</b></p>
+  <div class="prose"><h2>Hook event map</h2><p>Which script fires on which harness event, and what it may do.</p></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Event</th><th>Matcher</th><th>Hook</th><th>Effect</th><th>Needs jq</th></tr></thead>
+    <tbody>
+    <tr><td>SessionStart</td><td>all</td><td><code>ensure-project-layout.sh</code></td><td>Scaffolds <code>.engineos/{changes,archived,memory}</code> + <code>docs/{specs,prds,rules}</code> when the project opted in (<code>.engineos/</code> present or <code>ENGINEOS_SCAFFOLD=1</code>). Non-blocking.</td><td>no, grep fallback</td></tr>
+    <tr><td>UserPromptSubmit</td><td>all</td><td><code>prompt-advisor.sh</code></td><td>Calls <code>kernel.sh resolve-task</code>, injects one task contract; writes a <code>router</code> span; announces <code>BYPASS ACTIVE</code> when bypassed.</td><td>yes</td></tr>
+    <tr><td>PreToolUse</td><td>Edit | Write | NotebookEdit</td><td><code>route-before-change.sh</code></td><td><code>kernel.sh route-path</code> on the file, injects the domain's rules/skill/agent. Precedence: security → test → backend → dba → ios-release → android-release → devops → mobile → frontend → llm.</td><td>yes</td></tr>
+    <tr><td>PreToolUse</td><td>Agent | Task</td><td><code>announce-agent-dispatch.sh</code></td><td>Re-injects the green <code>[agent] … | model | mode | scope</code> banner.</td><td>—</td></tr>
+    <tr><td>PostToolUse</td><td>Edit | Write | NotebookEdit</td><td><code>mark-unrecorded.sh</code></td><td>Sets the unrecorded-change flag in the git dir.</td><td>yes</td></tr>
+    <tr><td>PostToolUse</td><td>Agent | Task</td><td><code>announce-agent-return.sh</code></td><td>Green <code>-&gt; done / FAILED</code> line; writes an <code>agent</code> span with duration and status floor.</td><td>—</td></tr>
+    <tr><td>Stop</td><td>all</td><td><code>stop-verify.sh</code></td><td>Blocks once if code changed and the scoped final gate did not run; tests join only when ON (<code>ENGINEOS_VERIFY_TESTS=1</code> or in scope).</td><td>no, grep/sed fallback</td></tr>
+    <tr><td>Stop</td><td>all</td><td><code>record-verify.sh</code></td><td>Blocks once if code changed and no change record was closed.</td><td>yes</td></tr>
+    <tr><td>not wired</td><td>—</td><td><code>post-edit-check.sh</code></td><td>Per-edit typecheck and lint, retired from default wiring; opt-in only.</td><td>no</td></tr>
+    </tbody></table></div>
+  <div class="prose callout"><p>Hooks that need <code>jq</code> exit 0 silently without it. If you never see <code>[router]</code> context on edits, check <code>jq</code> before suspecting the routing.</p></div>
+</section>
+
+<section id="risk">
+  <p class="owner">owner <b>rules/risk-autonomy.md</b> · rules/gates.md · registries/policy.json</p>
+  <div class="prose"><h2>Risk, autonomy, gates</h2><p>Every other ceremony is proportional to the risk tier. Classify first; the tier decides how far you may go alone and which gates apply.</p></div>
+  <figure class="diagram"><pre class="mermaid">flowchart LR
+    subgraph IN["Risk inputs (take the HIGHEST)"]
+        R1["reversibility"]
+        R2["blast radius"]
+        R3["data sensitivity"]
+        R4["contract surface"]
+        R5["spend"]
+        FL["shortcut floors → high:&lt;br/&gt;destructive DDL/DML · secrets · auth/authz&lt;br/&gt;prod deploy · payments · acting for someone else"]
+    end
+
+    IN --&gt; T{tier}
+
+    T --&gt;|low| LOW["autonomy ≤ A2&lt;br/&gt;apply reversible changes&lt;br/&gt;gates: implementation · validation&lt;br/&gt;+ change record"]
+    T --&gt;|medium| MED["autonomy ≤ A3&lt;br/&gt;human gate before external effect&lt;br/&gt;gates: + design when spec threshold met&lt;br/&gt;+ release if it ships"]
+    T --&gt;|high| HIGH["autonomy ≤ A3, A1 when evidence thin&lt;br/&gt;gates: discovery · design always&lt;br/&gt;validation + critic pass&lt;br/&gt;release + human approval&lt;br/&gt;security-reviewer if security surface"]
+
+    LOW --&gt; HITL
+    MED --&gt; HITL
+    HIGH --&gt; HITL
+
+    HITL["kernel.sh hitl&lt;br/&gt;reasons: high-risk · evidence-insufficient · external-effect&lt;br/&gt;policy-conflict · never-retry-situation · destructive-action&lt;br/&gt;budget-exhausted · breaker-open"]
+    HITL --&gt;|required| HD["record under '## Human decisions'&lt;br/&gt;in the change record"]
+</pre><figcaption>Risk does not average: the highest input wins. HITL reasons are the whole vocabulary a gate may cite.</figcaption></figure>
+  <div class="prose"><p>Gate ladder: <strong>Discovery → Design → Implementation → Validation → Release</strong>. The Stop hooks are the Validation gate. They know nothing about owners or rollback, so a green Stop is never the Release gate.</p></div>
+</section>
+
+<section id="kernel">
+  <p class="owner">owner <b>scripts/kernel.sh</b></p>
+  <div class="prose"><h2>Kernel: who asks what</h2><p>The kernel is the only place policy numbers become decisions. Callers never read <code>policy.json</code> themselves.</p></div>
+  <figure class="diagram"><pre class="mermaid">flowchart LR
+    subgraph CALLERS["Callers"]
+        PA["prompt-advisor.sh"]
+        RBC["route-before-change.sh"]
+        ORCH["orchestrator (main loop)"]
+        RTR["router agent"]
+        VG["validate-engineos.sh"]
+    end
+
+    subgraph K["kernel.sh subcommands"]
+        RTASK["resolve-task&lt;br/&gt;prompt → task contract"]
+        RPATH["route-path&lt;br/&gt;file → domain"]
+        RINT["route-intent&lt;br/&gt;signals → intents"]
+        RESC["route-escalate&lt;br/&gt;needs router agent?"]
+        RISKC["risk · gates · hitl"]
+        MODELC["model · scale · waves"]
+        FLOW["admit · breaker · retry · repair"]
+        DR["decision-rules · capability"]
+    end
+
+    subgraph DATA["Registries"]
+        P["policy.json"]
+        I["intents.json"]
+        RO["routing.json"]
+        M["models.json"]
+        D["decision-rules.json"]
+        C["capabilities.json"]
+    end
+
+    PA --&gt; RTASK
+    RBC --&gt; RPATH
+    ORCH --&gt; FLOW
+    ORCH --&gt; RISKC
+    RTR --&gt; RESC
+    RTR --&gt; RISKC
+    RTR --&gt; MODELC
+    VG --&gt; K
+
+    RTASK --&gt; I &amp; P &amp; D
+    RPATH --&gt; RO
+    RINT --&gt; I
+    RISKC --&gt; P
+    MODELC --&gt; M &amp; P
+    FLOW --&gt; P
+    DR --&gt; D &amp; C
+</pre><figcaption>Callers on the left, subcommands in the middle, registries they read on the right.</figcaption></figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Question</th><th>Command</th><th>Answer vocabulary</th></tr></thead>
+    <tbody>
+    <tr><td>What does this prompt need?</td><td><code>resolve-task</code></td><td>intents, rules, skills, agents, risk floor, autonomy ceiling, gates, hitl</td></tr>
+    <tr><td>Which domain owns this file?</td><td><code>route-path</code></td><td>one domain, first match in precedence</td></tr>
+    <tr><td>Can I dispatch another agent?</td><td><code>admit --inflight N --queued M</code></td><td>dispatch / defer / reject</td></tr>
+    <tr><td>Keep calling this resource?</td><td><code>breaker --state S --failures N</code></td><td>closed / open / half-open</td></tr>
+    <tr><td>Retry this failed unit?</td><td><code>retry --status S --attempt N</code></td><td>retry same tier / escalate / stop</td></tr>
+    <tr><td>Fix loop on a red check?</td><td><code>repair --check C --attempt N</code></td><td>2 attempts, 1 tier escalation, then red</td></tr>
+    <tr><td>Does a human have to decide?</td><td><code>hitl --risk T --autonomy A …</code></td><td>required + reason ids</td></tr>
+    </tbody></table></div>
+</section>
+
+<section id="fanout">
+  <p class="owner">owner <b>rules/parallelism.md</b> · templates/handoff.md</p>
+  <div class="prose"><h2>Fan-out: waves, contracts, barriers</h2><p>Parallel is the default past more than 3 files, more than 1 domain, or 3 or more independent tasks.</p></div>
+  <figure class="diagram"><pre class="mermaid">flowchart TD
+    TL["task list first&lt;br/&gt;(no code yet)"] --&gt; FC["freeze contracts&lt;br/&gt;types · API · schema · events&lt;br/&gt;ONE design-tier agent"]
+    FC --&gt; W1
+
+    subgraph W1["Wave 1 — one message, disjoint file scopes, ≤ ~6 agents"]
+        A1["agent A&lt;br/&gt;scope: src/orders/**"]
+        A2["agent B&lt;br/&gt;scope: src/billing/**"]
+        A3["agent C&lt;br/&gt;scope: apps/web/**"]
+    end
+
+    W1 --&gt; B1["barrier: integrate&lt;br/&gt;handoff per templates/handoff.md&lt;br/&gt;NO verification here"]
+    B1 --&gt; ADM{"kernel.sh admit"}
+    ADM --&gt;|dispatch| W2["Wave 2 …"]
+    ADM --&gt;|defer| HOLD["hold unit for next wave"]
+    ADM --&gt;|reject| BLK([BLOCKED → human, budget-exhausted])
+    HOLD --&gt; W2
+    W2 --&gt; BN["last barrier"]
+    BN --&gt; FG["FINAL GATE — only here"]
+
+    FAIL["unit FAILED"] -.-&gt; RETRY["retry once same tier&lt;br/&gt;→ escalate one tier, retry once&lt;br/&gt;→ stop, report incomplete"]
+    FAIL -.-&gt; BRK["breaker per resource&lt;br/&gt;3 consecutive → open → route around"]
+</pre><figcaption>Contracts freeze before wave 1; barriers integrate but do not verify; the final gate runs at the last barrier only.</figcaption></figure>
+  <div class="prose"><p>Hard rules: no two agents write the same file; the agent graph is flat, one level deep; a failed unit blocks its wave's barrier; <code>BLOCKED</code> and <code>FAILED</code> are real answers, never hidden by a green summary.</p></div>
+</section>
+
+<section id="agents">
+  <p class="owner">owner <b>agents/*.md</b> · registries/agents.json · rules/models.md</p>
+  <div class="prose"><h2>Agent roster by role</h2></div>
+  <figure class="diagram"><pre class="mermaid">flowchart TB
+    subgraph PLAN["Plan / specify"]
+        router["router"]
+        mariana["product-spec (mariana)"]
+    end
+
+    subgraph COORD["Domain coordinators — AUDIT | IMPLEMENT"]
+        borisenko["backend-coordinator (borisenko)"]
+        arturo["frontend-coordinator (arturo)"]
+        elias["mobile-coordinator (elias)"]
+        ronaldo["dba-coordinator (ronaldo)"]
+        hinokuma["devops-coordinator (hinokuma)"]
+        hermsdorff["llm-coordinator (hermsdorff)"]
+    end
+
+    subgraph LEAF["Read-only MCP leaf specialists"]
+        pereira["postgres-specialist (pereira)"]
+        leo["oracle-specialist (leo)"]
+        kovac["kubernetes-specialist (kovac)"]
+        nakamura["gcp-specialist (nakamura)"]
+        gustavo["cicd-specialist (gustavo)"]
+    end
+
+    subgraph REVIEW["Review / verify — read-only"]
+        leoely["security-reviewer (leo-ely)"]
+        vera["critic (vera)"]
+        corradin["audit-consolidator (corradin)"]
+    end
+
+    subgraph BUILD["Build / test / document"]
+        ameer["test-writer (ameer)"]
+        qa["qa-tester (qa)"]
+        tomasz["docs-writer (tomasz)"]
+        analyst["architecture-analyst (analyst)"]
+        ios["ios-builder"]
+        android["android-builder"]
+    end
+
+    router -.-&gt;|"dispatch plan"| COORD
+    COORD --&gt;|"deep introspection"| LEAF
+    LEAF --&gt; corradin
+    COORD --&gt; vera
+    COORD --&gt; leoely
+</pre><figcaption>22 agents. Coordinators run AUDIT or IMPLEMENT; leaf specialists and reviewers are read-only.</figcaption></figure>
+  <div class="prose"><p>Model tiers: spec and PRD → <strong>most capable</strong> (fable); design, security, adversarial review → <strong>design</strong> (opus); code against a spec → <strong>build</strong> (opus); mechanical → <strong>cheap</strong> (haiku). The tier is the contract; the model name is today's binding.</p></div>
+</section>
+
+<section id="knowledge">
+  <p class="owner">owner <b>rules/memory.md</b></p>
+  <div class="prose"><h2>Where knowledge lives</h2><p>One home per fact. Duplication drifts.</p></div>
+  <figure class="diagram"><pre class="mermaid">flowchart LR
+    subgraph TEAM["Team (engineos repo, via PR)"]
+        RU["rules/ — how we build"]
+        SK["skills/ — how to do X"]
+        RG["registries/ — the numbers"]
+    end
+
+    subgraph PROJ["Project repo"]
+        PC["CLAUDE.md — deltas only"]
+        SP["docs/specs/ · docs/prds/"]
+        ADR["docs/adr/ — decisions + why"]
+        PR["docs/rules/ — longer rule deltas"]
+        CH[".engineos/changes/ → archived/"]
+        MEM[".engineos/memory/"]
+        OBS[".engineos/skill-observations/"]
+        AUD[".engineos/audits/"]
+    end
+
+    subgraph PERSONAL["Personal"]
+        HOME["~/.claude/CLAUDE.md + Claude memory"]
+    end
+
+    HOME --&gt;|"repeated 3× → promote"| PC
+    PC --&gt;|"second project adopts → promote"| RU
+    CH --&gt;|"lasting fact"| MEM
+    OBS --&gt;|"retro consumes OPEN entries"| RU
+    AUD -.-&gt; CH
+</pre><figcaption>Promotion paths: personal → project → team. Retro consumes observations and archived records.</figcaption></figure>
+</section>
+
+<section id="record">
+  <p class="owner">owner <b>skills/record-change</b> · .engineos/README.md</p>
+  <div class="prose"><h2>Change-record lifecycle</h2></div>
+  <figure class="diagram"><pre class="mermaid">stateDiagram-v2
+    [*] --&gt; Open: first edit → mark-unrecorded.sh flag
+    Open --&gt; Working: checklist filled, spec linked or n/a with reason
+    Working --&gt; Verified: FINAL GATE green
+    Verified --&gt; Closed: skills/record-change fills what was made + changes registered
+    Closed --&gt; Archived: moved to .engineos/archived/YYYY/MM/DD/, flag cleared
+    Archived --&gt; [*]
+    Archived --&gt; Memory: distil durable fact → .engineos/memory/
+    Archived --&gt; Retro: 3+ recurrences → rule/skill/registry delta PR
+</pre><figcaption>Opened by the first edit, closed by record-change, archived by year/month/domain.</figcaption></figure>
+</section>
+
+<section id="integrity">
+  <p class="owner">owner <b>scripts/validate-engineos.sh</b> · hooks/test-docs.sh · docs/COMPATIBILITY.md</p>
+  <div class="prose"><h2>How EngineOS checks itself</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Check</th><th>Runs</th><th>Fails when</th></tr></thead>
+    <tbody>
+    <tr><td><code>scripts/validate-engineos.sh</code></td><td>CI + manual</td><td>CLAUDE.md router table ≠ <code>routing.json</code>; <code>rules/models.md</code> ≠ <code>models.json</code>; a row's load list is not closed; a registry points at a missing agent or tier</td></tr>
+    <tr><td><code>hooks/test-docs.sh</code> + <code>docs-ledger.sh</code></td><td>CI + manual</td><td>dangling rule/agent/skill pointer; orphaned agent; <code>commands/agents/</code> drift; single-source-of-truth budget exceeded</td></tr>
+    <tr><td><code>hooks/test-*.sh</code>, <code>scripts/test-*.sh</code></td><td>CI + manual</td><td>a hook or kernel contract regresses</td></tr>
+    <tr><td><code>evals/</code> + <code>scripts/run-evals.sh</code></td><td>manual / CI</td><td>routing or advisor output drifts from the golden set</td></tr>
+    <tr><td><code>scripts/exec-journal.sh validate</code></td><td>manual</td><td>a telemetry span breaks the line format or slug class</td></tr>
+    </tbody></table></div>
+  <div class="prose"><p>Public surface (rule paths, agent names, aliases, commands, hook contracts, return envelope) is versioned per <code>docs/COMPATIBILITY.md</code>: a rename is a deprecation with a window, never a silent move.</p></div>
+</section>
+
+<section id="glossary">
+  <p class="owner">the ten words that carry the system</p>
+  <div class="prose"><h2>Glossary</h2>
+  <dl class="gloss">
+    <dt>Router</dt><dd>The intent table in CLAUDE.md plus <code>kernel.sh resolve-task</code>; decides what to load and who to dispatch.</dd>
+    <dt>Task contract</dt><dd>The one block <code>prompt-advisor.sh</code> injects per prompt: intents, rules, agents, risk floor, gates.</dd>
+    <dt>Risk tier</dt><dd>low / medium / high, classified before the first write; everything else is proportional to it.</dd>
+    <dt>Autonomy ceiling</dt><dd>A0 to A4; how far you may go without a human, given the tier.</dd>
+    <dt>Gate</dt><dd>Discovery / Design / Implementation / Validation / Release, each with its mechanism and honest strength.</dd>
+    <dt>Final gate</dt><dd>Lint and typecheck run once at the end, tests only when ON; the Validation gate.</dd>
+    <dt>Change record</dt><dd><code>.engineos/changes/&lt;date&gt;-&lt;slug&gt;.md</code>; opened on first edit, closed by record-change, archived.</dd>
+    <dt>Wave</dt><dd>One message of parallel agents over disjoint file scopes, ended by a barrier.</dd>
+    <dt>Kernel</dt><dd><code>scripts/kernel.sh</code>; turns registry data into decisions so no caller reads policy directly.</dd>
+    <dt>Bypass</dt><dd><code>/engineos:bypass</code>; turns every guardrail off, loudly, until the next session or toggled back.</dd>
+  </dl></div>
+</section>
+
+<footer>source of truth: docs/BIG-PICTURE.md in the engineos repo · generated 2026-09-03</footer>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.4.1/mermaid.min.js"></script>
+<script>
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+    (document.documentElement.getAttribute('data-theme') !== 'light' &&
+     window.matchMedia('(prefers-color-scheme: dark)').matches);
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral', securityLevel: 'loose' });
+</script>
+</body>
+</html>
