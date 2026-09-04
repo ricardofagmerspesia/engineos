@@ -3,3 +3,4 @@
 # mangles output. Force LF so core.autocrlf=true on Windows cannot rewrite
 # them to CRLF at checkout.
 *.sh text eol=lf
+dist/engineos.cjs text eol=lf

@@ -38,6 +38,7 @@ jobs:
             exit 1
           fi
           echo "ok: dist/engineos.cjs matches src/"
+          test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
 
       - name: Shellcheck hooks + scripts (errors only)
         run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh
