@@ -80,7 +80,8 @@ src/
     json.ts           readJson with typed narrowing; error helpers per CLI convention
   registry/           one typed loader per registries/*.json; lazy, path-bound
   kernel/             one deep module: resolve(facts, ctx); concept modules private;
-                      cli.ts holds the projections (see "Kernel shape" below)
+                      cli.ts holds the projections (see "Kernel shape" below);
+                      route.ts renders hook guidance and derives the floor from the registry rows ("Route guidance" below)
   journal/            exec-journal and telemetry: schema.ts is the one field table; append, validate, usage and the hook writers derive from it
   hooks/
     envelope.ts       stdin decode into HookEnvelope (cwd, session_id, prompt, file, tool, transcript, stop_hook_active)
@@ -510,6 +511,54 @@ export function render(r: CheckResult): string    // 'ok   <title>' | 'FAIL <tit
   one global code union (~260 names with check prefixes, one file everyone
   edits); `--only C16:<code>` (new versioned surface for a test-time need).
 
+### Route guidance (amended 2026-09-04, architecture review)
+
+`route-path` answers with seven fields; its one runtime caller reads two,
+`excluded` and `hook_guidance`. Every `routing.json` domain row carries the
+structured `rules[]`, `skills[]`, `agent` and, beside them, the string those
+were rendered into — a second dialect that C14 has to keep equal to the first,
+and that `test-route.sh` restates ten times. The row's `risk_floor` has no
+runtime reader: `resolve-task` floors from `intents.json`, and C16 only asserts
+the two tiers agree. The port keeps the answer and removes the second dialect.
+
+```ts
+// src/registry/routing.ts
+export interface RoutingDomain { id: string; match: { paths: string[]; basenames: string[] }; rules: string[]; skills: string[]; agent: string | null; hint: string | null; sample_path: string | null }
+// src/kernel/route.ts
+export function renderGuidance(domain: RoutingDomain): string
+//   'rules/<a>.md+<b>.md' + (skills ? ' | skill:<s>' per skill) + (agent ? ' | agent:<agent>') + (hint ? ' (<hint>)')
+export function floorOf(domain: RoutingDomain, regs: Registries): RiskTier | null   // the one intent whose `domain` is this row; a test asserts exactly one per domain
+export type RouteSection =
+  | { domain: null; excluded: boolean }
+  | { domain: string; rules: string[]; skills: string[]; agent: string | null; risk_floor: RiskTier | null; hook_guidance: string; excluded: false }   // last two derived
+```
+
+- One form in the registry. The four parentheticals no field held —
+  `postgres/oracle`, `kubernetes/gcp/cicd`, `signing` twice, `adapt to React
+  Native` — become `hint`; the renderer places them last, so the ios-release,
+  android-release and mobile lines change by a few characters.
+- The answer is unchanged in shape (COMPATIBILITY versions it): `hook_guidance`
+  and `risk_floor` stay in `route-path` and in `RouteSection`, derived. The
+  hook reads the section; hook and CLI share the one renderer.
+- Landing in two steps. Task 7 lands `renderGuidance`, `hint` support and a
+  parity test asserting the rendered string equals every stored
+  `hook_guidance`, moving the three mid-string parentheticals in the same PR.
+  Task 13, when `kernel.sh` becomes a shim and nothing reads the string from
+  the registry any more, deletes the two fields, adds the four hints, and
+  rewrites C6/C7/C8 to read the structured fields; C14's guidance-equality
+  half, C16's floor-equality row and C8's domain-tier row disappear
+  (deviation 9).
+- Tests: `route.test.ts` renders every fixture row; the Wave 6 route e2e keeps
+  its ten literal guidance strings — a registry edit that changes a line fails
+  a test on purpose, which a renderer-driven assertion could not do.
+- Deletion test: remove the renderer and the string returns to the registry
+  as data that must be kept equal to its neighbours by a check. Rejected:
+  rendering in the hook with the projection importing it (dependency
+  direction inverted, kernel depending on hooks); making the domain floor a
+  real input to `resolve({ path })` (new behaviour, a design of its own, not
+  a deepening); dropping the parentheticals (loses the leaf-specialist and
+  signing hints for no gain).
+
 ### Shims and compatibility
 
 Every bash entry point becomes a shim:
@@ -627,6 +676,12 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    `[<code>]` / `[<code>:<subject>]` and its prose is not versioned surface.
    The 141 mutation cases move from substring matches to code assertions,
    family by family. Release notes say so.
+9. `routing.json` domain rows lose `hook_guidance` and `risk_floor` and gain an
+   optional `hint`. The `route-path` answer keeps all seven fields: the string
+   is rendered from `rules`, `skills`, `agent` and `hint`; the floor is the
+   owning intent's. Row fields are not the registry's top-level shape and no
+   consumer outside this repo reads them, so this is MINOR with a release note,
+   not a deprecation. Three rows' parentheticals move to the end of the line.
 
 ## Testing
 
@@ -673,6 +728,9 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - Checks are tested through their findings ("Findings" above): family tests
   assert codes and subjects on `run(ctx)`, never on rendered lines; the
   validator e2e asserts the harness surface only.
+- Route guidance is tested twice on purpose ("Route guidance" above): the
+  renderer against fixture rows in `route.test.ts`, and the ten rendered
+  lines as literals in the route e2e.
 
 ## Waves
 

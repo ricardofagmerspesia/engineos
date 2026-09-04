@@ -813,7 +813,7 @@ git commit -m "feat(kernel): add JSON and bash-glob helpers"
   export function registryPath(root: string, name: RegistryName): string   // KernelError `registry missing: registries/<name>` when absent
   export function loadRegistry(root: string, name: RegistryName): unknown  // readJsonFile(registryPath(...))
   // src/registry/routing.ts
-  export interface RoutingDomain { id: string; match: { paths: string[]; basenames: string[] }; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; sample_path: string | null }
+  export interface RoutingDomain { id: string; match: { paths: string[]; basenames: string[] }; rules: string[]; skills: string[]; agent: string | null; hint: string | null; sample_path: string | null }   // hook_guidance and risk_floor are not loaded: derived in src/kernel/route.ts (design "Route guidance")
   export interface RoutingRegistry { precedence: string[]; excluded: { paths: string[]; basenames: string[]; self_dirs: string[] }; domains: RoutingDomain[] }
   export function loadRouting(root: string): RoutingRegistry
   ```
@@ -922,8 +922,7 @@ export interface RoutingDomain {
   rules: unknown;
   skills: unknown;
   agent: unknown;
-  risk_floor: unknown;
-  hook_guidance: unknown;
+  hint: string | null;
   sample_path: string | null;
 }
 
@@ -953,8 +952,7 @@ export function loadRouting(root: string): RoutingRegistry {
         rules: d['rules'] ?? null,
         skills: d['skills'] ?? null,
         agent: d['agent'] ?? null,
-        risk_floor: d['risk_floor'] ?? null,
-        hook_guidance: d['hook_guidance'] ?? null,
+        hint: typeof d['hint'] === 'string' ? d['hint'] : null,
         sample_path: typeof d['sample_path'] === 'string' ? d['sample_path'] : null,
       };
     }),
@@ -1088,11 +1086,14 @@ by hand instead of through the harness is a review defect.
   // src/kernel/route.ts (internal)
   export type RouteSection =
     | { domain: null; excluded: boolean }
-    | { domain: string; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; excluded: false };
+    | { domain: string; rules: string[]; skills: string[]; agent: string | null; risk_floor: RiskTier | null; hook_guidance: string; excluded: false };   // risk_floor and hook_guidance derived
   export function routeByPath(file: string, regs: Registries): RouteSection
+  export function renderGuidance(domain: RoutingDomain): string          // 'rules/<a>.md+<b>.md | skill:<s> | agent:<agent> (<hint>)' — the one renderer for hook and CLI
+  export function floorOf(domain: RoutingDomain, regs: Registries): RiskTier | null   // the one intent whose `domain` is this row
   ```
 - `resolve` throws `KernelError` when a declared fact's section cannot be built; it never fabricates a section. An empty `facts` object answers `{}`.
 - Tests below call `resolve({ path }, ctx).route`; `ctx = { root, registries: lazyRegistries(root) }`.
+- Route guidance parity (design "Route guidance", step one of two): while `routing.json` still carries `hook_guidance`, `route.test.ts` asserts `renderGuidance(row)` equals the stored string for every row, and `floorOf(row)` equals the stored `risk_floor`. This PR moves the mid-string parentheticals of `ios-release`, `android-release` and `mobile` to the end of their stored strings and updates the three literals in `hooks/test-route.sh`; the four parentheticals are also written as `hint` now so the renderer has its input. Step two is Task 13.
 
 - [ ] **Step 1: Failing tests against the shipped registry**
 
@@ -1153,7 +1154,7 @@ import type { KernelContext } from './context';
 
 export type RoutePathAnswer =
   | { domain: null; excluded: boolean }
-  | { domain: string; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; excluded: false };
+  | { domain: string; rules: string[]; skills: string[]; agent: string | null; risk_floor: RiskTier | null; hook_guidance: string; excluded: false };
 
 export function routePath(ctx: KernelContext, file: string): RoutePathAnswer {
   const reg = loadRouting(ctx.root);
@@ -1183,8 +1184,8 @@ export function routePath(ctx: KernelContext, file: string): RoutePathAnswer {
         rules: dom.rules,
         skills: dom.skills,
         agent: dom.agent,
-        risk_floor: dom.risk_floor,
-        hook_guidance: dom.hook_guidance,
+        risk_floor: floorOf(dom, regs),
+        hook_guidance: renderGuidance(dom),
         excluded: false,
       };
     }
@@ -1389,7 +1390,7 @@ Projections: `model --work` -> `.model`; `risk --signals` -> `.risk` (legacy key
 
 ### Task 13: swap the `scripts/kernel.sh` shim
 
-**Files:** Modify `scripts/kernel.sh` (whole file), `scripts/test-kernel.sh` (`relocated_kernel` fixture), `scripts/checks/70-runtime.sh` (C26d greps `scripts/kernel.sh` for the `hitl: budget-exhausted` literal: change its target path to `src/kernel/admit.ts`, same literal, same message).
+**Files:** Modify `scripts/kernel.sh` (whole file), `scripts/test-kernel.sh` (`relocated_kernel` fixture), `scripts/checks/70-runtime.sh` (C26d greps `scripts/kernel.sh` for the `hitl: budget-exhausted` literal: change its target path to `src/kernel/admit.ts`, same literal, same message); `registries/routing.json` and `scripts/checks/{20-registries,40-decision-registries}.sh` for the route-guidance step two (design "Route guidance", deviation 9): delete `hook_guidance` and `risk_floor` from the ten domain rows (the `hint` fields landed in Task 7); C6/C7/C8 read `agent`, `skills[]`, `rules[]` directly; C14's rules-versus-guidance half, C16's intent-versus-domain floor row and C8's domain `risk_floor` tier row are deleted; `docs/CONTRIBUTING.md` names `hint` instead of `hook_guidance`; release note: MINOR.
 
 - [ ] **Step 1: Replace `scripts/kernel.sh` with the shim**
 
@@ -1573,7 +1574,7 @@ Common shape for every hook task:
 | 18 | `ensure-project-layout` | 96 | `hooks/test-layout.sh` | bypass marker removed and stale `ENGINEOS_UNRECORDED.*` (+7 days) reaped BEFORE the self-repo skip; route cache wiped every start; telemetry reaped by `policy.json .telemetry.retention_days`; `ENGINEOS_SCAFFOLD` tri-state; exact hint text; always exit 0; grep/sed `cwd` fallback becomes lenient JSON decode | C29 (`scaffold-layout.sh` sourced -> `./scaffold` imported), C22c (`--event` ids), C27c (`exec.jsonl`, `engineos-telemetry/spans`) |
 | 19 | `mark-unrecorded` | 51 | `hooks/test-governance.sh` | extension allowlist `ts tsx js jsx py go rs sql` shared constant; skips `*/.engineos/*`; self_dirs from `routing.json` resolved against the plugin root; marker `ENGINEOS_UNRECORDED.<sid>`; silent | C22c if listed as a writer |
 | 20 | `record-verify` | 34 | `hooks/test-governance.sh` | bypass, then `stop_hook_active` guard; `.deferred` marker silences; block reason text verbatim with the `touch "<path>"` suggestion, returned as `block(reason)` (the adapter renders `{"decision":"block"}` and exits 0) | C22c if listed as a writer |
-| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached fast path only when project and change notes are empty — the cache stores the `HookDecision` JSON, not the rendered payload, and the hit path returns it to the adapter to render (cache format is internal, wiped every SessionStart); bypass checks before any kernel call; default guide `base.md+git.md only`; never sets `permissionDecision` | C22c (`--event` ids) |
+| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached fast path only when project and change notes are empty — the cache stores the `HookDecision` JSON, not the rendered payload, and the hit path returns it to the adapter to render (cache format is internal, wiped every SessionStart); bypass checks before any kernel call; default guide `base.md+git.md only`; reads `route.hook_guidance` from the kernel section, renders nothing itself; never sets `permissionDecision`. Wave 6 route e2e keeps the ten literal guidance strings | C22c (`--event` ids) |
 | 22 | `prompt-advisor` | 118 | `hooks/test-prompt-advisor.sh` | calls `resolveTask` in-process; guidance strings verbatim (copy from the jq program lines 64-115); telemetry ids only, never prompt text; `route` id slugged, default `none`; risk allowlisted to low/medium/high; the resolve call runs inside `withSpan(sink, { kind: 'router', capability: 'route', modelTier: 'cheap' }, ...)` | C18f (`resolve-task` literal: the TS imports `resolveTask` from `../kernel/resolve-task`, which contains it), C22c, C27c |
 | 23 | `announce-agent-dispatch` | 39 | `hooks/test-agent-announce.sh` | `openSpan(sink, spanIdFrom(env))` after the banner; banner text verbatim; under an unusable node prints the `systemMessage` (not in the silent set) | C27c (`hook_span_open`, `--capability-id` literals) |
 | 24 | `announce-agent-return` | 77 | `hooks/test-agent-announce.sh` | status floor derived only from structure (error flag, top-level `.status`, first token of a string response); `model_tier` from `agents.json`; `closeSpan(sink, spanIdFrom(env), { kind: 'agent', capability: 'implement', ... })` — same derivation as Task 23 by construction | C27c (`hook_span`, `exec-journal` literals) |
@@ -1689,9 +1690,9 @@ together; the order is 33c, 33, 33b, then 34-41.
 | Task | Family | Source LOC | Checks | Notes |
 |---|---|---|---|---|
 | 34 | `10-rules` | 89 | C1 (becomes "node >= 18 present"), C2, C3, C5, C5b | C1's message changes: say so in release notes |
-| 35 | `20-registries` | 172 | C6, C7, C8, C14, C15, C15b | pure JSON |
+| 35 | `20-registries` | 172 | C6, C7, C8, C14, C15, C15b | pure JSON; C6/C7/C8 already read the structured fields since Task 13, C14 is JSON validity only |
 | 36 | `30-agents-skills` | 107 | C9, C10, C11, C12, C13, C31 | frontmatter via `src/gen/frontmatter.ts` |
-| 37 | `40-decision-registries` | 238 | C16, C19*, C21*, C23* | C16's nine pairs become `MIRRORS` rows (Task 33b) with today's grep strings as `element`/`pattern`; the gate-ladder row reads `rules/gates.md` for real (deviation 5); intent/routing FKs and JSON shape checks stay code |
+| 37 | `40-decision-registries` | 238 | C16, C19*, C21*, C23* | C16's nine pairs become `MIRRORS` rows (Task 33b) with today's grep strings as `element`/`pattern`; the gate-ladder row reads `rules/gates.md` for real (deviation 5); intent/routing FKs and JSON shape checks stay code; the floor-equality row is already gone (Task 13, deviation 9) |
 | 38 | `50-kernel` | 229 | C17*, C18* | call kernel functions in-process, not the shim |
 | 39 | `60-contracts` | 205 | C21b/c/e, handoff and change-record mirrors | C19b/c and C21b/e template and prose mirrors are rows; C21 and C21c walk `.engineos/archived/**` as code |
 | 40 | `70-runtime` part 1 | ~800 | C20*, C22*, C24*, C25*, C26* | C20c, C23, C24c, C25c, C26c prose mirrors are rows; canaries call `admit`/`breaker`/`hitl`/`repair`/telemetry in-process; C26d keeps the `hitl: budget-exhausted` literal coupling, now against `src/kernel/admit.ts` |
