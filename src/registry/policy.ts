@@ -66,6 +66,31 @@ export interface GatesPolicy {
   spec_threshold: SpecThreshold;
 }
 
+export interface BackpressurePolicy {
+  max_queued_units: number;
+  overload_action: string;
+  actions: string[];
+}
+
+export interface ParallelismPolicy {
+  wave_concurrency_cap: number;
+  backpressure: BackpressurePolicy;
+}
+
+export interface BreakerPolicy {
+  failure_threshold: number;
+  cooldown_waves: number;
+  half_open_probes: number;
+  states: string[];
+  scopes: string[];
+}
+
+export interface HitlPolicy {
+  reasons: string[];
+  situations: string[];
+  record_home: string;
+}
+
 export interface PolicyRegistry {
   version: string;
   risk: RiskPolicy;
@@ -73,6 +98,9 @@ export interface PolicyRegistry {
   autonomy: AutonomyPolicy;
   retry: RetryPolicy;
   gates: GatesPolicy;
+  parallelism: ParallelismPolicy;
+  breaker: BreakerPolicy;
+  hitl: HitlPolicy;
 }
 
 export function loadPolicy(root: string): PolicyRegistry {
@@ -84,6 +112,10 @@ export function loadPolicy(root: string): PolicyRegistry {
   const retry = requireRecord(p['retry'], '.retry');
   const gates = requireRecord(p['gates'], '.gates');
   const specThreshold = requireRecord(gates['spec_threshold'], '.gates.spec_threshold');
+  const parallelism = requireRecord(p['parallelism'], '.parallelism');
+  const backpressure = requireRecord(parallelism['backpressure'], '.parallelism.backpressure');
+  const breaker = requireRecord(p['breaker'], '.breaker');
+  const hitl = requireRecord(p['hitl'], '.hitl');
   return {
     version: requireString(p['version'], '.version'),
     risk: {
@@ -135,6 +167,35 @@ export function loadPolicy(root: string): PolicyRegistry {
           '.gates.spec_threshold.or_any_new_feature',
         ),
       },
+    },
+    parallelism: {
+      wave_concurrency_cap: requireNumber(
+        parallelism['wave_concurrency_cap'],
+        '.parallelism.wave_concurrency_cap',
+      ),
+      backpressure: {
+        max_queued_units: requireNumber(
+          backpressure['max_queued_units'],
+          '.parallelism.backpressure.max_queued_units',
+        ),
+        overload_action: requireString(
+          backpressure['overload_action'],
+          '.parallelism.backpressure.overload_action',
+        ),
+        actions: requireStrings(backpressure['actions'], '.parallelism.backpressure.actions'),
+      },
+    },
+    breaker: {
+      failure_threshold: requireNumber(breaker['failure_threshold'], '.breaker.failure_threshold'),
+      cooldown_waves: requireNumber(breaker['cooldown_waves'], '.breaker.cooldown_waves'),
+      half_open_probes: requireNumber(breaker['half_open_probes'], '.breaker.half_open_probes'),
+      states: requireStrings(breaker['states'], '.breaker.states'),
+      scopes: requireStrings(breaker['scopes'], '.breaker.scopes'),
+    },
+    hitl: {
+      reasons: requireStrings(hitl['reasons'], '.hitl.reasons'),
+      situations: requireStrings(hitl['situations'], '.hitl.situations'),
+      record_home: requireString(hitl['record_home'], '.hitl.record_home'),
     },
   };
 }

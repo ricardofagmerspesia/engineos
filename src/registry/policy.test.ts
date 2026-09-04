@@ -35,6 +35,29 @@ test('the shipped policy registry loads with every field the kernel reads', () =
   assert.ok(policy.retry.never_retry.includes('security-risk'));
   assert.equal(policy.gates.by_risk.high['validation'], 'required-plus-critic');
   assert.deepEqual(policy.gates.spec_threshold, { files_greater_than: 2, or_any_new_feature: true });
+  assert.equal(policy.parallelism.wave_concurrency_cap, 6);
+  assert.deepEqual(policy.parallelism.backpressure, {
+    max_queued_units: 12,
+    overload_action: 'defer',
+    actions: ['dispatch', 'defer', 'reject'],
+  });
+  assert.equal(policy.breaker.failure_threshold, 3);
+  assert.equal(policy.breaker.cooldown_waves, 1);
+  assert.equal(policy.breaker.half_open_probes, 1);
+  assert.deepEqual(policy.breaker.states, ['closed', 'half-open', 'open']);
+  assert.deepEqual(policy.breaker.scopes, ['provider', 'mcp', 'tool', 'agent']);
+  assert.deepEqual(policy.hitl.reasons, [
+    'high-risk',
+    'evidence-insufficient',
+    'external-effect',
+    'policy-conflict',
+    'never-retry-situation',
+    'destructive-action',
+    'budget-exhausted',
+    'breaker-open',
+  ]);
+  assert.deepEqual(policy.hitl.situations, ['destructive', 'budget-exhausted', 'reject', 'breaker-open']);
+  assert.equal(policy.hitl.record_home, '.engineos/changes/<record>.md#human-decisions');
 });
 
 test('gate statuses keep the registry key order they are emitted in', () => {
@@ -60,6 +83,17 @@ const malformed: [string, (policy: Record<string, unknown>) => void, string][] =
   ['a missing retry block', (p) => { delete p['retry']; }, '.retry must be an object'],
   ['a gate status that is not a string', (p) => { record(record(p, 'gates'), 'by_risk')['medium'] = { validation: 3 }; }, '.gates.by_risk.medium.validation must be a string'],
   ['a spec threshold that is not a count', (p) => { record(record(p, 'gates'), 'spec_threshold')['files_greater_than'] = 'two'; }, '.gates.spec_threshold.files_greater_than must be a number'],
+  ['a missing parallelism block', (p) => { delete p['parallelism']; }, '.parallelism must be an object'],
+  ['a missing backpressure block', (p) => { delete record(p, 'parallelism')['backpressure']; }, '.parallelism.backpressure must be an object'],
+  ['a non-numeric wave cap', (p) => { record(p, 'parallelism')['wave_concurrency_cap'] = '6'; }, '.parallelism.wave_concurrency_cap must be a number'],
+  ['a queue bound that is not a count', (p) => { delete record(record(p, 'parallelism'), 'backpressure')['max_queued_units']; }, '.parallelism.backpressure.max_queued_units must be a number'],
+  ['a backpressure actions list that is not an array', (p) => { record(record(p, 'parallelism'), 'backpressure')['actions'] = 'defer'; }, '.parallelism.backpressure.actions must be an array of strings'],
+  ['a missing breaker block', (p) => { delete p['breaker']; }, '.breaker must be an object'],
+  ['a non-numeric failure threshold', (p) => { record(p, 'breaker')['failure_threshold'] = null; }, '.breaker.failure_threshold must be a number'],
+  ['a breaker state list that is not an array', (p) => { record(p, 'breaker')['states'] = 'closed'; }, '.breaker.states must be an array of strings'],
+  ['a missing hitl block', (p) => { delete p['hitl']; }, '.hitl must be an object'],
+  ['a reason that is not a string', (p) => { record(p, 'hitl')['reasons'] = [7]; }, '.hitl.reasons[0] must be a string'],
+  ['a record home that is not a string', (p) => { delete record(p, 'hitl')['record_home']; }, '.hitl.record_home must be a string'],
 ];
 
 for (const [name, breakIt, detail] of malformed) {
@@ -112,6 +146,22 @@ function basePolicy(): Record<string, unknown> {
         high: { validation: 'required-plus-critic' },
       },
       spec_threshold: { files_greater_than: 2, or_any_new_feature: true },
+    },
+    parallelism: {
+      wave_concurrency_cap: 6,
+      backpressure: { max_queued_units: 12, overload_action: 'defer', actions: ['dispatch', 'defer', 'reject'] },
+    },
+    breaker: {
+      failure_threshold: 3,
+      cooldown_waves: 1,
+      half_open_probes: 1,
+      states: ['closed', 'half-open', 'open'],
+      scopes: ['provider'],
+    },
+    hitl: {
+      reasons: ['high-risk'],
+      situations: ['destructive'],
+      record_home: '.engineos/changes/<record>.md#human-decisions',
     },
   };
 }
