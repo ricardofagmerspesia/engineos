@@ -1,9 +1,9 @@
 ---
-title: Shared test harness module for the TypeScript runtime migration
+name: 2026-09-04-test-harness-module
 status: done
-domain: docs
-created: 2026-09-04
 completed: 2026-09-04
+owner: Ricardo Fagmer
+domain: docs
 spec: docs/specs/2026-09-04-typescript-runtime-migration-design.md
 risk: low
 autonomy: A2
@@ -60,6 +60,13 @@ existing spec, so `spec:` points at the design it amends.
 - [x] Design layout and Testing section updated
 - [x] Not bundled: stated in plan and design, asserted by `harness.test.ts`
 - [x] Change record written and archived
+
+## Verification
+
+`scripts/validate-engineos.sh` run once on the branch after PR #44 opened:
+first pass `passed 107, failed 1` (this record lacked `name:` and a
+Verification section), fixed, second pass recorded in the PR. Docs-only
+change, no build.
 
 ## Human decisions
 
