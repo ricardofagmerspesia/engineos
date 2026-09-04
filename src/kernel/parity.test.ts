@@ -40,6 +40,57 @@ const ROUTE_INTENT_CASES = [
   'the weather is nice today',
 ];
 
+// The four flag-taking arms, with the args of every `run <arm> ...` block in
+// scripts/test-kernel.sh plus the arm alone (bash's own missing-flag message).
+//
+// Deliberately NOT cases, for two reasons a parity assertion cannot express:
+//   - a flag with no value at all (`model --work`, `risk --signals`, `gates
+//     --risk`, `repair --check`). bash binds ${2:-} and then `shift 2` runs off
+//     the end, which fails without shifting, so the same flag re-matches and the
+//     loop spins forever. There is no answer to compare against; the TypeScript
+//     refusal is asserted in cli.test.ts instead.
+//   - `risk --signals '[]'` and any other non-object payload. jq indexes it,
+//     fails, and bash writes the jq error to stderr and nothing to stdout, so
+//     the case would fail on unparseable output rather than on a difference.
+const MODEL_CASES = [
+  ['--work', 'adr'],
+  ['--work', 'build'],
+  ['--work', 'nonsense'],
+  [],
+];
+
+const RISK_CASES = [
+  ['--signals', '{"inputs":{"reversibility":"low","blast-radius":"medium"}}'],
+  ['--signals', '{"inputs":{"reversibility":"low","blast-radius":"low","data-sensitivity":"low","contract-surface":"low","spend":"low"},"floors":["payments"]}'],
+  ['--signals', '{"inputs":{"bogus-input":"low"}}'],
+  ['--signals', '{"inputs":{"reversibility":"low"},"floors":["bogus-floor"]}'],
+  ['--signals', '{}'],
+  ['--signals', '{"inputs":{}}'],
+  ['--signals', '{"floors":["destructive-ddl-dml"]}'],
+  [],
+];
+
+const GATES_CASES = [
+  ['--risk', 'low'],
+  ['--risk', 'medium'],
+  ['--risk', 'high'],
+  ['--risk', 'banana'],
+  [],
+];
+
+const REPAIR_CASES = [
+  ['--check', 'lint', '--attempt', '1'],
+  ['--check', 'lint', '--attempt', '2'],
+  ['--check', 'lint', '--attempt', '3'],
+  ['--check', 'test', '--situation', 'infra'],
+  ['--check', 'test', '--situation', 'flaky'],
+  ['--check', 'build', '--attempt', '1', '--situation', 'weaken-the-check'],
+  ['--check', 'nonsense', '--attempt', '1'],
+  ['--attempt', '1'],
+  ['--check', 'lint'],
+  ['--check', 'lint', '--attempt', '1', '--situation', 'nonsense'],
+];
+
 // Probed once: both tools are external, and a missing one skips rather than
 // fails the suite (plan Task 8b).
 const MISSING_TOOL = firstMissingTool(['bash', 'jq']);
@@ -50,6 +101,22 @@ test('route-path answers identically to the pinned bash kernel', (t) => {
 
 test('route-intent answers identically to the pinned bash kernel', (t) => {
   runArm(t, 'route-intent', ROUTE_INTENT_CASES.map((prompt) => [prompt]));
+});
+
+test('model answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'model', MODEL_CASES);
+});
+
+test('risk answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'risk', RISK_CASES);
+});
+
+test('gates answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'gates', GATES_CASES);
+});
+
+test('repair answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'repair', REPAIR_CASES);
 });
 
 // ------------------------------------------------------------------ internals

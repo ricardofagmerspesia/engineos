@@ -1,18 +1,30 @@
 import { KernelError } from '../lib/json';
-import type { KernelContext } from './context';
+import type { KernelContext, RiskTier } from './context';
+import { modelSection, type ModelSection } from './model';
+import { repairSection, type RepairFacts, type RepairSection } from './repair';
+import { riskSection, type RiskSection } from './risk';
 import { routeByIntent, routeByPath, type RouteSection } from './route';
 
 // Declared facts, sparse by design: a section is answered iff the facts it needs
-// were declared. This task declares the route section's two forms; Tasks 10-12
-// add their own facts and sections to these two interfaces (design "Kernel
-// shape").
+// were declared. This task declares the route section's two forms, the model
+// section, the risk section's two forms and the repair section; Tasks 11-12 add
+// their own facts and sections to these two interfaces (design "Kernel shape").
 export interface DeclaredFacts {
   path?: string;
   prompt?: string;
+  workType?: string;
+  // The PARSED --signals payload. Reading the flag's string is the CLI's job;
+  // the risk section owns what a well-formed payload is.
+  signals?: unknown;
+  riskTier?: RiskTier;
+  repair?: RepairFacts;
 }
 
 export interface Answer {
   route?: RouteSection;
+  model?: ModelSection;
+  risk?: RiskSection;
+  repair?: RepairSection;
 }
 
 export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
@@ -35,6 +47,24 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     // intent.
     if (facts.prompt === '') throw new KernelError('a declared prompt fact must not be empty');
     answer.route = routeByIntent(facts.prompt, ctx.registries);
+  }
+  if (facts.workType !== undefined) {
+    answer.model = modelSection({ workType: facts.workType }, ctx.registries);
+  }
+  // The same refusal the two route forms get, for the same reason: signals are
+  // evidence to classify and a tier is already classified, both answer `risk`,
+  // and silently preferring one would let a stale tier override fresh evidence.
+  if (facts.signals !== undefined && facts.riskTier !== undefined) {
+    throw new KernelError('a signals fact and a classified risk-tier fact cannot be declared together');
+  }
+  if (facts.signals !== undefined) {
+    answer.risk = riskSection({ signals: facts.signals }, ctx.registries);
+  }
+  if (facts.riskTier !== undefined) {
+    answer.risk = riskSection({ riskTier: facts.riskTier }, ctx.registries);
+  }
+  if (facts.repair !== undefined) {
+    answer.repair = repairSection(facts.repair, ctx.registries);
   }
   return answer;
 }

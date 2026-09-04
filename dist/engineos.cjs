@@ -192,6 +192,154 @@ function loadIntents(root) {
   };
 }
 
+// src/registry/models.ts
+function loadModels(root) {
+  const raw = loadRegistry(root, "models.json");
+  const r = isRecord(raw) ? raw : {};
+  return {
+    version: requireString(r["version"], "version"),
+    tiers: requireRows(r["tiers"], "tiers").map((tier, index) => ({
+      id: requireString(tier["id"], `tiers[${index}].id`),
+      model: requireString(tier["model"], `tiers[${index}].model`),
+      // The top of the ladder stores null; an absent key reads the same way,
+      // because that is what jq's `.escalates_to` answered for both.
+      escalates_to: optionalString(tier["escalates_to"], `tiers[${index}].escalates_to`)
+    })),
+    escalation_order: requireStringArray(r["escalation_order"], "escalation_order"),
+    work_types: requireRows(r["work_types"], "work_types").map((work, index) => ({
+      id: requireString(work["id"], `work_types[${index}].id`),
+      title: requireString(work["title"], `work_types[${index}].title`),
+      tier: requireString(work["tier"], `work_types[${index}].tier`)
+    }))
+  };
+}
+function fail(field, expected) {
+  throw new KernelError(`registries/models.json: ${field} must be ${expected}`);
+}
+function requireString(value, field) {
+  if (typeof value !== "string" || value === "") fail(field, "a non-empty string");
+  return value;
+}
+function optionalString(value, field) {
+  if (value === void 0 || value === null) return null;
+  if (typeof value !== "string" || value === "") fail(field, "a non-empty string or null");
+  return value;
+}
+function requireRows(value, field) {
+  const rows = Array.isArray(value) ? value : fail(field, "an array");
+  return rows.map((row, index) => isRecord(row) ? row : fail(`${field}[${index}]`, "an object"));
+}
+function requireStringArray(value, field) {
+  const items = Array.isArray(value) ? value : fail(field, "an array");
+  return items.map((item, index) => requireString(item, `${field}[${index}]`));
+}
+
+// src/registry/policy.ts
+function loadPolicy(root) {
+  const raw = loadRegistry(root, "policy.json");
+  const p = requireRecord(raw, "");
+  const risk = requireRecord(p["risk"], ".risk");
+  const repair = requireRecord(p["repair"], ".repair");
+  const autonomy = requireRecord(p["autonomy"], ".autonomy");
+  const retry = requireRecord(p["retry"], ".retry");
+  const gates = requireRecord(p["gates"], ".gates");
+  const specThreshold = requireRecord(gates["spec_threshold"], ".gates.spec_threshold");
+  return {
+    version: requireString2(p["version"], ".version"),
+    risk: {
+      aggregation: requireString2(risk["aggregation"], ".risk.aggregation"),
+      inputs: requireRows2(risk["inputs"], ".risk.inputs").map((row, i) => ({
+        id: requireString2(row["id"], `.risk.inputs[${i}].id`)
+      })),
+      high_floors: requireStrings(risk["high_floors"], ".risk.high_floors")
+    },
+    repair: {
+      checks: requireStrings(repair["checks"], ".repair.checks"),
+      max_fix_attempts_per_check: requireNumber(
+        repair["max_fix_attempts_per_check"],
+        ".repair.max_fix_attempts_per_check"
+      ),
+      escalations: requireNumber(repair["escalations"], ".repair.escalations"),
+      by_situation: requireRows2(repair["by_situation"], ".repair.by_situation").map((row, i) => ({
+        situation: requireString2(row["situation"], `.repair.by_situation[${i}].situation`),
+        response: requireString2(row["response"], `.repair.by_situation[${i}].response`)
+      })),
+      never_repair: requireStrings(repair["never_repair"], ".repair.never_repair")
+    },
+    autonomy: {
+      levels: requireRows2(autonomy["levels"], ".autonomy.levels").map((row, i) => ({
+        id: requireString2(row["id"], `.autonomy.levels[${i}].id`)
+      })),
+      ceiling_by_risk: requireTierMap(
+        autonomy["ceiling_by_risk"],
+        ".autonomy.ceiling_by_risk",
+        requireString2
+      ),
+      high_with_thin_evidence: requireString2(
+        autonomy["high_with_thin_evidence"],
+        ".autonomy.high_with_thin_evidence"
+      )
+    },
+    retry: {
+      never_retry: requireStrings(retry["never_retry"], ".retry.never_retry")
+    },
+    gates: {
+      by_risk: requireTierMap(gates["by_risk"], ".gates.by_risk", requireStringMap),
+      spec_threshold: {
+        files_greater_than: requireNumber(
+          specThreshold["files_greater_than"],
+          ".gates.spec_threshold.files_greater_than"
+        ),
+        or_any_new_feature: requireBoolean(
+          specThreshold["or_any_new_feature"],
+          ".gates.spec_threshold.or_any_new_feature"
+        )
+      }
+    }
+  };
+}
+function malformed(what) {
+  throw new KernelError(`registries/policy.json: ${what}`);
+}
+function requireRecord(value, path) {
+  if (!isRecord(value)) malformed(`${path || "the document"} must be an object`);
+  return value;
+}
+function requireString2(value, path) {
+  if (typeof value !== "string") malformed(`${path} must be a string`);
+  return value;
+}
+function requireNumber(value, path) {
+  if (typeof value !== "number" || !Number.isFinite(value)) malformed(`${path} must be a number`);
+  return value;
+}
+function requireBoolean(value, path) {
+  if (typeof value !== "boolean") malformed(`${path} must be a boolean`);
+  return value;
+}
+function requireStrings(value, path) {
+  if (!Array.isArray(value)) malformed(`${path} must be an array of strings`);
+  return value.map((item, i) => requireString2(item, `${path}[${i}]`));
+}
+function requireRows2(value, path) {
+  if (!Array.isArray(value)) malformed(`${path} must be an array of objects`);
+  return value.map((item, i) => requireRecord(item, `${path}[${i}]`));
+}
+function requireStringMap(value, path) {
+  const row = requireRecord(value, path);
+  const out = {};
+  for (const [key, item] of Object.entries(row)) out[key] = requireString2(item, `${path}.${key}`);
+  return out;
+}
+function requireTierMap(value, path, item) {
+  const row = requireRecord(value, path);
+  return {
+    low: item(row["low"], `${path}.low`),
+    medium: item(row["medium"], `${path}.medium`),
+    high: item(row["high"], `${path}.high`)
+  };
+}
+
 // src/registry/routing.ts
 function loadRouting(root) {
   const raw = loadRegistry(root, "routing.json");
@@ -224,8 +372,8 @@ function loadRouting(root) {
 function lazyRegistries(root) {
   const routing = memo(() => loadRouting(root));
   const intents = memo(() => loadIntents(root));
-  const models = memo(() => loadRegistry(root, "models.json"));
-  const policy = memo(() => loadRegistry(root, "policy.json"));
+  const models = memo(() => loadModels(root));
+  const policy = memo(() => loadPolicy(root));
   const decisionRules = memo(() => loadRegistry(root, "decision-rules.json"));
   const capabilities = memo(() => loadRegistry(root, "capabilities.json"));
   const agents = memo(() => loadRegistry(root, "agents.json"));
@@ -259,6 +407,162 @@ function memo(make) {
     if (cell === null) cell = { value: make() };
     return cell.value;
   };
+}
+
+// src/kernel/model.ts
+function modelSection(facts, regs) {
+  const models = regs.models;
+  const work = models.work_types.find((w) => w.id === facts.workType);
+  if (work === void 0) {
+    throw new KernelError(`unknown work type: ${facts.workType} (see registries/models.json work_types)`);
+  }
+  const tier = tierById(models.tiers, work.tier, `work type ${work.id}`);
+  const next = tier.escalates_to === null ? null : tierById(models.tiers, tier.escalates_to, `tier ${tier.id}`);
+  return {
+    work: work.id,
+    tier: tier.id,
+    model: tier.model,
+    escalates_to: next === null ? null : { tier: next.id, model: next.model }
+  };
+}
+function tierById(tiers, id, referrer) {
+  const tier = tiers.find((t) => t.id === id);
+  if (tier === void 0) {
+    throw new KernelError(`registries/models.json: ${referrer} names an undefined tier: ${id}`);
+  }
+  return tier;
+}
+
+// src/kernel/repair.ts
+var BY_RESPONSE = {
+  "report-tooling-gap-no-attempt-consumed": {
+    action: "report-tooling-gap",
+    reason: "the check could not run \u2014 that is a tooling gap, not a code defect; report it, consume no fix attempt (hooks/stop-verify.sh: never block on infra quirks)"
+  },
+  "fix-or-delete-never-rerun-until-green": {
+    action: "fix-or-delete",
+    reason: "green on re-run with no diff is a broken test, not a pass \u2014 fix or delete within the week, never retry-until-green (rules/testing.md)"
+  }
+};
+function repairSection(facts, regs) {
+  const repair = regs.policy.repair;
+  const check = facts.check;
+  if (check === "") throw new KernelError("repair requires --check");
+  if (!repair.checks.includes(check)) {
+    throw new KernelError(`unknown check: ${check} (must be one of policy.json.repair.checks)`);
+  }
+  const situation = facts.situation;
+  if (situation !== void 0 && situation !== "") {
+    if (repair.never_repair.includes(situation)) {
+      return {
+        check,
+        action: "never-repair",
+        reason: `situation ${situation} is on the never-repair list \u2014 a fix that weakens the check or changes behavior is not a fix; escalate to a human on the first occurrence`
+      };
+    }
+    const row = repair.by_situation.find((entry) => entry.situation === situation);
+    const answer = row === void 0 ? void 0 : BY_RESPONSE[row.response];
+    if (answer === void 0) throw new KernelError(`unknown situation: ${situation}`);
+    return { check, action: answer.action, reason: answer.reason };
+  }
+  const attempt = facts.attempt;
+  if (attempt === void 0 || !Number.isInteger(attempt) || attempt < 0) {
+    throw new KernelError("repair (red ladder) requires a numeric --attempt");
+  }
+  const bound = repair.max_fix_attempts_per_check;
+  if (attempt < bound) {
+    return {
+      check,
+      action: "fix-same-tier",
+      reason: "first red \u2014 fix and re-run the check at the same tier"
+    };
+  }
+  if (attempt < bound + repair.escalations) {
+    return {
+      check,
+      action: "escalate-one-tier",
+      reason: "the same check failed twice \u2014 escalate one model tier for the fix and re-run once; that is the last attempt (rules/models.md)"
+    };
+  }
+  return {
+    check,
+    action: "stop-report-red",
+    reason: "the bound is exhausted \u2014 stop, report the check red with what was tried; a loop continued past this point is sampling until it looks right, not fixing (rules/parallelism.md)"
+  };
+}
+
+// src/kernel/risk.ts
+var AGGREGATORS = {
+  max: maxTier
+};
+function riskSection(facts, regs) {
+  if (facts.signals !== void 0) return classify(facts.signals, regs);
+  if (facts.riskTier !== void 0) return forTier(facts.riskTier, regs);
+  throw new KernelError("risk section requires signals or a classified risk tier");
+}
+function classify(signals, regs) {
+  const policy = regs.policy;
+  if (!isRecord(signals)) {
+    throw new KernelError("risk --signals must be a JSON object with inputs{} and/or floors[]");
+  }
+  const inputs = optionalRecord(signals["inputs"], "risk --signals .inputs must be an object of input-id to tier");
+  const floors = optionalArray(signals["floors"], "risk --signals .floors must be an array of floor ids");
+  const entries = Object.entries(inputs);
+  if (entries.length === 0 && floors.length === 0) {
+    throw new KernelError(
+      "risk --signals needs a non-empty inputs{} or floors[] \u2014 an empty payload is not low risk, it is no evidence"
+    );
+  }
+  const knownInputs = policy.risk.inputs.map((input) => input.id);
+  const unknownInputs = entries.filter(([id]) => !knownInputs.includes(id)).map(([id]) => id);
+  if (unknownInputs.length > 0) {
+    throw new KernelError(`unknown risk input(s): ${unknownInputs.join(", ")}`);
+  }
+  const invalidValues = entries.filter(([, tier2]) => !isRiskTier(tier2)).map(([id]) => id);
+  if (invalidValues.length > 0) {
+    throw new KernelError(`invalid tier value on input(s): ${invalidValues.join(", ")}`);
+  }
+  const unknownFloors = floors.filter((floor) => typeof floor !== "string" || !policy.risk.high_floors.includes(floor)).map((floor) => String(floor));
+  if (unknownFloors.length > 0) {
+    throw new KernelError(`unknown floor(s): ${unknownFloors.join(", ")}`);
+  }
+  const aggregate = AGGREGATORS[policy.risk.aggregation];
+  if (aggregate === void 0) {
+    throw new KernelError(
+      `unsupported risk aggregation: ${policy.risk.aggregation} (registries/policy.json .risk.aggregation)`
+    );
+  }
+  const applied = floors.filter((floor) => typeof floor === "string");
+  const tier = applied.length > 0 ? "high" : aggregate(entries.map(([, value]) => value).filter(isRiskTier));
+  return {
+    risk: tier,
+    autonomy_ceiling: policy.autonomy.ceiling_by_risk[tier],
+    gates: policy.gates.by_risk[tier],
+    floors_applied: applied
+  };
+}
+function forTier(tier, regs) {
+  if (!isRiskTier(tier)) throw new KernelError("gates requires --risk low|medium|high");
+  return {
+    risk: tier,
+    gates: regs.policy.gates.by_risk[tier],
+    spec_threshold: regs.policy.gates.spec_threshold
+  };
+}
+function maxTier(tiers) {
+  if (tiers.includes("high")) return "high";
+  if (tiers.includes("medium")) return "medium";
+  return "low";
+}
+function optionalRecord(value, message) {
+  if (value === void 0 || value === null) return {};
+  if (!isRecord(value)) throw new KernelError(message);
+  return value;
+}
+function optionalArray(value, message) {
+  if (value === void 0 || value === null) return [];
+  if (!Array.isArray(value)) throw new KernelError(message);
+  return value;
 }
 
 // src/lib/glob.ts
@@ -384,6 +688,21 @@ function resolve(facts, ctx) {
     if (facts.prompt === "") throw new KernelError("a declared prompt fact must not be empty");
     answer.route = routeByIntent(facts.prompt, ctx.registries);
   }
+  if (facts.workType !== void 0) {
+    answer.model = modelSection({ workType: facts.workType }, ctx.registries);
+  }
+  if (facts.signals !== void 0 && facts.riskTier !== void 0) {
+    throw new KernelError("a signals fact and a classified risk-tier fact cannot be declared together");
+  }
+  if (facts.signals !== void 0) {
+    answer.risk = riskSection({ signals: facts.signals }, ctx.registries);
+  }
+  if (facts.riskTier !== void 0) {
+    answer.risk = riskSection({ riskTier: facts.riskTier }, ctx.registries);
+  }
+  if (facts.repair !== void 0) {
+    answer.repair = repairSection(facts.repair, ctx.registries);
+  }
   return answer;
 }
 
@@ -395,9 +714,26 @@ function requirePositional(cmd, what, args) {
   if (args.length !== 1) throw new KernelError(`${cmd} takes exactly one argument, got ${args.length}`);
   return first;
 }
+function parseFlags(cmd, args, allowed) {
+  const out = /* @__PURE__ */ new Map();
+  const rest = [...args];
+  for (; ; ) {
+    const flag = rest.shift();
+    if (flag === void 0) break;
+    if (!allowed.includes(flag)) throw new KernelError(`${cmd}: unknown flag ${flag}`);
+    const value = rest.shift();
+    if (value === void 0) throw new KernelError(`${cmd}: ${flag} requires a value`);
+    out.set(flag, value);
+  }
+  return out;
+}
 var SUBCOMMANDS = {
   "route-path": (ctx, args) => routePathSection(ctx, requirePositional("route-path", "a file path", args)),
-  "route-intent": (ctx, args) => routeIntentSection(ctx, requirePositional("route-intent", "the request text", args))
+  "route-intent": (ctx, args) => routeIntentSection(ctx, requirePositional("route-intent", "the request text", args)),
+  model: modelProjection,
+  risk: riskProjection,
+  gates: gatesProjection,
+  repair: repairProjection
 };
 function runKernel(argv2, io2) {
   const [name, ...args] = argv2;
@@ -425,6 +761,62 @@ function routeIntentSection(ctx, text) {
   const section = resolve({ prompt: text }, ctx).route;
   if (section === void 0) throw new KernelError("route-intent: the kernel answered no route section");
   return section;
+}
+function modelProjection(ctx, args) {
+  const flags = parseFlags("model", args, ["--work"]);
+  const work = flags.get("--work");
+  if (work === void 0 || work === "") throw new KernelError("model requires --work <type>");
+  const section = resolve({ workType: work }, ctx).model;
+  if (section === void 0) throw new KernelError("model: the kernel answered no model section");
+  return section;
+}
+function riskProjection(ctx, args) {
+  const flags = parseFlags("risk", args, ["--signals"]);
+  const signals = flags.get("--signals");
+  if (signals === void 0 || signals === "") throw new KernelError("risk requires --signals <json>");
+  const section = resolve({ signals: parseSignals(signals) }, ctx).risk;
+  if (section === void 0 || !("floors_applied" in section)) {
+    throw new KernelError("risk: the kernel answered no classified risk section");
+  }
+  return {
+    risk: section.risk,
+    autonomy_ceiling: section.autonomy_ceiling,
+    gates: section.gates,
+    floors_applied: section.floors_applied
+  };
+}
+function gatesProjection(ctx, args) {
+  const flags = parseFlags("gates", args, ["--risk"]);
+  const tier = flags.get("--risk");
+  if (tier === void 0 || !isRiskTier(tier)) throw new KernelError("gates requires --risk low|medium|high");
+  const section = resolve({ riskTier: tier }, ctx).risk;
+  if (section === void 0 || !("spec_threshold" in section)) {
+    throw new KernelError("gates: the kernel answered no classified-tier risk section");
+  }
+  return { risk: section.risk, gates: section.gates, spec_threshold: section.spec_threshold };
+}
+function repairProjection(ctx, args) {
+  const flags = parseFlags("repair", args, ["--check", "--attempt", "--situation"]);
+  const check = flags.get("--check");
+  if (check === void 0 || check === "") throw new KernelError("repair requires --check");
+  const repair = { check };
+  const attempt = flags.get("--attempt");
+  if (attempt !== void 0) repair.attempt = parseAttempt(attempt);
+  const situation = flags.get("--situation");
+  if (situation !== void 0 && situation !== "") repair.situation = situation;
+  const section = resolve({ repair }, ctx).repair;
+  if (section === void 0) throw new KernelError("repair: the kernel answered no repair section");
+  return section;
+}
+function parseSignals(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new KernelError("risk --signals is not valid JSON");
+  }
+}
+function parseAttempt(raw) {
+  return /^[0-9]+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
 }
 
 // src/cli.ts
