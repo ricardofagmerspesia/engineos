@@ -79,7 +79,7 @@ the wrong tier.
 
 Two guards make it stick: `scripts/gen-agent-registry.sh` refuses to emit an
 agent whose `tier:` is missing, unknown, or bound to a model other than the one
-the agent declares, and a new integrity Check (C24) refuses to let such an agent
+the agent declares, and a new integrity Check (C31) refuses to let such an agent
 sit in the tree even if nobody regenerates the registry.
 
 #### One prompt adapter
@@ -251,7 +251,7 @@ Per the compatibility policy, a tightened rule is MINOR and gets said out loud:
 
 - A capability's `model_tier` must equal its agent's `tier:` (C15, C15b).
 - An agent's declared `tier:` must bind, in `registries/models.json`, the model
-  it also declares (C24, new in this release).
+  it also declares (C31, new in this release).
 - `scripts/gen-agent-registry.sh` hard-errors on a missing, unknown or
   model-inconsistent `tier:`. A forked agent file without one breaks generation.
 - `agents/router.md`'s `model:` is asserted against `registries/models.json`

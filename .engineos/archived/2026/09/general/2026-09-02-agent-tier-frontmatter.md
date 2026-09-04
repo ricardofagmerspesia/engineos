@@ -385,3 +385,6 @@ Judgement calls the brief left open:
   read the notes for a version, and the version is what all eight units ship as.
   A PR7-only entry would document the tier field and silently omit three hook
   deletions.
+
+## Merge note (2026-09-03)
+The Check this record calls C24 is C31 in the tree. Merging origin/main brought scripts/checks/70-runtime.sh, whose admit backpressure Check had also taken the id C24; sourced later, it shadowed this one and the validator stopped asserting tier/model agreement (test-validate-engineos.sh caught it: `agent whose model drifts off its declared tier is caught — validator exited 0`). Renumbered to C31 and the harness now fails on duplicated check ids.
