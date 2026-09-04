@@ -87,7 +87,8 @@ src/
     bypass.ts         three-tier bypass: env > machine flag > per-repo marker
     telemetry.ts      span lifecycle: one Sink per hook (gate, clock, slugs, writer seam); withSpan / openSpan / closeSpan / event
     scaffold.ts       symlink-safe directory + seed creation, manifest as data
-    runner.ts         nx / npm-family detection, target probe, run with timeout, infra-skip regexes
+    runner.ts         nx / npm-family detection, target probe, run with timeout; returns facts, judges nothing
+    classify-failure.ts  the Situation judgment (red | infra) as one table over evidence: node floor, runner, run output, timeout
     cache.ts          route cache keyed by sid + routing.json signature + buster
     output.ts         HookDecision (silent | context | block | message | fail) + render(): the one writer of hook stdout and exit codes
     <hook-name>.ts    one per registered hook (8)
@@ -411,6 +412,56 @@ interface SpanWriter { appendSpan(fields: SpanFields): void; appendEvent(id, dat
   callers carry the ordering and write a marker for nothing); runtime id check
   against the loaded registry (drops the span silently, keeps C27f alive).
 
+### Situation classifier (amended 2026-09-04, architecture review)
+
+The Validation gate's central check — is this failure the code's fault or the
+tooling's — is encoded four times today in three languages: `stop-verify.sh`
+exits silently below node 18, degrades without `jq`, `lib-runner.sh` carries a
+"target was never there" regex per adapter, and `kernel.sh repair --situation
+infra` answers a question the hook never asks it. Deviation 2 removes the `jq`
+encoding; this section collapses the other three into one module.
+
+```ts
+// src/hooks/classify-failure.ts
+export type Situation = 'red' | 'infra' | 'flaky'          // pinned to policy.repair.by_situation[].situation by unit test
+export type InfraReason = 'node-too-old' | 'runner-missing' | 'target-absent' | 'timeout'
+export type Evidence =
+  | { kind: 'environment'; nodeMajor: number }                                      // after runnerEnv's PATH fix
+  | { kind: 'runner'; found: boolean }
+  | { kind: 'run'; runner: RunnerKind; target: string; code: number; output: string; timedOut: boolean }
+export type Verdict = { situation: 'red' } | { situation: 'infra'; reason: InfraReason }
+export function classify(evidence: Evidence): Verdict | null                       // null: nothing to judge (green run, node fine, runner found)
+```
+
+- One table: the node floor (18), the runner presence, the per-runner
+  target-absent patterns (copied verbatim from `lib-runner.sh:88-95`, keyed by
+  `RunnerKind`) and the timeout row. `runner.ts` shrinks to select / handle /
+  hasTarget / run and returns `{ code, output, timedOut }`; it judges nothing,
+  so `runnerInfraSkip` is never written.
+- `flaky` is a member of `Situation` because the kernel's `repair` section
+  answers for it; `classify` never returns it — one run cannot observe a green
+  re-run, and `rules/testing.md` forbids producing one.
+- Consumers render the verdict, never re-judge: `stop-verify` blocks only on
+  `red`, with the reason text from the kernel's in-process `repairSection`
+  plus the failure summary; `node-too-old`, `runner-missing` and `timeout`
+  become a `message` decision naming the target and reason (deviation 7);
+  `target-absent` after a stale probe is "nothing to run" and continues
+  silently. `post-edit-check` imports the same `classify`.
+- Evidence reaches telemetry: the `verify` event carries `situation` and
+  `reason?` beside `failed` and `targets`; the verification span's status is
+  `FAILED` only for `red`.
+- Tests: `classify-failure.test.ts` is table-driven — one case per row, no
+  runner spawned; `Situation` members equal the policy list; `stop-verify.test.ts`
+  asserts the decision kind per verdict. The 2026-09-02 decision stands: the
+  Wave 6 `test-verify.sh` port still drives real `npm`, the classifier does not
+  reopen the fake-runner question.
+- Deletion test: remove the module and the floor, the regexes and the
+  timeout judgment reappear in two hooks and two adapters. Rejected:
+  `runnerInfraSkip` on the adapter (judgment split across two modules, and the
+  timeout and node rows have no adapter to live on); a fourth `Situation`
+  member for "skip" (the policy has three, and a stale probe is absence of
+  evidence, not a situation).
+
 ### Shims and compatibility
 
 Every bash entry point becomes a shim:
@@ -514,6 +565,14 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    ids become a literal union pinned to the registry by a unit test, so a wrong
    id fails `tsc` before it can reach a writer. C27c and C22c stay: they check
    writer wiring, not ids.
+7. A verification target killed by its timeout is `infra`, not red. Today the
+   non-zero exit blocks like a failing check; the kernel's own `repair` answer
+   for `infra` says the check could not run and consumes no fix attempt. The
+   Stop gate now renders it as a visible `message` naming the target. The
+   `verify` telemetry event gains `situation` and `reason` keys in
+   `policy.telemetry.events`, and C20d re-points at `src/hooks/stop-verify.ts`
+   as a wiring check (imports the kernel `repair` section, carries no numeric
+   literal).
 
 ## Testing
 
@@ -554,6 +613,9 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - Mirror rows are tested as data: the runner once per rule against fixture
   docs, the table once for resolvable paths ("Mirror table" above). No check
   test re-asserts section slicing.
+- The Situation judgment is tested as a table ("Situation classifier" above):
+  one case per row against `classify`, no runner spawned; hook tests assert
+  which decision kind each verdict renders.
 
 ## Waves
 

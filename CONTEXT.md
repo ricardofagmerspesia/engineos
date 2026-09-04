@@ -56,6 +56,11 @@ A concrete observation used as evidence for a gate, such as command output or a
 review verdict.
 _Avoid_: Gate, proof
 
+**Situation**:
+The judgment of why a check did not pass — the code's fault (red), the tooling
+could not run it (infra), or it passes again with no change (flaky).
+_Avoid_: Failure kind, error type, status, skip
+
 **Evidence**:
 Source-attributed observations supporting a task state or gate decision.
 _Avoid_: Assertion, confidence
