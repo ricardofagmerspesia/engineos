@@ -199,7 +199,13 @@ done
 # (every prompt, every edit, every stop) and stalls the tool that triggered it.
 # bash.exe is a plain console binary and stays invisible. Mirrors install.ps1.
 # On macOS/Linux the bare script path is correct and unchanged.
-chmod +x "$REPO_DIR"/hooks/*.sh
+# Every hook is executed, so it needs the bit -- but hooks/lib-*.sh are sourced
+# by other hooks and never run directly, and are tracked mode 644. A blanket
+# glob would re-mark them executable on every install; skip them by name.
+for hook in "$REPO_DIR"/hooks/*.sh; do
+  case "${hook##*/}" in lib-*.sh) continue ;; esac
+  chmod +x "$hook"
+done
 if command -v jq >/dev/null 2>&1; then
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
   # write-once backup: never clobber the last known-good with an already-bad file

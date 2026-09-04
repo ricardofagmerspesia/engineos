@@ -1,9 +1,10 @@
 ---
 name: 2026-09-02-hook-envelope
-status: active
+status: done
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-02-deepen-runtime-modules-design.md
 domain: general
+completed: 2026-09-02
 ---
 
 ## What
@@ -77,9 +78,34 @@ Final gate only, run once at the end.
 - `bash scripts/validate-engineos.sh` and `bash scripts/bench-runtime.sh` — green.
 
 ## Changes registered
-See `git diff --stat` on the `refactor/hook-envelope` branch: nine hook files,
-one new test suite, `CONTEXT.md`, `.github/workflows/ci.yml`, and this record.
-No renames, no deletions.
+`git diff --stat fd790f6..418db21` for this change's single commit:
+
+```
+ .engineos/changes/2026-09-02-hook-envelope.md |  95 ++++++++++++++++++++++
+ .github/workflows/ci.yml                      |   3 +
+ CONTEXT.md                                    |   5 ++
+ hooks/announce-agent-dispatch.sh              |  16 ++--
+ hooks/announce-agent-return.sh                |  14 ++--
+ hooks/ensure-project-layout.sh                |   9 +-
+ hooks/lib-common.sh                           | 113 ++++++++++++++++++++++++++
+ hooks/mark-unrecorded.sh                      |  25 ++----
+ hooks/prompt-advisor.sh                       |  62 +++++---------
+ hooks/record-verify.sh                        |  23 ++----
+ hooks/route-before-change.sh                  |  37 +++------
+ hooks/stop-verify.sh                          |  29 ++++---
+ hooks/test-lib-common.sh                      | 110 +++++++++++++++++++++++++
+ scripts/test-validate-engineos.sh             |   6 +-
+ scripts/validate-engineos.sh                  |  16 +++-
+ 15 files changed, 425 insertions(+), 138 deletions(-)
+```
+
+Movements: none — no file added, deleted or renamed;
+`hooks/test-lib-common.sh` is the one new file. The prose count this
+section carried before archiving said "nine hook files, one new test suite,
+`CONTEXT.md`, `.github/workflows/ci.yml`, and this record" and omitted
+`scripts/validate-engineos.sh` and `scripts/test-validate-engineos.sh`,
+which the commit also touches (the Check and its negative case for the new
+CI step). The stat above is the commit, and supersedes it.
 
 ## Notes
 - `stop-verify.sh` and `ensure-project-layout.sh` are the two hooks

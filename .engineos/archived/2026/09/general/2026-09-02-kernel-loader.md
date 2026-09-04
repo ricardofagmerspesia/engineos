@@ -1,9 +1,10 @@
 ---
 name: 2026-09-02-kernel-loader
-status: active
+status: done
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-02-deepen-runtime-modules-design.md
 domain: general
+completed: 2026-09-02
 ---
 
 ## What
@@ -233,15 +234,16 @@ regression that alternation showed to be noise):
 
 ## Changes registered
 
-`git diff --stat 68cf842..HEAD` for this change's single commit:
+`git diff --stat 68cf842..96cce8d` for this change's single commit:
 
 ```
- .engineos/changes/2026-09-02-kernel-loader.md | 000 +++++++++
- docs/COMPATIBILITY.md                         |  11 +++
- scripts/checks/50-kernel.sh                   |  21 +++--
- scripts/kernel.sh                             | 159 ++++++++++-----------
- scripts/test-kernel.sh                        | 102 ++++++++-------
+ .engineos/changes/2026-09-02-kernel-loader.md | 283 ++++++++++++++++++++++++++
+ docs/COMPATIBILITY.md                         |  11 +
+ scripts/checks/50-kernel.sh                   |  21 +-
+ scripts/kernel.sh                             | 159 ++++++---------
+ scripts/test-kernel.sh                        | 102 +++++-----
  scripts/test-validate-engineos.sh             |   4 +
+ 6 files changed, 432 insertions(+), 148 deletions(-)
 ```
 
 Movements: none. No file added or deleted; `scripts/kernel.sh` shrank from 632 to
