@@ -1,29 +1,52 @@
 // Entry point. Everything above the guard must parse on node 16.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { accessSync, constants, existsSync, readdirSync } from 'node:fs';
 import { processIo, writeJson } from './io';
-import { currentMajor, findNewerNode, MIN_NODE_MAJOR } from './node-guard';
+import { currentMajor, findNewerNode, guardOutcome, MIN_NODE_MAJOR, type GuardOutcome } from './node-guard';
 import { dispatch, type CommandTable } from './dispatch';
 
 const io = processIo();
 const argv = process.argv.slice(2);
-const SILENT_HOOKS = new Set(['route-before-change', 'mark-unrecorded', 'record-verify', 'prompt-advisor']);
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function applyOutcome(outcome: GuardOutcome): void {
+  switch (outcome.kind) {
+    case 'proceed':
+      return;
+    case 'reexec': {
+      const r = spawnSync(outcome.bin, [__filename, ...argv], { stdio: 'inherit', env: { ...process.env, ENGINEOS_REEXEC: '1' } });
+      if (r.error === undefined && r.status !== null) {
+        process.exit(r.status);
+      }
+      // Re-exec never started (non-executable candidate, ENOENT) or the child died by
+      // signal — fall through to the no-newer-node policy instead of exiting silently.
+      applyOutcome(guardOutcome(argv, process.versions.node, null));
+      return;
+    }
+    case 'silent':
+      process.exit(0);
+      break;
+    case 'skip':
+      writeJson(io, { systemMessage: outcome.message });
+      process.exit(0);
+      break;
+    case 'refuse':
+      writeJson(io, { error: outcome.message });
+      process.exit(1);
+  }
+}
 
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env['ENGINEOS_REEXEC'] === '1' ? null : findNewerNode(process.env, existsSync, readdirSync);
-  if (newer !== null) {
-    const r = spawnSync(newer, [__filename, ...argv], { stdio: 'inherit', env: { ...process.env, ENGINEOS_REEXEC: '1' } });
-    process.exit(r.status ?? 1);
-  }
-  if (argv[0] === 'hook') {
-    // The four hooks that already go silent without jq stay silent; the ones that
-    // survive a missing jq today (the Stop gate among them) say why they did not run.
-    if (SILENT_HOOKS.has(argv[1] ?? '')) process.exit(0);
-    writeJson(io, { systemMessage: `[engineos] ${argv[1] ?? 'hook'} skipped: node >= ${MIN_NODE_MAJOR} required (found v${process.versions.node})` });
-    process.exit(0);
-  }
-  writeJson(io, { error: `node >= ${MIN_NODE_MAJOR} required, found ${process.versions.node}` });
-  process.exit(1);
+  const newer = process.env['ENGINEOS_REEXEC'] === '1' ? null : findNewerNode(process.env, existsSync, readdirSync, isExecutable);
+  applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 
 const table: CommandTable = {};
