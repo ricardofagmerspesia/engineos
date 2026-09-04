@@ -13,6 +13,12 @@ test('findNewerNode prefers the highest nvm version >= 18', () => {
   assert.equal(found, '/h/.nvm/versions/node/v22.23.2/bin/node');
 });
 
+test('findNewerNode prefers the numerically highest patch inside one major', () => {
+  const fs = new Set(['/h/.nvm/versions/node', '/h/.nvm/versions/node/v18.9.0/bin/node', '/h/.nvm/versions/node/v18.20.0/bin/node']);
+  const found = findNewerNode({ HOME: '/h' }, (p) => fs.has(p), () => ['v18.9.0', 'v18.20.0']);
+  assert.equal(found, '/h/.nvm/versions/node/v18.20.0/bin/node');
+});
+
 test('findNewerNode falls back to homebrew and /usr/local', () => {
   const found = findNewerNode({ HOME: '/h' }, (p) => p === '/usr/local/bin/node', () => []);
   assert.equal(found, '/usr/local/bin/node');

@@ -1,5 +1,6 @@
-import type { Io } from './io';
-import { writeJson } from './io';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeJson, type Io } from './io';
 
 export type Command = (argv: string[], io: Io) => number;
 export interface CommandTable { [name: string]: Command }
@@ -23,7 +24,17 @@ export function dispatch(table: CommandTable, argv: string[], io: Io): number {
 }
 
 function readPackageVersion(): string {
-  // Test builds run from build/, one level below the repo root.
-  const pkg = require('../package.json') as { version: string };
-  return pkg.version;
+  // Test builds run from build/, one level below the repo root. The bundle
+  // never reaches this path (ENGINEOS_VERSION is inlined at build time), so
+  // 'unknown' only ever surfaces in the tsc test build, never a shipped CLI.
+  try {
+    const raw = readFileSync(join(__dirname, '..', 'package.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null && 'version' in parsed && typeof parsed.version === 'string') {
+      return parsed.version;
+    }
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }

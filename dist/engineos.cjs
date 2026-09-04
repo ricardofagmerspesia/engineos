@@ -40,14 +40,22 @@ var MIN_NODE_MAJOR = 18;
 function currentMajor(versions = process.versions.node) {
   return Number.parseInt(versions.split(".")[0] ?? "0", 10);
 }
-function versionMajor(dirName) {
-  return Number.parseInt(dirName.replace(/^v/, "").split(".")[0] ?? "0", 10);
+function parseVersion(dirName) {
+  const parts = dirName.replace(/^v/, "").split(".");
+  const major = Number.parseInt(parts[0] ?? "0", 10);
+  const minor = Number.parseInt(parts[1] ?? "0", 10);
+  const patch = Number.parseInt(parts[2] ?? "0", 10);
+  return [major, minor, patch];
 }
 function findNewerNode(env, exists, listDir) {
   const nvmDir = env["NVM_DIR"] ?? (0, import_node_path.join)(env["HOME"] ?? "", ".nvm");
   const versionsDir = (0, import_node_path.join)(nvmDir, "versions", "node");
   if (exists(versionsDir)) {
-    const candidates = listDir(versionsDir).filter((v) => versionMajor(v) >= MIN_NODE_MAJOR).sort((a, b) => versionMajor(b) - versionMajor(a) || b.localeCompare(a));
+    const candidates = listDir(versionsDir).filter((v) => parseVersion(v)[0] >= MIN_NODE_MAJOR).sort((a, b) => {
+      const av = parseVersion(a);
+      const bv = parseVersion(b);
+      return bv[0] - av[0] || bv[1] - av[1] || bv[2] - av[2];
+    });
     for (const v of candidates) {
       const bin = (0, import_node_path.join)(versionsDir, v, "bin", "node");
       if (exists(bin)) return bin;
