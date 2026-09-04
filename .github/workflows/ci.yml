@@ -16,6 +16,29 @@ jobs:
           jq --version
           shellcheck --version
           bash --version | head -1
+          node --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Node runtime — install, typecheck, unit tests
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Node runtime — dist drift guard
+        run: |
+          npm run build
+          if ! git diff --quiet -- dist/engineos.cjs; then
+            echo "FAIL: dist/engineos.cjs is out of sync with src/ — run npm run build and commit the result."
+            git diff --stat -- dist/engineos.cjs
+            exit 1
+          fi
+          echo "ok: dist/engineos.cjs matches src/"
+          test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
 
       - name: Shellcheck hooks + scripts (errors only)
         run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh
