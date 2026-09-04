@@ -86,7 +86,7 @@ Each `.ts` module has a sibling `*.test.ts`. `build/` (tsc output) is git-ignore
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test build/"
+    "test": "tsc -p tsconfig.json && cd build && node --test"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
@@ -356,16 +356,37 @@ Expected: FAIL, modules not found.
 - [ ] **Step 3: Implement `src/node-guard.ts`**
 
 ```ts
+import { accessSync, constants } from 'node:fs';
 import { join } from 'node:path';
 
 export const MIN_NODE_MAJOR = 18;
 
+// The four hooks that already go silent without jq stay silent; the ones that
+// survive a missing jq today (the Stop gate among them) say why they did not run.
+export const SILENT_HOOKS = new Set(['route-before-change', 'mark-unrecorded', 'record-verify', 'prompt-advisor']);
+
 export function currentMajor(versions: string = process.versions.node): number {
-  return Number.parseInt(versions.split('.')[0] ?? '0', 10);
+  const major = Number.parseInt(versions.split('.')[0] ?? '0', 10);
+  return Number.isNaN(major) ? 0 : major;
 }
 
-function versionMajor(dirName: string): number {
-  return Number.parseInt(dirName.replace(/^v/, '').split('.')[0] ?? '0', 10);
+function toComponent(part: string | undefined): number {
+  const n = Number.parseInt(part ?? '0', 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function parseVersion(dirName: string): [number, number, number] {
+  const parts = dirName.replace(/^v/, '').split('.');
+  return [toComponent(parts[0]), toComponent(parts[1]), toComponent(parts[2])];
+}
+
+function defaultIsExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Mirrors hooks/lib-common.sh ensure_modern_node: a hook PATH often carries an
@@ -374,30 +395,65 @@ export function findNewerNode(
   env: NodeJS.ProcessEnv,
   exists: (path: string) => boolean,
   listDir: (path: string) => string[],
+  isExecutable: (path: string) => boolean = defaultIsExecutable,
 ): string | null {
   const nvmDir = env['NVM_DIR'] ?? join(env['HOME'] ?? '', '.nvm');
   const versionsDir = join(nvmDir, 'versions', 'node');
   if (exists(versionsDir)) {
-    const candidates = listDir(versionsDir)
-      .filter((v) => versionMajor(v) >= MIN_NODE_MAJOR)
-      .sort((a, b) => versionMajor(b) - versionMajor(a) || b.localeCompare(a));
+    // versionsDir can exist as a file, or be unreadable (EACCES) — readdirSync (or a
+    // test double standing in for it) throws in both cases; treat that as "no candidates".
+    let names: string[];
+    try {
+      names = listDir(versionsDir);
+    } catch {
+      names = [];
+    }
+    const candidates = names
+      .filter((v) => parseVersion(v)[0] >= MIN_NODE_MAJOR)
+      .sort((a, b) => {
+        const av = parseVersion(a);
+        const bv = parseVersion(b);
+        return bv[0] - av[0] || bv[1] - av[1] || bv[2] - av[2];
+      });
     for (const v of candidates) {
       const bin = join(versionsDir, v, 'bin', 'node');
-      if (exists(bin)) return bin;
+      if (exists(bin) && isExecutable(bin)) return bin;
     }
   }
   for (const bin of ['/opt/homebrew/bin/node', '/usr/local/bin/node']) {
-    if (exists(bin)) return bin;
+    if (exists(bin) && isExecutable(bin)) return bin;
   }
   return null;
+}
+
+export type GuardOutcome =
+  | { kind: 'proceed' }
+  | { kind: 'reexec'; bin: string }
+  | { kind: 'silent' }
+  | { kind: 'skip'; message: string }
+  | { kind: 'refuse'; message: string };
+
+// Pure decision: given the current node version and a pre-resolved newer-node
+// candidate, decide what the guard should do. cli.ts performs the actual effects
+// (spawnSync / process.exit / print) so this stays testable without a subprocess.
+export function guardOutcome(argv: string[], nodeVersion: string, newer: string | null): GuardOutcome {
+  if (currentMajor(nodeVersion) >= MIN_NODE_MAJOR) return { kind: 'proceed' };
+  if (newer !== null) return { kind: 'reexec', bin: newer };
+  if (argv[0] === 'hook') {
+    const hookName = argv[1] ?? '';
+    if (SILENT_HOOKS.has(hookName)) return { kind: 'silent' };
+    return { kind: 'skip', message: `[engineos] ${argv[1] ?? 'hook'} skipped: node >= ${MIN_NODE_MAJOR} required (found v${nodeVersion})` };
+  }
+  return { kind: 'refuse', message: `node >= ${MIN_NODE_MAJOR} required, found v${nodeVersion}` };
 }
 ```
 
 - [ ] **Step 4: Implement `src/dispatch.ts`**
 
 ```ts
-import type { Io } from './io';
-import { writeJson } from './io';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { writeJson, type Io } from './io';
 
 export type Command = (argv: string[], io: Io) => number;
 export interface CommandTable { [name: string]: Command }
@@ -421,53 +477,95 @@ export function dispatch(table: CommandTable, argv: string[], io: Io): number {
 }
 
 function readPackageVersion(): string {
-  // Test builds run from build/, one level below the repo root.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const pkg = require('../package.json') as { version: string };
-  return pkg.version;
+  // Test builds run from build/, one level below the repo root. The bundle
+  // never reaches this path (ENGINEOS_VERSION is inlined at build time), so
+  // 'unknown' only ever surfaces in the tsc test build, never a shipped CLI.
+  try {
+    const raw = readFileSync(join(__dirname, '..', 'package.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === 'object' && parsed !== null && 'version' in parsed && typeof parsed.version === 'string') {
+      return parsed.version;
+    }
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 ```
 
-Add to `scripts/build.mjs` inside `build({...})`:
+Add to `scripts/build.mjs` (import attributes are not portable to node 18, so read the file):
 
 ```js
-  define: { ENGINEOS_VERSION: JSON.stringify((await import('../package.json', { with: { type: 'json' } })).default.version) },
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+// inside build({...}):
+  define: { ENGINEOS_VERSION: JSON.stringify(version) },
 ```
 
 - [ ] **Step 5: Implement `src/cli.ts`**
 
 ```ts
-#!/usr/bin/env node
 // Entry point. Everything above the guard must parse on node 16.
+// No shebang here: the esbuild banner in scripts/build.mjs supplies the only one.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { accessSync, constants, existsSync, readdirSync } from 'node:fs';
 import { processIo, writeJson } from './io';
-import { currentMajor, findNewerNode, MIN_NODE_MAJOR } from './node-guard';
+import { currentMajor, findNewerNode, guardOutcome, MIN_NODE_MAJOR, type GuardOutcome } from './node-guard';
 import { dispatch, type CommandTable } from './dispatch';
 
 const io = processIo();
 const argv = process.argv.slice(2);
-const SILENT_HOOKS = new Set(['route-before-change', 'mark-unrecorded', 'record-verify', 'prompt-advisor']);
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function applyOutcome(outcome: GuardOutcome): void {
+  switch (outcome.kind) {
+    case 'proceed':
+      return;
+    case 'reexec': {
+      const r = spawnSync(outcome.bin, [__filename, ...argv], { stdio: 'inherit', env: { ...process.env, ENGINEOS_REEXEC: '1' } });
+      if (r.error === undefined && r.status !== null) {
+        process.exit(r.status);
+      }
+      // Re-exec never started (non-executable candidate, ENOENT) or the child died by
+      // signal — fall through to the no-newer-node policy instead of exiting silently.
+      applyOutcome(guardOutcome(argv, process.versions.node, null));
+      return;
+    }
+    case 'silent':
+      process.exit(0);
+      break;
+    case 'skip':
+      writeJson(io, { systemMessage: outcome.message });
+      process.exit(0);
+      break;
+    case 'refuse':
+      writeJson(io, { error: outcome.message });
+      process.exit(1);
+  }
+}
 
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env['ENGINEOS_REEXEC'] === '1' ? null : findNewerNode(process.env, existsSync, readdirSync);
-  if (newer !== null) {
-    const r = spawnSync(newer, [__filename, ...argv], { stdio: 'inherit', env: { ...process.env, ENGINEOS_REEXEC: '1' } });
-    process.exit(r.status ?? 1);
-  }
-  if (argv[0] === 'hook') {
-    // The four hooks that already go silent without jq stay silent; the ones that
-    // survive a missing jq today (the Stop gate among them) say why they did not run.
-    if (SILENT_HOOKS.has(argv[1] ?? '')) process.exit(0);
-    writeJson(io, { systemMessage: `[engineos] ${argv[1] ?? 'hook'} skipped: node >= ${MIN_NODE_MAJOR} required (found v${process.versions.node})` });
-    process.exit(0);
-  }
-  writeJson(io, { error: `node >= ${MIN_NODE_MAJOR} required, found ${process.versions.node}` });
-  process.exit(1);
+  const newer = process.env['ENGINEOS_REEXEC'] === '1' ? null : findNewerNode(process.env, existsSync, readdirSync, isExecutable);
+  applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 
 const table: CommandTable = {};
 process.exit(dispatch(table, argv, io));
+```
+
+As-built notes (wave 0, 2026-09-04): the policy lives in `guardOutcome()` so all five
+outcomes are unit-tested without a subprocess; the refuse string carries the `v` prefix
+the design spec pins. **Constraint for every later wave:** esbuild inlines imported
+module bodies ABOVE this guard, so command modules must be required lazily inside each
+`Command` function — never imported at `cli.ts` top level — or a node-20-only API in a
+module body defeats the guard before it runs.
 ```
 
 - [ ] **Step 6: Run tests, build, smoke**
@@ -1047,8 +1145,7 @@ test('unknown subcommand is a JSON error', () => {
 - [ ] **Step 3: Implement `src/kernel/cli.ts`**
 
 ```ts
-import type { Io } from '../io';
-import { writeJson } from '../io';
+import { writeJson, type Io } from '../io';
 import { KernelError } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
 import type { KernelContext } from './context';
