@@ -1,9 +1,10 @@
 ---
 name: 2026-09-02-validator-checks
-status: active
+status: done
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-02-deepen-runtime-modules-design.md
 domain: general
+completed: 2026-09-02
 ---
 
 ## What

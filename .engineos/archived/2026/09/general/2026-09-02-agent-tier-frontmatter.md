@@ -1,9 +1,10 @@
 ---
 name: 2026-09-02-agent-tier-frontmatter
-status: active
+status: done
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-02-deepen-runtime-modules-design.md
 domain: general
+completed: 2026-09-02
 ---
 
 ## What
@@ -320,17 +321,18 @@ passes would have moved the first number and not the second.
 
 ## Changes registered
 
-`git diff --stat 96cce8d..HEAD` for this change's single commit:
+`git diff --stat 96cce8d..05d8c93` for this change's single commit:
 
 ```
- .claude-plugin/marketplace.json            |   2 +-
- .claude-plugin/plugin.json                 |   2 +-
- .engineos/changes/2026-09-02-agent-tier-frontmatter.md | 000 +++++
- docs/release-notes/release-notes-1.6.0.md  | 288 ++++++++++++++++++++
- hooks/lib-common.sh                        |   0
- scripts/checks/30-agents-skills.sh         |  41 ++-
- scripts/exec-journal.sh                    |  27 +-
- scripts/test-validate-engineos.sh          |   7 +
+ .claude-plugin/marketplace.json                    |   2 +-
+ .claude-plugin/plugin.json                         |   2 +-
+ .../changes/2026-09-02-agent-tier-frontmatter.md   | 385 +++++++++++++++++++++
+ docs/release-notes/release-notes-1.6.0.md          | 288 +++++++++++++++
+ hooks/lib-common.sh                                |   0
+ scripts/checks/30-agents-skills.sh                 |  41 ++-
+ scripts/exec-journal.sh                            |  27 +-
+ scripts/test-validate-engineos.sh                  |   7 +
+ 8 files changed, 743 insertions(+), 9 deletions(-)
 ```
 
 Movements: one file added (`docs/release-notes/release-notes-1.6.0.md`, and the
