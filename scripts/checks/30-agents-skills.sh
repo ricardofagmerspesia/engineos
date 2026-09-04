@@ -68,7 +68,7 @@ check_C13() {
   [ -z "$empties" ] && ok "no empty rule/agent/skill documents" || bad "empty documents:$empties"
 }
 
-# ------------------------------- C24: agent tier agrees with the model binding
+# ------------------------------- C31: agent tier agrees with the model binding
 # The tier is the contract and the model name is only today's binding
 # (rules/models.md); registries/models.json is that table's machine-readable
 # form. An agent declaring a tier whose registry binding is not the model it
@@ -80,8 +80,12 @@ check_C13() {
 #
 # A fresh id rather than a C13 suffix: a letter suffix in this harness means
 # "sub-check of that parent", and --only C13 selecting a tier check would be a
-# lie about what C13 ("no empty documents") is.
-check_C24() {
+# lie about what C13 ("no empty documents") is. It shipped as C24 and collided
+# with 70-runtime.sh's C24 (admit backpressure) when the two branches merged:
+# checks/*.sh are sourced in order, so the later definition silently replaced
+# this one and the tier check never ran. Renumbered to C31; the harness now
+# fails on a duplicated id so the next collision is loud.
+check_C31() {
   have_jq || return 0
   [ -f "$MJ" ] || { skip_once models "no models registry at $MJ"; return 0; }
   bad_tier=""; pairs=0

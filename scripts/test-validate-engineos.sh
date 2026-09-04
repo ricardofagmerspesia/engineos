@@ -74,6 +74,19 @@ echo "== validate-engineos harness =="
 # Discovery is the harness's whole job, so it gets asserted rather than assumed:
 # a Check function nobody runs is worse than no Check at all.
 DECLARED=$(grep -ho '^check_C[0-9a-z]*' "$ROOT"/scripts/checks/*.sh | sed 's/^check_//' | sort -u)
+# Two files defining the same check_* function is a silent failure: bash keeps
+# the last definition sourced, --list still prints the id once, and the
+# shadowed Check never runs. C24 was exactly that after a merge — the agent-tier
+# check in 30-agents-skills.sh vanished behind admit's C24 in 70-runtime.sh
+# while every suite stayed green except the one negative case that planted the
+# drift. Assert uniqueness on the raw declarations, before the sort -u above
+# hides it.
+DUPLICATED=$(grep -ho '^check_C[0-9a-z]*' "$ROOT"/scripts/checks/*.sh | sed 's/^check_//' | sort | uniq -d)
+if [ -z "$DUPLICATED" ]; then
+  hok "every check_* id is declared exactly once across scripts/checks/"
+else
+  hno "check ids declared in more than one file — the later definition shadows the earlier one: $(printf '%s' "$DUPLICATED" | tr '\n' ' ')"
+fi
 LISTED=$(cd "$ROOT" && bash scripts/validate-engineos.sh --list | sort -u)
 if [ -n "$DECLARED" ] && [ "$DECLARED" = "$LISTED" ]; then
   hok "--list prints every check_* function declared under scripts/checks/ ($(printf '%s\n' "$LISTED" | wc -l | tr -d ' ') Checks)"
@@ -162,9 +175,9 @@ case_ C13 "emptied rule file is caught" \
       ": > rules/testing.md"
 
 # critic declares tier: design, which registries/models.json binds to opus.
-# Moving only the model off that binding is the exact drift C24 exists for: the
+# Moving only the model off that binding is the exact drift C31 exists for: the
 # frontmatter still reads plausibly, and nothing else in the repo objects.
-case_ C24 "agent whose model drifts off its declared tier is caught" \
+case_ C31 "agent whose model drifts off its declared tier is caught" \
       "agent tier/model disagreements" \
       "sed -i.bak 's|^model: opus\$|model: haiku|' agents/critic.md"
 
