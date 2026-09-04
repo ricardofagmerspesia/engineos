@@ -94,6 +94,7 @@ src/
   checks/             one module per family + index.ts (explicit registry) + lib
   bench/              runtime budgets
   report/             usage report
+  testing/            test-only fixture harness (temp roots, fixture repos, relocated registries, envelopes, transcripts, two drives); never bundled
 dist/engineos.cjs     esbuild bundle, target node18, committed
 package.json          devDependencies only: typescript, esbuild, @types/node
 tsconfig.json         strict, ES2022 lib, CommonJS output for tests
@@ -276,6 +277,14 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - `bench` keeps the published budgets: route-intent 250 ms, resolve-task 500 ms,
   prompt-advisor 600 ms, route-before-change cache hit 150 ms, always-on context
   32,000 bytes. `ENGINEOS_PERF_MULTIPLIER` keeps its meaning.
+- One fixture harness, `src/testing/harness.ts` (plan Task 6b, Wave 1(a)), owns
+  the idiom every suite repeats: a per-test temp root bound to `t.after`, a
+  git-initialised fixture repo, a relocated registry copy that is mutated instead
+  of the checkout, the hook envelope, the transcript in both the real (`input`)
+  and legacy (`tool_input`) shapes, and two drives with one result type —
+  `runCli` (spawn the bundle) and `runInProcess` (a `Command` over `memoryIo`).
+  It throws on any path under the checkout. Seven exports; it is the test surface
+  for every kernel and hook module and is never bundled.
 
 ## Waves
 

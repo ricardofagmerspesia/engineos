@@ -53,6 +53,7 @@ src/checks/{index,lib,10-rules,20-registries,30-agents-skills,40-decision-regist
 src/validate/cli.ts
 src/bench/run.ts
 src/report/usage.ts
+src/testing/{harness,harness.test}.ts   test-only; never imported from src/cli.ts, so never bundled
 registries/layout-manifest.json, registries/docs-ledger.json
 dist/engineos.cjs
 ```
@@ -957,6 +958,102 @@ git add src/registry
 git commit -m "feat(kernel): resolve the runtime root and load routing.json"
 ```
 
+### Task 6b: Shared test harness (`src/testing/harness.ts`)
+
+Amended 2026-09-04 (architecture review, candidate 7). Every bash suite today
+rebuilds the same five fixtures by hand: a temp root with an EXIT trap
+(`scripts/test-kernel.sh` 14-24), a relocated kernel copy whose `policy.json` is
+mutated in place (`scripts/test-kernel.sh` 73-90, `relocated_kernel`), a hook
+envelope, a transcript in the legacy `tool_input` shape, and a per-case
+`mktemp` + `git init` repo (`hooks/test-verify.sh` 25-60: `invoke`,
+`make_transcript`, `make_mixed_transcript`). The port would copy that idiom into
+16 `*.e2e.test.ts` files. This task lands the idiom once, before Task 7, so
+every kernel and hook test from here on speaks one fixture vocabulary;
+`src/kernel/resolve.test.ts` and `src/kernel/parity.test.ts` (Wave 1(a)) are its
+first consumers.
+
+**Files:**
+- Create: `src/testing/harness.ts`, `src/testing/harness.test.ts`
+- Nothing under `src/testing/` is imported from `src/cli.ts`, so esbuild never
+  bundles it. `harness.test.ts` asserts that by reading `dist/engineos.cjs` and
+  failing on the string `src/testing/`.
+
+**Interface (frozen — seven exports, nothing else):**
+```ts
+// src/testing/harness.ts
+import type { TestContext } from 'node:test';
+import type { Command } from '../dispatch';
+
+export type HookEvent = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Stop' | 'SubagentStart' | 'SubagentStop';
+export interface ToolUse { name: string; input: Record<string, unknown> }
+export interface RunResult { status: number; stdout: string; stderr: string }
+export interface RunOptions { stdin?: string; env?: Record<string, string>; cwd?: string }
+
+// One fresh directory per test, removed by t.after. Throws when the resolved path
+// lies under the EngineOS checkout, so a test can never dirty the repo.
+export function tempRoot(t: TestContext): string
+// A git-initialised project under root with an optional package.json, nx.json and
+// extra files. Returns the repo path. Enough for the runner probes in stop-verify.
+export function fixtureRepo(root: string, opts?: { pkg?: Record<string, unknown>; nx?: Record<string, unknown>; files?: Record<string, string> }): string
+// Copies registries/ (and the bash shim while it exists) under root, applies
+// mutate to the COPY of policy.json, returns the new ENGINEOS_ROOT. The checkout's
+// registries are never written.
+export function relocatedRoot(root: string, opts?: { mutate?: (policy: Record<string, unknown>) => void }): string
+// The stdin JSON a hook receives for one event (design "Hook envelope").
+export function envelope(opts: { event: HookEvent; cwd: string; sid: string; tool?: ToolUse; transcript?: string; stopHookActive?: boolean }): string
+// A Claude transcript JSONL with one tool_use per entry. Default is the real
+// harness shape (`input`); { legacy: true } emits the older `tool_input` key the
+// bash suites still exercise. stop-verify e2e runs one case per form.
+export function transcript(toolUses: ToolUse[], opts?: { legacy?: boolean }): string
+// Black-box drive: spawnSync(process.execPath, ['dist/engineos.cjs', ...args]).
+export function runCli(args: string[], opts?: RunOptions): RunResult
+// White-box drive: calls a Command with memoryIo(opts); stdout/stderr joined.
+export function runInProcess(command: Command, argv: string[], opts?: RunOptions): RunResult
+```
+
+**Discipline the harness enforces (not just offers):**
+- One temp root per test, bound to `t.after`. No suite-level `TMPROOT`, no
+  process `exit` handler — `node:test` runs files in parallel and a shared root
+  is a shared bug.
+- `tempRoot` and `relocatedRoot` throw if the target resolves under
+  `resolveRoot(process.env, __dirname)` (Task 6). Registry mutation happens on
+  the copy or not at all.
+- Both drives return the same `RunResult`, so a suite can start white-box on
+  `runInProcess` and switch to `runCli` for its e2e cases without rewriting
+  assertions. Which drive a suite uses is chosen per suite: kernel and pure
+  hooks in-process, anything that probes git or the runner through `runCli`.
+
+- [ ] **Step 1: Failing tests** — `harness.test.ts`: `tempRoot` returns a fresh
+  absolute path each call and the path is gone after the test; `tempRoot` throws
+  for a `TMPDIR` pointing inside the checkout; `fixtureRepo` yields a directory
+  where `git rev-parse --show-toplevel` equals the repo path and `package.json`
+  round-trips; `relocatedRoot` leaves the checkout's `registries/policy.json`
+  byte-identical while the copy carries the mutation; `envelope` parses back to
+  the fields `HookEnvelope` decodes (Task 15 shape); `transcript` default emits
+  `input` and `{ legacy: true }` emits `tool_input`, one line per tool use;
+  `runCli(['--version'])` and `runInProcess(version, [])` return the same
+  stdout; `dist/engineos.cjs` does not contain `src/testing/`.
+- [ ] **Step 2: Run** — `npm test`, new file fails.
+- [ ] **Step 3: Implement** — `mkdtempSync` under `os.tmpdir()` with
+  `t.after(() => rmSync(dir, { recursive: true, force: true }))`; `git init -q`
+  via `spawnSync`; `cpSync(registries, ..., { recursive: true })` then
+  `readJsonFile` → `mutate` → `writeFileSync` on the copy; `JSON.stringify` for
+  `envelope`; `transcript` maps each tool use to
+  `{ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } }`
+  and renames `input` to `tool_input` under `legacy`.
+- [ ] **Step 4: Run tests** — `npm test`, all pass.
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/testing
+git commit -m "test: shared fixture harness for kernel and hook tests"
+```
+
+Tasks 5 and 6 predate this task and keep their inline `mkdtempSync`; their
+fixtures are one file each and porting them buys nothing. From Task 7 on, a
+test that builds a temp root, relocated registries, an envelope or a transcript
+by hand instead of through the harness is a review defect.
+
 ### Task 7: `kernel route-path`
 
 **Files:**
@@ -1488,7 +1585,7 @@ Barrier 5: handoff.
 
 ### Tasks 42-57: port the 16 suites to `node:test`
 
-One PR per suite (largest first: `test-validate-engineos.sh` 1076 -> `src/validate/validate.e2e.test.ts` may take two PRs; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box, `spawnSync(process.execPath, [dist/engineos.cjs, ...])` with `input` for stdin, temp git repos via `mkdtempSync` + `spawnSync('git', ['init', '-q'])`, assertions on stdout JSON and marker files. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
+One PR per suite (largest first: `test-validate-engineos.sh` 1076 -> `src/validate/validate.e2e.test.ts` may take two PRs; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box through the shared harness (Task 6b) — `runCli` for the drive, `tempRoot(t)` + `fixtureRepo` for the repo, `relocatedRoot` where a suite mutates a registry (`test-kernel.sh` `relocated_kernel`, `test-route.sh` fixtures), `envelope` and `transcript` for hook stdin — with assertions on stdout JSON and marker files. Suites that exercise a transcript (`test-verify.sh`) run each case in both transcript forms, default `input` and `{ legacy: true }`. No suite reintroduces `mkdtempSync` + `git init` inline; the harness is where that idiom lives. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
 
 Mapping: `test-route.sh`, `test-governance.sh`, `test-prompt-advisor.sh`, `test-install-hooks.sh` (keeps spawning `bash install.sh`), `test-layout.sh`, `test-verify.sh`, `test-bypass.sh`, `test-docs.sh` (reads `registries/docs-ledger.json`), `test-agent-announce.sh`, `test-post-edit.sh`, `test-exec-journal.sh`, `test-gen-agent-registry.sh`, `test-telemetry.sh`, `test-kernel.sh`, `test-validate-engineos.sh`. `test-lib-common.sh` was already replaced in Task 16.
 
