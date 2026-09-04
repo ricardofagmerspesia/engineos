@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EngineOS Request Lifecycle</title>
+<!-- Animated walkthrough of the request lifecycle in docs/BIG-PICTURE.md section 2. Open directly in a browser. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F5F6F3; --bg-2:#ECEEE9; --bg-3:#E2E5DE; --ink:#1A2028; --ink-2:#5C6570; --line:#D6DAD3;
+  --accent:#0E7C73; --accent-soft:#D9EEEB; --amber:#B4610A; --amber-soft:#F6E6D2; --red:#A33A2A; --red-soft:#F3DCD6;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --dur:.45s;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#10151B; --bg-2:#171D25; --bg-3:#1F2730; --ink:#E4E8EC; --ink-2:#98A2AD; --line:#263038;
+  --accent:#34C9B9; --accent-soft:#12302E; --amber:#F0A032; --amber-soft:#3A2A12; --red:#E0705C; --red-soft:#3A1E19;
+}}
+:root[data-theme="dark"]{
+  --bg:#10151B; --bg-2:#171D25; --bg-3:#1F2730; --ink:#E4E8EC; --ink-2:#98A2AD; --line:#263038;
+  --accent:#34C9B9; --accent-soft:#12302E; --amber:#F0A032; --amber-soft:#3A2A12; --red:#E0705C; --red-soft:#3A1E19;
+}
+@media (prefers-reduced-motion: reduce){ :root{--dur:0s} }
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.5;margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding:32px 24px 64px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+h1{font-size:clamp(26px,3.5vw,38px);line-height:1.1;font-weight:600;margin:6px 0 8px;text-wrap:balance;letter-spacing:-.01em}
+.lede{color:var(--ink-2);margin:0 0 20px;max-width:720px}
+
+/* controls */
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 20px}
+button{font:inherit;font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)} button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.controls .spacer{flex:1}
+.controls label{font-family:var(--mono);font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:6px}
+input[type=range]{accent-color:var(--accent);width:120px}
+.progress{height:3px;background:var(--bg-3);border-radius:2px;margin:0 0 20px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);width:0;transition:width var(--dur)}
+
+/* evidence strip */
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:0 0 24px}
+.chip{font-family:var(--mono);font-size:12px;border:1px dashed var(--line);border-radius:6px;padding:7px 10px;color:var(--ink-2);display:flex;gap:8px;align-items:center;transition:all var(--dur)}
+.chip b{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none;transition:background var(--dur)}
+.chip.on{border-style:solid;border-color:var(--accent);color:var(--ink)} .chip.on b{background:var(--accent)}
+
+/* stage */
+.stage{display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:28px;align-items:start}
+@media (max-width:820px){.stage{grid-template-columns:1fr}}
+.rail{position:relative;padding-left:26px}
+.rail::before{content:"";position:absolute;left:8px;top:14px;bottom:14px;width:2px;background:var(--line)}
+.rail .marker{position:absolute;left:1px;width:16px;height:16px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);transition:top var(--dur) cubic-bezier(.4,0,.2,1);top:0}
+.node{display:block;width:100%;text-align:left;background:none;border:0;border-left:2px solid transparent;border-radius:0;padding:8px 10px 8px 12px;margin:0 0 2px;color:var(--ink-2);font-family:var(--sans);font-size:14px;cursor:pointer;transition:color var(--dur),background var(--dur)}
+.node:hover{background:var(--bg-2)} .node:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.node .k{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;display:block;color:var(--ink-2);opacity:.8}
+.node.done{color:var(--ink)} .node.done .k{color:var(--accent)}
+.node.active{color:var(--ink);background:var(--accent-soft);border-left-color:var(--accent);font-weight:500}
+.node.active .k{color:var(--accent)}
+.node.hook .k{color:var(--amber)} .node.hook.active{background:var(--amber-soft);border-left-color:var(--amber)}
+
+.panel{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:22px 24px;min-height:340px;position:relative}
+.panel .who{font-family:var(--mono);font-size:12px;color:var(--ink-2);margin:0 0 6px;display:flex;flex-wrap:wrap;gap:6px 14px}
+.panel .who span::before{content:"owner ";color:var(--accent)}
+.panel .who span.event::before{content:"event ";color:var(--amber)}
+.panel h2{font-size:24px;line-height:1.2;font-weight:600;margin:0 0 12px;text-wrap:balance}
+.panel p{margin:0 0 12px;max-width:62ch}
+.panel .out{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.panel .out dt{font-family:var(--mono);font-size:12px;color:var(--ink-2);padding-top:2px}
+.panel .out dd{margin:0}
+.panel code{font-family:var(--mono);font-size:.92em;background:var(--bg-3);padding:1px 5px;border-radius:4px}
+.panel .branch{margin-top:14px;padding:10px 12px;border-left:3px solid var(--amber);background:var(--amber-soft);border-radius:0 6px 6px 0;font-size:14px}
+.panel .branch.red{border-color:var(--red);background:var(--red-soft)}
+.panel .branch b{font-family:var(--mono);font-size:12px;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:4px}
+.fade{animation:fade var(--dur) ease-out}
+@keyframes fade{from{opacity:.35;transform:translateY(4px)}to{opacity:1;transform:none}}
+.counter{position:absolute;top:18px;right:20px;font-family:var(--mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+footer{margin-top:32px;font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--bg-2)}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">engineos / request lifecycle</div>
+  <h1>EngineOS Request Lifecycle</h1>
+  <p class="lede">One request, followed from the moment you type it to the moment "done" is allowed. Press play, or step through. Amber steps are hooks that fire on their own; teal steps are decisions the session makes.</p>
+
+  <div class="controls" role="group" aria-label="Playback">
+    <button id="play" class="primary" aria-pressed="false">Play</button>
+    <button id="prev" aria-label="Previous step">Prev</button>
+    <button id="next" aria-label="Next step">Next</button>
+    <button id="reset">Restart</button>
+    <span class="spacer"></span>
+    <label>speed <input id="speed" type="range" min="1" max="5" value="3" aria-label="Playback speed"></label>
+    <span style="font-family:var(--mono);font-size:12px;color:var(--ink-2)"><kbd>←</kbd> <kbd>→</kbd> <kbd>space</kbd></span>
+  </div>
+  <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+
+  <div class="strip" id="strip" aria-label="Evidence produced so far">
+    <div class="chip" data-ev="contract"><b></b>task contract</div>
+    <div class="chip" data-ev="router"><b></b>[router] line + risk</div>
+    <div class="chip" data-ev="spec"><b></b>spec (if owed)</div>
+    <div class="chip" data-ev="record"><b></b>change record</div>
+    <div class="chip" data-ev="banner"><b></b>agent banner</div>
+    <div class="chip" data-ev="flag"><b></b>unrecorded flag</div>
+    <div class="chip" data-ev="gate"><b></b>final gate output</div>
+    <div class="chip" data-ev="archive"><b></b>record archived</div>
+  </div>
+
+  <div class="stage">
+    <nav class="rail" id="rail" aria-label="Steps"><div class="marker" id="marker"></div></nav>
+    <section class="panel" id="panel" aria-live="polite"></section>
+  </div>
+
+  <footer>source of truth: CLAUDE.md, rules/*.md, hooks/hooks.json, scripts/kernel.sh · map: docs/BIG-PICTURE.md</footer>
+</div>
+
+<script>
+const STEPS = [
+ {k:"start", t:"You type a request", who:["you"], hook:false,
+  p:"A prompt arrives in Claude Code. Nothing has been read or written yet. Everything that follows exists to make sure the first write happens after classification, and the word \"done\" happens after evidence.",
+  out:[["input","the prompt text"]], ev:[]},
+ {k:"UserPromptSubmit", t:"The advisor asks the kernel", who:["hooks/prompt-advisor.sh","scripts/kernel.sh resolve-task"], hook:true, event:"UserPromptSubmit",
+  p:"Before the model answers, a hook runs once. It hands the prompt to the kernel, which matches intents against registries/intents.json, folds in the decision rules and the policy bundle, and returns a task contract. The hook injects that contract as context and writes a router span to the exec journal.",
+  out:[["produces","intents · policy rules · skills · agents · risk floor · autonomy ceiling · gates · hitl"],["needs","jq (without it the hook exits silently)"]], ev:["contract"]},
+ {k:"gate", t:"Bypass check", who:["hooks/bypass.sh","/engineos:bypass"], hook:true, event:"every hook",
+  p:"Every hook sources the bypass switch first. If a per-repo marker, the machine-wide file or ENGINEOS_BYPASS=1 is set, the advisor injects BYPASS ACTIVE instead of a contract.",
+  branch:{kind:"amber",b:"if bypassed",t:"The reply opens with [engineos] bypassed. No router line, no agents, no spec gate, no change record, no Stop gates. The rest of this animation is skipped, loudly."},
+  out:[["default","not bypassed, continue"]], ev:[]},
+ {k:"decision", t:"Question or task?", who:["CLAUDE.md router"], hook:false,
+  p:"Pure questions and explanations are answered directly, with the always-on rules only. Anything that will create or modify code, config or docs is a task and goes through the router table.",
+  branch:{kind:"amber",b:"if pure question",t:"Answer directly. No routing, no agents, no record, no artifact offer."},
+  out:[["default","substantive task, continue"]], ev:[]},
+ {k:"decision", t:"Router line and risk tier", who:["CLAUDE.md router table","rules/risk-autonomy.md"], hook:false,
+  p:"The session classifies the intent, loads the rules and skills the matching rows name, and states the risk tier and autonomy ceiling before the first write. Risk takes the highest input: reversibility, blast radius, data sensitivity, contract surface, spend. A high tier fires human-in-the-loop reasons the kernel can name.",
+  out:[["announces","[router] intent=… risk=low|medium|high autonomy=A0-A4 loaded=… agent=…"],["if kernel says escalate","the router agent returns a dispatch plan; it never edits, never dispatches"]], ev:["router"]},
+ {k:"decision", t:"Spec before code?", who:["non-negotiable #1","superpowers:brainstorming"], hook:false,
+  p:"More than 2 files, or any new feature, means a design is written first: brainstorm, then a spec under docs/specs/ and a plan. At risk high the threshold is irrelevant and the design is always written. Below the threshold the record says n/a with the reason.",
+  branch:{kind:"amber",b:"if over threshold",t:"brainstorming → docs/specs/<date>-<slug>-design.md → writing-plans. Contracts that parallel work depends on are frozen here."},
+  out:[["default","below threshold, spec n/a"]], ev:["spec"]},
+ {k:"decision", t:"Dispatch the agent the row names", who:["rules/subagents.md","rules/parallelism.md","scripts/kernel.sh admit"], hook:false,
+  p:"Naming an agent means dispatching it, not mentioning it. Past 3 files, more than one domain or 3 independent tasks the work is split into waves over disjoint file scopes, dispatched in one message. Before each dispatch the orchestrator asks the kernel whether capacity remains.",
+  out:[["admit answers","dispatch · defer · reject (reject is a human-in-the-loop reason)"],["brief carries","MODE, file scope, frozen contracts, model tier, risk tier, return format"]], ev:[]},
+ {k:"PreToolUse", t:"Agent banner", who:["hooks/announce-agent-dispatch.sh"], hook:true, event:"PreToolUse Agent|Task",
+  p:"When an agent is dispatched, a hook re-injects the green banner so the reader always sees who is working: alias, canonical name, model, mode, scope. On return a second hook prints the status line and writes an agent span.",
+  out:[["prints","+ [agent] borisenko (backend-coordinator) | model: opus | mode: IMPLEMENT | scope: src/orders/**"]], ev:["banner"]},
+ {k:"PreToolUse", t:"Every edit is routed", who:["hooks/route-before-change.sh","scripts/kernel.sh route-path"], hook:true, event:"PreToolUse Edit|Write",
+  p:"Before a file is written, the hook asks the kernel which domain owns the path (registries/routing.json) and injects that domain's rules, skill and specialist. One route per edit, first match in precedence: security → test → backend → dba → ios-release → android-release → devops → mobile → frontend → llm.",
+  out:[["injects","the domain's rule files and specialist name as context"]], ev:[]},
+ {k:"PostToolUse", t:"The edit lands, the flag goes up", who:["hooks/mark-unrecorded.sh"], hook:true, event:"PostToolUse Edit|Write",
+  p:"After the first successful write, a hook drops a marker in the git dir. From now on the session owes a change record, and the Stop gate will refuse \"done\" until one is closed.",
+  out:[["writes","ENGINEOS_UNRECORDED.<session> in .git/"]], ev:["flag","record"]},
+ {k:"work", t:"Integrate at the barrier", who:["rules/parallelism.md","templates/handoff.md"], hook:false,
+  p:"When a wave finishes, the orchestrator wires the pieces and resolves contract drift. Barriers integrate; they do not verify. Each barrier writes a handoff so the next wave can resume from the file alone.",
+  out:[["never here","tests, typecheck, lint"]], ev:[]},
+ {k:"gate", t:"The final gate, once", who:["rules/verification.md","scripts/kernel.sh repair"], hook:false,
+  p:"Lint and typecheck run one time, after the last unit is integrated, with output shown. Tests join only when they were ON for the task. Red means a bounded fix loop: two attempts per check, one model-tier escalation, then stop and report red.",
+  branch:{kind:"red",b:"if still red",t:"Report red honestly. Exhausting the bound never reports done."},
+  out:[["default","green, continue"]], ev:["gate"]},
+ {k:"work", t:"Close the change record", who:["skills/record-change"], hook:false,
+  p:"The record gets its past-tense account of what was made, the checklist resolved, the real diff pasted, human decisions written or declared none. Status becomes done, the file moves to .engineos/archived/<YYYY>/<MM>/<domain>/, and the flag is cleared.",
+  out:[["moves","changes/<date>-<slug>.md → archived/YYYY/MM/<domain>/"],["clears",".git/ENGINEOS_UNRECORDED.*"]], ev:["archive"]},
+ {k:"Stop", t:"Stop gates", who:["hooks/stop-verify.sh","hooks/record-verify.sh"], hook:true, event:"Stop",
+  p:"When the session tries to end, two hooks check the evidence. Did code change without the gate running? Block once. Did code change without a closed record? Block once. They are the Validation gate; they know nothing about owners or rollback, so a green Stop is never the Release gate.",
+  branch:{kind:"amber",b:"if blocked",t:"Back to the final gate or to record-change. Each hook blocks only once per session."},
+  out:[["default","pass"]], ev:[]},
+ {k:"end", t:"Offer the artifact, then done", who:["CLAUDE.md · Output artifact"], hook:false,
+  p:"One question, after the work: scaffold, template, design, flowchart, or nothing. Options are pruned per intent. The pick becomes the next unit of work and goes back through the router. Then the session is done, with a contract, a router line, a gate output and an archived record behind it.",
+  out:[["evidence left behind","task contract · [router] line · change record · gate output · exec-journal spans"]], ev:[]},
+];
+
+const rail=document.getElementById('rail'), panel=document.getElementById('panel'), marker=document.getElementById('marker');
+const bar=document.getElementById('bar'), strip=document.getElementById('strip');
+const playBtn=document.getElementById('play'), speed=document.getElementById('speed');
+let i=0, timer=null;
+
+STEPS.forEach((s,idx)=>{
+  const b=document.createElement('button'); b.className='node'+(s.hook?' hook':''); b.type='button';
+  b.innerHTML=`<span class="k">${s.hook?(s.event||'hook'):s.k}</span>${s.t}`;
+  b.addEventListener('click',()=>{stop();go(idx);});
+  rail.appendChild(b);
+});
+const nodes=[...rail.querySelectorAll('.node')];
+
+function esc(x){return x.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+function render(){
+  const s=STEPS[i];
+  nodes.forEach((n,idx)=>{n.classList.toggle('active',idx===i);n.classList.toggle('done',idx<i);n.setAttribute('aria-current',idx===i?'step':'false');});
+  const n=nodes[i]; marker.style.top=(n.offsetTop+n.offsetHeight/2-8)+'px';
+  bar.style.width=((i)/(STEPS.length-1)*100)+'%';
+  const seen=new Set(); STEPS.slice(0,i+1).forEach(x=>x.ev.forEach(e=>seen.add(e)));
+  strip.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',seen.has(c.dataset.ev)));
+  const who=s.who.map((w,ix)=>`<span class="${s.hook&&ix===0&&s.event?'':''}">${esc(w)}</span>`).join('')+(s.event?`<span class="event">${esc(s.event)}</span>`:'');
+  panel.innerHTML=`<div class="counter">${String(i+1).padStart(2,'0')} / ${STEPS.length}</div>
+    <div class="who">${who}</div><h2>${esc(s.t)}</h2><p>${esc(s.p)}</p>
+    ${s.branch?`<div class="branch ${s.branch.kind}"><b>${esc(s.branch.b)}</b>${esc(s.branch.t)}</div>`:''}
+    <dl class="out">${s.out.map(([a,b])=>`<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl>`;
+  panel.classList.remove('fade'); void panel.offsetWidth; panel.classList.add('fade');
+}
+function go(n){ i=Math.max(0,Math.min(STEPS.length-1,n)); render(); }
+function tick(){ if(i>=STEPS.length-1){stop();return;} go(i+1); }
+function interval(){ return [0,5200,4200,3200,2200,1400][+speed.value]; }
+function start(){ if(timer) return; if(i>=STEPS.length-1) go(0); timer=setInterval(tick,interval()); playBtn.textContent='Pause'; playBtn.setAttribute('aria-pressed','true'); }
+function stop(){ clearInterval(timer); timer=null; playBtn.textContent='Play'; playBtn.setAttribute('aria-pressed','false'); }
+playBtn.addEventListener('click',()=>timer?stop():start());
+document.getElementById('next').addEventListener('click',()=>{stop();go(i+1);});
+document.getElementById('prev').addEventListener('click',()=>{stop();go(i-1);});
+document.getElementById('reset').addEventListener('click',()=>{stop();go(0);});
+speed.addEventListener('input',()=>{ if(timer){clearInterval(timer);timer=setInterval(tick,interval());} });
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.key==='ArrowRight'){stop();go(i+1);} else if(e.key==='ArrowLeft'){stop();go(i-1);}
+  else if(e.key===' '){e.preventDefault(); timer?stop():start();}
+});
+window.addEventListener('resize',()=>render());
+render();
+</script>
+</body>
+</html>
