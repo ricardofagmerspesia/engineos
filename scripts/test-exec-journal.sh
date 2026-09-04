@@ -338,13 +338,14 @@ check "validate rejects a lowercased status, as append does" 1 $?
 
 # ... and the other direction, so the guard above cannot be satisfied by one
 # that rejects everything: every status and every tier the CLI declares must
-# still validate. Read from the constants, so renaming one moves this fixture.
+# still validate. Statuses are read from the constant and tiers from
+# registries/models.json (the CLI's own source), so renaming one moves this fixture.
 ev_bad=""
 for st in $(sed -n 's/^VALID_STATUSES="\(.*\)"$/\1/p' "$EJ"); do
   printf '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"%s","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}\n' "$st" > "$tmp"
   bash "$EJ" validate "$tmp" >/dev/null 2>&1 || ev_bad="$ev_bad status:$st"
 done
-for tr in $(sed -n 's/^VALID_TIERS="\(.*\)"$/\1/p' "$EJ"); do
+for tr in $(jq -r '.tiers[].id' "$ROOT/registries/models.json"); do
   printf '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"%s","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}\n' "$tr" > "$tmp"
   bash "$EJ" validate "$tmp" >/dev/null 2>&1 || ev_bad="$ev_bad tier:$tr"
 done

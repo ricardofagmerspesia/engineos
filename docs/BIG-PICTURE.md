@@ -33,7 +33,7 @@ flowchart TB
     end
 
     subgraph L3["3 · Kernel (deterministic decisions)"]
-        KERNEL["scripts/kernel.sh<br/>resolve-task · route-path · route-intent · risk · gates<br/>model · retry · repair · admit · breaker · hitl · waves · scale"]
+        KERNEL["scripts/kernel.sh<br/>resolve-task · route-path · route-intent · risk · gates<br/>model · repair · admit · breaker · hitl · waves · scale"]
     end
 
     subgraph L4["4 · Hooks (runtime enforcement)"]
@@ -238,8 +238,8 @@ flowchart LR
         RESC["route-escalate<br/>needs router agent?"]
         RISKC["risk · gates · hitl"]
         MODELC["model · scale · waves"]
-        FLOW["admit · breaker · retry · repair"]
-        DR["decision-rules · capability"]
+        FLOW["admit · breaker · repair"]
+        DR["decision-rules"]
     end
 
     subgraph DATA["Registries"]
@@ -248,7 +248,6 @@ flowchart LR
         RO["routing.json"]
         M["models.json"]
         D["decision-rules.json"]
-        C["capabilities.json"]
     end
 
     PA --> RTASK
@@ -266,7 +265,7 @@ flowchart LR
     RISKC --> P
     MODELC --> M & P
     FLOW --> P
-    DR --> D & C
+    DR --> D
 ```
 
 | Question | Command | Answer vocabulary |
@@ -275,7 +274,6 @@ flowchart LR
 | Which domain owns this file? | `route-path` | one domain (first match in precedence) |
 | Can I dispatch another agent? | `admit --inflight N --queued M` | `dispatch` / `defer` / `reject` |
 | Should I keep calling this resource? | `breaker --state S --failures N` | `closed` / `open` / `half-open` |
-| Retry this failed unit? | `retry --status S --attempt N` | retry same tier / escalate / stop |
 | Fix loop on a red check? | `repair --check C --attempt N` | 2 attempts, 1 tier escalation, then red |
 | Does a human have to decide? | `hitl --risk T --autonomy A …` | `required` + reason ids |
 

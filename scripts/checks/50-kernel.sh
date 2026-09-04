@@ -79,8 +79,8 @@ check_C17e() {
 # not enough and a model (agents/router.md) must produce a dispatch plan.
 # Spec: docs/specs/2026-08-06-decision-kernel-p3-router-agent.md
 have_router_inputs() {
-  [ -f "$KSH" ] && [ -f "$IJ" ] && [ -f "$C" ] && [ -f "$PJ" ] && return 0
-  skip_once router "kernel.sh, intents.json, capabilities.json or policy.json missing — router checks skipped"
+  [ -f "$KSH" ] && [ -f "$IJ" ] && [ -f "$C" ] && [ -f "$PJ" ] && [ -f "$MJ" ] && return 0
+  skip_once router "kernel.sh, intents.json, capabilities.json, models.json or policy.json missing — router checks skipped"
   return 1
 }
 
@@ -93,17 +93,24 @@ have_router_agent() {
 check_C18() {
   have_jq || return 0
   have_router_inputs || return 0
-  # C18a: capability binding — pinned specifically, not just "some valid tier"
+  # C18a: capability binding — pinned specifically, not just "some valid tier".
+  # Resolved from the registries directly. It used to go through `kernel.sh
+  # capability`, deleted in the PR5 of
+  # docs/specs/2026-09-02-deepen-runtime-modules-design.md; the property the
+  # Check defends never lived in that subcommand. The registry->registry half
+  # (a binding resolves, a tier is valid) is C15/C15b's; what survives here and
+  # nowhere else is the registry->frontmatter half: the tier the route
+  # capability claims must resolve, in models.json, to the model the router
+  # agent's own frontmatter declares.
   ra=$(jq -r '.capabilities[] | select(.id=="route") | .agent' "$C")
   rt=$(jq -r '.capabilities[] | select(.id=="route") | .model_tier' "$C")
   if [ "$ra" = "router" ] && [ "$rt" = "design" ] && [ -f "$ROUTER_MD" ]; then
-    bound=$(bash "$KSH" capability route 2>/dev/null | jq -r '.bound')
-    kmodel=$(bash "$KSH" capability route 2>/dev/null | jq -r '.model')
+    tmodel=$(jq -r --arg t "$rt" '.tiers[] | select(.id==$t) | .model' "$MJ")
     fmodel=$(sed -n 's/^model: *//p' "$ROUTER_MD" | head -1)
-    if [ "$bound" = "true" ] && [ "$kmodel" = "$fmodel" ]; then
+    if [ -n "$tmodel" ] && [ "$tmodel" = "$fmodel" ]; then
       ok "route capability is bound to router (design/$fmodel)"
     else
-      bad "route capability binding broken (bound=$bound, kernel model=$kmodel, agent frontmatter model=$fmodel)"
+      bad "route capability binding broken (models.json tier $rt=$tmodel, agent frontmatter model=$fmodel)"
     fi
   else
     bad "route capability is not bound to agent=router/model_tier=design"

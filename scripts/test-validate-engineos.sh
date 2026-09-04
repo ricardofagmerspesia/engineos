@@ -161,6 +161,13 @@ case_ C13 "emptied rule file is caught" \
       "empty documents" \
       ": > rules/testing.md"
 
+# critic declares tier: design, which registries/models.json binds to opus.
+# Moving only the model off that binding is the exact drift C24 exists for: the
+# frontmatter still reads plausibly, and nothing else in the repo objects.
+case_ C24 "agent whose model drifts off its declared tier is caught" \
+      "agent tier/model disagreements" \
+      "sed -i.bak 's|^model: opus\$|model: haiku|' agents/critic.md"
+
 case_ C5b "always-on rule pointing at a route-loaded rule is caught" \
       "always-on rule points at a route-loaded rule" \
       "printf '\nDefer to \`rules/frontend.md\`.\n' >> rules/context.md"
@@ -406,6 +413,10 @@ p='registries/capabilities.json'; d=json.load(open(p))
 for c in d['capabilities']:
     if c['id']=='route': c['model_tier']='build'
 json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C18 "route capability's tier drifting off the router agent's model is caught" \
+      "route capability binding broken" \
+      "sed -i.bak 's|^model: opus|model: haiku|' agents/router.md"
 
 case_ C18b "router agent losing a required kernel call is caught" \
       "router does not call the kernel" \

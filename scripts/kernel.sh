@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # EngineOS decision kernel — the resolver API over registries/*.json.
 # One entry point, JSON out, no model calls. Answers the routing, model, risk,
-# gate, retry, capability and wave questions that used to live as prose the
-# model re-derived every turn, or as private copies inside individual hooks.
+# gate, repair and wave questions that used to live as prose the model
+# re-derived every turn, or as private copies inside individual hooks.
+#
+# The subcommand list below is public surface (docs/COMPATIBILITY.md): removing
+# or renaming one is a MAJOR change with a deprecation window, not an edit.
 #
 #   kernel.sh route-path <file>
 #   kernel.sh route-intent <text>
 #   kernel.sh model --work <type>
 #   kernel.sh risk --signals <json>
 #   kernel.sh gates --risk <tier>
-#   kernel.sh retry --status <s> --attempt <n> [--situation <sit>]
 #   kernel.sh repair --check <id> --attempt <n> [--situation <sit>]
 #   kernel.sh admit --inflight <n> --queued <n>
 #   kernel.sh breaker --state closed --failures <n>
@@ -17,7 +19,6 @@
 #   kernel.sh breaker --state half-open --probe-result <ok|failed>
 #   kernel.sh hitl --risk <tier> --autonomy <A0..A4> [--evidence thin|adequate]
 #                  [--external-effect true|false] [--conflict true|false] [--situation <s>]
-#   kernel.sh capability <id>
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
 #   kernel.sh scale --prompt <text>
@@ -30,6 +31,7 @@
 # is called on purpose, and a caller must know when it cannot answer.
 #
 # Spec: docs/specs/2026-08-06-decision-kernel-p2-resolver-api.md
+#       docs/specs/2026-09-02-deepen-runtime-modules-design.md (PR5)
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,7 +41,30 @@ err() { printf '{"error":%s}\n' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/
 
 command -v jq >/dev/null 2>&1 || { printf '{"error":"jq is required — the kernel cannot answer without it"}\n'; exit 1; }
 
-need_reg() { [ -f "$REG/$1" ] || err "registry missing: registries/$1"; }
+# ------------------------------------------------------------ registry loader
+# reg <registry-file> [<var>] — the ONE seam every registry read goes through.
+# It resolves the registry against $REG, fails closed if it is not there, and
+# binds the resolved path to the caller's variable for jq to read. Thirteen
+# call sites used to spell out `need_reg X` plus their own `"$REG/X"`; none of
+# them now knows where registries live or how a missing one is reported.
+#
+# It binds a PATH, not the file's contents, and that is a measured decision.
+# The contents form was implemented first — read once with `$(<file)`, hand
+# every jq an `--argjson` — which made the jq dialect uniform and cut
+# resolve-task from 9 registry opens to 4. It was 5-10% SLOWER on every kernel
+# budget in scripts/bench-runtime.sh: parsing 26KB of intents.json out of argv
+# costs more than the file opens it saves. jq reading the file itself is the
+# fast path, so the seam's job is to say WHICH file, and the choice between a
+# positional input and --slurpfile stays jq's own distinction at the call site.
+#
+# Call it DIRECTLY, never inside $(...): err exits, and in a command
+# substitution that would kill only the subshell — the same trap documented on
+# require_positional below.
+reg() {
+  [ -f "$REG/$1" ] || err "registry missing: registries/$1"
+  [ $# -gt 1 ] && printf -v "$2" '%s' "$REG/$1"
+  return 0
+}
 
 # require_positional <subcommand> <what> "$@" -> validates that exactly one
 # non-flag positional argument was given, or errors. Call it DIRECTLY, never in
@@ -69,9 +94,8 @@ require_positional() {
 # patterns now registry data.
 cmd_route_path() {
   require_positional route-path "a file path" "$@"
-  local f="$1"
-  need_reg routing.json
-  local R="$REG/routing.json"
+  local f="$1" R
+  reg routing.json R
   local base="${f##*/}" norm="/$f"
 
   # Exclusions, in one jq pass and in first-match-wins order:
@@ -129,9 +153,8 @@ cmd_route_path() {
 # each intent's note.
 cmd_route_intent() {
   require_positional route-intent "the request text" "$@"
-  local text="$1"
-  need_reg intents.json
-  local I="$REG/intents.json"
+  local text="$1" I
+  reg intents.json I
   # Evaluate all literal signals inside ONE jq process. The previous loop
   # spawned sed + grep for every signal (136 today), making routing take ~3s.
   # `bounded_contains` preserves the old non-alphanumeric boundary semantics:
@@ -161,8 +184,8 @@ cmd_model() {
   local work=""
   while [ $# -gt 0 ]; do case "$1" in --work) work="${2:-}"; shift 2 ;; *) err "model: unknown argument $1" ;; esac; done
   [ -n "$work" ] || err "model requires --work <type>"
-  need_reg models.json
-  local M="$REG/models.json"
+  local M
+  reg models.json M
   jq -e --arg w "$work" '.work_types[] | select(.id==$w)' "$M" >/dev/null \
     || err "unknown work type: $work (see registries/models.json work_types)"
   jq --arg w "$work" '
@@ -185,8 +208,8 @@ cmd_risk() {
   local signals=""
   while [ $# -gt 0 ]; do case "$1" in --signals) signals="${2:-}"; shift 2 ;; *) err "risk: unknown argument $1" ;; esac; done
   [ -n "$signals" ] || err "risk requires --signals <json>"
-  need_reg policy.json
-  local P="$REG/policy.json"
+  local P
+  reg policy.json P
   printf '%s' "$signals" | jq -e . >/dev/null 2>&1 || err "risk --signals is not valid JSON"
 
   local out
@@ -226,53 +249,15 @@ cmd_gates() {
   local tier=""
   while [ $# -gt 0 ]; do case "$1" in --risk) tier="${2:-}"; shift 2 ;; *) err "gates: unknown argument $1" ;; esac; done
   case "$tier" in low|medium|high) ;; *) err "gates requires --risk low|medium|high" ;; esac
-  need_reg policy.json
-  jq --arg t "$tier" '{risk: $t, gates: .gates.by_risk[$t], spec_threshold: .gates.spec_threshold}' "$REG/policy.json"
+  local P
+  reg policy.json P
+  jq --arg t "$tier" '{risk: $t, gates: .gates.by_risk[$t], spec_threshold: .gates.spec_threshold}' "$P"
 }
 
-# --------------------------------------------------------------------- retry
-# rules/parallelism.md's failure policy as a function: never-retry situations
-# first (they escalate to a human on FIRST occurrence), then per-status.
-cmd_retry() {
-  local status="" attempt="" situation=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --status) status="${2:-}"; shift 2 ;;
-      --attempt) attempt="${2:-}"; shift 2 ;;
-      --situation) situation="${2:-}"; shift 2 ;;
-      *) err "retry: unknown argument $1" ;;
-    esac
-  done
-  [ -n "$status" ] || err "retry requires --status"
-  need_reg policy.json
-  local P="$REG/policy.json"
-
-  if [ -n "$situation" ]; then
-    if jq -e --arg s "$situation" '.retry.never_retry | index($s)' "$P" >/dev/null; then
-      jq -n --arg s "$situation" '{action: "never-retry", reason: ("situation \($s) is on the never-retry list — escalate to a human on the first occurrence")}'
-      return 0
-    fi
-    jq -e --arg s "$situation" '.retry.never_retry | index($s) | not' "$P" >/dev/null \
-      || err "unknown situation: $situation"
-  fi
-
-  case "$status" in
-    BLOCKED)  jq -n '{action: "no-retry", reason: "BLOCKED means the input is missing — supply it or drop the unit, never re-sample"}' ;;
-    DEGRADED) jq -n '{action: "accept-carry", reason: "accept, carry the caveat into the barrier report, never silently upgrade to OK"}' ;;
-    OK)       jq -n '{action: "none", reason: "nothing to retry"}' ;;
-    FAILED)
-      case "$attempt" in ''|*[!0-9]*) err "retry --status FAILED requires a numeric --attempt" ;; esac
-      if [ "$attempt" -le 1 ]; then
-        jq -n '{action: "retry-same-tier", reason: "first failure — retry once at the same tier"}'
-      elif [ "$attempt" -eq 2 ]; then
-        jq -n '{action: "escalate-one-tier", reason: "failed twice — escalate one model tier and retry once; that is the last retry"}'
-      else
-        jq -n '{action: "stop", reason: "failed at the escalated tier — report the unit incomplete with what was tried"}'
-      fi ;;
-    *) err "unknown status: $status (OK|DEGRADED|BLOCKED|FAILED)" ;;
-  esac
-}
-
+# -------------------------------------------------------------------- repair
+# The red-ladder half of rules/parallelism.md's failure policy: never-repair
+# situations first (they escalate to a human on FIRST occurrence), then the
+# bounded fix loop whose numbers are policy.json.repair data.
 cmd_repair() {
   local check="" attempt="" situation=""
   while [ $# -gt 0 ]; do
@@ -284,8 +269,8 @@ cmd_repair() {
     esac
   done
   [ -n "$check" ] || err "repair requires --check"
-  need_reg policy.json
-  local P="$REG/policy.json"
+  local P
+  reg policy.json P
 
   jq -e --arg c "$check" '.repair.checks | index($c)' "$P" >/dev/null 2>&1 \
     || err "unknown check: $check (must be one of policy.json.repair.checks)"
@@ -307,9 +292,11 @@ cmd_repair() {
   fi
 
   case "$attempt" in ''|*[!0-9]*) err "repair (red ladder) requires a numeric --attempt" ;; esac
-  local maxfix esc
-  maxfix=$(jq -r '.repair.max_fix_attempts_per_check' "$P")
-  esc=$(jq -r '.repair.escalations' "$P")
+  # Both bounds in one read: two jq spawns for two scalars out of the same
+  # registry was the clearest duplication the loader exposed.
+  local bounds maxfix esc
+  bounds=$(jq -r '[.repair.max_fix_attempts_per_check, .repair.escalations] | @tsv' "$P")
+  maxfix="${bounds%%$'\t'*}"; esc="${bounds##*$'\t'}"
   if [ "$attempt" -lt "$maxfix" ]; then
     jq -n --arg c "$check" '{check: $c, action: "fix-same-tier", reason: "first red — fix and re-run the check at the same tier"}'
   elif [ "$attempt" -lt "$((maxfix + esc))" ]; then
@@ -338,10 +325,10 @@ cmd_admit() {
   done
   case "$inflight" in ''|*[!0-9]*) err "admit requires a numeric --inflight" ;; esac
   case "$queued"   in ''|*[!0-9]*) err "admit requires a numeric --queued" ;; esac
-  need_reg policy.json
-  local P="$REG/policy.json"
+  local P
+  reg policy.json P
 
-  # need_reg proves the FILE exists, not that these fields do — and admit read
+  # reg proves the FILE exists, not that these fields do — and admit read
   # through all three without checking any of them, unlike cmd_breaker and
   # cmd_hitl. Two verified failures came out of that:
   #   - a missing wave_concurrency_cap made jq abort on `null - 0` at exit 5
@@ -389,7 +376,8 @@ cmd_admit() {
 }
 
 # ------------------------------------------------------------------- breaker
-# Per-resource circuit breaker. retry (above) asks "try this UNIT again?";
+# Per-resource circuit breaker. The failure policy (rules/parallelism.md) asks
+# "try this UNIT again?";
 # breaker asks "why are we still calling this RESOURCE?". The orchestrator
 # owns the state and the consecutive-failure count (from the exec journal)
 # and passes them in — the kernel is the transition table, nothing more.
@@ -409,10 +397,10 @@ cmd_breaker() {
     esac
   done
   case "$state" in closed|open|half-open) ;; *) err "breaker requires --state closed|open|half-open" ;; esac
-  need_reg policy.json
-  local P="$REG/policy.json"
+  local P
+  reg policy.json P
 
-  # need_reg proves the FILE exists, not that this block does. Without the
+  # reg proves the FILE exists, not that this block does. Without the
   # guard, $b.failure_threshold is null, jq sorts null below every number, so
   # `0 >= null` is true and a healthy resource is reported open with exit 0 —
   # the fail-open class cmd_risk was fixed for. Same shape as route-escalate's
@@ -485,10 +473,10 @@ cmd_hitl() {
   case "$evidence" in thin|adequate) ;;   *) err "hitl --evidence must be thin|adequate" ;; esac
   case "$external" in true|false) ;;      *) err "hitl --external-effect must be true|false" ;; esac
   case "$conflict" in true|false) ;;      *) err "hitl --conflict must be true|false" ;; esac
-  need_reg policy.json
-  local P="$REG/policy.json"
+  local P
+  reg policy.json P
 
-  # need_reg proves the FILE exists, not that this block does. Without the
+  # reg proves the FILE exists, not that this block does. Without the
   # guard, the situation allowlist below reduces to `null | index($s)` — so
   # every situation reads as unknown. Fail closed, as cmd_risk and cmd_breaker
   # do.
@@ -569,22 +557,6 @@ cmd_hitl() {
        record_home: $p.hitl.record_home}'
 }
 
-# ---------------------------------------------------------------- capability
-cmd_capability() {
-  require_positional capability "an id" "$@"
-  local id="$1"
-  need_reg capabilities.json; need_reg models.json
-  local C="$REG/capabilities.json" M="$REG/models.json"
-  jq -e --arg i "$id" '.capabilities[] | select(.id==$i)' "$C" >/dev/null \
-    || err "unknown capability: $id"
-  jq --arg i "$id" --slurpfile m "$M" '
-    (.capabilities[] | select(.id==$i)) as $c
-    | {id: $c.id, agent: $c.agent, model_tier: $c.model_tier,
-       model: ($m[0].tiers[] | select(.id==$c.model_tier) | .model),
-       risk_floor: ($c.risk_floor // null),
-       bound: ($c.agent != null)}' "$C"
-}
-
 # --------------------------------------------------------------------- waves
 # rules/parallelism.md steps 1-4, mechanically: Kahn-layer the dependency
 # graph (cycle = error), flag same-file ownership inside a wave (the "no two
@@ -594,11 +566,12 @@ cmd_waves() {
   local units=""
   while [ $# -gt 0 ]; do case "$1" in --units) units="${2:-}"; shift 2 ;; *) err "waves: unknown argument $1" ;; esac; done
   [ -n "$units" ] || err "waves requires --units <json array>"
-  need_reg policy.json
+  local P
+  reg policy.json P
   printf '%s' "$units" | jq -e 'type == "array"' >/dev/null 2>&1 || err "waves --units must be a JSON array"
 
   local out
-  out=$(printf '%s' "$units" | jq --slurpfile pol "$REG/policy.json" '
+  out=$(printf '%s' "$units" | jq --slurpfile pol "$P" '
     $pol[0].parallelism.wave_concurrency_cap as $cap
     | . as $units
     | ([.[].id]) as $ids
@@ -650,8 +623,8 @@ cmd_decision_rules() {
   local prompt=""
   while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "decision-rules: unknown argument $1" ;; esac; done
   [ -n "$prompt" ] || err "decision-rules requires --prompt <text>"
-  need_reg decision-rules.json
-  local D="$REG/decision-rules.json"
+  local D
+  reg decision-rules.json D
   jq --arg prompt "$prompt" '
     ($prompt | ascii_downcase) as $lower
     | ([ .rules | sort_by(-.priority)[]
@@ -674,8 +647,8 @@ cmd_scale() {
   local prompt=""
   while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "scale: unknown argument $1" ;; esac; done
   [ -n "$prompt" ] || err "scale requires --prompt <text>"
-  need_reg policy.json
-  local P="$REG/policy.json"
+  local P
+  reg policy.json P
   local out
   out=$(jq -n --arg prompt "$prompt" --slurpfile pol "$P" '
     ($pol[0].parallelism.prompt_signals // null) as $s
@@ -710,8 +683,8 @@ cmd_route_escalate() {
   local prompt=""
   while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "route-escalate: unknown argument $1" ;; esac; done
   [ -n "$prompt" ] || err "route-escalate requires --prompt <text>"
-  need_reg intents.json; need_reg policy.json; need_reg models.json
-  local I="$REG/intents.json" P="$REG/policy.json" M="$REG/models.json"
+  local I P M
+  reg intents.json I; reg policy.json P; reg models.json M
 
   jq -e '.router' "$P" >/dev/null 2>&1 \
     || err "policy.json has no router block — route-escalate cannot resolve its own policy without it"
@@ -799,7 +772,8 @@ cmd_resolve_task() {
   local prompt=""
   while [ $# -gt 0 ]; do case "$1" in --prompt) prompt="${2:-}"; shift 2 ;; *) err "resolve-task: unknown argument $1" ;; esac; done
   [ -n "$prompt" ] || err "resolve-task requires --prompt <text>"
-  need_reg intents.json; need_reg policy.json; need_reg decision-rules.json
+  local I P
+  reg intents.json I; reg policy.json P; reg decision-rules.json
 
   local route decisions rc
   route=$(cmd_route_escalate --prompt "$prompt"); rc=$?
@@ -837,7 +811,7 @@ cmd_resolve_task() {
   # entry in autonomy.ceiling_by_risk is a broken registry, and the contract
   # object below publishes that same value.
   if [ -n "$floor" ]; then
-    ceiling=$(jq -r --arg t "$floor" '.autonomy.ceiling_by_risk[$t] // empty' "$REG/policy.json")
+    ceiling=$(jq -r --arg t "$floor" '.autonomy.ceiling_by_risk[$t] // empty' "$P")
     [ -n "$ceiling" ] || err "policy.json has no autonomy.ceiling_by_risk[$floor] — resolve-task cannot resolve the ceiling hitl needs"
   fi
   if [ "$any_high" = true ]; then
@@ -853,7 +827,7 @@ cmd_resolve_task() {
 
   jq -n --arg prompt "$prompt" --argjson route "$route" --argjson decisions "$decisions" \
     --argjson hitl "$hitl" \
-    --slurpfile intents "$REG/intents.json" --slurpfile pol "$REG/policy.json" '
+    --slurpfile intents "$I" --slurpfile pol "$P" '
     ($route.intents) as $ids
     | ([ $intents[0].intents[]
          | select(.id as $id | $ids | index($id) != null) ]) as $matched
@@ -932,16 +906,14 @@ case "$cmd" in
   model)          cmd_model "$@" ;;
   risk)           cmd_risk "$@" ;;
   gates)          cmd_gates "$@" ;;
-  retry)          cmd_retry "$@" ;;
   repair)         cmd_repair "$@" ;;
   admit)          cmd_admit "$@" ;;
   breaker)        cmd_breaker "$@" ;;
   hitl)           cmd_hitl "$@" ;;
-  capability)     cmd_capability "$@" ;;
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
   resolve-task)   cmd_resolve_task "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|retry|repair|admit|breaker|hitl|capability|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|repair|admit|breaker|hitl|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
 esac

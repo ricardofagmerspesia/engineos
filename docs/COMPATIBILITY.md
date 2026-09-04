@@ -19,7 +19,18 @@ Changing any of these is a **breaking change**:
 | Skill directory names | Invoked by name via the Skill tool |
 | Hook event contract in `hooks/hooks.json` | Consumers wire these into their settings |
 | `registries/*.json` top-level shape | Read by hooks and by tooling |
+| `scripts/kernel.sh` subcommand names and their JSON answer shape | Called by hooks, by the router agent, and by consumers' own tooling |
 | The `## Return format` envelope fields | Parsed by orchestrators |
+
+The kernel subcommands covered by that row are `route-path`, `route-intent`,
+`model`, `risk`, `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`,
+`decision-rules`, `scale`, `route-escalate` and `resolve-task`. Adding a subcommand or a field to an answer
+is MINOR; removing or renaming either is MAJOR and gets the deprecation window
+below. Two arms that had no caller anywhere — `retry` and `capability` — were
+removed *before* this row was written, deliberately: they were the last
+removals this policy did not yet cover. The kernel's internals are not surface:
+`reg`, the jq programs, and how many processes an answer costs are free to change
+as long as the answer does not.
 
 Not public surface — change freely: rule *prose* (as long as the file keeps its
 path and meaning), agent method sections, hook internals, test files, `docs/`.
