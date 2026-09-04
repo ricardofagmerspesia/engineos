@@ -44,9 +44,11 @@ export function memoryIo(opts: { stdin?: string; env?: NodeJS.ProcessEnv; cwd?: 
       stdin = '';
       return s;
     },
-    out: (t) => { stdout.push(t); },
-    err: (t) => { stderr.push(t); },
+    out: (text) => { stdout.push(text); },
+    err: (text) => { stderr.push(text); },
     env: opts.env ?? {},
+    // '/' is a deliberately non-existent-repo default so a test that forgets to pass
+    // cwd never resolves against the real checkout.
     cwd: () => opts.cwd ?? '/',
   };
 }

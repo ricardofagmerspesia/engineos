@@ -9,7 +9,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test build/"
+    "test": "tsc -p tsconfig.json && node --test"
   },
   "devDependencies": {
     "@types/node": "^18.19.0",
