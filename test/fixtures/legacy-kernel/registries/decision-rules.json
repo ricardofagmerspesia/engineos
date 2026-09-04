@@ -1,0 +1,250 @@
+{
+  "version": "1.0.0",
+  "description": "Gate requirements as data. CLAUDE.md states the constitution; this file states which artifacts a given condition demands, so a new requirement is a registry entry rather than a constitutional amendment. Read by hooks/prompt-advisor.sh (keyword tier, via scripts/kernel.sh resolve-task) and by the model directly (full tier, via rules/gates.md).",
+  "precedence": [
+    "security and compliance",
+    "explicit user constraints",
+    "workflow requirements",
+    "cost optimization",
+    "agent preference"
+  ],
+  "conflict_policy": "When two rules disagree, the more specific and higher-risk rule wins. Record the conflict and which rule was applied — an unlogged override is indistinguishable from a missed rule.",
+  "rules": [
+    {
+      "id": "rule-spec-threshold",
+      "priority": 80,
+      "source": "CLAUDE.md non-negotiable #1",
+      "when": {
+        "files_changed": ">2",
+        "or_new_feature": true
+      },
+      "then": {
+        "require": [
+          "design-doc"
+        ],
+        "gate": "design"
+      },
+      "signals": [
+        "\\b(add|build|create|implement)\\b.{0,40}\\b(feature|module|service|screen|page|endpoint|integration|workflow)s?\\b"
+      ]
+    },
+    {
+      "id": "rule-verification",
+      "priority": 90,
+      "source": "rules/verification.md",
+      "when": {
+        "code_changed": true
+      },
+      "then": {
+        "require": [
+          "typecheck",
+          "lint",
+          "tests-when-in-scope",
+          "output-shown"
+        ],
+        "gate": "validation"
+      },
+      "signals": [
+        "\\b(is (it|this) done|are we done|ship it|ready to (ship|merge|release))\\b",
+        "\\b(mark|call) (it|this) (done|complete)\\b"
+      ]
+    },
+    {
+      "id": "rule-change-record",
+      "priority": 70,
+      "source": "CLAUDE.md non-negotiable #5",
+      "when": {
+        "code_changed": true
+      },
+      "then": {
+        "require": [
+          "change-record"
+        ]
+      }
+    },
+    {
+      "id": "rule-large-change",
+      "priority": 80,
+      "source": "adapted from the analyzed corpus (decision-rules/rules.json)",
+      "when": {
+        "estimated_change_lines": ">500"
+      },
+      "then": {
+        "require": [
+          "design-doc",
+          "adr",
+          "architecture-review"
+        ],
+        "gate": "design"
+      },
+      "signals": [
+        "\\b(rewrite|overhaul|redesign|re-?architect)\\b",
+        "\\bmigrate\\b.{0,30}\\b(whole|entire|everything|all)\\b"
+      ]
+    },
+    {
+      "id": "rule-public-contract",
+      "priority": 90,
+      "source": "adapted from the analyzed corpus",
+      "when": {
+        "affects_public_contract": true
+      },
+      "then": {
+        "require": [
+          "compatibility-plan",
+          "contract-tests",
+          "adr"
+        ],
+        "gate": "design"
+      },
+      "signals": [
+        "\\b(public|published|external)\\b.{0,20}\\b(api|contract|schema|endpoint)\\b",
+        "\\bbreaking change\\b",
+        "\\b(api|schema|contract) version\\b",
+        "\\bevent payload\\b"
+      ]
+    },
+    {
+      "id": "rule-sensitive-data",
+      "priority": 100,
+      "source": "adapted from the analyzed corpus; rules/security.md owns what counts as sensitive",
+      "when": {
+        "handles_sensitive_data": true
+      },
+      "then": {
+        "require": [
+          "threat-model",
+          "security-review",
+          "human-approval"
+        ],
+        "risk": "high"
+      },
+      "signals": [
+        "\\b(pii|personal data|credit card|payment details|cardholder|cpf|ssn|clinical|patient|medical record|lgpd|gdpr|hipaa)\\b"
+      ]
+    },
+    {
+      "id": "rule-production-write",
+      "priority": 100,
+      "source": "adapted from the analyzed corpus",
+      "when": {
+        "tool_effect": "irreversible-write",
+        "environment": "production"
+      },
+      "then": {
+        "require": [
+          "explicit-approval",
+          "rollback-plan",
+          "audit-log"
+        ],
+        "risk": "high",
+        "gate": "release"
+      },
+      "signals": [
+        "\\b(deploy|rollout|roll out|release|push|ship)\\b.{0,40}\\b(prod|production|live)\\b",
+        "\\bin production\\b",
+        "\\bproduction (database|db|cluster|environment)\\b"
+      ]
+    },
+    {
+      "id": "rule-destructive-ddl",
+      "priority": 100,
+      "source": "rules/data.md",
+      "when": {
+        "destructive_ddl_or_dml": true
+      },
+      "then": {
+        "require": [
+          "two-phase-deploy",
+          "explicit-confirmation",
+          "down-path-or-documented-irreversibility"
+        ],
+        "risk": "high"
+      },
+      "signals": [
+        "\\bdrop\\b.{0,30}\\b(table|column|index|schema)\\b",
+        "\\btruncate\\b",
+        "\\bdelete from\\b",
+        "\\b(remove|delete)\\b.{0,30}\\bcolumn\\b",
+        "\\bnarrow\\b.{0,20}\\b(type|column)\\b"
+      ]
+    },
+    {
+      "id": "rule-secret-exposure",
+      "priority": 100,
+      "source": "rules/security.md",
+      "when": {
+        "secret_reached_git_or_shared_file": true
+      },
+      "then": {
+        "require": [
+          "rotate-immediately",
+          "scrub-history"
+        ],
+        "risk": "high"
+      },
+      "signals": [
+        "\\b(leaked|committed|exposed|hardcoded|pushed)\\b.{0,30}\\b(secret|api key|token|password|credential)s?\\b",
+        "\\bsecret\\b.{0,20}\\bin (git|the repo|history)\\b"
+      ]
+    },
+    {
+      "id": "rule-high-risk-critic",
+      "priority": 85,
+      "source": "rules/gates.md",
+      "when": {
+        "risk": "high"
+      },
+      "then": {
+        "require": [
+          "independent-critic-pass",
+          "rollback-path",
+          "named-owner"
+        ],
+        "gate": "release"
+      }
+    },
+    {
+      "id": "rule-fanout",
+      "priority": 60,
+      "source": "CLAUDE.md non-negotiable #7, rules/parallelism.md",
+      "when": {
+        "independent_units": ">=3"
+      },
+      "then": {
+        "require": [
+          "frozen-contracts",
+          "disjoint-scopes",
+          "single-message-dispatch"
+        ]
+      },
+      "signals": [
+        "\\b(across|in) (all|every|the whole|the entire)\\b",
+        "\\bsystem.?wide\\b",
+        "\\bevery (module|service|endpoint|screen|component|page|file)\\b",
+        "\\ball (the )?(modules|services|endpoints|screens|components|pages)\\b"
+      ]
+    },
+    {
+      "id": "rule-volatile-knowledge",
+      "priority": 50,
+      "source": "adapted from the analyzed corpus (rule-rag)",
+      "when": {
+        "knowledge_changes_frequently": true
+      },
+      "then": {
+        "prefer": "retrieval-over-fine-tuning",
+        "require": [
+          "retrieval-evaluation",
+          "freshness-policy"
+        ]
+      },
+      "signals": [
+        "\\bfine.?tun\\w+\\b",
+        "\\brag\\b",
+        "\\bretrieval\\b",
+        "\\bembeddings?\\b"
+      ]
+    }
+  ]
+}

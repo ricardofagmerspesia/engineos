@@ -1,0 +1,336 @@
+{
+  "version": "1.1.0",
+  "description": "Machine-readable source of truth for EngineOS domain routing, including the path-pattern -> domain matching itself (match/excluded globs, resolved by scripts/kernel.sh route-path). CLAUDE.md's stack/domain table is the human mirror. Precedence order MUST list every domain exactly once, in match order — first match wins. Each domain's sample_path is a self-validating fixture: scripts/validate-engineos.sh (C17) routes it through kernel.sh and fails if it does not resolve to this domain.",
+  "precedence": [
+    "security",
+    "test",
+    "backend",
+    "dba",
+    "ios-release",
+    "android-release",
+    "devops",
+    "mobile",
+    "frontend",
+    "llm"
+  ],
+  "domains": [
+    {
+      "id": "security",
+      "title": "Security-sensitive files",
+      "rules": [
+        "security"
+      ],
+      "skills": [],
+      "agent": "security-reviewer",
+      "risk_floor": "high",
+      "hook_guidance": "rules/security.md | agent:security-reviewer",
+      "note": "Cross-cutting, checked first. Delimiter-bounded so authors/ does not collide with auth/.",
+      "match": {
+        "paths": [
+          "*/auth/*",
+          "*/guards/*",
+          "*/middleware/*",
+          "*/secrets/*",
+          "*/credentials/*",
+          "*/.env.*"
+        ],
+        "basenames": [
+          "auth.*",
+          "*.auth.*",
+          "*.guard.*",
+          "*.middleware.*",
+          "*.strategy.ts",
+          ".env",
+          ".env.*",
+          "secret.*",
+          "*.secret.*",
+          "*.secrets.*",
+          "credential.*",
+          "*.credential.*",
+          "*.credentials.*"
+        ]
+      },
+      "sample_path": "/tmp/api/src/auth/login.service.ts"
+    },
+    {
+      "id": "test",
+      "title": "Test files",
+      "rules": [
+        "testing"
+      ],
+      "skills": [],
+      "agent": "test-writer",
+      "risk_floor": "low",
+      "hook_guidance": "rules/testing.md | agent:test-writer",
+      "match": {
+        "paths": [],
+        "basenames": [
+          "*.spec.*",
+          "*.test.*",
+          "*.e2e-spec.*"
+        ]
+      },
+      "sample_path": "/tmp/api/user.service.spec.ts"
+    },
+    {
+      "id": "backend",
+      "title": "Backend (NestJS shapes)",
+      "rules": [
+        "backend",
+        "architecture",
+        "data",
+        "testing",
+        "observability"
+      ],
+      "skills": [
+        "nestjs-patterns"
+      ],
+      "agent": "backend-coordinator",
+      "risk_floor": "medium",
+      "hook_guidance": "rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator",
+      "note": "architecture and observability are closure targets of backend.md; data.md because the row's signals include migrations.",
+      "match": {
+        "paths": [],
+        "basenames": [
+          "*.controller.ts",
+          "*.service.ts",
+          "*.module.ts",
+          "*.resolver.ts",
+          "*.dto.ts",
+          "*.entity.ts",
+          "*.gateway.ts",
+          "*.repository.ts",
+          "*.processor.ts",
+          "*.consumer.ts",
+          "*.job.ts",
+          "*.interceptor.ts",
+          "*.pipe.ts",
+          "*.filter.ts"
+        ]
+      },
+      "sample_path": "/tmp/api/user.controller.ts"
+    },
+    {
+      "id": "dba",
+      "title": "Data layer and migrations",
+      "rules": [
+        "data",
+        "architecture"
+      ],
+      "skills": [],
+      "agent": "dba-coordinator",
+      "hint": "postgres/oracle",
+      "risk_floor": "high",
+      "hook_guidance": "rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)",
+      "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves.",
+      "match": {
+        "paths": [
+          "*/migrations/*",
+          "*/migration/*"
+        ],
+        "basenames": [
+          "*.sql"
+        ]
+      },
+      "sample_path": "/tmp/db/001_init.sql"
+    },
+    {
+      "id": "ios-release",
+      "title": "iOS build and release plumbing",
+      "rules": [
+        "security"
+      ],
+      "skills": [],
+      "agent": "ios-builder",
+      "hint": "signing",
+      "risk_floor": "high",
+      "hook_guidance": "rules/security.md | agent:ios-builder (signing)",
+      "note": "MUST precede mobile: matches only build/release files, so ordinary RN screens fall through.",
+      "match": {
+        "paths": [
+          "*/fastlane/*",
+          "*/ios/*/Info.plist",
+          "*/ios/Info.plist",
+          "*.xcodeproj/*"
+        ],
+        "basenames": [
+          "Podfile",
+          "exportOptions*.plist"
+        ]
+      },
+      "sample_path": "/tmp/app/ios/fastlane/Fastfile"
+    },
+    {
+      "id": "android-release",
+      "title": "Android build and release plumbing",
+      "rules": [
+        "security"
+      ],
+      "skills": [],
+      "agent": "android-builder",
+      "hint": "signing",
+      "risk_floor": "high",
+      "hook_guidance": "rules/security.md | agent:android-builder (signing)",
+      "match": {
+        "paths": [
+          "*/android/*.gradle*",
+          "*/android/*/AndroidManifest.xml"
+        ],
+        "basenames": [
+          "*.keystore"
+        ]
+      },
+      "sample_path": "/tmp/android/release.keystore"
+    },
+    {
+      "id": "devops",
+      "title": "DevOps and IaC",
+      "rules": [
+        "architecture",
+        "observability"
+      ],
+      "skills": [],
+      "agent": "devops-coordinator",
+      "hint": "kubernetes/gcp/cicd",
+      "risk_floor": "high",
+      "hook_guidance": "rules/architecture.md+observability.md | agent:devops-coordinator (kubernetes/gcp/cicd)",
+      "note": "High floor: infra config changes reach production by definition.",
+      "match": {
+        "paths": [
+          "*/.github/workflows/*",
+          "*/helm/*",
+          "*/k8s/*",
+          "*/kustomize/*",
+          "*/terraform/*"
+        ],
+        "basenames": [
+          "*.tf",
+          "*.tfvars",
+          "Dockerfile*",
+          "docker-compose*.y*ml",
+          "Jenkinsfile",
+          ".gitlab-ci.yml"
+        ]
+      },
+      "sample_path": "/tmp/proj/.github/workflows/ci.yml"
+    },
+    {
+      "id": "mobile",
+      "title": "Mobile (React Native)",
+      "rules": [
+        "frontend",
+        "architecture",
+        "backend",
+        "testing",
+        "observability"
+      ],
+      "skills": [
+        "react-patterns"
+      ],
+      "agent": "mobile-coordinator",
+      "hint": "adapt to React Native",
+      "risk_floor": "medium",
+      "hook_guidance": "rules/frontend.md+architecture.md+backend.md+testing.md+observability.md | skill:react-patterns | agent:mobile-coordinator (adapt to React Native)",
+      "note": "MUST precede frontend: mobile screens are .tsx too. Skill react-patterns is adapted to React Native, which the hint records.",
+      "match": {
+        "paths": [
+          "*/mobile/*",
+          "*/android/*",
+          "*/ios/*",
+          "*/react-native/*"
+        ],
+        "basenames": [
+          "*.native.ts",
+          "*.native.tsx",
+          "*.native.js",
+          "*.native.jsx"
+        ]
+      },
+      "sample_path": "/tmp/apps/mobile/src/Home.tsx"
+    },
+    {
+      "id": "frontend",
+      "title": "Frontend (React/Next)",
+      "rules": [
+        "frontend",
+        "architecture",
+        "testing"
+      ],
+      "skills": [
+        "react-patterns"
+      ],
+      "agent": "frontend-coordinator",
+      "risk_floor": "low",
+      "hook_guidance": "rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator",
+      "match": {
+        "paths": [
+          "*/components/*",
+          "*/pages/*"
+        ],
+        "basenames": [
+          "*.tsx",
+          "*.jsx",
+          "*.css",
+          "*.scss"
+        ]
+      },
+      "sample_path": "/tmp/web/src/Button.tsx"
+    },
+    {
+      "id": "llm",
+      "title": "LLM and agent work",
+      "rules": [
+        "llm-apps"
+      ],
+      "skills": [
+        "llm-engineering"
+      ],
+      "agent": "llm-coordinator",
+      "risk_floor": "medium",
+      "hook_guidance": "rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator",
+      "match": {
+        "paths": [
+          "*/prompt/*",
+          "*/prompts/*",
+          "*/rag/*",
+          "*/evals/*",
+          "*/eval/*",
+          "*/embeddings/*",
+          "*/llm/*"
+        ],
+        "basenames": [
+          "prompt*",
+          "rag.*",
+          "embedding*",
+          "llm*",
+          "eval.*",
+          "evals.*",
+          "*.prompt.*",
+          "*.rag.*",
+          "*.embedding*",
+          "*.llm.*",
+          "*.eval.*",
+          "*.evals.*"
+        ]
+      },
+      "sample_path": "/tmp/api/src/llm/client.ts"
+    }
+  ],
+  "excluded": {
+    "paths": [
+      "*/.engineos/*"
+    ],
+    "basenames": [
+      "*.md",
+      "*.lock",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock"
+    ],
+    "self_dirs": [
+      "hooks",
+      "docs"
+    ],
+    "note": "Meta/non-code files get no routing. self_dirs is the EngineOS-self exclusion: root-relative directories of the EngineOS checkout itself (this repo's own hooks/ and docs/ trees), resolved by scripts/kernel.sh against its own root, so a consumer project's src/hooks/ or product docs/ still route normally."
+  }
+}
