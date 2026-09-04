@@ -27,9 +27,10 @@ check() {  # <desc> <file> <expected-substring | empty=expect no routing>
 }
 
 # Full canonical guidance strings (rules|skill|agent) — kept identical to the
-# hook_guidance values in registries/routing.json. Asserting the full string, not
-# just the agent name, catches a wrong/stale rules list that a substring check
-# would miss.
+# `hook_guidance` the kernel RENDERS for each routing.json domain row (from its
+# rules[], skills[], agent and hint; routing.json stopped storing the string
+# itself). Asserting the full string, not just the agent name, catches a
+# wrong/stale rules list that a substring check would miss.
 FRONTEND="rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator"
 BACKEND="rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator"
 DBA="rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)"

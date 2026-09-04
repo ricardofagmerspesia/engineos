@@ -145,13 +145,13 @@ case_ C5 "router row dropping a deferred rule is caught" \
       "router closure rule violated" \
       "sed -i.bak '/^| Backend work/s| + \`rules/observability.md\`||' CLAUDE.md"
 
-case_ C6 "guidance naming a nonexistent agent is caught" \
-      "hook_guidance names missing agents" \
+case_ C6 "a domain naming a nonexistent agent is caught" \
+      "routing.json names missing agents" \
       "python3 -c \"
 import json
 p='registries/routing.json'; d=json.load(open(p))
 for x in d['domains']:
-    if x['id']=='test': x['hook_guidance']=x['hook_guidance'].replace('agent:test-writer','agent:ghost-writer')
+    if x['id']=='test': x['agent']='ghost-writer'
 json.dump(d,open(p,'w'),indent=2)\""
 
 case_ C9 "agent whose frontmatter name drifts from filename is caught" \
@@ -192,15 +192,6 @@ import json
 p='registries/routing.json'; d=json.load(open(p))
 for x in d['domains']:
     if x['id']=='dba': x['sample_path']='/tmp/web/src/Button.tsx'
-json.dump(d,open(p,'w'),indent=2)\""
-
-case_ C14 "registry rules[] disagreeing with its guidance string is caught" \
-      "registry rules/guidance mismatch" \
-      "python3 -c \"
-import json
-p='registries/routing.json'; d=json.load(open(p))
-for x in d['domains']:
-    if x['id']=='frontend': x['rules'].remove('testing')
 json.dump(d,open(p,'w'),indent=2)\""
 
 case_ C14 "registry precedence out of map order is caught" \
@@ -431,9 +422,9 @@ case_ C18 "route capability's tier drifting off the router agent's model is caug
       "route capability binding broken" \
       "sed -i.bak 's|^model: opus|model: haiku|' agents/router.md"
 
-case_ C18b "router agent losing a required kernel call is caught" \
-      "router does not call the kernel" \
-      "sed -i.bak 's|kernel.sh waves|kernel.sh wavez|g' agents/router.md"
+case_ C18b "router agent losing a required kernel fact is caught" \
+      "router's kernel resolve call is missing" \
+      "sed -i.bak 's|kernel.sh resolve --facts|kernel.sh resolv --facts|g' agents/router.md"
 
 case_ C18c "router agent gaining Write is caught" \
       "router must not hold" \
@@ -534,9 +525,12 @@ p='registries/policy.json'; d=json.load(open(p))
 d['repair']['by_situation']=[s for s in d['repair']['by_situation'] if s['situation']!='flaky']
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ C20b "the stop-report-red ladder literal broken in kernel.sh is caught" \
+# The kernel executes from dist/engineos.cjs (scripts/kernel.sh is a shim), so a
+# behavioural canary mutates the bundle -- editing src/kernel/*.ts changes nothing
+# without a rebuild.
+case_ C20b "the stop-report-red ladder literal broken in the runtime is caught" \
       "repair ladder canary failed" \
-      "sed -i.bak 's|stop-report-red|stop-report|' scripts/kernel.sh"
+      "sed -i.bak 's|stop-report-red|stop-report|' dist/engineos.cjs"
 
 case_ C20c "until clean reintroduced into the CLAUDE.md verify-done row is caught" \
       "repair prose-mirror problems" \
@@ -806,11 +800,11 @@ json.dump(d,open(p,'w'),indent=2)\""
 # -- "no human needed" for an input it did not act on.
 case_ C26b "a declared situation the kernel no longer maps to a reason is caught" \
       "hitl canary" \
-      "sed -i.bak 's|if \$s == \"breaker-open\" then \"breaker-open\"|if false then \"breaker-open\"|' scripts/kernel.sh"
+      "sed -i.bak 's|inputs.situation === \"breaker-open\") reasons.push|false) reasons.push|' dist/engineos.cjs"
 
 case_ C26b "the high-risk reason removed from the kernel is caught" \
       "hitl canary" \
-      "sed -i.bak 's@if \$r == \"high\" then \"high-risk\"@if false then \"high-risk\"@' scripts/kernel.sh"
+      "sed -i.bak 's@inputs.risk === \"high\") reasons.push(\"high-risk\")@false) reasons.push(\"high-risk\")@' dist/engineos.cjs"
 
 # The ruling, pinned from the failing side: a resolve-task that folds hitl off a
 # bare route.risk_floor again would announce a human gate on every auth-guard
@@ -818,7 +812,7 @@ case_ C26b "the high-risk reason removed from the kernel is caught" \
 # exactly that regression, so C26b has to catch it.
 case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
       "hitl canary" \
-      "sed -i.bak 's@if \[ \"\$any_high\" = true \]; then@if [ -n \"\$floor\" ]; then@' scripts/kernel.sh"
+      "sed -i.bak 's@if (decisions.any_high \&\& ceiling !== null) {@if (floor !== null \&\& ceiling !== null) {@' dist/engineos.cjs"
 
 # The other ruling, same treatment: restoring the unconditional "A1" makes
 # autonomy_after RAISE A0 to A1 on weaker evidence and drop medium/A3 two
@@ -827,7 +821,7 @@ case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
 # tier-scoped assertions are load-bearing.
 case_ C26b "autonomy_after reverting to an unconditional A1 is caught" \
       "hitl canary" \
-      "sed -i.bak 's@autonomy_after: \$after,@autonomy_after: (if \$e == \"thin\" then \"A1\" else \$a end),@' scripts/kernel.sh"
+      "sed -i.bak 's@highWithThinEvidence: policy.autonomy.high_with_thin_evidence@highWithThinEvidence: \"A1\", risk: \"high\"@' dist/engineos.cjs"
 
 case_ C26c "a reason row deleted from rules/risk-autonomy.md is caught" \
       "hitl prose-mirror problems" \
@@ -852,7 +846,7 @@ json.dump(d,open(p,'w'),indent=2)\""
 
 case_ C26d "admit's reject message losing the hitl reason id is caught" \
       "hitl/backpressure coupling problems" \
-      "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' scripts/kernel.sh"
+      "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' src/kernel/admit.ts"
 
 # ---- C27: the agent-span exec journal ----
 # The registry half and the script half declare the same span vocabulary, so

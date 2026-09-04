@@ -22,8 +22,6 @@
       ],
       "skills": [],
       "agent": "security-reviewer",
-      "risk_floor": "high",
-      "hook_guidance": "rules/security.md | agent:security-reviewer",
       "note": "Cross-cutting, checked first. Delimiter-bounded so authors/ does not collide with auth/.",
       "match": {
         "paths": [
@@ -60,8 +58,6 @@
       ],
       "skills": [],
       "agent": "test-writer",
-      "risk_floor": "low",
-      "hook_guidance": "rules/testing.md | agent:test-writer",
       "match": {
         "paths": [],
         "basenames": [
@@ -86,8 +82,6 @@
         "nestjs-patterns"
       ],
       "agent": "backend-coordinator",
-      "risk_floor": "medium",
-      "hook_guidance": "rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator",
       "note": "architecture and observability are closure targets of backend.md; data.md because the row's signals include migrations.",
       "match": {
         "paths": [],
@@ -120,8 +114,6 @@
       "skills": [],
       "agent": "dba-coordinator",
       "hint": "postgres/oracle",
-      "risk_floor": "high",
-      "hook_guidance": "rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)",
       "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves.",
       "match": {
         "paths": [
@@ -143,8 +135,6 @@
       "skills": [],
       "agent": "ios-builder",
       "hint": "signing",
-      "risk_floor": "high",
-      "hook_guidance": "rules/security.md | agent:ios-builder (signing)",
       "note": "MUST precede mobile: matches only build/release files, so ordinary RN screens fall through.",
       "match": {
         "paths": [
@@ -169,8 +159,6 @@
       "skills": [],
       "agent": "android-builder",
       "hint": "signing",
-      "risk_floor": "high",
-      "hook_guidance": "rules/security.md | agent:android-builder (signing)",
       "match": {
         "paths": [
           "*/android/*.gradle*",
@@ -192,8 +180,6 @@
       "skills": [],
       "agent": "devops-coordinator",
       "hint": "kubernetes/gcp/cicd",
-      "risk_floor": "high",
-      "hook_guidance": "rules/architecture.md+observability.md | agent:devops-coordinator (kubernetes/gcp/cicd)",
       "note": "High floor: infra config changes reach production by definition.",
       "match": {
         "paths": [
@@ -229,8 +215,6 @@
       ],
       "agent": "mobile-coordinator",
       "hint": "adapt to React Native",
-      "risk_floor": "medium",
-      "hook_guidance": "rules/frontend.md+architecture.md+backend.md+testing.md+observability.md | skill:react-patterns | agent:mobile-coordinator (adapt to React Native)",
       "note": "MUST precede frontend: mobile screens are .tsx too. Skill react-patterns is adapted to React Native, which the hint records.",
       "match": {
         "paths": [
@@ -260,8 +244,6 @@
         "react-patterns"
       ],
       "agent": "frontend-coordinator",
-      "risk_floor": "low",
-      "hook_guidance": "rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator",
       "match": {
         "paths": [
           "*/components/*",
@@ -286,8 +268,6 @@
         "llm-engineering"
       ],
       "agent": "llm-coordinator",
-      "risk_floor": "medium",
-      "hook_guidance": "rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator",
       "match": {
         "paths": [
           "*/prompt/*",

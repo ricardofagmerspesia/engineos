@@ -164,6 +164,85 @@ function loadRegistry(root, name) {
   return readJsonFile(registryPath(root, name));
 }
 
+// src/registry/strict.ts
+function strictReader(file) {
+  function malformed(what) {
+    throw new KernelError(`registries/${file}: ${what}`);
+  }
+  function requireRecord3(value, path) {
+    if (!isRecord(value)) malformed(`${path || "the document"} must be an object`);
+    return value;
+  }
+  function requireString4(value, path) {
+    if (typeof value !== "string") malformed(`${path} must be a string`);
+    return value;
+  }
+  function requireNumber3(value, path) {
+    if (typeof value !== "number" || !Number.isFinite(value)) malformed(`${path} must be a number`);
+    return value;
+  }
+  function requireBoolean2(value, path) {
+    if (typeof value !== "boolean") malformed(`${path} must be a boolean`);
+    return value;
+  }
+  function requireStrings3(value, path) {
+    if (!Array.isArray(value)) malformed(`${path} must be an array of strings`);
+    return value.map((item, i) => requireString4(item, `${path}[${i}]`));
+  }
+  function requireRows4(value, path) {
+    if (!Array.isArray(value)) malformed(`${path} must be an array of objects`);
+    return value.map((item, i) => requireRecord3(item, `${path}[${i}]`));
+  }
+  function optionalString3(value, path) {
+    if (value === void 0 || value === null) return null;
+    return requireString4(value, path);
+  }
+  function optionalStrings2(value, path) {
+    if (value === void 0 || value === null) return [];
+    return requireStrings3(value, path);
+  }
+  return {
+    malformed,
+    requireRecord: requireRecord3,
+    requireString: requireString4,
+    requireNumber: requireNumber3,
+    requireBoolean: requireBoolean2,
+    requireStrings: requireStrings3,
+    requireRows: requireRows4,
+    optionalString: optionalString3,
+    optionalStrings: optionalStrings2
+  };
+}
+
+// src/registry/decision-rules.ts
+var { requireRecord, requireString, requireNumber, requireStrings, requireRows, optionalString, optionalStrings } = strictReader("decision-rules.json");
+function loadDecisionRules(root) {
+  const raw = loadRegistry(root, "decision-rules.json");
+  const d = requireRecord(raw, "");
+  return {
+    version: requireString(d["version"], ".version"),
+    precedence: requireStrings(d["precedence"], ".precedence"),
+    conflict_policy: requireString(d["conflict_policy"], ".conflict_policy"),
+    rules: requireRows(d["rules"], ".rules").map((row, i) => {
+      const at = `.rules[${i}]`;
+      const then = requireRecord(row["then"], `${at}.then`);
+      return {
+        id: requireString(row["id"], `${at}.id`),
+        priority: requireNumber(row["priority"], `${at}.priority`),
+        source: requireString(row["source"], `${at}.source`),
+        when: requireRecord(row["when"], `${at}.when`),
+        then: {
+          require: optionalStrings(then["require"], `${at}.then.require`),
+          gate: optionalString(then["gate"], `${at}.then.gate`),
+          risk: optionalString(then["risk"], `${at}.then.risk`),
+          prefer: optionalString(then["prefer"], `${at}.then.prefer`)
+        },
+        signals: optionalStrings(row["signals"], `${at}.signals`)
+      };
+    })
+  };
+}
+
 // src/registry/intents.ts
 function isRiskTier(value) {
   return value === "low" || value === "medium" || value === "high";
@@ -187,7 +266,10 @@ function loadIntents(root) {
       domain: typeof i["domain"] === "string" ? i["domain"] : null,
       // jq's `{note}` answers null for a row without one, so an absent note and
       // a null note are the same answer downstream.
-      note: typeof i["note"] === "string" ? i["note"] : null
+      note: typeof i["note"] === "string" ? i["note"] : null,
+      suppressible: i["suppressible"] === true,
+      suppressed_by: stringArray(i["suppressed_by"]),
+      requires_dispatch_plan: i["requires_dispatch_plan"] === true
     }))
   };
 }
@@ -197,100 +279,104 @@ function loadModels(root) {
   const raw = loadRegistry(root, "models.json");
   const r = isRecord(raw) ? raw : {};
   return {
-    version: requireString(r["version"], "version"),
-    tiers: requireRows(r["tiers"], "tiers").map((tier, index) => ({
-      id: requireString(tier["id"], `tiers[${index}].id`),
-      model: requireString(tier["model"], `tiers[${index}].model`),
+    version: requireString2(r["version"], "version"),
+    tiers: requireRows2(r["tiers"], "tiers").map((tier, index) => ({
+      id: requireString2(tier["id"], `tiers[${index}].id`),
+      model: requireString2(tier["model"], `tiers[${index}].model`),
       // The top of the ladder stores null; an absent key reads the same way,
       // because that is what jq's `.escalates_to` answered for both.
-      escalates_to: optionalString(tier["escalates_to"], `tiers[${index}].escalates_to`)
+      escalates_to: optionalString2(tier["escalates_to"], `tiers[${index}].escalates_to`)
     })),
     escalation_order: requireStringArray(r["escalation_order"], "escalation_order"),
-    work_types: requireRows(r["work_types"], "work_types").map((work, index) => ({
-      id: requireString(work["id"], `work_types[${index}].id`),
-      title: requireString(work["title"], `work_types[${index}].title`),
-      tier: requireString(work["tier"], `work_types[${index}].tier`)
+    work_types: requireRows2(r["work_types"], "work_types").map((work, index) => ({
+      id: requireString2(work["id"], `work_types[${index}].id`),
+      title: requireString2(work["title"], `work_types[${index}].title`),
+      tier: requireString2(work["tier"], `work_types[${index}].tier`)
     }))
   };
 }
 function fail(field, expected) {
   throw new KernelError(`registries/models.json: ${field} must be ${expected}`);
 }
-function requireString(value, field) {
+function requireString2(value, field) {
   if (typeof value !== "string" || value === "") fail(field, "a non-empty string");
   return value;
 }
-function optionalString(value, field) {
+function optionalString2(value, field) {
   if (value === void 0 || value === null) return null;
   if (typeof value !== "string" || value === "") fail(field, "a non-empty string or null");
   return value;
 }
-function requireRows(value, field) {
+function requireRows2(value, field) {
   const rows = Array.isArray(value) ? value : fail(field, "an array");
   return rows.map((row, index) => isRecord(row) ? row : fail(`${field}[${index}]`, "an object"));
 }
 function requireStringArray(value, field) {
   const items = Array.isArray(value) ? value : fail(field, "an array");
-  return items.map((item, index) => requireString(item, `${field}[${index}]`));
+  return items.map((item, index) => requireString2(item, `${field}[${index}]`));
 }
 
 // src/registry/policy.ts
+var { requireRecord: requireRecord2, requireString: requireString3, requireNumber: requireNumber2, requireBoolean, requireStrings: requireStrings2, requireRows: requireRows3 } = strictReader("policy.json");
 function loadPolicy(root) {
   const raw = loadRegistry(root, "policy.json");
-  const p = requireRecord(raw, "");
-  const risk = requireRecord(p["risk"], ".risk");
-  const repair = requireRecord(p["repair"], ".repair");
-  const autonomy = requireRecord(p["autonomy"], ".autonomy");
-  const retry = requireRecord(p["retry"], ".retry");
-  const gates = requireRecord(p["gates"], ".gates");
-  const specThreshold = requireRecord(gates["spec_threshold"], ".gates.spec_threshold");
-  const parallelism = requireRecord(p["parallelism"], ".parallelism");
-  const backpressure = requireRecord(parallelism["backpressure"], ".parallelism.backpressure");
-  const breaker = requireRecord(p["breaker"], ".breaker");
-  const hitl = requireRecord(p["hitl"], ".hitl");
+  const p = requireRecord2(raw, "");
+  const risk = requireRecord2(p["risk"], ".risk");
+  const repair = requireRecord2(p["repair"], ".repair");
+  const autonomy = requireRecord2(p["autonomy"], ".autonomy");
+  const retry = requireRecord2(p["retry"], ".retry");
+  const gates = requireRecord2(p["gates"], ".gates");
+  const specThreshold = requireRecord2(gates["spec_threshold"], ".gates.spec_threshold");
+  const parallelism = requireRecord2(p["parallelism"], ".parallelism");
+  const backpressure = requireRecord2(parallelism["backpressure"], ".parallelism.backpressure");
+  const promptSignals = requireRecord2(parallelism["prompt_signals"], ".parallelism.prompt_signals");
+  const breaker = requireRecord2(p["breaker"], ".breaker");
+  const hitl = requireRecord2(p["hitl"], ".hitl");
+  const router = requireRecord2(p["router"], ".router");
+  const escalateWhen = requireRecord2(router["escalate_when"], ".router.escalate_when");
   return {
-    version: requireString2(p["version"], ".version"),
+    version: requireString3(p["version"], ".version"),
     risk: {
-      aggregation: requireString2(risk["aggregation"], ".risk.aggregation"),
-      inputs: requireRows2(risk["inputs"], ".risk.inputs").map((row, i) => ({
-        id: requireString2(row["id"], `.risk.inputs[${i}].id`)
+      aggregation: requireString3(risk["aggregation"], ".risk.aggregation"),
+      inputs: requireRows3(risk["inputs"], ".risk.inputs").map((row, i) => ({
+        id: requireString3(row["id"], `.risk.inputs[${i}].id`)
       })),
-      high_floors: requireStrings(risk["high_floors"], ".risk.high_floors")
+      high_floors: requireStrings2(risk["high_floors"], ".risk.high_floors")
     },
     repair: {
-      checks: requireStrings(repair["checks"], ".repair.checks"),
-      max_fix_attempts_per_check: requireNumber(
+      checks: requireStrings2(repair["checks"], ".repair.checks"),
+      max_fix_attempts_per_check: requireNumber2(
         repair["max_fix_attempts_per_check"],
         ".repair.max_fix_attempts_per_check"
       ),
-      escalations: requireNumber(repair["escalations"], ".repair.escalations"),
-      by_situation: requireRows2(repair["by_situation"], ".repair.by_situation").map((row, i) => ({
-        situation: requireString2(row["situation"], `.repair.by_situation[${i}].situation`),
-        response: requireString2(row["response"], `.repair.by_situation[${i}].response`)
+      escalations: requireNumber2(repair["escalations"], ".repair.escalations"),
+      by_situation: requireRows3(repair["by_situation"], ".repair.by_situation").map((row, i) => ({
+        situation: requireString3(row["situation"], `.repair.by_situation[${i}].situation`),
+        response: requireString3(row["response"], `.repair.by_situation[${i}].response`)
       })),
-      never_repair: requireStrings(repair["never_repair"], ".repair.never_repair")
+      never_repair: requireStrings2(repair["never_repair"], ".repair.never_repair")
     },
     autonomy: {
-      levels: requireRows2(autonomy["levels"], ".autonomy.levels").map((row, i) => ({
-        id: requireString2(row["id"], `.autonomy.levels[${i}].id`)
+      levels: requireRows3(autonomy["levels"], ".autonomy.levels").map((row, i) => ({
+        id: requireString3(row["id"], `.autonomy.levels[${i}].id`)
       })),
       ceiling_by_risk: requireTierMap(
         autonomy["ceiling_by_risk"],
         ".autonomy.ceiling_by_risk",
-        requireString2
+        requireString3
       ),
-      high_with_thin_evidence: requireString2(
+      high_with_thin_evidence: requireString3(
         autonomy["high_with_thin_evidence"],
         ".autonomy.high_with_thin_evidence"
       )
     },
     retry: {
-      never_retry: requireStrings(retry["never_retry"], ".retry.never_retry")
+      never_retry: requireStrings2(retry["never_retry"], ".retry.never_retry")
     },
     gates: {
       by_risk: requireTierMap(gates["by_risk"], ".gates.by_risk", requireStringMap),
       spec_threshold: {
-        files_greater_than: requireNumber(
+        files_greater_than: requireNumber2(
           specThreshold["files_greater_than"],
           ".gates.spec_threshold.files_greater_than"
         ),
@@ -301,71 +387,82 @@ function loadPolicy(root) {
       }
     },
     parallelism: {
-      wave_concurrency_cap: requireNumber(
+      wave_concurrency_cap: requireNumber2(
         parallelism["wave_concurrency_cap"],
         ".parallelism.wave_concurrency_cap"
       ),
       backpressure: {
-        max_queued_units: requireNumber(
+        max_queued_units: requireNumber2(
           backpressure["max_queued_units"],
           ".parallelism.backpressure.max_queued_units"
         ),
-        overload_action: requireString2(
+        overload_action: requireString3(
           backpressure["overload_action"],
           ".parallelism.backpressure.overload_action"
         ),
-        actions: requireStrings(backpressure["actions"], ".parallelism.backpressure.actions")
+        actions: requireStrings2(backpressure["actions"], ".parallelism.backpressure.actions")
+      },
+      prompt_signals: {
+        action: requireString3(promptSignals["action"], ".parallelism.prompt_signals.action"),
+        substantive_action: requireString3(
+          promptSignals["substantive_action"],
+          ".parallelism.prompt_signals.substantive_action"
+        ),
+        scale: requireString3(promptSignals["scale"], ".parallelism.prompt_signals.scale"),
+        spec: requireString3(promptSignals["spec"], ".parallelism.prompt_signals.spec"),
+        design_strong: requireString3(
+          promptSignals["design_strong"],
+          ".parallelism.prompt_signals.design_strong"
+        ),
+        design_weak: requireString3(
+          promptSignals["design_weak"],
+          ".parallelism.prompt_signals.design_weak"
+        )
       }
     },
     breaker: {
-      failure_threshold: requireNumber(breaker["failure_threshold"], ".breaker.failure_threshold"),
-      cooldown_waves: requireNumber(breaker["cooldown_waves"], ".breaker.cooldown_waves"),
-      half_open_probes: requireNumber(breaker["half_open_probes"], ".breaker.half_open_probes"),
-      states: requireStrings(breaker["states"], ".breaker.states"),
-      scopes: requireStrings(breaker["scopes"], ".breaker.scopes")
+      failure_threshold: requireNumber2(breaker["failure_threshold"], ".breaker.failure_threshold"),
+      cooldown_waves: requireNumber2(breaker["cooldown_waves"], ".breaker.cooldown_waves"),
+      half_open_probes: requireNumber2(breaker["half_open_probes"], ".breaker.half_open_probes"),
+      states: requireStrings2(breaker["states"], ".breaker.states"),
+      scopes: requireStrings2(breaker["scopes"], ".breaker.scopes")
     },
     hitl: {
-      reasons: requireStrings(hitl["reasons"], ".hitl.reasons"),
-      situations: requireStrings(hitl["situations"], ".hitl.situations"),
-      record_home: requireString2(hitl["record_home"], ".hitl.record_home")
+      reasons: requireStrings2(hitl["reasons"], ".hitl.reasons"),
+      situations: requireStrings2(hitl["situations"], ".hitl.situations"),
+      record_home: requireString3(hitl["record_home"], ".hitl.record_home")
+    },
+    router: {
+      agent: requireString3(router["agent"], ".router.agent"),
+      capability: requireString3(router["capability"], ".router.capability"),
+      reasons: requireStrings2(router["reasons"], ".router.reasons"),
+      escalate_when: {
+        multi_agent_intents_min: requireNumber2(
+          escalateWhen["multi_agent_intents_min"],
+          ".router.escalate_when.multi_agent_intents_min"
+        ),
+        unrouted_scale_signals: requireStrings2(
+          escalateWhen["unrouted_scale_signals"],
+          ".router.escalate_when.unrouted_scale_signals"
+        )
+      },
+      fixtures: requireRows3(router["fixtures"], ".router.fixtures").map((row, i) => ({
+        prompt: requireString3(row["prompt"], `.router.fixtures[${i}].prompt`),
+        escalate: requireBoolean(row["escalate"], `.router.fixtures[${i}].escalate`),
+        reasons: requireStrings2(row["reasons"], `.router.fixtures[${i}].reasons`),
+        intents: requireStrings2(row["intents"], `.router.fixtures[${i}].intents`)
+      }))
     }
   };
 }
-function malformed(what) {
-  throw new KernelError(`registries/policy.json: ${what}`);
-}
-function requireRecord(value, path) {
-  if (!isRecord(value)) malformed(`${path || "the document"} must be an object`);
-  return value;
-}
-function requireString2(value, path) {
-  if (typeof value !== "string") malformed(`${path} must be a string`);
-  return value;
-}
-function requireNumber(value, path) {
-  if (typeof value !== "number" || !Number.isFinite(value)) malformed(`${path} must be a number`);
-  return value;
-}
-function requireBoolean(value, path) {
-  if (typeof value !== "boolean") malformed(`${path} must be a boolean`);
-  return value;
-}
-function requireStrings(value, path) {
-  if (!Array.isArray(value)) malformed(`${path} must be an array of strings`);
-  return value.map((item, i) => requireString2(item, `${path}[${i}]`));
-}
-function requireRows2(value, path) {
-  if (!Array.isArray(value)) malformed(`${path} must be an array of objects`);
-  return value.map((item, i) => requireRecord(item, `${path}[${i}]`));
-}
 function requireStringMap(value, path) {
-  const row = requireRecord(value, path);
+  const row = requireRecord2(value, path);
   const out = {};
-  for (const [key, item] of Object.entries(row)) out[key] = requireString2(item, `${path}.${key}`);
+  for (const [key, item] of Object.entries(row)) out[key] = requireString3(item, `${path}.${key}`);
   return out;
 }
 function requireTierMap(value, path, item) {
-  const row = requireRecord(value, path);
+  const row = requireRecord2(value, path);
   return {
     low: item(row["low"], `${path}.low`),
     medium: item(row["medium"], `${path}.medium`),
@@ -407,7 +504,7 @@ function lazyRegistries(root) {
   const intents = memo(() => loadIntents(root));
   const models = memo(() => loadModels(root));
   const policy = memo(() => loadPolicy(root));
-  const decisionRules = memo(() => loadRegistry(root, "decision-rules.json"));
+  const decisionRules = memo(() => loadDecisionRules(root));
   const capabilities = memo(() => loadRegistry(root, "capabilities.json"));
   const agents = memo(() => loadRegistry(root, "agents.json"));
   return {
@@ -545,6 +642,76 @@ function fromHalfOpen(facts) {
     };
   }
   return { state: "open", allow: false, reason: "probe failed \u2014 reopen for another cooldown" };
+}
+
+// src/kernel/scale.ts
+function scaleSection(facts, regs) {
+  const signals = regs.policy.parallelism.prompt_signals;
+  const compiled = compiledSignals(signals);
+  const lower = asciiDowncase(facts.prompt);
+  const action = compiled.action.test(lower);
+  return {
+    big_task: action && compiled.scale.test(lower),
+    spec_authoring: compiled.spec.test(lower),
+    design_work: compiled.designStrong.test(lower) || action && compiled.designWeak.test(lower)
+  };
+}
+function asciiDowncase(prompt) {
+  return prompt.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+function compilePromptRegex(source, describe) {
+  try {
+    return new RegExp(source, "i");
+  } catch {
+    throw new KernelError(`${describe} is not a valid regex: ${source}`);
+  }
+}
+var cache = /* @__PURE__ */ new WeakMap();
+function compiledSignals(signals) {
+  const cached = cache.get(signals);
+  if (cached !== void 0) return cached;
+  const at = "registries/policy.json: .parallelism.prompt_signals";
+  const compiled = {
+    action: compilePromptRegex(signals.action, `${at}.action`),
+    scale: compilePromptRegex(signals.scale, `${at}.scale`),
+    spec: compilePromptRegex(signals.spec, `${at}.spec`),
+    designStrong: compilePromptRegex(signals.design_strong, `${at}.design_strong`),
+    designWeak: compilePromptRegex(signals.design_weak, `${at}.design_weak`)
+  };
+  cache.set(signals, compiled);
+  return compiled;
+}
+
+// src/kernel/decisions.ts
+function decisionsSection(facts, regs) {
+  const lower = asciiDowncase(facts.prompt);
+  const matches = rulesByPriority(regs.decisionRules).filter((candidate) => candidate.patterns.some((pattern) => pattern.test(lower))).map(({ rule }) => ({
+    id: rule.id,
+    // Copied, not aliased: a section is an answer, and a caller that edits
+    // one must not reach back into the memoised registry.
+    require: [...rule.then.require],
+    prefer: rule.then.prefer,
+    gate: rule.then.gate,
+    risk: rule.then.risk
+  }));
+  return {
+    matches,
+    any_high: matches.some((match) => match.risk === "high")
+  };
+}
+var cache2 = /* @__PURE__ */ new WeakMap();
+function rulesByPriority(registry) {
+  const cached = cache2.get(registry);
+  if (cached !== void 0) return cached;
+  const ordered = [...registry.rules].sort((a, b) => b.priority - a.priority);
+  const compiled = ordered.map((rule) => ({
+    rule,
+    patterns: rule.signals.map(
+      (signal, i) => compilePromptRegex(signal, `registries/decision-rules.json: rule ${rule.id} signals[${i}]`)
+    )
+  }));
+  cache2.set(registry, compiled);
+  return compiled;
 }
 
 // src/kernel/hitl.ts
@@ -897,10 +1064,10 @@ function routeByPath(file, regs, root) {
   return { domain: null, excluded: false };
 }
 function routeByIntent(text, regs) {
-  const lower = asciiDowncase(text);
+  const lower = asciiDowncase2(text);
   const matches = [];
   for (const intent of regs.intents.intents) {
-    if (!intent.signals.some((signal) => boundedContains(lower, asciiDowncase(signal)))) continue;
+    if (!intent.signals.some((signal) => boundedContains(lower, asciiDowncase2(signal)))) continue;
     matches.push({
       id: intent.id,
       title: intent.title,
@@ -916,7 +1083,78 @@ function routeByIntent(text, regs) {
   }
   return { matches, ambiguous: matches.length === 0 };
 }
-function asciiDowncase(text) {
+var RISK_ORDER = ["low", "medium", "high"];
+function routeEscalate(text, regs) {
+  const router = regs.policy.router;
+  const raw = routeByIntent(text, regs);
+  const scale = scaleSection({ prompt: text }, regs);
+  const rawIds = new Set(raw.matches.map((m) => m.id));
+  const matched = regs.intents.intents.filter((i) => rawIds.has(i.id));
+  const hasNonSuppressible = matched.some((i) => !i.suppressible);
+  const suppressed = [];
+  const surviving = [];
+  for (const intent of matched) {
+    const by = suppressorOf(intent, hasNonSuppressible, rawIds);
+    if (by === null) surviving.push(intent);
+    else suppressed.push({ id: intent.id, by });
+  }
+  const agents = [];
+  for (const intent of surviving) {
+    for (const agent of intent.agents) {
+      if (!agents.includes(agent)) agents.push(agent);
+    }
+  }
+  const scaleFlags = {
+    big_task: scale.big_task,
+    spec_authoring: scale.spec_authoring,
+    design_work: scale.design_work
+  };
+  const agentIntents = surviving.filter((i) => i.agents.length > 0).length;
+  const triggered = {
+    "multi-agent-dispatch": agentIntents >= router.escalate_when.multi_agent_intents_min,
+    // Zero RAW matches, not zero survivors: an intent that matched and was then
+    // suppressed still routed the prompt somewhere, so the prompt is not
+    // unrouted.
+    "unrouted-scale": rawIds.size === 0 && router.escalate_when.unrouted_scale_signals.some((signal) => scaleFlags[signal] === true),
+    "requires-dispatch-plan": surviving.some((i) => i.requires_dispatch_plan)
+  };
+  const reasons = router.reasons.filter((reason) => triggered[reason] === true);
+  return {
+    escalate: reasons.length > 0,
+    reasons,
+    intents: surviving.map((i) => i.id),
+    suppressed,
+    agents,
+    model_tier: highest(
+      surviving.map((i) => i.model_tier),
+      regs.models.escalation_order
+    ),
+    risk_floor: highest(
+      surviving.map((i) => i.risk_floor),
+      RISK_ORDER
+    ),
+    scale,
+    ambiguous: raw.ambiguous
+  };
+}
+function suppressorOf(intent, hasNonSuppressible, rawIds) {
+  if (intent.suppressible && hasNonSuppressible) return "more-specific-match";
+  return intent.suppressed_by.find((id) => rawIds.has(id)) ?? null;
+}
+function highest(values, order) {
+  let best = null;
+  let bestIndex = -1;
+  for (const value of values) {
+    if (value === null) continue;
+    const index = order.indexOf(value);
+    if (index > bestIndex) {
+      bestIndex = index;
+      best = value;
+    }
+  }
+  return best;
+}
+function asciiDowncase2(text) {
   return text.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 function boundedContains(haystack, needle) {
@@ -955,10 +1193,10 @@ function parseUnits(value) {
   if (!Array.isArray(value)) throw new KernelError("waves --units must be a JSON array");
   const rows = value;
   return rows.map((raw, i) => {
-    const malformed2 = `waves --units[${i}] must be an object with a non-empty string id`;
-    if (!isRecord(raw)) throw new KernelError(malformed2);
+    const malformed = `waves --units[${i}] must be an object with a non-empty string id`;
+    if (!isRecord(raw)) throw new KernelError(malformed);
     const id = raw["id"];
-    if (typeof id !== "string" || id === "") throw new KernelError(malformed2);
+    if (typeof id !== "string" || id === "") throw new KernelError(malformed);
     return {
       id,
       files: stringList(raw["files"], `waves --units[${i}].files must be an array of file paths`),
@@ -1018,16 +1256,26 @@ function unique(values) {
 // src/kernel/resolve.ts
 function resolve(facts, ctx) {
   const answer = {};
-  if (facts.path !== void 0 && facts.prompt !== void 0) {
+  const { prompt } = facts;
+  if (facts.path !== void 0 && prompt !== void 0) {
     throw new KernelError("a path fact and a prompt fact cannot be declared together");
+  }
+  if (facts.escalate === true && prompt === void 0) {
+    throw new KernelError("an escalate fact cannot be declared without a prompt fact");
+  }
+  if (facts.taskContract === true && facts.decisions !== void 0) {
+    throw new KernelError("a task-contract fact and a decisions fact cannot be declared together");
+  }
+  if (facts.taskContract === true && facts.hitl !== void 0) {
+    throw new KernelError("a task-contract fact and a hitl fact cannot be declared together");
   }
   if (facts.path !== void 0) {
     if (facts.path === "") throw new KernelError("a declared path fact must not be empty");
     answer.route = routeByPath(facts.path, ctx.registries, ctx.root);
   }
-  if (facts.prompt !== void 0) {
-    if (facts.prompt === "") throw new KernelError("a declared prompt fact must not be empty");
-    answer.route = routeByIntent(facts.prompt, ctx.registries);
+  if (prompt !== void 0) {
+    if (prompt === "") throw new KernelError("a declared prompt fact must not be empty");
+    answer.route = facts.escalate === true || facts.taskContract === true ? routeEscalate(prompt, ctx.registries) : routeByIntent(prompt, ctx.registries);
   }
   if (facts.workType !== void 0) {
     answer.model = modelSection({ workType: facts.workType }, ctx.registries);
@@ -1040,6 +1288,12 @@ function resolve(facts, ctx) {
   }
   if (facts.riskTier !== void 0) {
     answer.risk = riskSection({ riskTier: facts.riskTier }, ctx.registries);
+  }
+  if (facts.scale !== void 0) {
+    answer.scale = scaleSection(facts.scale, ctx.registries);
+  }
+  if (facts.decisions !== void 0) {
+    answer.decision_rules = decisionsSection(facts.decisions, ctx.registries);
   }
   if (facts.repair !== void 0) {
     answer.repair = repairSection(facts.repair, ctx.registries);
@@ -1056,7 +1310,84 @@ function resolve(facts, ctx) {
   if (facts.waves !== void 0) {
     answer.waves = wavesSection(facts.waves, ctx.registries);
   }
+  if (facts.taskContract === true) {
+    if (prompt === void 0) {
+      throw new KernelError("a task-contract fact cannot be declared without a prompt fact");
+    }
+    const route = answer.route;
+    if (route === void 0 || !("escalate" in route)) {
+      throw new KernelError("a task-contract fact answered no escalate route section");
+    }
+    const decisions = decisionsSection({ prompt }, ctx.registries);
+    answer.decision_rules = decisions;
+    const floor = decisions.any_high ? "high" : route.risk_floor;
+    const ceiling = floor === null ? null : ceilingAt(floor, ctx.registries);
+    if (decisions.any_high && ceiling !== null) {
+      answer.hitl = hitlSection({ riskTier: "high", autonomy: ceiling }, ctx.registries);
+    }
+    answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
+  }
   return answer;
+}
+var POLICY_BUNDLE = ["gates", "models", "parallelism", "risk-autonomy", "verification"];
+var AGENT_POLICY_RULE = "subagents";
+function taskContract(inputs, regs) {
+  const { prompt, route, decisions } = inputs;
+  const matched = regs.intents.intents.filter((intent) => route.intents.includes(intent.id));
+  const substantive = route.intents.length > 0 || decisions.matches.length > 0 || route.scale.big_task || route.scale.spec_authoring || route.scale.design_work || // A prompt can request real work without matching a registered domain
+  // ("update this prose"). The registry-owned action expression is the
+  // fallback that keeps such work inside the safety/verification bundle.
+  substantiveAction(prompt, regs);
+  return {
+    substantive,
+    intents: [...route.intents],
+    escalates: route.escalate,
+    escalation_reasons: [...route.reasons],
+    suppressed: route.suppressed.map((entry) => ({ ...entry })),
+    agents: [...route.agents],
+    rules: unique2(matched.flatMap((intent) => intent.rules)),
+    // jq's `unique` sorts as well as de-duplicates, and the answer callers
+    // already parse carries that ordering.
+    policy_rules: [
+      .../* @__PURE__ */ new Set([
+        ...substantive ? POLICY_BUNDLE : [],
+        ...route.agents.length > 0 ? [AGENT_POLICY_RULE] : []
+      ])
+    ].sort(),
+    skills: unique2(matched.flatMap((intent) => intent.skills)),
+    commands: unique2(matched.flatMap((intent) => intent.commands)),
+    mcp: unique2(matched.flatMap((intent) => intent.mcp)),
+    model_tier: route.model_tier,
+    risk_floor: inputs.floor,
+    autonomy_ceiling_at_floor: inputs.ceiling,
+    scale: { ...route.scale },
+    decision_rules: decisions.matches.map((match) => match.id),
+    required: unique2(decisions.matches.flatMap((match) => match.require)),
+    // jq's `map(.gate // empty)` drops a null value rather than emitting it, so
+    // a rule that names no gate and no preference contributes to neither list.
+    gates: unique2(declared(decisions.matches.map((match) => match.gate))),
+    preferences: unique2(declared(decisions.matches.map((match) => match.prefer)))
+  };
+}
+function ceilingAt(floor, regs) {
+  const ceiling = regs.policy.autonomy.ceiling_by_risk[floor];
+  if (ceiling === "") {
+    throw new KernelError(
+      `policy.json has no autonomy.ceiling_by_risk[${floor}] \u2014 resolve-task cannot resolve the ceiling hitl needs`
+    );
+  }
+  return ceiling;
+}
+function substantiveAction(prompt, regs) {
+  const source = regs.policy.parallelism.prompt_signals.substantive_action;
+  const pattern = compilePromptRegex(source, "registries/policy.json: .parallelism.prompt_signals.substantive_action");
+  return pattern.test(asciiDowncase(prompt));
+}
+function declared(values) {
+  return values.filter((value) => value !== null);
+}
+function unique2(values) {
+  return [...new Set(values)];
 }
 
 // src/kernel/cli.ts
@@ -1090,7 +1421,12 @@ var SUBCOMMANDS = {
   admit: admitProjection,
   breaker: breakerProjection,
   hitl: hitlProjection,
-  waves: wavesProjection
+  waves: wavesProjection,
+  "decision-rules": decisionRulesProjection,
+  scale: scaleProjection,
+  "route-escalate": routeEscalateProjection,
+  "resolve-task": resolveTaskProjection,
+  resolve: resolveProjection
 };
 function runKernel(argv2, io2) {
   const [name, ...args] = argv2;
@@ -1212,6 +1548,178 @@ function wavesProjection(ctx, args) {
   const section = resolve({ waves: { units: parseUnitsJson(units) } }, ctx).waves;
   if (section === void 0) throw new KernelError("waves: the kernel answered no waves section");
   return section;
+}
+function promptOf(cmd, args) {
+  const flags = parseFlags(cmd, args, ["--prompt"]);
+  const prompt = flags.get("--prompt");
+  if (prompt === void 0 || prompt === "") throw new KernelError(`${cmd} requires --prompt <text>`);
+  return prompt;
+}
+function decisionRulesProjection(ctx, args) {
+  const prompt = promptOf("decision-rules", args);
+  const section = resolve({ decisions: { prompt } }, ctx).decision_rules;
+  if (section === void 0) throw new KernelError("decision-rules: the kernel answered no decision-rules section");
+  return section;
+}
+function scaleProjection(ctx, args) {
+  const prompt = promptOf("scale", args);
+  const section = resolve({ scale: { prompt } }, ctx).scale;
+  if (section === void 0) throw new KernelError("scale: the kernel answered no scale section");
+  return section;
+}
+function routeEscalateProjection(ctx, args) {
+  const prompt = promptOf("route-escalate", args);
+  const section = resolve({ prompt, escalate: true }, ctx).route;
+  if (section === void 0 || !("escalate" in section)) {
+    throw new KernelError("route-escalate: the kernel answered no escalate route section");
+  }
+  return section;
+}
+function resolveTaskProjection(ctx, args) {
+  const prompt = promptOf("resolve-task", args);
+  const answer = resolve({ prompt, taskContract: true }, ctx);
+  const contract = answer.task_contract;
+  const route = answer.route;
+  const decisions = answer.decision_rules;
+  if (contract === void 0 || decisions === void 0 || route === void 0 || !("escalate" in route)) {
+    throw new KernelError("resolve-task: the kernel answered no task contract");
+  }
+  const hitl = answer.hitl;
+  return {
+    task_contract: contract,
+    route,
+    decision_rules: decisions,
+    hitl: hitl === void 0 ? null : { required: hitl.required, reasons: hitl.reasons }
+  };
+}
+function resolveProjection(ctx, args) {
+  const flags = parseFlags("resolve", args, ["--facts"]);
+  const facts = flags.get("--facts");
+  if (facts === void 0 || facts === "") throw new KernelError("resolve requires --facts <json>");
+  return resolve(parseFacts(facts), ctx);
+}
+function parseFacts(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new KernelError("resolve --facts must be a JSON object");
+  }
+  if (!isRecord(parsed)) throw new KernelError("resolve --facts must be a JSON object");
+  const facts = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    switch (key) {
+      case "path":
+        facts.path = factString(key, value);
+        break;
+      case "prompt":
+        facts.prompt = factString(key, value);
+        break;
+      case "escalate":
+        facts.escalate = factBoolean(key, value);
+        break;
+      case "taskContract":
+        facts.taskContract = factBoolean(key, value);
+        break;
+      case "workType":
+        facts.workType = factString(key, value);
+        break;
+      // Passed through unread, exactly as the risk arm passes its parsed
+      // --signals payload: the risk section owns what a well-formed one is.
+      case "signals":
+        facts.signals = value;
+        break;
+      case "riskTier":
+        facts.riskTier = factTier(key, value);
+        break;
+      case "scale":
+        facts.scale = { prompt: factString("scale.prompt", factRecord(key, value)["prompt"]) };
+        break;
+      case "decisions":
+        facts.decisions = { prompt: factString("decisions.prompt", factRecord(key, value)["prompt"]) };
+        break;
+      case "repair":
+        facts.repair = repairFacts(factRecord(key, value));
+        break;
+      case "admit":
+        facts.admit = admitFacts(factRecord(key, value));
+        break;
+      case "breaker":
+        facts.breaker = breakerFacts(factRecord(key, value));
+        break;
+      case "hitl":
+        facts.hitl = hitlFacts(factRecord(key, value));
+        break;
+      // `units` travels unread for the same reason `signals` does; an absent one
+      // reaches the waves section, which owns the message for it.
+      case "waves":
+        facts.waves = { units: factRecord(key, value)["units"] };
+        break;
+      default:
+        throw new KernelError(`resolve --facts: unknown fact ${key}`);
+    }
+  }
+  return facts;
+}
+function repairFacts(row) {
+  const facts = { check: factString("repair.check", row["check"]) };
+  if (row["attempt"] !== void 0) facts.attempt = factNumber("repair.attempt", row["attempt"]);
+  if (row["situation"] !== void 0) facts.situation = factString("repair.situation", row["situation"]);
+  return facts;
+}
+function admitFacts(row) {
+  return {
+    inflight: factNumber("admit.inflight", row["inflight"]),
+    queued: factNumber("admit.queued", row["queued"])
+  };
+}
+function breakerFacts(row) {
+  const facts = { state: factString("breaker.state", row["state"]) };
+  if (row["failures"] !== void 0) facts.failures = factNumber("breaker.failures", row["failures"]);
+  if (row["cooldownElapsed"] !== void 0) {
+    facts.cooldownElapsed = factBoolean("breaker.cooldownElapsed", row["cooldownElapsed"]);
+  }
+  if (row["probeResult"] !== void 0) facts.probeResult = factString("breaker.probeResult", row["probeResult"]);
+  return facts;
+}
+function hitlFacts(row) {
+  const facts = {
+    riskTier: factTier("hitl.riskTier", row["riskTier"]),
+    autonomy: factString("hitl.autonomy", row["autonomy"])
+  };
+  if (row["evidence"] !== void 0) facts.evidence = factString("hitl.evidence", row["evidence"]);
+  if (row["externalEffect"] !== void 0) {
+    facts.externalEffect = factFlag("hitl.externalEffect", row["externalEffect"]);
+  }
+  if (row["conflict"] !== void 0) facts.conflict = factFlag("hitl.conflict", row["conflict"]);
+  if (row["situation"] !== void 0) facts.situation = factString("hitl.situation", row["situation"]);
+  return facts;
+}
+function factRecord(at, value) {
+  if (!isRecord(value)) throw new KernelError(`resolve --facts: ${at} must be an object`);
+  return value;
+}
+function factString(at, value) {
+  if (typeof value !== "string") throw new KernelError(`resolve --facts: ${at} must be a string`);
+  return value;
+}
+function factBoolean(at, value) {
+  if (typeof value !== "boolean") throw new KernelError(`resolve --facts: ${at} must be a boolean`);
+  return value;
+}
+function factNumber(at, value) {
+  if (typeof value !== "number") throw new KernelError(`resolve --facts: ${at} must be a number`);
+  return value;
+}
+function factFlag(at, value) {
+  if (typeof value !== "boolean" && typeof value !== "string") {
+    throw new KernelError(`resolve --facts: ${at} must be a boolean or a string`);
+  }
+  return value;
+}
+function factTier(at, value) {
+  if (!isRiskTier(value)) throw new KernelError(`resolve --facts: ${at} must be low|medium|high`);
+  return value;
 }
 function parseSignals(raw) {
   try {

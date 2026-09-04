@@ -1,8 +1,10 @@
 import { isRecord, stringArray } from '../lib/json';
 import { loadRegistry } from './load';
 
-// hook_guidance and risk_floor are deliberately not loaded: both are derived in
-// src/kernel/route.ts, so the registry keeps one form of each fact.
+// hook_guidance and risk_floor are not loaded because routing.json no longer
+// stores them: both are derived in src/kernel/route.ts (guidance rendered from
+// rules/skills/agent/hint, the floor read from the claiming intent), so the
+// registry keeps one form of each fact.
 export interface RoutingDomain {
   id: string;
   match: { paths: string[]; basenames: string[] };

@@ -761,13 +761,15 @@ check_C26c() {
 check_C26d() {
   have_jq || return 0
   have_hitl_inputs || return 0
-  # C26d: the backpressure coupling. cmd_admit's reject message embeds
+  # C26d: the backpressure coupling. admit's reject message embeds
   # "hitl: budget-exhausted" as prose, and nothing tied that string to this
   # vocabulary — so renaming the reason id would have left Task 2's reject
   # message citing a reason that no longer exists, in the one place a caller
   # reads to find out why a human is needed. Three things must agree: the
-  # registry declares the id in BOTH reasons and situations, cmd_admit cites
-  # it, and kernel.sh hitl --situation reject answers with exactly it.
+  # registry declares the id in BOTH reasons and situations, src/kernel/admit.ts
+  # cites it, and kernel.sh hitl --situation reject answers with exactly it.
+  # The literal moved out of scripts/kernel.sh when that became a shim over
+  # dist/engineos.cjs; the source that owns the message is what gets grepped.
   #
   # The id is spelled once, here, because something has to say WHICH reason
   # backpressure exhaustion maps to. A rename in the registry fails the first
@@ -777,8 +779,9 @@ check_C26d() {
   bx=budget-exhausted
   if jq -e --arg b "$bx" \
        '((.hitl.reasons // []) | index($b)) and ((.hitl.situations // []) | index($b))' "$PJ" >/dev/null 2>&1; then
-    grep -q "hitl: $bx" "$KSH" \
-      || k_bad="$k_bad kernel.sh-reject-message-does-not-cite-hitl:-$bx"
+    # Code lines only: a comment naming the literal must not satisfy the check.
+    grep -v '^[[:space:]]*//' "$ADMIT_TS" | grep -q "hitl: $bx" \
+      || k_bad="$k_bad admit.ts-reject-message-does-not-cite-hitl:-$bx"
     low_ceil=$(jq -r '.autonomy.ceiling_by_risk.low // ""' "$PJ")
     got=$(bash "$KSH" hitl --risk low --autonomy "$low_ceil" --situation reject 2>/dev/null \
           | jq -r '[.reasons[]?] | join(",")' 2>/dev/null)

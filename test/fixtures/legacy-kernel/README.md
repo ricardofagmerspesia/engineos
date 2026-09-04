@@ -28,11 +28,29 @@ failure always means "the port disagrees with the kernel we ported", and never
   byte-identical registry data. Without that, `route-path` parity would fail on
   guidance strings for a reason that has nothing to do with the port.
 
+## The snapshot keeps fields the live registry has dropped
+
+`registries/routing.json` stopped storing `hook_guidance` and `risk_floor` on
+its ten domain rows (plan Task 13 / design "Route guidance" step two): the
+TypeScript kernel renders the guidance string from `rules`, `skills`, `agent`
+and `hint`, and reads a domain's floor from the intent that claims it, so the
+live registry keeps one form of each fact.
+
+The snapshot under `registries/` here deliberately **retains both fields**. The
+pinned bash kernel emits them by reading them (`{domain: .id, rules, skills,
+agent, risk_floor, hook_guidance, excluded: false}`) and has no renderer; strip
+them from the snapshot and every `route-path` parity case would compare a
+derived string against `null` — a red that says nothing about the port. The
+divergence between this snapshot and the live registry is therefore expected,
+and it is the reason the fixture is pinned rather than refreshed: see
+"Refreshing" below before copying `registries/*.json` over it again.
+
 ## How the harness points the bash kernel at this snapshot
 
-`scripts/kernel.sh` derives its own root from where the file sits
+The pinned `kernel.sh` derives its own root from where the file sits
 (`ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"`, `REG="$ROOT/registries"`)
-and never reads `ENGINEOS_ROOT`. A copy sitting at `legacy-kernel/kernel.sh`
+and never reads `ENGINEOS_ROOT` (the live `scripts/kernel.sh` is now a shim that
+does export it). A copy sitting at `legacy-kernel/kernel.sh`
 would therefore resolve its root to `test/fixtures/` and read registries that do
 not exist there.
 
@@ -49,10 +67,14 @@ Only when the live bash kernel or the live registries change in a way the port
 must keep matching:
 
 ```sh
-cp scripts/kernel.sh test/fixtures/legacy-kernel/kernel.sh
-chmod +x test/fixtures/legacy-kernel/kernel.sh
 cp registries/*.json test/fixtures/legacy-kernel/registries/
 ```
+
+`scripts/kernel.sh` is no longer copyable: it is a shim over
+`dist/engineos.cjs`, so the pinned `kernel.sh` here is the last real bash
+implementation and stays frozen. Refreshing the registries alone will also
+**re-break** `route-path` parity unless `hook_guidance` and `risk_floor` are put
+back on the ten domain rows of the copied `routing.json` — see the section above.
 
 Then update the "Pinned at" commit above. A refresh that makes a red parity case
 green is a decision to be argued for in the PR, not a routine step: it moves the

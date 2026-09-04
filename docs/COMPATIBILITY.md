@@ -22,11 +22,24 @@ Changing any of these is a **breaking change**:
 | `scripts/kernel.sh` subcommand names and their JSON answer shape | Called by hooks, by the router agent, and by consumers' own tooling |
 | The `## Return format` envelope fields | Parsed by orchestrators |
 
-The kernel subcommands covered by that row are `route-path`, `route-intent`,
+The kernel subcommands covered by that row are `resolve`, `route-path`, `route-intent`,
 `model`, `risk`, `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`,
 `decision-rules`, `scale`, `route-escalate` and `resolve-task`. Adding a subcommand or a field to an answer
 is MINOR; removing or renaming either is MAJOR and gets the deprecation window
-below. Two arms that had no caller anywhere — `retry` and `capability` — were
+below.
+
+`resolve` is the one arm the TypeScript runtime migration adds, and adding it is
+MINOR: `engineos kernel resolve --facts '<json>'` takes the declared facts the
+other fourteen arms each parse out of their own flags, and answers the sparse
+object those arms are projections of — a section is present exactly when the
+facts it needs were declared. Nothing is removed or renamed by it: every
+fourteen-arm answer stays byte-identical, which is what the differential parity
+suite asserts. It is versioned surface from the day it lands, so renaming it
+later is a deprecation with a window, not an edit. The fact key vocabulary
+(`path`, `prompt`, `escalate`, `taskContract`, `workType`, `signals`,
+`riskTier`, `scale`, `decisions`, `repair`, `admit`, `breaker`, `hitl`,
+`waves`) is part of that surface; an unknown key is refused rather than
+ignored, so adding one is MINOR and removing one is MAJOR. Two arms that had no caller anywhere — `retry` and `capability` — were
 removed *before* this row was written, deliberately: they were the last
 removals this policy did not yet cover. The kernel's internals are not surface:
 `reg`, the jq programs, and how many processes an answer costs are free to change
@@ -179,3 +192,37 @@ convenience. The guard bounds the shape and the size of what reaches disk; it
 does not classify content, and `hooks/lib-common.sh` sanitizes rather than
 rejects at the hook boundary, so a harness-supplied value's characters still
 transit dash-joined.
+
+### `scripts/kernel.sh` becomes a shim, and `routing.json` drops two derived fields
+
+Two more MINOR entries in the same release train, both from the TypeScript
+runtime migration.
+
+| Surface | Change | Kind |
+|---|---|---|
+| `scripts/kernel.sh` | now a shim that `exec`s `node dist/engineos.cjs kernel "$@"` with `ENGINEOS_ROOT` set to its own root | implementation, surface unchanged |
+| `registries/routing.json` domain rows | `hook_guidance` and `risk_floor` removed; readers use `agent`, `skills[]`, `rules[]` and the optional `hint` | nested-field removal, see below |
+
+The kernel's surface is unchanged by the shim: the same fifteen subcommands
+answer the same JSON, in the same key order, with the same exit codes — which
+is what `src/kernel/parity.test.ts` asserts against a pinned copy of the bash
+kernel. What changed is the runtime requirement. The kernel needed `bash` and
+`jq`; it now needs `bash` and **node >= 18**, and no longer calls `jq` itself.
+A consumer whose environment has `jq` but no node must install node before
+upgrading; hooks and checks that call `jq` on the kernel's *output* are
+unaffected. The bundle is committed at `dist/engineos.cjs`, and a relocated copy
+of `kernel.sh` answers from its own `registries/` exactly as before, because the
+shim exports `ENGINEOS_ROOT`.
+
+The `routing.json` removal is MINOR for the same reason the `written_by` shape
+change was: the surface table names the `registries/*.json` **top-level shape**,
+and both fields are nested inside `domains[]`. Neither was ever the only form of
+its fact — `hook_guidance` is rendered from a row's `rules`, `skills`, `agent`
+and `hint`, and a domain's risk floor is the floor of the intent that claims it
+in `registries/intents.json` — so the registry now stores each fact once and the
+kernel derives the rest. **The `route-path` answer is unchanged**: it still
+carries `hook_guidance` and `risk_floor`, now computed rather than copied, so
+`hooks/route-before-change.sh` and any consumer reading the kernel's output
+needs no change. Only a consumer parsing `registries/routing.json` directly for
+those two keys must switch to the structured fields. `risk_floor` on
+`registries/intents.json` intent rows is a different field and is untouched.

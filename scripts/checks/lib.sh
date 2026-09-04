@@ -21,6 +21,9 @@ MJ=registries/models.json
 IJ=registries/intents.json
 PJ=registries/policy.json
 KSH=scripts/kernel.sh
+# scripts/kernel.sh is a shim over dist/engineos.cjs, so a Check that greps for a
+# message literal reads the TypeScript source that owns it, not the shim.
+ADMIT_TS=src/kernel/admit.ts
 TSH=scripts/telemetry.sh
 EJSH=scripts/exec-journal.sh
 ROUTER_MD=agents/router.md
