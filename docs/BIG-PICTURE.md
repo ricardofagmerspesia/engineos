@@ -82,6 +82,9 @@ decision, enforcement — one fact, four homes, one owner each.
 
 What happens between "you type a request" and "done".
 
+> Prefer to watch it? [`BIG-PICTURE-lifecycle.html`](BIG-PICTURE-lifecycle.html) steps
+> through the same flow as an animation (play, step, keyboard).
+
 ```mermaid
 flowchart TD
     U([You type a request]) --> UPS

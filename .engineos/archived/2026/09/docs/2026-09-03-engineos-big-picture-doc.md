@@ -15,6 +15,8 @@ There was no single consultable page showing how the pieces (constitution, regis
 
 ## Scope
 - docs/BIG-PICTURE.md (new)
+- docs/BIG-PICTURE.html (new, standalone rendered copy)
+- docs/START.md, README.md (one-line pointers)
 
 ## Checklist
 - [x] Gather repo layout (hooks.json, kernel subcommands, registries, agents, skills, commands)
@@ -24,10 +26,10 @@ There was no single consultable page showing how the pieces (constitution, regis
 - [x] Avoid docs-ledger budget phrases ("lint + typecheck" rephrased) and reference only existing paths
 
 ## What was made
-Wrote docs/BIG-PICTURE.md (10 sections, 8 Mermaid diagrams, 3 tables, glossary). Content derived from CLAUDE.md, rules/*.md, hooks/hooks.json, scripts/kernel.sh dispatch table, registries/*.json, README "What's inside" and .engineos/README.md. Rephrased the budgeted phrase from the docs ledger so hooks/test-docs.sh single-source budgets stay unaffected. No other file touched.
+Wrote docs/BIG-PICTURE.md (10 sections, 8 Mermaid diagrams, 3 tables, glossary). Content derived from CLAUDE.md, rules/*.md, hooks/hooks.json, scripts/kernel.sh dispatch table, registries/*.json, README "What's inside" and .engineos/README.md. Rephrased the budgeted phrase from the docs ledger so hooks/test-docs.sh single-source budgets stay unaffected. Follow-up in the same PR: linked the page from docs/START.md and the README table, and added docs/BIG-PICTURE.html, a standalone HTML copy of the same content (IBM Plex type, light/dark tokens, mermaid 11.15.0 from cdnjs) so the diagrams render outside GitHub.
 
 ## Verification
-Manual review of Mermaid syntax and path references only. hooks/test-docs.sh and scripts/validate-engineos.sh not run in this session (verification is asked for at task end per the user's global rule).
+hooks/test-docs.sh pass=190 fail=0; scripts/validate-engineos.sh passed 107, failed 0 (run after the markdown landed). HTML copy reviewed by eye only.
 
 ## Human decisions
 None fired: risk=low, autonomy A2, no hitl reason from the advisor.
