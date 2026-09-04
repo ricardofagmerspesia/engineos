@@ -4,6 +4,15 @@
 - DO load secrets from environment/secret manager only; reference by name in config templates (`${DB_PASSWORD}`).
 - DO add secret patterns to .gitignore and scan before commit (`.env*`, `*.pem`, `credentials*`).
 - DON'T put keys in code, settings files committed to git, prompts, logs, or error messages.
+- DON'T hardcode passwords, or any credential, anywhere a production deploy can reach:
+  no literal passwords in code or config, no `process.env.DB_PASSWORD ?? 'admin'`
+  fallbacks, no default admin accounts, no seed users with fixed passwords, no
+  "temporary" values behind an `if (env === 'prod')` guard. Production reads the
+  secret from the environment/secret manager or crashes at startup — it never falls
+  back to a literal.
+- Local-only defaults (dev `docker-compose`, test fixtures) are the single exception,
+  and only when they are scoped to a non-production environment, shared with no real
+  system, and absent from every production image, chart, and env file.
 - If a secret ever touches git history or a shared file: rotate it immediately AND scrub history. Removal is not enough.
 
 ## Input validation
@@ -33,6 +42,7 @@
 
 ## Pre-merge checklist (apply on review intent)
 - [ ] No secrets in diff
+- [ ] No hardcoded passwords or credential fallbacks reachable from a production deploy
 - [ ] All new inputs validated (body, params, headers, files)
 - [ ] AuthZ on every new endpoint, object-level where applicable
 - [ ] No raw SQL string building / no unescaped output
