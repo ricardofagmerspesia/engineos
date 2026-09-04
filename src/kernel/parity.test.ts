@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { resolveRoot } from '../registry/paths';
 import { runInProcess, tempRoot, type RunResult } from '../testing/harness';
 import { runKernel } from './cli';
+import { lazyRegistries } from './context';
 
 // Differential parity (plan Task 8b). Every case runs the SAME arm and args
 // through the pinned bash kernel and through the TypeScript projection, over
@@ -20,6 +21,13 @@ import { runKernel } from './cli';
 // are skipped by name (see armIsPorted), never failed.
 
 const FIXTURE = join(resolveRoot({}, __dirname), 'test', 'fixtures', 'legacy-kernel');
+
+// The FIXTURE's own policy — the registries both sides are staged with — read
+// through the typed loader, lazily. Cases derive their numbers from it for the
+// reason scripts/test-kernel.sh derives its own: an inflight of 3 is "below the
+// cap" only for as long as the cap is 6, so a literal would turn a correct kernel
+// red the day the registry is re-parameterised.
+const fixtureRegistries = lazyRegistries(FIXTURE);
 
 // One frontend, one backend, one security path (three different domains and
 // three different match kinds), one excluded basename, one path no domain claims.
@@ -91,6 +99,156 @@ const REPAIR_CASES = [
   ['--check', 'lint', '--attempt', '1', '--situation', 'nonsense'],
 ];
 
+// The `run admit`, `run breaker`, `run hitl` and `run waves` blocks of
+// scripts/test-kernel.sh, as case builders because each one reads the fixture's
+// policy.
+//
+// Deliberately NOT cases, across all four:
+//   - a flag with no value (`admit --inflight`, `breaker --state`, `hitl --risk`,
+//     `hitl --situation`). These three bash arms DO refuse — they check
+//     `[ $# -ge 2 ]` before shifting — but with a per-arm wording ("admit requires
+//     a value for --inflight") while parseFlags answers the single message the
+//     plan pins for every arm ("admit: --inflight requires a value"). Both exit 1
+//     with a JSON error; only the text differs, and cli.test.ts asserts the
+//     TypeScript one.
+//   - `waves --units` with no value. bash binds ${2:-} and `shift 2` runs off the
+//     end, so the flag re-matches and the loop spins forever: there is no answer
+//     to compare against, and the process has to be killed.
+//   - an unknown argument (`hitl --bogus x`). Same divergence as the first entry:
+//     bash says "unknown argument", parseFlags says "unknown flag".
+//   - every relocated-kernel case (a policy with no wave_concurrency_cap, no
+//     breaker block, no hitl.record_home, a bogus overload_action, a
+//     high_with_thin_evidence that is not a level id). Those assert fail-closed
+//     behaviour against a MUTATED registry, which this harness's byte-identical
+//     staging cannot express by construction; admit.test.ts, breaker.test.ts and
+//     hitl.test.ts carry them.
+function admitCases(): string[][] {
+  const parallelism = fixtureRegistries.policy.parallelism;
+  const cap = parallelism.wave_concurrency_cap;
+  const maxQueued = parallelism.backpressure.max_queued_units;
+  // A load strictly inside any cap >= 1, derived from the cap itself.
+  const partial = Math.floor(cap / 2);
+  return [
+    ['--inflight', '0', '--queued', '0'],
+    ['--inflight', String(partial), '--queued', '0'],
+    ['--inflight', String(cap), '--queued', '0'],
+    ['--inflight', String(cap + 1), '--queued', String(maxQueued - 1)],
+    ['--inflight', String(cap), '--queued', String(maxQueued)],
+    // A leading zero is a shell-ism, not a JSON number: both sides normalise it.
+    ['--inflight', '02', '--queued', '0'],
+    ['--inflight', 'abc', '--queued', '0'],
+    ['--inflight', '1', '--queued', 'abc'],
+    ['--inflight', '1'],
+    [],
+  ];
+}
+
+function breakerCases(): string[][] {
+  const threshold = fixtureRegistries.policy.breaker.failure_threshold;
+  return [
+    ['--state', 'closed', '--failures', '0'],
+    ['--state', 'closed', '--failures', String(threshold - 1)],
+    ['--state', 'closed', '--failures', String(threshold)],
+    // The value is the threshold itself, so only a correctly parsed number
+    // answers open — "00" would answer closed for any threshold >= 1.
+    ['--state', 'closed', '--failures', `0${String(threshold)}`],
+    ['--state', 'open', '--cooldown-elapsed', 'false'],
+    ['--state', 'open', '--cooldown-elapsed', 'true'],
+    ['--state', 'half-open', '--probe-result', 'ok'],
+    ['--state', 'half-open', '--probe-result', 'failed'],
+    ['--state', 'closed'],
+    ['--state', 'closed', '--failures', 'abc'],
+    ['--state', 'open'],
+    ['--state', 'open', '--cooldown-elapsed', 'maybe'],
+    ['--state', 'half-open'],
+    ['--state', 'half-open', '--probe-result', 'maybe'],
+    ['--state', 'bogus', '--failures', '1'],
+    ['--failures', '1'],
+    [],
+  ];
+}
+
+function hitlCases(): string[][] {
+  const policy = fixtureRegistries.policy;
+  // Every declared situation, from the registry both sides read: a situation the
+  // kernel accepts and then drops would answer required:false, and a situation
+  // one side declares and the other does not would answer two different things.
+  const situations = [...policy.retry.never_retry, ...policy.hitl.situations];
+  return [
+    ['--risk', 'low', '--autonomy', 'A2'],
+    ['--risk', 'high', '--autonomy', 'A3'],
+    ['--risk', 'medium', '--autonomy', 'A3', '--external-effect', 'true'],
+    ['--risk', 'medium', '--autonomy', 'A2', '--external-effect', 'true'],
+    ['--risk', 'high', '--autonomy', 'A3', '--conflict', 'true', '--external-effect', 'true'],
+    // Thin evidence drops exactly one level, never raises, bottoms out at A1 and
+    // is capped by autonomy.high_with_thin_evidence at risk high.
+    ['--risk', 'medium', '--autonomy', 'A2', '--evidence', 'thin'],
+    ['--risk', 'low', '--autonomy', 'A2', '--evidence', 'thin'],
+    ['--risk', 'medium', '--autonomy', 'A3', '--evidence', 'thin'],
+    ['--risk', 'low', '--autonomy', 'A4', '--evidence', 'thin'],
+    ['--risk', 'low', '--autonomy', 'A0', '--evidence', 'thin'],
+    ['--risk', 'high', '--autonomy', 'A0', '--evidence', 'thin'],
+    ['--risk', 'medium', '--autonomy', 'A1', '--evidence', 'thin'],
+    ['--risk', 'high', '--autonomy', 'A3', '--evidence', 'thin'],
+    ['--risk', 'high', '--autonomy', 'A4', '--evidence', 'thin'],
+    // Adequate evidence is the identity: without it a kernel that always dropped
+    // would pass every case above.
+    ['--risk', 'medium', '--autonomy', 'A3'],
+    ['--risk', 'low', '--autonomy', 'A0'],
+    ...situations.map((situation) => ['--risk', 'low', '--autonomy', 'A2', '--situation', situation]),
+    ['--risk', 'low', '--autonomy', 'A2', '--situation', 'nonsense'],
+    // An empty situation is no situation at all, on both sides.
+    ['--risk', 'low', '--autonomy', 'A2', '--situation', ''],
+    ['--risk', 'low', '--autonomy', 'A9'],
+    ['--risk', 'low', '--autonomy', 'A2', '--evidence', 'maybe'],
+    ['--risk', 'low', '--autonomy', 'A2', '--conflict', 'yes'],
+    ['--risk', 'banana', '--autonomy', 'A2'],
+    ['--risk', 'low'],
+    ['--autonomy', 'A2'],
+    [],
+  ];
+}
+
+function wavesCases(): string[][] {
+  const payloads = wavesPayloads();
+  // The arm alone: bash reads an absent --units and an empty one through the same
+  // guard, so both answer "waves requires --units <json array>".
+  return [...payloads.map((payload) => ['--units', payload]), []];
+}
+
+function wavesPayloads(): string[] {
+  const cap = fixtureRegistries.policy.parallelism.wave_concurrency_cap;
+  // cap + 2 independent units is always exactly two waves, sized cap and 2 — a
+  // literal count is "two over the cap" only for one value of the cap.
+  const capUnits = Array.from({ length: cap + 2 }, (_, i) => ({ id: `u${String(i + 1)}`, files: [], depends_on: [] }));
+  return [
+    JSON.stringify([
+      { id: 'a', files: ['a.ts'], depends_on: [] },
+      { id: 'b', files: ['b.ts'], depends_on: [] },
+      { id: 'c', files: ['c.ts'], depends_on: ['a', 'b'] },
+    ]),
+    // Two units in one wave owning a file is a violation, not an error: the plan
+    // is still emitted, with the collision named.
+    JSON.stringify([
+      { id: 'a', files: ['shared.ts'], depends_on: [] },
+      { id: 'b', files: ['shared.ts'], depends_on: [] },
+    ]),
+    JSON.stringify(capUnits),
+    JSON.stringify([
+      { id: 'a', files: [], depends_on: ['b'] },
+      { id: 'b', files: [], depends_on: ['a'] },
+    ]),
+    JSON.stringify([{ id: 'a', files: [], depends_on: [] }, { id: 'a', files: [], depends_on: [] }]),
+    JSON.stringify([{ id: 'a', files: [], depends_on: ['zz'] }]),
+    '[]',
+    // Not JSON at all, and JSON that is not an array: bash failed both on the
+    // same `type == "array"` guard, with the same message.
+    '{}',
+    'not json',
+    '',
+  ];
+}
+
 // Probed once: both tools are external, and a missing one skips rather than
 // fails the suite (plan Task 8b).
 const MISSING_TOOL = firstMissingTool(['bash', 'jq']);
@@ -117,6 +275,22 @@ test('gates answers identically to the pinned bash kernel', (t) => {
 
 test('repair answers identically to the pinned bash kernel', (t) => {
   runArm(t, 'repair', REPAIR_CASES);
+});
+
+test('admit answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'admit', admitCases());
+});
+
+test('breaker answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'breaker', breakerCases());
+});
+
+test('hitl answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'hitl', hitlCases());
+});
+
+test('waves answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'waves', wavesCases());
 });
 
 // ------------------------------------------------------------------ internals

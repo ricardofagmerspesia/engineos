@@ -172,6 +172,83 @@ test('facts for several sections are answered together, each under its own key',
   assert.deepEqual(Object.keys(answer), ['route', 'model', 'risk', 'repair']);
 });
 
+// Wave 1(c)'s four sections, wired the same way and asserted the same way: the
+// section modules own what each answer MEANS (admit.test.ts, breaker.test.ts,
+// hitl.test.ts, waves.test.ts), and these cases own the wiring only.
+
+test('an admit fact answers the admit section, and nothing else', () => {
+  const answer = resolve({ admit: { inflight: 0, queued: 0 } }, ctx);
+  assert.deepEqual(Object.keys(answer), ['admit']);
+  const section = answer.admit;
+  if (section === undefined) throw new Error('no admit section for an admit fact');
+  assert.deepEqual(Object.keys(section), ['action', 'capacity', 'reason']);
+  // The cap is read from the same registry the section reads, so
+  // re-parameterising it moves this assertion instead of turning it red.
+  assert.deepEqual(section, {
+    action: 'dispatch',
+    capacity: cap(),
+    reason: `inflight 0 below cap ${cap()}`,
+  });
+});
+
+test('a breaker fact answers the breaker section', () => {
+  const section = resolve({ breaker: { state: 'closed', failures: 0 } }, ctx).breaker;
+  if (section === undefined) throw new Error('no breaker section for a breaker fact');
+  assert.deepEqual(Object.keys(section), ['state', 'allow', 'reason']);
+  assert.equal(section.state, 'closed');
+  assert.equal(section.allow, true);
+});
+
+test('a hitl fact answers the hitl section', () => {
+  const section = resolve({ hitl: { riskTier: 'high', autonomy: 'A3' } }, ctx).hitl;
+  if (section === undefined) throw new Error('no hitl section for a hitl fact');
+  assert.deepEqual(Object.keys(section), ['required', 'reasons', 'autonomy_after', 'record_home']);
+  assert.equal(section.required, true);
+  assert.deepEqual(section.reasons, ['high-risk']);
+  assert.equal(section.autonomy_after, 'A3');
+});
+
+test('a waves fact answers the waves section', () => {
+  const units = [
+    { id: 'a', files: ['a.ts'], depends_on: [] },
+    { id: 'b', files: ['b.ts'], depends_on: [] },
+    { id: 'c', files: ['c.ts'], depends_on: ['a', 'b'] },
+  ];
+  const section = resolve({ waves: { units } }, ctx).waves;
+  if (section === undefined) throw new Error('no waves section for a waves fact');
+  assert.deepEqual(Object.keys(section), ['waves', 'violations', 'fanout_line']);
+  assert.deepEqual(section.waves, [['a', 'b'], ['c']]);
+  assert.deepEqual(section.violations, []);
+});
+
+test('each Wave 1(c) section refusing its own fact propagates out of resolve', () => {
+  assert.throws(() => resolve({ admit: { inflight: -1, queued: 0 } }, ctx), KernelError);
+  assert.throws(() => resolve({ breaker: { state: 'bogus' } }, ctx), KernelError);
+  assert.throws(() => resolve({ hitl: { riskTier: 'low', autonomy: 'A9' } }, ctx), KernelError);
+  assert.throws(() => resolve({ waves: { units: 'not an array' } }, ctx), KernelError);
+});
+
+// The Answer's key order is part of its contract: a composite caller (Wave 1(d)'s
+// resolve-task) reads the sections in this order, so a section wired in at the
+// wrong place would be visible here rather than in a diff nobody runs.
+test('every declared fact is answered under its own key, in Answer order', () => {
+  const answer = resolve({
+    path: 'README.md',
+    workType: 'mechanical',
+    riskTier: 'low',
+    repair: { check: 'test', attempt: 0 },
+    admit: { inflight: 0, queued: 0 },
+    breaker: { state: 'closed', failures: 0 },
+    hitl: { riskTier: 'low', autonomy: 'A2' },
+    waves: { units: [] },
+  }, ctx);
+  assert.deepEqual(Object.keys(answer), ['route', 'model', 'risk', 'repair', 'admit', 'breaker', 'hitl', 'waves']);
+});
+
+function cap(): number {
+  return ctx.registries.policy.parallelism.wave_concurrency_cap;
+}
+
 // The risk section is one type with two forms; each helper narrows to the form
 // its own declared fact answers, the same way the two route helpers above do.
 function classified(signals: unknown): ClassifiedRiskSection {

@@ -244,6 +244,10 @@ function loadPolicy(root) {
   const retry = requireRecord(p["retry"], ".retry");
   const gates = requireRecord(p["gates"], ".gates");
   const specThreshold = requireRecord(gates["spec_threshold"], ".gates.spec_threshold");
+  const parallelism = requireRecord(p["parallelism"], ".parallelism");
+  const backpressure = requireRecord(parallelism["backpressure"], ".parallelism.backpressure");
+  const breaker = requireRecord(p["breaker"], ".breaker");
+  const hitl = requireRecord(p["hitl"], ".hitl");
   return {
     version: requireString2(p["version"], ".version"),
     risk: {
@@ -295,6 +299,35 @@ function loadPolicy(root) {
           ".gates.spec_threshold.or_any_new_feature"
         )
       }
+    },
+    parallelism: {
+      wave_concurrency_cap: requireNumber(
+        parallelism["wave_concurrency_cap"],
+        ".parallelism.wave_concurrency_cap"
+      ),
+      backpressure: {
+        max_queued_units: requireNumber(
+          backpressure["max_queued_units"],
+          ".parallelism.backpressure.max_queued_units"
+        ),
+        overload_action: requireString2(
+          backpressure["overload_action"],
+          ".parallelism.backpressure.overload_action"
+        ),
+        actions: requireStrings(backpressure["actions"], ".parallelism.backpressure.actions")
+      }
+    },
+    breaker: {
+      failure_threshold: requireNumber(breaker["failure_threshold"], ".breaker.failure_threshold"),
+      cooldown_waves: requireNumber(breaker["cooldown_waves"], ".breaker.cooldown_waves"),
+      half_open_probes: requireNumber(breaker["half_open_probes"], ".breaker.half_open_probes"),
+      states: requireStrings(breaker["states"], ".breaker.states"),
+      scopes: requireStrings(breaker["scopes"], ".breaker.scopes")
+    },
+    hitl: {
+      reasons: requireStrings(hitl["reasons"], ".hitl.reasons"),
+      situations: requireStrings(hitl["situations"], ".hitl.situations"),
+      record_home: requireString2(hitl["record_home"], ".hitl.record_home")
     }
   };
 }
@@ -407,6 +440,230 @@ function memo(make) {
     if (cell === null) cell = { value: make() };
     return cell.value;
   };
+}
+
+// src/kernel/admit.ts
+function admitSection(facts, regs) {
+  requireCount(facts.inflight, "inflight");
+  requireCount(facts.queued, "queued");
+  const parallelism = regs.policy.parallelism;
+  const backpressure = parallelism.backpressure;
+  if (!backpressure.actions.includes(backpressure.overload_action)) {
+    throw new KernelError(
+      "policy.json parallelism.backpressure.overload_action is not one of the declared backpressure.actions \u2014 admit will not emit an action the registry does not declare"
+    );
+  }
+  const cap = parallelism.wave_concurrency_cap;
+  const maxQueued = backpressure.max_queued_units;
+  const capacity = cap - facts.inflight;
+  if (capacity > 0) {
+    return {
+      action: "dispatch",
+      capacity,
+      reason: `inflight ${facts.inflight} below cap ${cap}`
+    };
+  }
+  if (facts.queued < maxQueued) {
+    return {
+      action: backpressure.overload_action,
+      capacity: 0,
+      reason: `cap ${cap} reached; ${facts.queued} of ${maxQueued} queued \u2014 hold the unit for the next wave`
+    };
+  }
+  return {
+    action: "reject",
+    capacity: 0,
+    reason: `cap ${cap} reached and queue full (${facts.queued}/${maxQueued}) \u2014 stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)`
+  };
+}
+function requireCount(value, flag) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new KernelError(`admit requires a numeric --${flag}`);
+  }
+}
+
+// src/kernel/breaker.ts
+var TRANSITIONS = {
+  closed: fromClosed,
+  open: fromOpen,
+  "half-open": fromHalfOpen
+};
+function breakerSection(facts, regs) {
+  const breaker = regs.policy.breaker;
+  const transition = TRANSITIONS[facts.state];
+  if (transition === void 0 || !breaker.states.includes(facts.state)) {
+    throw new KernelError("breaker requires --state closed|open|half-open");
+  }
+  return transition(facts, breaker);
+}
+function fromClosed(facts, breaker) {
+  const failures = facts.failures;
+  if (failures === void 0 || !Number.isInteger(failures) || failures < 0) {
+    throw new KernelError("breaker --state closed requires a numeric --failures");
+  }
+  if (failures >= breaker.failure_threshold) {
+    return {
+      state: "open",
+      allow: false,
+      reason: `${failures} consecutive failures reached threshold ${breaker.failure_threshold} \u2014 stop calling this resource for ${breaker.cooldown_waves} wave(s); route around or report DEGRADED`
+    };
+  }
+  return {
+    state: "closed",
+    allow: true,
+    reason: `${failures} of ${breaker.failure_threshold} failures \u2014 resource healthy`
+  };
+}
+function fromOpen(facts, breaker) {
+  const elapsed = facts.cooldownElapsed;
+  if (elapsed === void 0) {
+    throw new KernelError("breaker --state open requires --cooldown-elapsed true|false");
+  }
+  if (elapsed) {
+    return {
+      state: "half-open",
+      allow: true,
+      reason: `cooldown elapsed \u2014 allow ${breaker.half_open_probes} probe call(s); no fan-out through this resource until it closes`
+    };
+  }
+  return {
+    state: "open",
+    allow: false,
+    reason: "cooldown not elapsed \u2014 do not call; route around or report DEGRADED"
+  };
+}
+function fromHalfOpen(facts) {
+  const probe = facts.probeResult;
+  if (probe !== "ok" && probe !== "failed") {
+    throw new KernelError("breaker --state half-open requires --probe-result ok|failed");
+  }
+  if (probe === "ok") {
+    return {
+      state: "closed",
+      allow: true,
+      reason: "probe succeeded \u2014 resource recovered; reset the failure count to 0"
+    };
+  }
+  return { state: "open", allow: false, reason: "probe failed \u2014 reopen for another cooldown" };
+}
+
+// src/kernel/hitl.ts
+var EXTERNAL_EFFECT_FLOOR = "A3";
+function hitlSection(facts, regs) {
+  const policy = regs.policy;
+  const risk = facts.riskTier;
+  if (!isRiskTier(risk)) throw new KernelError("hitl requires --risk low|medium|high");
+  const levels = policy.autonomy.levels.map((level) => level.id);
+  if (levels.length < 2) {
+    throw new KernelError(
+      "policy.json .autonomy.levels declares fewer than two levels \u2014 hitl cannot resolve a one-level drop"
+    );
+  }
+  const autonomyIndex = levels.indexOf(facts.autonomy);
+  if (autonomyIndex < 0) throw new KernelError("hitl requires --autonomy A0..A4");
+  const evidence = facts.evidence ?? "adequate";
+  if (evidence !== "thin" && evidence !== "adequate") {
+    throw new KernelError("hitl --evidence must be thin|adequate");
+  }
+  const external = asBoolean(facts.externalEffect, "hitl --external-effect must be true|false");
+  const conflict = asBoolean(facts.conflict, "hitl --conflict must be true|false");
+  const recordHome = policy.hitl.record_home;
+  if (recordHome === "") {
+    throw new KernelError(
+      "policy.json has no hitl.record_home \u2014 hitl will not require a human decision without naming where it is recorded"
+    );
+  }
+  const situation = facts.situation ?? "";
+  const declaredSituations = [...policy.retry.never_retry, ...policy.hitl.situations];
+  if (situation !== "" && !declaredSituations.includes(situation)) {
+    throw new KernelError(
+      `unknown situation: ${situation} (one of retry.never_retry or hitl.situations)`
+    );
+  }
+  const externalFloorIndex = levels.indexOf(EXTERNAL_EFFECT_FLOOR);
+  if (externalFloorIndex < 0) {
+    throw new KernelError(
+      `policy.json .autonomy.levels does not declare ${EXTERNAL_EFFECT_FLOOR} \u2014 hitl cannot resolve the external-effect floor`
+    );
+  }
+  const triggered = triggeredReasons({
+    risk,
+    evidence,
+    external,
+    conflict,
+    situation,
+    autonomyIndex,
+    externalFloorIndex,
+    neverRetry: policy.retry.never_retry
+  });
+  const undeclared = triggered.filter((reason) => !policy.hitl.reasons.includes(reason));
+  if (undeclared.length > 0) {
+    throw new KernelError(
+      `policy.json .hitl.reasons does not declare: ${undeclared.join(", ")} \u2014 a gate may cite nothing outside the closed vocabulary`
+    );
+  }
+  const reasons = policy.hitl.reasons.filter((reason) => triggered.includes(reason));
+  return {
+    required: reasons.length > 0,
+    reasons,
+    autonomy_after: autonomyAfter({
+      evidence,
+      risk,
+      autonomyIndex,
+      levels,
+      highWithThinEvidence: policy.autonomy.high_with_thin_evidence
+    }),
+    record_home: recordHome
+  };
+}
+function triggeredReasons(inputs) {
+  const reasons = [];
+  if (inputs.risk === "high") reasons.push("high-risk");
+  if (inputs.evidence === "thin") reasons.push("evidence-insufficient");
+  if (inputs.external && inputs.autonomyIndex >= inputs.externalFloorIndex) reasons.push("external-effect");
+  if (inputs.conflict) reasons.push("policy-conflict");
+  if (inputs.situation !== "" && inputs.neverRetry.includes(inputs.situation)) {
+    reasons.push("never-retry-situation");
+  }
+  if (inputs.situation === "destructive") reasons.push("destructive-action");
+  if (inputs.situation === "budget-exhausted" || inputs.situation === "reject") {
+    reasons.push("budget-exhausted");
+  }
+  if (inputs.situation === "breaker-open") reasons.push("breaker-open");
+  return reasons;
+}
+function autonomyAfter(drop) {
+  const { autonomyIndex, levels } = drop;
+  const given = levels[autonomyIndex];
+  if (given === void 0) throw new KernelError("hitl requires --autonomy A0..A4");
+  if (drop.evidence !== "thin") return given;
+  const floorIndex = 1;
+  let index = Math.min(autonomyIndex, Math.max(floorIndex, autonomyIndex - 1));
+  if (drop.risk === "high") {
+    const highWithThinEvidence = drop.highWithThinEvidence;
+    if (highWithThinEvidence === "") {
+      throw new KernelError(
+        "policy.json has no autonomy.high_with_thin_evidence \u2014 hitl cannot resolve the thin-evidence ceiling at risk high"
+      );
+    }
+    const capIndex = levels.indexOf(highWithThinEvidence);
+    if (capIndex < 0) {
+      throw new KernelError(
+        `policy.json autonomy.high_with_thin_evidence is not an autonomy level: ${highWithThinEvidence}`
+      );
+    }
+    index = Math.min(index, capIndex);
+  }
+  const after = levels[index];
+  if (after === void 0) throw new KernelError("hitl requires --autonomy A0..A4");
+  return after;
+}
+function asBoolean(value, message) {
+  if (value === void 0) return false;
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new KernelError(message);
 }
 
 // src/kernel/model.ts
@@ -674,6 +931,90 @@ function isAlnum(char) {
   return char !== void 0 && ALNUM.test(char);
 }
 
+// src/kernel/waves.ts
+function wavesSection(facts, regs) {
+  const cap = regs.policy.parallelism.wave_concurrency_cap;
+  if (!Number.isInteger(cap) || cap < 1) {
+    throw new KernelError(
+      `policy.json .parallelism.wave_concurrency_cap must be a positive integer, not ${String(cap)}`
+    );
+  }
+  const units = parseUnits(facts.units);
+  const ids = units.map((unit) => unit.id);
+  if (new Set(ids).size !== ids.length) throw new KernelError("duplicate unit ids");
+  const unknown = unique(units.flatMap((unit) => unit.dependsOn.filter((dep) => !ids.includes(dep))));
+  if (unknown.length > 0) {
+    throw new KernelError(`depends_on references unknown unit(s): ${unknown.join(", ")}`);
+  }
+  const layers = kahnLayers(units);
+  const violations = layers.flatMap(sameFileViolations);
+  const waves = layers.flatMap((layer) => chunk(layer, cap)).map((wave) => wave.map((unit) => unit.id));
+  return { waves, violations, fanout_line: fanoutLine(waves) };
+}
+function parseUnits(value) {
+  if (!Array.isArray(value)) throw new KernelError("waves --units must be a JSON array");
+  const rows = value;
+  return rows.map((raw, i) => {
+    const malformed2 = `waves --units[${i}] must be an object with a non-empty string id`;
+    if (!isRecord(raw)) throw new KernelError(malformed2);
+    const id = raw["id"];
+    if (typeof id !== "string" || id === "") throw new KernelError(malformed2);
+    return {
+      id,
+      files: stringList(raw["files"], `waves --units[${i}].files must be an array of file paths`),
+      dependsOn: stringList(raw["depends_on"], `waves --units[${i}].depends_on must be an array of unit ids`)
+    };
+  });
+}
+function stringList(value, message) {
+  if (value === void 0 || value === null) return [];
+  if (!Array.isArray(value)) throw new KernelError(message);
+  const items = value;
+  return items.map((item) => {
+    if (typeof item !== "string") throw new KernelError(message);
+    return item;
+  });
+}
+function kahnLayers(units) {
+  const layers = [];
+  const done = /* @__PURE__ */ new Set();
+  let remaining = [...units];
+  while (remaining.length > 0) {
+    const ready = remaining.filter((unit) => unit.dependsOn.every((dep) => done.has(dep)));
+    if (ready.length === 0) {
+      throw new KernelError(`dependency cycle among: ${remaining.map((unit) => unit.id).join(", ")}`);
+    }
+    layers.push(ready);
+    for (const unit of ready) done.add(unit.id);
+    const readyIds = new Set(ready.map((unit) => unit.id));
+    remaining = remaining.filter((unit) => !readyIds.has(unit.id));
+  }
+  return layers;
+}
+function sameFileViolations(layer) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const unit of layer) {
+    for (const file of unit.files) {
+      const owners = byFile.get(file);
+      if (owners === void 0) byFile.set(file, [unit.id]);
+      else owners.push(unit.id);
+    }
+  }
+  return [...byFile.entries()].filter(([, owners]) => owners.length > 1).map(([file, owners]) => ({ file, units: owners })).sort((a, b) => a.file < b.file ? -1 : a.file > b.file ? 1 : 0);
+}
+function chunk(layer, cap) {
+  const out = [];
+  for (let i = 0; i < layer.length; i += cap) out.push(layer.slice(i, i + cap));
+  return out;
+}
+function fanoutLine(waves) {
+  const parts = waves.map((wave, i) => `wave${i + 1}=(${wave.join(", ")})`);
+  return `[fanout] waves=${waves.length} ${parts.join(" ")}`;
+}
+function unique(values) {
+  return [...new Set(values)].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
+
 // src/kernel/resolve.ts
 function resolve(facts, ctx) {
   const answer = {};
@@ -702,6 +1043,18 @@ function resolve(facts, ctx) {
   }
   if (facts.repair !== void 0) {
     answer.repair = repairSection(facts.repair, ctx.registries);
+  }
+  if (facts.admit !== void 0) {
+    answer.admit = admitSection(facts.admit, ctx.registries);
+  }
+  if (facts.breaker !== void 0) {
+    answer.breaker = breakerSection(facts.breaker, ctx.registries);
+  }
+  if (facts.hitl !== void 0) {
+    answer.hitl = hitlSection(facts.hitl, ctx.registries);
+  }
+  if (facts.waves !== void 0) {
+    answer.waves = wavesSection(facts.waves, ctx.registries);
   }
   return answer;
 }
@@ -733,7 +1086,11 @@ var SUBCOMMANDS = {
   model: modelProjection,
   risk: riskProjection,
   gates: gatesProjection,
-  repair: repairProjection
+  repair: repairProjection,
+  admit: admitProjection,
+  breaker: breakerProjection,
+  hitl: hitlProjection,
+  waves: wavesProjection
 };
 function runKernel(argv2, io2) {
   const [name, ...args] = argv2;
@@ -801,11 +1158,59 @@ function repairProjection(ctx, args) {
   if (check === void 0 || check === "") throw new KernelError("repair requires --check");
   const repair = { check };
   const attempt = flags.get("--attempt");
-  if (attempt !== void 0) repair.attempt = parseAttempt(attempt);
+  if (attempt !== void 0) repair.attempt = parseCount(attempt);
   const situation = flags.get("--situation");
   if (situation !== void 0 && situation !== "") repair.situation = situation;
   const section = resolve({ repair }, ctx).repair;
   if (section === void 0) throw new KernelError("repair: the kernel answered no repair section");
+  return section;
+}
+function admitProjection(ctx, args) {
+  const flags = parseFlags("admit", args, ["--inflight", "--queued"]);
+  const admit = {
+    inflight: parseCount(flags.get("--inflight")),
+    queued: parseCount(flags.get("--queued"))
+  };
+  const section = resolve({ admit }, ctx).admit;
+  if (section === void 0) throw new KernelError("admit: the kernel answered no admit section");
+  return section;
+}
+function breakerProjection(ctx, args) {
+  const flags = parseFlags("breaker", args, ["--state", "--failures", "--cooldown-elapsed", "--probe-result"]);
+  const breaker = { state: flags.get("--state") ?? "" };
+  const failures = flags.get("--failures");
+  if (failures !== void 0) breaker.failures = parseCount(failures);
+  const cooldown = flags.get("--cooldown-elapsed");
+  if (cooldown === "true" || cooldown === "false") breaker.cooldownElapsed = cooldown === "true";
+  const probe = flags.get("--probe-result");
+  if (probe !== void 0) breaker.probeResult = probe;
+  const section = resolve({ breaker }, ctx).breaker;
+  if (section === void 0) throw new KernelError("breaker: the kernel answered no breaker section");
+  return section;
+}
+function hitlProjection(ctx, args) {
+  const flags = parseFlags("hitl", args, ["--risk", "--autonomy", "--evidence", "--external-effect", "--conflict", "--situation"]);
+  const tier = flags.get("--risk");
+  if (tier === void 0 || !isRiskTier(tier)) throw new KernelError("hitl requires --risk low|medium|high");
+  const hitl = { riskTier: tier, autonomy: flags.get("--autonomy") ?? "" };
+  const evidence = flags.get("--evidence");
+  if (evidence !== void 0) hitl.evidence = evidence;
+  const external = flags.get("--external-effect");
+  if (external !== void 0) hitl.externalEffect = external;
+  const conflict = flags.get("--conflict");
+  if (conflict !== void 0) hitl.conflict = conflict;
+  const situation = flags.get("--situation");
+  if (situation !== void 0) hitl.situation = situation;
+  const section = resolve({ hitl }, ctx).hitl;
+  if (section === void 0) throw new KernelError("hitl: the kernel answered no hitl section");
+  return section;
+}
+function wavesProjection(ctx, args) {
+  const flags = parseFlags("waves", args, ["--units"]);
+  const units = flags.get("--units");
+  if (units === void 0 || units === "") throw new KernelError("waves requires --units <json array>");
+  const section = resolve({ waves: { units: parseUnitsJson(units) } }, ctx).waves;
+  if (section === void 0) throw new KernelError("waves: the kernel answered no waves section");
   return section;
 }
 function parseSignals(raw) {
@@ -815,8 +1220,16 @@ function parseSignals(raw) {
     throw new KernelError("risk --signals is not valid JSON");
   }
 }
-function parseAttempt(raw) {
+function parseCount(raw) {
+  if (raw === void 0) return Number.NaN;
   return /^[0-9]+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
+}
+function parseUnitsJson(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new KernelError("waves --units must be a JSON array");
+  }
 }
 
 // src/cli.ts

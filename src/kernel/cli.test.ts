@@ -4,8 +4,13 @@ import { memoryIo } from '../io';
 import { isRecord, KernelError } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
 import { parseFlags, requirePositional, runKernel } from './cli';
+import { lazyRegistries } from './context';
 
 const env = { ENGINEOS_ROOT: resolveRoot(process.env, __dirname) };
+// The same registry the arms answer from: every number and every record home
+// below is read from it rather than spelled here, so re-parameterising policy.json
+// moves these cases instead of turning them red.
+const policy = lazyRegistries(env.ENGINEOS_ROOT).policy;
 
 test('route-path rejects a flag where a positional is expected', () => {
   const io = memoryIo({ env });
@@ -213,6 +218,209 @@ test('repair refuses a non-numeric --attempt, including a partly-numeric one', (
   assert.deepEqual(answerOf(['repair', '--check', 'lint', '--attempt', '-1'], 1), expected);
 });
 
+test('admit answers the section in the legacy key order', () => {
+  const cap = policy.parallelism.wave_concurrency_cap;
+  assert.deepEqual(keysOf(['admit', '--inflight', '0', '--queued', '0']), ['action', 'capacity', 'reason']);
+  assert.deepEqual(answerOf(['admit', '--inflight', '0', '--queued', '0'], 0), {
+    action: 'dispatch',
+    capacity: cap,
+    reason: `inflight 0 below cap ${cap}`,
+  });
+});
+
+test('admit gives an absent, empty and non-numeric count the one legacy message', () => {
+  const inflight = { error: 'admit requires a numeric --inflight' };
+  assert.deepEqual(answerOf(['admit'], 1), inflight);
+  assert.deepEqual(answerOf(['admit', '--inflight', ''], 1), inflight);
+  assert.deepEqual(answerOf(['admit', '--inflight', 'abc', '--queued', '0'], 1), inflight);
+  const queued = { error: 'admit requires a numeric --queued' };
+  assert.deepEqual(answerOf(['admit', '--inflight', '1'], 1), queued);
+  assert.deepEqual(answerOf(['admit', '--inflight', '1', '--queued', 'abc'], 1), queued);
+});
+
+// A leading zero is a shell-ism, not a JSON number: bash normalised it, and the
+// digits check in front of Number.parseInt keeps that without reading "1abc" as 1.
+test('admit normalises a leading-zero count and refuses a partly-numeric one', () => {
+  const cap = policy.parallelism.wave_concurrency_cap;
+  assert.deepEqual(answerOf(['admit', '--inflight', '02', '--queued', '0'], 0), {
+    action: 'dispatch',
+    capacity: cap - 2,
+    reason: `inflight 2 below cap ${cap}`,
+  });
+  assert.deepEqual(answerOf(['admit', '--inflight', '1abc', '--queued', '0'], 1), {
+    error: 'admit requires a numeric --inflight',
+  });
+});
+
+// bash checked `[ $# -ge 2 ]` here and answered "admit requires a value for
+// --inflight" (and "admit: unknown argument --bogus"); parseFlags answers the two
+// messages the plan pins for every arm. Both sides refuse — the wording is the
+// only difference, which is why parity.test.ts excludes these cases by name
+// rather than asserting them.
+test('admit refuses a valueless flag and an unknown one rather than spinning', () => {
+  assert.deepEqual(answerOf(['admit', '--inflight'], 1), { error: 'admit: --inflight requires a value' });
+  assert.deepEqual(answerOf(['admit', '--bogus', 'x'], 1), { error: 'admit: unknown flag --bogus' });
+});
+
+test('breaker answers the section in the legacy key order', () => {
+  const threshold = policy.breaker.failure_threshold;
+  assert.deepEqual(keysOf(['breaker', '--state', 'closed', '--failures', '0']), ['state', 'allow', 'reason']);
+  assert.deepEqual(answerOf(['breaker', '--state', 'closed', '--failures', '0'], 0), {
+    state: 'closed',
+    allow: true,
+    reason: `0 of ${threshold} failures — resource healthy`,
+  });
+});
+
+test('breaker gives an absent, empty and unrecognized state the one legacy message', () => {
+  const expected = { error: 'breaker requires --state closed|open|half-open' };
+  assert.deepEqual(answerOf(['breaker'], 1), expected);
+  assert.deepEqual(answerOf(['breaker', '--state', ''], 1), expected);
+  assert.deepEqual(answerOf(['breaker', '--state', 'bogus', '--failures', '1'], 1), expected);
+  assert.deepEqual(answerOf(['breaker', '--failures', '1'], 1), expected);
+  assert.deepEqual(answerOf(['breaker', '--state'], 1), { error: 'breaker: --state requires a value' });
+});
+
+// Each state reads its own fact, so each one refuses on its own terms: an absent
+// value and a value outside the vocabulary reach the same message, exactly as the
+// bash case statements did.
+test('each state refuses the fact it needs and did not get', () => {
+  assert.deepEqual(answerOf(['breaker', '--state', 'closed'], 1), {
+    error: 'breaker --state closed requires a numeric --failures',
+  });
+  assert.deepEqual(answerOf(['breaker', '--state', 'closed', '--failures', 'abc'], 1), {
+    error: 'breaker --state closed requires a numeric --failures',
+  });
+  assert.deepEqual(answerOf(['breaker', '--state', 'open'], 1), {
+    error: 'breaker --state open requires --cooldown-elapsed true|false',
+  });
+  assert.deepEqual(answerOf(['breaker', '--state', 'open', '--cooldown-elapsed', 'maybe'], 1), {
+    error: 'breaker --state open requires --cooldown-elapsed true|false',
+  });
+  assert.deepEqual(answerOf(['breaker', '--state', 'half-open'], 1), {
+    error: 'breaker --state half-open requires --probe-result ok|failed',
+  });
+  assert.deepEqual(answerOf(['breaker', '--state', 'half-open', '--probe-result', 'maybe'], 1), {
+    error: 'breaker --state half-open requires --probe-result ok|failed',
+  });
+});
+
+test('breaker reads the booleans and the counts its flags spell', () => {
+  const threshold = policy.breaker.failure_threshold;
+  assert.equal(stateOf(['breaker', '--state', 'closed', '--failures', String(threshold)]), 'open');
+  // A leading zero normalises, and the value is the threshold itself so only a
+  // correctly parsed number answers open.
+  assert.equal(stateOf(['breaker', '--state', 'closed', '--failures', `0${String(threshold)}`]), 'open');
+  assert.equal(stateOf(['breaker', '--state', 'open', '--cooldown-elapsed', 'false']), 'open');
+  assert.equal(stateOf(['breaker', '--state', 'open', '--cooldown-elapsed', 'true']), 'half-open');
+  assert.equal(stateOf(['breaker', '--state', 'half-open', '--probe-result', 'ok']), 'closed');
+  assert.equal(stateOf(['breaker', '--state', 'half-open', '--probe-result', 'failed']), 'open');
+});
+
+test('hitl answers the section in the legacy key order', () => {
+  assert.deepEqual(keysOf(['hitl', '--risk', 'low', '--autonomy', 'A2']), [
+    'required', 'reasons', 'autonomy_after', 'record_home',
+  ]);
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2'], 0), {
+    required: false,
+    reasons: [],
+    autonomy_after: 'A2',
+    record_home: policy.hitl.record_home,
+  });
+});
+
+test('hitl gives an absent, empty and unrecognized tier the one legacy message', () => {
+  const expected = { error: 'hitl requires --risk low|medium|high' };
+  assert.deepEqual(answerOf(['hitl'], 1), expected);
+  assert.deepEqual(answerOf(['hitl', '--risk', ''], 1), expected);
+  assert.deepEqual(answerOf(['hitl', '--risk', 'banana', '--autonomy', 'A2'], 1), expected);
+  assert.deepEqual(answerOf(['hitl', '--autonomy', 'A2'], 1), expected);
+  assert.deepEqual(answerOf(['hitl', '--risk'], 1), { error: 'hitl: --risk requires a value' });
+});
+
+// The arm hands every value but the tier over as the raw flag string, so these
+// messages are the section's — one place, whichever caller declared the fact.
+test('hitl refuses an absent autonomy and every value outside its vocabulary', () => {
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low'], 1), { error: 'hitl requires --autonomy A0..A4' });
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A9'], 1), { error: 'hitl requires --autonomy A0..A4' });
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2', '--evidence', 'maybe'], 1), {
+    error: 'hitl --evidence must be thin|adequate',
+  });
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2', '--external-effect', 'yes'], 1), {
+    error: 'hitl --external-effect must be true|false',
+  });
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2', '--conflict', 'yes'], 1), {
+    error: 'hitl --conflict must be true|false',
+  });
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2', '--situation', 'nonsense'], 1), {
+    error: 'unknown situation: nonsense (one of retry.never_retry or hitl.situations)',
+  });
+});
+
+// The same plan-pinned wording as the other arms, where bash had a per-arm one
+// ("hitl requires a value for --situation").
+test('hitl refuses a valueless flag rather than spinning', () => {
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2', '--situation'], 1), {
+    error: 'hitl: --situation requires a value',
+  });
+  assert.deepEqual(answerOf(['hitl', '--bogus', 'x'], 1), { error: 'hitl: unknown flag --bogus' });
+});
+
+// bash bound --situation with ${2:-} and tested `[ -n "$situation" ]`, so an
+// empty value was no situation at all rather than an unknown one.
+test('an empty situation is no situation, not an unknown one', () => {
+  assert.deepEqual(answerOf(['hitl', '--risk', 'low', '--autonomy', 'A2', '--situation', ''], 0), {
+    required: false,
+    reasons: [],
+    autonomy_after: 'A2',
+    record_home: policy.hitl.record_home,
+  });
+});
+
+test('waves answers the section in the legacy key order', () => {
+  const units = JSON.stringify([
+    { id: 'a', files: ['a.ts'], depends_on: [] },
+    { id: 'b', files: ['b.ts'], depends_on: [] },
+    { id: 'c', files: ['c.ts'], depends_on: ['a', 'b'] },
+  ]);
+  assert.deepEqual(keysOf(['waves', '--units', units]), ['waves', 'violations', 'fanout_line']);
+  assert.deepEqual(answerOf(['waves', '--units', units], 0), {
+    waves: [['a', 'b'], ['c']],
+    violations: [],
+    fanout_line: '[fanout] waves=2 wave1=(a, b) wave2=(c)',
+  });
+});
+
+test('waves gives an absent and an empty --units the one legacy message', () => {
+  const expected = { error: 'waves requires --units <json array>' };
+  assert.deepEqual(answerOf(['waves'], 1), expected);
+  assert.deepEqual(answerOf(['waves', '--units', ''], 1), expected);
+});
+
+// bash piped the payload into `jq -e 'type == "array"'`, so text that is not JSON
+// and JSON that is not an array failed the same guard with the same message.
+test('waves refuses a payload that is not a JSON array', () => {
+  const expected = { error: 'waves --units must be a JSON array' };
+  assert.deepEqual(answerOf(['waves', '--units', 'not json'], 1), expected);
+  assert.deepEqual(answerOf(['waves', '--units', '{}'], 1), expected);
+});
+
+// The one arm where bash could not refuse at all: `--units` with no value bound
+// "" and then `shift 2` ran off the end, so the flag re-matched and the loop spun
+// forever. parseFlags answers instead — which is why parity.test.ts cannot carry
+// this case.
+test('waves refuses --units with no value rather than spinning', () => {
+  assert.deepEqual(answerOf(['waves', '--units'], 1), { error: 'waves: --units requires a value' });
+});
+
+test('waves reports a cycle as an error naming the units it could not order', () => {
+  const units = JSON.stringify([
+    { id: 'a', files: [], depends_on: ['b'] },
+    { id: 'b', files: [], depends_on: ['a'] },
+  ]);
+  assert.deepEqual(answerOf(['waves', '--units', units], 1), { error: 'dependency cycle among: a, b' });
+});
+
 // A refusal is two facts, and asserting only the message would let a kernel that
 // exits 0 on an error pass: the status is checked here so every call site gets it.
 function answerOf(argv: string[], status: number): unknown {
@@ -222,7 +430,23 @@ function answerOf(argv: string[], status: number): unknown {
 }
 
 function actionOf(argv: string[]): unknown {
+  return fieldOf(argv, 'action');
+}
+
+function stateOf(argv: string[]): unknown {
+  return fieldOf(argv, 'state');
+}
+
+function fieldOf(argv: string[], field: string): unknown {
   const answer = answerOf(argv, 0);
   if (!isRecord(answer)) throw new Error(`${argv.join(' ')} did not answer an object`);
-  return answer['action'];
+  return answer[field];
+}
+
+// Key order is part of an answer's contract, not a formatting detail: callers
+// diff kernel output.
+function keysOf(argv: string[]): string[] {
+  const answer = answerOf(argv, 0);
+  if (!isRecord(answer)) throw new Error(`${argv.join(' ')} did not answer an object`);
+  return Object.keys(answer);
 }

@@ -1,14 +1,26 @@
 import { KernelError } from '../lib/json';
+import { admitSection, type AdmitFacts, type AdmitSection } from './admit';
+import { breakerSection, type BreakerFacts, type BreakerSection } from './breaker';
 import type { KernelContext, RiskTier } from './context';
+import { hitlSection, type HitlFacts, type HitlSection } from './hitl';
 import { modelSection, type ModelSection } from './model';
 import { repairSection, type RepairFacts, type RepairSection } from './repair';
 import { riskSection, type RiskSection } from './risk';
 import { routeByIntent, routeByPath, type RouteSection } from './route';
+import { wavesSection, type WavesFacts, type WavesSection } from './waves';
 
 // Declared facts, sparse by design: a section is answered iff the facts it needs
 // were declared. This task declares the route section's two forms, the model
-// section, the risk section's two forms and the repair section; Tasks 11-12 add
-// their own facts and sections to these two interfaces (design "Kernel shape").
+// section, the risk section's two forms and the repair, admit, breaker, hitl and
+// waves sections; Task 12 adds its own facts and sections to these two
+// interfaces (design "Kernel shape").
+//
+// A multi-field fact travels as the section's own facts type under the section's
+// own key (`repair`, `admit`, `breaker`, `hitl`, `waves`), so the fact key and
+// the answer key are the same word and a section owns the shape of its input.
+// `signals` and `riskTier` are the exception, and the reason is visible in the
+// pair: they are two FORMS of one section's input, so neither can be named after
+// the key they both answer.
 export interface DeclaredFacts {
   path?: string;
   prompt?: string;
@@ -18,6 +30,10 @@ export interface DeclaredFacts {
   signals?: unknown;
   riskTier?: RiskTier;
   repair?: RepairFacts;
+  admit?: AdmitFacts;
+  breaker?: BreakerFacts;
+  hitl?: HitlFacts;
+  waves?: WavesFacts;
 }
 
 export interface Answer {
@@ -25,6 +41,10 @@ export interface Answer {
   model?: ModelSection;
   risk?: RiskSection;
   repair?: RepairSection;
+  admit?: AdmitSection;
+  breaker?: BreakerSection;
+  hitl?: HitlSection;
+  waves?: WavesSection;
 }
 
 export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
@@ -65,6 +85,18 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   }
   if (facts.repair !== undefined) {
     answer.repair = repairSection(facts.repair, ctx.registries);
+  }
+  if (facts.admit !== undefined) {
+    answer.admit = admitSection(facts.admit, ctx.registries);
+  }
+  if (facts.breaker !== undefined) {
+    answer.breaker = breakerSection(facts.breaker, ctx.registries);
+  }
+  if (facts.hitl !== undefined) {
+    answer.hitl = hitlSection(facts.hitl, ctx.registries);
+  }
+  if (facts.waves !== undefined) {
+    answer.waves = wavesSection(facts.waves, ctx.registries);
   }
   return answer;
 }
