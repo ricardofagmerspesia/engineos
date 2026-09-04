@@ -121,12 +121,19 @@ check_C18b() {
   have_jq || return 0
   have_router_inputs || return 0
   have_router_agent || return 0
+  # The router reaches the kernel through ONE subcommand, `resolve`, whose
+  # answer is selected by the facts it declares (Task 13b of
+  # docs/specs/2026-09-04-typescript-runtime-migration-plan.md). So the literal
+  # to defend is no longer five subcommand names but the single call plus the
+  # facts the plan cannot be built without: `escalate` (the route-escalation
+  # form), `signals` (the risk tier and its gates), `workType` (the per-unit
+  # model) and `waves` (the layering).
   kb_bad=""
-  for lit in "kernel.sh route-escalate" "kernel.sh risk" "kernel.sh gates" "kernel.sh waves" "kernel.sh model"; do
-    grep -qF "$lit" "$ROUTER_MD" || kb_bad="$kb_bad [$lit]"
+  for lit in "kernel.sh resolve --facts" '"escalate": true' '"signals"' '"workType"' '"waves"'; do
+    grep -qF -- "$lit" "$ROUTER_MD" || kb_bad="$kb_bad [$lit]"
   done
-  [ -z "$kb_bad" ] && ok "agents/router.md calls every required kernel subcommand" \
-                   || bad "router does not call the kernel for:$kb_bad"
+  [ -z "$kb_bad" ] && ok "agents/router.md resolves the plan through one kernel call declaring every required fact" \
+                   || bad "router's kernel resolve call is missing:$kb_bad"
 }
 
 check_C18c() {
