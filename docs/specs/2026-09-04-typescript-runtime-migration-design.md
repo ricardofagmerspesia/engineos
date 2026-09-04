@@ -95,7 +95,7 @@ src/
   gen/                agent-commands, agent-registry
   init/               project adoption
   evals/              deterministic + live tiers
-  checks/             one module per family + index.ts (explicit registry) + lib; mirror.ts runs the typed MirrorPair table in mirrors.ts
+  checks/             one module per family + index.ts (explicit registry) + lib; findings.ts: Finding, CheckResult, typed finding(), render(); mirror.ts runs the typed MirrorPair table in mirrors.ts
   bench/              runtime budgets
   report/             usage report
   testing/            test-only fixture harness (temp roots, fixture repos, relocated registries, envelopes, transcripts, two drives); never bundled
@@ -322,7 +322,7 @@ claims to mirror (deviation 5). The port declares the relation once.
 // src/checks/mirrors.ts — the table; src/checks/mirror.ts — the runner
 export type Direction = 'doc-names-registry' | 'registry-names-doc' | 'both'
 export interface MirrorBase {
-  id: string                      // row id, reported on failure: [<id>: <reason>]
+  id: string                      // row id; it is the finding code under `check` ("Findings" below), so it must appear in that check's code list
   check: CheckId                  // the check that runs this row (`--only` and the mutation cases key on it)
   registry: RegistryPath          // typed against the loaders, e.g. 'policy.hitl.reasons[].id'
   doc: string                     // 'rules/risk-autonomy.md'
@@ -335,7 +335,7 @@ export type MirrorPair = MirrorBase & (
   | { kind: 'quotes'; pattern: string }   // one registry scalar equals the {n} capture, e.g. 'Cap concurrency at ~{n}'
 )
 export const MIRRORS = [ … ] satisfies readonly MirrorPair[]
-export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): MirrorFailure[]   // [] means the rows hold
+export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): Finding[]   // [] means the rows hold; subject is the missing element or the unequal number
 ```
 
 - The runner enforces, for every row and with no opt-out: the anchor section
@@ -462,6 +462,54 @@ export function classify(evidence: Evidence): Verdict | null                    
   member for "skip" (the policy has three, and a stale probe is absence of
   evidence, not a situation).
 
+### Findings (amended 2026-09-04, architecture review)
+
+A check today is a counter increment and a printed sentence. Families
+accumulate slugs into a `*_bad` variable 259 times and print one aggregated
+line per check; `test-validate-engineos.sh` asserts 141 substrings of those
+lines, so rewording a finding breaks the suite with no behaviour change, and
+C16's twenty-five assertions cannot be told apart. The port makes the finding
+the value and the line a rendering of it.
+
+```ts
+// src/checks/findings.ts
+export type CheckStatus = 'ok' | 'fail' | 'skip'
+export interface Finding { code: string; subject?: string }                   // code: ^[a-z][a-z0-9-]*$, unique within its check
+export interface CheckResult { check: CheckId; title: string; status: CheckStatus; findings: readonly Finding[] }
+export const HARNESS_FINDINGS = ['precondition-missing', 'artifact-pending'] as const   // allowed in every check
+export function finding<C extends CheckId>(check: C, code: CodeOf<C>, subject?: string): Finding   // CodeOf<C>: that check's declared list | HARNESS_FINDINGS
+export function result(check: CheckId, title: string, findings: readonly Finding[], opts?: { pending?: true }): CheckResult
+//   status: findings empty -> ok; pending -> skip; otherwise fail
+export function render(r: CheckResult): string    // 'ok   <title>' | 'FAIL <title>: [code] [code:subject] ...' | 'skip <title>: [code:subject]'
+```
+
+- Every family file declares its code lists beside its checks
+  (`const C16_FINDINGS = ['tier-unbound', 'work-type-unknown-tier', ...] as const`)
+  and registers them with the check in `index.ts`; `finding()` compiles only
+  for a code in that check's list. Codes are unique within a check and free to
+  recur across checks (`missing`, `not-executable`).
+- `render` is the only producer of validator lines; `src/validate/cli.ts`
+  prints what it returns and counts by `status`. `skipOnce` yields a `fail`
+  result carrying `precondition-missing:<token>` once per family; `skipPending`
+  yields a `skip` result carrying `artifact-pending:<path>` and touches
+  neither counter, exactly today's semantics.
+- Mirror rows ("Mirror table" above) are findings: the row `id` is the code,
+  the missing element or unequal number is the subject, `runMirrors` returns
+  `Finding[]`. The mirrors test asserts every row id is in its check's list.
+- Tests assert on values: `run(ctx)` then `findings.some(f => f.code === 'hook-not-executable')`.
+  Each family PR ports its mutation cases that way; a family test also asserts
+  every declared code is produced by at least one case, so a dead code is a
+  failing test. The Wave 6 e2e keeps the harness cases only: `--only`,
+  `--list`, exit codes, `passed N, failed N`, and one rendered line per status.
+- No new CLI surface: `--only <check id>` and `--list` remain the whole public
+  interface; finer selection is a test concern. A `--json` dump is a separate
+  decision, not taken here.
+- Deletion test: remove the module and each family reinvents an accumulator
+  and a sentence, and the tests go back to substrings. Rejected: keeping
+  `message` beside `findings` (two ways to report, the old one cheaper);
+  one global code union (~260 names with check prefixes, one file everyone
+  edits); `--only C16:<code>` (new versioned surface for a test-time need).
+
 ### Shims and compatibility
 
 Every bash entry point becomes a shim:
@@ -573,6 +621,12 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    `policy.telemetry.events`, and C20d re-points at `src/hooks/stop-verify.ts`
    as a wiring check (imports the kernel `repair` section, carries no numeric
    literal).
+8. A check reports findings, not a sentence. The `ok   ` / `FAIL ` / `skip `
+   prefixes, `--only`, `--list`, the exit codes and `passed N, failed N` stay
+   byte-exact; the tail of a FAIL line is rendered from the findings as
+   `[<code>]` / `[<code>:<subject>]` and its prose is not versioned surface.
+   The 141 mutation cases move from substring matches to code assertions,
+   family by family. Release notes say so.
 
 ## Testing
 
@@ -616,6 +670,9 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - The Situation judgment is tested as a table ("Situation classifier" above):
   one case per row against `classify`, no runner spawned; hook tests assert
   which decision kind each verdict renders.
+- Checks are tested through their findings ("Findings" above): family tests
+  assert codes and subjects on `run(ctx)`, never on rendered lines; the
+  validator e2e asserts the harness surface only.
 
 ## Waves
 
@@ -629,7 +686,7 @@ description and excluded from the count as generated output (`rules/git.md`).
 | 2 | `journal` and `telemetry` CLIs + shims | parallel with wave 1 | `test-exec-journal.sh`, `test-telemetry.sh`; C22b, C27* |
 | 3 | hook library in 2 PRs (envelope/bypass/telemetry; scaffold/runner/cache); then 8 hooks, one PR each, each re-pointing the source-text check that grepped it (deviation 3); then `init` (it needs `scaffold.ts`); then `hooks.json` + `settings-merge` + installers | library serial; hooks in two batches of four | the 10 black-box hook suites + `test-install-hooks.sh`; `validate-engineos.sh` green at the barrier; one Windows run of the node hook form |
 | 4 | `gen agent-commands`, `gen agent-registry`, `evals`, `bench`, `usage-report`, `bypass` CLI | one PR each, all parallel after wave 0 | drift guards, `test-gen-agent-registry.sh`, `run-evals` step |
-| 5 | `validate` harness with explicit registry; then the 7 check families (`70-runtime` in two PRs) | harness first; families parallel | `test-validate-engineos.sh` (152 cases) |
+| 5 | findings module; `validate` harness with explicit registry; mirror runner; then the 7 check families (`70-runtime` in two PRs) | findings, harness, mirror runner serial; families parallel | `test-validate-engineos.sh` (152 cases) shrinking to its harness cases as each family ports its own |
 | 6 | port 16 suites to `node:test`; delete `.sh` tests; CI drops `shellcheck` and `jq`; installers require node only; `COMPATIBILITY.md`, release notes 1.7.0, README | one PR per suite | CI green with node and git only |
 
 Barrier at the end of each wave: integrate, run `validate-engineos.sh`, `bench`

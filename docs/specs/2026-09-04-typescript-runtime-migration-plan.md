@@ -1631,15 +1631,15 @@ Each replaces its `.sh` with a shim, commits as `refactor(<area>): port <unit> t
 **Source:** `scripts/validate-engineos.sh` (82), `scripts/checks/lib.sh` (91).
 **Interfaces:**
 ```ts
-export interface CheckResult { ok: boolean; message: string; skipped?: boolean }
-export interface Check { id: string; run(ctx: CheckContext): CheckResult[] }
+import { CheckResult, Finding, render } from './findings'   // Task 33c lands first; the harness never prints a sentence of its own
+export interface Check<C extends CheckId = CheckId> { id: C; codes: readonly string[]; run(ctx: CheckContext): CheckResult[] }
 export const CHECKS: readonly Check[]        // index.ts; duplicate ids rejected by a unit test that asserts Set size === length (and by a `satisfies` type on a literal id union)
 export function orderIds(ids: string[]): string[]   // numeric part numerically, then letter suffix
 export function runValidate(argv: string[], io: Io): number   // --only, --list; exit 0/1/2
 export function skipOnce(ctx, token, message), skipPending(ctx, token, message), deferralsOf(ctx, rule)
 ```
-**Invariants:** `--only C17` selects `C17`, `C17b`, `C17c`, `C17e`; unknown id -> exit 2; output lines `ok   <msg>` / `FAIL <msg>` / `skip <msg>` and `passed N, failed N`; `skip_pending` touches neither counter and is gated on the artifact's primary path only.
-**Acceptance:** `bash scripts/test-validate-engineos.sh` — the harness cases (`hok`/`hno`); the 141 mutation cases pass as each family lands.
+**Invariants:** `--only C17` selects `C17`, `C17b`, `C17c`, `C17e`; unknown id -> exit 2; every output line is `render(result)` — `ok   <title>` / `FAIL <title>: [code] [code:subject] ...` / `skip <title>: [code:subject]` — then `passed N, failed N` counted by `status`; `skipOnce` yields one `fail` result with `precondition-missing:<token>` per family; `skipPending` yields a `skip` result with `artifact-pending:<path>`, touches neither counter and is gated on the artifact's primary path only (deviation 8).
+**Acceptance:** `bash scripts/test-validate-engineos.sh` — the harness cases (`hok`/`hno`); each family PR ports its own mutation cases to code assertions (Task 33c), so the bash cases shrink family by family instead of passing as substrings.
 **Commit:** `feat(checks): explicit check registry and validate harness`.
 
 ### Task 33b: mirror runner and table (`src/checks/mirror.ts`, `mirrors.ts`)
@@ -1656,7 +1656,7 @@ mirror halves port as rows.
 
 - [ ] **Step 1: Failing tests** — `mirror.test.ts`: one case per runner rule using `tempRoot(t)` + fixture docs and a fixture registry object (missing section, empty section, empty list, element present, element absent, reverse direction finds an undeclared element, `{n}` equal, `{n}` unequal, `{n}` ambiguous, `scope: 'file'` searches the whole file); `mirrors.test.ts`: every `MIRRORS[].doc` exists in the checkout and every `registry` path resolves against `registries/`.
 - [ ] **Step 2: Run** — `npm test`, new files fail.
-- [ ] **Step 3: Implement** — slice by anchor to the next `^## ` line; substitute placeholders and compile to a `RegExp` with metacharacters escaped outside the placeholder; collect failures as `{ id, reason }`.
+- [ ] **Step 3: Implement** — slice by anchor to the next `^## ` line; substitute placeholders and compile to a `RegExp` with metacharacters escaped outside the placeholder; collect failures as `finding(row.check, row.id, subject)` (Task 33c), the subject being the missing element or the unequal number.
 - [ ] **Step 4: Run tests** — `npm test`, all pass.
 - [ ] **Step 5: Commit**
 
@@ -1667,6 +1667,22 @@ git commit -m "feat(checks): mirror runner and the registry-to-doc pair table"
 
 The families that follow port each mirror half as `runMirrors(rowsOf('<id>'))`
 inside the existing check; the non-mirror assertions port as code beside it.
+
+### Task 33c: findings module (`src/checks/findings.ts`)
+
+Amended 2026-09-04 (architecture review, candidate 8). Lands FIRST in Wave 5,
+before Task 33: the harness imports `render` and the families import
+`finding`, so nothing is written twice. The letter keeps the 33-series
+together; the order is 33c, 33, 33b, then 34-41.
+
+**Files:** Create `src/checks/findings.ts`, `src/checks/findings.test.ts`.
+**Source:** the 259 `*_bad="$*_bad <slug>"` accumulations and their aggregated `bad` lines across `scripts/checks/*.sh`; `skip_once` / `skip_pending` in `scripts/checks/lib.sh`; the `case_` contract in `scripts/test-validate-engineos.sh:59`.
+**Interfaces:** the `Finding`, `CheckResult`, `HARNESS_FINDINGS`, `finding`, `result` and `render` contract in the design ("Findings"), verbatim. `CodeOf<C>` is derived from each family's `as const` code list registered on the `Check`.
+**Invariants:** `render` is the only function in `src/checks/` and `src/validate/` that builds an `ok`/`FAIL`/`skip` line; a code matches `^[a-z][a-z0-9-]*$`; codes are unique within a check (asserted in `index.test.ts` over `CHECKS[].codes`), free across checks; `status` is derived, never passed; a `subject` is rendered after a colon and never contains whitespace-only text.
+**Tests:** `findings.test.ts` — `result` derives each status; `render` yields the three line shapes byte-exact; a code outside the check's list is a `tsc` error (a `// @ts-expect-error` case); `HARNESS_FINDINGS` accepted for every check id.
+**Commit:** `feat(checks): findings module — checks report values, the harness renders`.
+
+**Family PR contract (Tasks 34-41), added by this task:** each family declares `const C<n>_FINDINGS = [...] as const` beside its checks and registers them as `codes`; every `bad` accumulation becomes `finding(...)`; the family's `case_` rows in `test-validate-engineos.sh` are ported to `<family>.test.ts` as `{ check, code, subject? }` assertions on `run(ctx)` over a mutated `relocatedRoot`, and deleted from the bash suite in the same PR; the family test asserts every declared code is produced by at least one case.
 
 ### Tasks 34-41: check families, one PR each
 
@@ -1681,7 +1697,7 @@ inside the existing check; the non-mirror assertions port as code beside it.
 | 40 | `70-runtime` part 1 | ~800 | C20*, C22*, C24*, C25*, C26* | C20c, C23, C24c, C25c, C26c prose mirrors are rows; canaries call `admit`/`breaker`/`hitl`/`repair`/telemetry in-process; C26d keeps the `hitl: budget-exhausted` literal coupling, now against `src/kernel/admit.ts` |
 | 41 | `70-runtime` part 2 | ~775 | C27*, C28, C29, C30 | C27d and C28 prose mirrors are rows; C27e (Task 14, deviation 4) and C27f (Task 16, deviation 6) are already gone; C27 ports as policy well-formedness + writer existence; C29/C30 re-pointed to the TS modules and to shim file modes |
 
-Each PR: `feat(checks): port family <name>`; acceptance `bash scripts/test-validate-engineos.sh` (all cases whose ids belong to ported families). When Task 41 lands, `scripts/checks/*.sh` are deleted and the shellcheck CI step drops `scripts/checks/*.sh`.
+Each PR: `feat(checks): port family <name>`; acceptance: the family's ported code assertions green in `<family>.test.ts`, and `bash scripts/test-validate-engineos.sh` green on what remains (Task 33c family contract). When Task 41 lands, `scripts/checks/*.sh` are deleted and the shellcheck CI step drops `scripts/checks/*.sh`.
 
 Barrier 5: handoff.
 
@@ -1691,7 +1707,7 @@ Barrier 5: handoff.
 
 ### Tasks 42-57: port the 16 suites to `node:test`
 
-One PR per suite (largest first: `test-validate-engineos.sh` 1076 -> `src/validate/validate.e2e.test.ts` may take two PRs; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box through the shared harness (Task 6b) — `runCli` for the drive, `tempRoot(t)` + `fixtureRepo` for the repo, `relocatedRoot` where a suite mutates a registry (`test-kernel.sh` `relocated_kernel`, `test-route.sh` fixtures), `envelope` and `transcript` for hook stdin — with assertions on stdout JSON and marker files. Suites that exercise a transcript (`test-verify.sh`) run each case in both transcript forms, default `input` and `{ legacy: true }`. No suite reintroduces `mkdtempSync` + `git init` inline; the harness is where that idiom lives. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
+One PR per suite (largest first: `test-validate-engineos.sh`, by then only its harness cases since the families ported theirs in Wave 5 -> `src/validate/validate.e2e.test.ts`, one PR; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box through the shared harness (Task 6b) — `runCli` for the drive, `tempRoot(t)` + `fixtureRepo` for the repo, `relocatedRoot` where a suite mutates a registry (`test-kernel.sh` `relocated_kernel`, `test-route.sh` fixtures), `envelope` and `transcript` for hook stdin — with assertions on stdout JSON and marker files. Suites that exercise a transcript (`test-verify.sh`) run each case in both transcript forms, default `input` and `{ legacy: true }`. No suite reintroduces `mkdtempSync` + `git init` inline; the harness is where that idiom lives. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
 
 Mapping: `test-route.sh`, `test-governance.sh`, `test-prompt-advisor.sh`, `test-install-hooks.sh` (keeps spawning `bash install.sh`), `test-layout.sh`, `test-verify.sh`, `test-bypass.sh`, `test-docs.sh` (reads `registries/docs-ledger.json`), `test-agent-announce.sh`, `test-post-edit.sh`, `test-exec-journal.sh`, `test-gen-agent-registry.sh`, `test-telemetry.sh`, `test-kernel.sh`, `test-validate-engineos.sh`. `test-lib-common.sh` was already replaced in Task 16.
 

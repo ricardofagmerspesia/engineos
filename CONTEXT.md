@@ -61,6 +61,11 @@ The judgment of why a check did not pass — the code's fault (red), the tooling
 could not run it (infra), or it passes again with no change (flaky).
 _Avoid_: Failure kind, error type, status, skip
 
+**Finding**:
+One named observation a Check reports — a code saying what was violated and a
+subject saying where.
+_Avoid_: Error, message, failure line, assertion
+
 **Evidence**:
 Source-attributed observations supporting a task state or gate decision.
 _Avoid_: Assertion, confidence
