@@ -44,8 +44,9 @@ CTX=$(context "what does this function return?")
 CTX=$(ENGINEOS_BYPASS=1 context "deploy to production")
 case "$CTX" in *"BYPASS ACTIVE"*) ok ;; *) no "bypass announcement is preserved: $CTX" ;; esac
 
-# Adopted repos receive one route event for every prompt and one decision event
-# only when a decision rule matched.
+# Adopted repos receive one route event for every prompt, a decision event only
+# when a decision rule matched, and a hitl event only when a human is required.
+# rule-production-write carries risk=high, so this prompt fires all three.
 T=$(mktemp -d)
 (cd "$T" && git init -q) >/dev/null 2>&1
 mkdir -p "$T/.engineos"
@@ -53,8 +54,8 @@ jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s u
   '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
 TF="$T/.git/engineos-telemetry/unified1.jsonl"
 if [ -f "$TF" ] \
-   && [ "$(wc -l < "$TF" | tr -d ' ')" = "2" ] \
-   && [ "$(jq -r '.event' "$TF" | tr '\n' ',')" = "route,decision-rules," ] \
+   && [ "$(wc -l < "$TF" | tr -d ' ')" = "3" ] \
+   && [ "$(jq -r '.event' "$TF" | tr '\n' ',')" = "route,decision-rules,hitl," ] \
    && bash "$DIR/../scripts/telemetry.sh" validate "$TF" >/dev/null 2>&1; then
   ok
 else
@@ -150,14 +151,51 @@ want "unrouted-scale" "$(context "let's decompose this into smaller pieces")" \
 want "requires-dispatch-plan" "$(context "backfill the tenant column")" \
      "a dispatch-plan intent escalates with its reason"
 
-# A resolved single-domain prompt gets exactly one deterministic contract line,
-# no escalation and no second route pass.
+# A resolved single-domain prompt gets the deterministic contract line and no
+# escalation. The security-files intent carries risk_floor: high, but a floor is
+# an input to classification and not a classification, so there is no HITL gate.
+# What there IS, and what asserting only the absence would let a defeated-in-
+# effect fix pass, is the classification instruction: two lines, contract plus
+# classify. The count is asserted so a third cannot creep in unnoticed.
 CTX=$(context "fix the auth guard bug")
 want "task contract (kernel, deterministic)" "$CTX" "a resolved prompt does not escalate"
 want "intents=security-files" "$CTX" "the deterministic line names the resolved intent"
 absent "route escalation" "$CTX" "a resolved prompt carries no escalation notice"
-[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 1 ] && ok \
-  || no "deterministic output is more than one line: [$CTX]"
+want "risk_floor=high" "$CTX" "the contract line publishes the floor it resolved"
+absent "human-in-the-loop" "$CTX" \
+       "a high risk floor on its own announces no HITL gate"
+want "no tier has been classified" "$CTX" \
+     "a high floor with no classified tier is told to classify"
+want "not an approval gate" "$CTX" \
+     "the classification instruction says it is not a human-approval gate"
+[ "$(printf '%s' "$CTX" | grep -c '^\[engineos\]')" -eq 2 ] && ok \
+  || no "deterministic output is not exactly the contract line plus the classify line: [$CTX]"
+
+# The same shape for the reason the compensating control exists: secret rotation
+# is a shortcut floor rules/risk-autonomy.md calls high outright, and it must be
+# told to classify rather than left with a bare contract line.
+CTX=$(context "rotate the stripe secret key")
+want "no tier has been classified" "$CTX" \
+     "a secret-rotation prompt is told to classify its tier"
+absent "human-in-the-loop" "$CTX" \
+       "a secret-rotation prompt still gets no gate off the floor alone"
+
+# The mirror: a matched decision rule carrying risk=high IS a classification, so
+# the same adapter announces the gate with the reason id the kernel resolved,
+# and does NOT also tell the reader to classify — the classification happened.
+# Without this case, a hitl_note wired to nothing at all, or a classify_note
+# that fired unconditionally, would still pass the assertions above.
+CTX=$(context "drop the users table in production")
+want "human-in-the-loop required — reasons: high-risk" "$CTX" \
+     "a matched high-risk decision rule announces the HITL gate with its reason"
+absent "no tier has been classified" "$CTX" \
+       "a classified prompt is not also told to classify"
+
+# And the low-floor mirror: neither line fires when the floor is not high.
+CTX=$(context "add a component for the user avatar")
+want "task contract (kernel, deterministic)" "$CTX" "a low-floor prompt still gets its contract"
+absent "no tier has been classified" "$CTX" "a low floor is not told to classify"
+absent "human-in-the-loop" "$CTX" "a low floor announces no HITL gate"
 
 # Exit codes: a hook that fails is a hook that blocks the prompt.
 jq -nc '{prompt:"add a paginated orders endpoint to the API and mirror the screen to mobile"}' \
@@ -197,6 +235,86 @@ T=$(mktemp -d)   # a git repo with no .engineos/ has not adopted EngineOS
 jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s unified4 \
   '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
 [ -e "$T/.git/engineos-telemetry" ] && no "non-adopted repo wrote a telemetry file" || ok
+rm -rf "$T"
+
+# Agent traces: the same resolve-task call that produces the route EVENT also
+# produces a router SPAN — the event carries the decision, the span carries how
+# long it took (rules/observability.md "Agent traces"). Ids only: the routed
+# intent and the risk floor, never the prompt.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "add a paginated orders endpoint to the API" --arg c "$T" --arg s spans1 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans1.exec.jsonl"
+if [ -f "$XF" ] \
+   && [ "$(wc -l < "$XF" | tr -d ' ')" = "1" ] \
+   && jq -e '.span_kind == "router" and .capability_id == "route" and .trace_id == "spans1"
+             and .route == "backend" and .risk == "medium" and (.duration_ms | type) == "number"' "$XF" >/dev/null 2>&1 \
+   && bash "$DIR/../scripts/exec-journal.sh" validate "$XF" >/dev/null 2>&1; then
+  ok
+else
+  no "a resolved prompt writes one valid router span: $([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+fi
+rm -rf "$T"
+
+# The other risk direction, so the span cannot be a hardcoded "medium".
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans2 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans2.exec.jsonl"
+jq -e '.risk == "high"' "$XF" >/dev/null 2>&1 && ok \
+  || no "a high-floor prompt writes risk=high on its router span: $([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+rm -rf "$T"
+
+# No span field may carry prompt text. Asserted on the file, not on the fields
+# we happen to set: the slug class is the whole guarantee, so a future field
+# that leaked the prompt has to fail here.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "add a paginated orders endpoint to the API zqxjkw" --arg c "$T" --arg s spans3 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans3.exec.jsonl"
+grep -q 'zqxjkw' "$XF" 2>/dev/null && no "the router span leaked prompt text" || ok
+rm -rf "$T"
+
+# A pure question resolves nothing worth announcing, but the resolve-task call
+# still happened, so its span is still the honest record of it.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "what does this function return?" --arg c "$T" --arg s spans4 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+XF="$T/.git/engineos-telemetry/spans4.exec.jsonl"
+jq -e '.span_kind == "router"' "$XF" >/dev/null 2>&1 && ok \
+  || no "a silent prompt still writes its router span: $([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+rm -rf "$T"
+
+# The two off-switches, for the span file specifically.
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans5 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | ENGINEOS_TELEMETRY=0 bash "$HOOK" >/dev/null
+[ -e "$T/.git/engineos-telemetry" ] && no "ENGINEOS_TELEMETRY=0 wrote a span file" || ok
+rm -rf "$T"
+
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans6 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | bash "$HOOK" >/dev/null
+[ -e "$T/.git/engineos-telemetry" ] && no "non-adopted repo wrote a span file" || ok
+rm -rf "$T"
+
+T=$(mktemp -d)
+(cd "$T" && git init -q) >/dev/null 2>&1
+mkdir -p "$T/.engineos"
+jq -nc --arg p "deploy the billing service to production" --arg c "$T" --arg s spans7 \
+  '{prompt:$p,cwd:$c,session_id:$s}' | ENGINEOS_BYPASS=1 bash "$HOOK" >/dev/null
+[ -e "$T/.git/engineos-telemetry" ] && no "a bypassed session wrote a span file" || ok
 rm -rf "$T"
 
 printf 'prompt-advisor: %d passed, %d failed\n' "$pass" "$fail"

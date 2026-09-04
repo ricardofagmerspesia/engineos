@@ -21,6 +21,9 @@ You + Claude do the work
 Finish ── Stop hooks gate: verified?  recorded?  ──► done
 ```
 
+Want the full map — layers, hook events, kernel, gates, agent roster — as
+flowcharts? [`BIG-PICTURE.md`](BIG-PICTURE.md).
+
 Most of it is **automatic**. You rarely invoke anything by name — the router and
 hooks do it. The sections below are for when you want to drive a piece directly.
 

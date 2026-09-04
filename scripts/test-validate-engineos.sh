@@ -641,6 +641,36 @@ case_ C22c "ensure-project-layout's registry read replaced with a hardcoded rete
       "telemetry wiring problems" \
       "sed -i.bak 's|-mtime \"+\$RET\"|-mtime \"+90\"|' hooks/ensure-project-layout.sh"
 
+case_ C22 "written_by demoted from an array back to a bare string is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+for e in d['telemetry']['events']:
+    if e['id']=='route': e['written_by']=e['written_by'][0]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C22 "a written_by entry naming a file that does not exist is caught" \
+      "telemetry policy problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+for e in d['telemetry']['events']:
+    if e['id']=='hitl': e['written_by']=e['written_by']+['hooks/no-such-hook.sh']
+json.dump(d,open(p,'w'),indent=2)\""
+
+# The reverse half of C22c: a hook that appends a registered event without
+# being declared as one of its writers. Named zz- rather than test-, because
+# hooks/test-*.sh are excluded by design (a test asserts on an event, it does
+# not produce one).
+case_ C22c "a hook appending a registered event without being declared its writer is caught" \
+      "telemetry wiring problems" \
+      "printf '#!/usr/bin/env bash\\nhook_telemetry hitl \"\$DATA\"\\n' > hooks/zz-fake-writer.sh"
+
+case_ C22c "the hitl telemetry event removed from prompt-advisor.sh is caught" \
+      "telemetry wiring problems" \
+      "sed -i.bak 's|hook_telemetry hitl|hook_telemetry hitl-missing|' hooks/prompt-advisor.sh"
+
 # ---- C23: constitution preamble mirrors (P8, epic close) ----
 
 case_ C23 "a reordered precedence domain in CLAUDE.md's sentence is caught" \
@@ -654,6 +684,378 @@ case_ C23 "context.md dropped from COMPATIBILITY.md's always-on enumeration is c
 case_ C23c "the retired \"authoritative for file-pattern routing\" claim restored in CLAUDE.md is caught" \
       "reintroduced the retired routing-map.sh authority claim" \
       "sed -i.bak 's|resolved by \`scripts/kernel.sh route-path\`|which is authoritative for file-pattern routing, resolved by \`scripts/kernel.sh route-path\`|' CLAUDE.md"
+
+# ---- C24: backpressure — data, canary, prose mirror ----
+
+case_ C24 "max_queued_units set to a word is caught" \
+      "backpressure block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['parallelism']['backpressure']['max_queued_units']='many'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C24 "a max_inflight copy of the wave cap added under backpressure is caught" \
+      "backpressure block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['parallelism']['backpressure']['max_inflight']=d['parallelism']['wave_concurrency_cap']
+json.dump(d,open(p,'w'),indent=2)\""
+
+# ---- C25: circuit breaker — data, canary, prose mirror ----
+
+case_ C25 "a breaker state dropped from policy.json is caught" \
+      "breaker block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['breaker']['states']=['closed','open']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C25 "failure_threshold set to 0 is caught" \
+      "breaker block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['breaker']['failure_threshold']=0
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C25c "the breaker threshold changed in policy.json without the prose is caught" \
+      "breaker prose-mirror problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['breaker']['failure_threshold']=d['breaker']['failure_threshold']+4
+json.dump(d,open(p,'w'),indent=2)\""
+
+# A scope id dropped from the vocabulary sentence. The three cases above mutate
+# the state list, the threshold and the threshold prose; none of them touches a
+# scope id, which is the one breaker field with no kernel consumer and no
+# canary — its prose mirror is the entire guard.
+case_ C25c "a scope id removed from the breaker's vocabulary sentence is caught" \
+      "parallelism.md-does-not-name-scope:mcp" \
+      "python3 - <<'EOF'
+p='rules/parallelism.md'
+s=open(p).read()
+s=s.replace('\`mcp\` (an MCP server), ', '')
+open(p,'w').write(s)
+EOF"
+
+# The vacuity proof itself: delete the scope vocabulary outright and extend the
+# span-kind list in the SAME section so every id still appears somewhere inside
+# it — a plausible documentation edit, since `agent` is a real span_kind. While
+# the scope grep was scoped to the section rather than to the sentence, C25c
+# reported ok on this tree, which defines no breaker scope at all.
+case_ C25c "deleting the scope vocabulary while every id survives elsewhere in the section is caught" \
+      "parallelism.md-has-no-breaker-scope-vocabulary-sentence" \
+      "python3 - <<'EOF'
+import re
+p='rules/parallelism.md'
+s=open(p).read()
+i=s.index('## Circuit breaker')
+j=s.index('## ', i + 5)
+sec=s[i:j]
+sec=re.sub(r'The breaker is per resource.*?\.\s', '', sec, flags=re.S)
+sec=re.sub(r'Those scope ids.*?\n\n', '', sec, flags=re.S)
+sec=sec.replace('\`span_kind\` \`tool\` or \`model\`',
+                '\`span_kind\` \`tool\`, \`mcp\`, \`agent\`, \`provider\` or \`model\`')
+open(p,'w').write(s[:i] + sec + s[j:])
+EOF"
+
+# ---- C26: human-in-the-loop — data, canary, prose mirror, coupling ----
+
+case_ C26 "a reason removed from policy.json's hitl vocabulary is caught" \
+      "hitl block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['reasons']=[r for r in d['hitl']['reasons'] if r!='destructive-action']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C26 "an emptied record_home is caught" \
+      "hitl block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['record_home']=''
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C26 "a situation that also sits on retry.never_retry is caught" \
+      "hitl block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['situations']=d['hitl']['situations']+[d['retry']['never_retry'][0]]
+json.dump(d,open(p,'w'),indent=2)\""
+
+# A situation the kernel accepts and then silently drops answers required:false
+# -- "no human needed" for an input it did not act on.
+case_ C26b "a declared situation the kernel no longer maps to a reason is caught" \
+      "hitl canary" \
+      "sed -i.bak 's|if \$s == \"breaker-open\" then \"breaker-open\"|if false then \"breaker-open\"|' scripts/kernel.sh"
+
+case_ C26b "the high-risk reason removed from the kernel is caught" \
+      "hitl canary" \
+      "sed -i.bak 's@if \$r == \"high\" then \"high-risk\"@if false then \"high-risk\"@' scripts/kernel.sh"
+
+# The ruling, pinned from the failing side: a resolve-task that folds hitl off a
+# bare route.risk_floor again would announce a human gate on every auth-guard
+# edit. Widening the guard from the classified signal back to any floor is
+# exactly that regression, so C26b has to catch it.
+case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
+      "hitl canary" \
+      "sed -i.bak 's@if \[ \"\$any_high\" = true \]; then@if [ -n \"\$floor\" ]; then@' scripts/kernel.sh"
+
+# The other ruling, same treatment: restoring the unconditional "A1" makes
+# autonomy_after RAISE A0 to A1 on weaker evidence and drop medium/A3 two
+# levels. Every fixture in that family used to pass --autonomy A2 and only A2,
+# where the literal happened to be right, so this is the case that proves the
+# tier-scoped assertions are load-bearing.
+case_ C26b "autonomy_after reverting to an unconditional A1 is caught" \
+      "hitl canary" \
+      "sed -i.bak 's@autonomy_after: \$after,@autonomy_after: (if \$e == \"thin\" then \"A1\" else \$a end),@' scripts/kernel.sh"
+
+case_ C26c "a reason row deleted from rules/risk-autonomy.md is caught" \
+      "hitl prose-mirror problems" \
+      "sed -i.bak '/^| \`never-retry-situation\`/d' rules/risk-autonomy.md"
+
+case_ C26c "the Human-in-the-loop section renamed in rules/risk-autonomy.md is caught" \
+      "hitl prose-mirror problems" \
+      "sed -i.bak 's|^## Human-in-the-loop\$|## HITL|' rules/risk-autonomy.md"
+
+case_ C26c "the record home dropped from the gates.md release checklist is caught" \
+      "hitl prose-mirror problems" \
+      "sed -i.bak 's|\`## Human decisions\` in the change record|the change record|' rules/gates.md"
+
+case_ C26d "the reason id renamed in the registry without kernel.sh is caught" \
+      "hitl/backpressure coupling problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['hitl']['reasons']=['budget-spent' if r=='budget-exhausted' else r for r in d['hitl']['reasons']]
+d['hitl']['situations']=['budget-spent' if s=='budget-exhausted' else s for s in d['hitl']['situations']]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C26d "admit's reject message losing the hitl reason id is caught" \
+      "hitl/backpressure coupling problems" \
+      "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' scripts/kernel.sh"
+
+# ---- C27: the agent-span exec journal ----
+# The registry half and the script half declare the same span vocabulary, so
+# either one moving alone is drift. Both directions get a case: a check that
+# only reads the registry would pass against a renamed constant.
+case_ C27 "a span kind renamed in the registry without exec-journal.sh is caught" \
+      "exec_journal block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['telemetry']['exec_journal']['span_kinds']=[('verify' if k=='verification' else k) for k in d['telemetry']['exec_journal']['span_kinds']]
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C27 "a span kind renamed in exec-journal.sh without the registry is caught" \
+      "exec_journal block problems" \
+      "sed -i.bak 's|^VALID_SPAN_KINDS=\"router |VALID_SPAN_KINDS=\"routing |' scripts/exec-journal.sh"
+
+case_ C27 "a home that no longer names the .exec.jsonl journal is caught" \
+      "exec_journal block problems" \
+      "python3 -c \"
+import json
+p='registries/policy.json'; d=json.load(open(p))
+d['telemetry']['exec_journal']['home']='.git/engineos-telemetry/<session_id>.jsonl'
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C27 "the length bound removed from policy.json is caught" \
+      "exec_journal block problems" \
+      "python3 -c \"
+import json,collections
+p='registries/policy.json'; d=json.load(open(p),object_pairs_hook=collections.OrderedDict)
+del d['telemetry']['exec_journal']['max_value_length']
+json.dump(d,open(p,'w'),indent=2)\""
+
+case_ C27 "the length bound drifting from the script's fallback is caught" \
+      "exec_journal block problems" \
+      "sed -i.bak 's|^MAX_VALUE_LEN_FALLBACK=\"256\"|MAX_VALUE_LEN_FALLBACK=\"512\"|' scripts/exec-journal.sh"
+
+# The invariant the whole schema exists for. is_slug weakened to accept
+# whitespace is a prompt-text channel straight to disk, and it is a one-line
+# edit, so it gets its own behavioral case rather than trusting the unit suite.
+case_ C27b "is_slug weakened to accept whitespace is caught by the live canary" \
+      "exec-journal span canary failed" \
+      "python3 -c \"
+p='scripts/exec-journal.sh'; s=open(p).read()
+s=s.replace(\\\"''|*[!A-Za-z0-9@_./:-]*) return 1 ;;\\\", \\\"'') return 1 ;;\\\")
+open(p,'w').write(s)\""
+
+case_ C27b "an unknown span_kind silently accepted is caught by the live canary" \
+      "exec-journal span canary failed" \
+      "sed -i.bak 's|in_list \"\$span_kind_val\" \"\$VALID_SPAN_KINDS\"|true|' scripts/exec-journal.sh"
+
+case_ C27b "the agent field losing its slug guard is caught by the canary" \
+      "exec-journal span canary failed" \
+      "sed -i.bak '/^  check_slug_flag --agent /d' scripts/exec-journal.sh"
+
+case_ C27b "the length bound no longer enforced on append is caught" \
+      "exec-journal span canary failed" \
+      "sed -i.bak '/^    check_len \"\$1\" \"\$2\"\$/d' scripts/exec-journal.sh"
+
+case_ C27c "the router span removed from prompt-advisor.sh is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/^hook_span router /,+1d' hooks/prompt-advisor.sh"
+
+case_ C27c "the verification span removed from stop-verify.sh is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/^  hook_span verification /,+2d' hooks/stop-verify.sh"
+
+case_ C27c "the span start marker no longer opened at dispatch is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/hook_span_open/d' hooks/announce-agent-dispatch.sh"
+
+case_ C27c "the span start markers no longer reaped is caught" \
+      "exec-journal wiring problems" \
+      "sed -i.bak '/engineos-telemetry\/spans/d' hooks/ensure-project-layout.sh"
+
+case_ C27d "the Agent traces section renamed in rules/observability.md is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|^## Agent traces\$|## Traces|' rules/observability.md"
+
+case_ C27d "a span kind dropped from the Agent traces section is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|\`router \| coordinator \| agent \| tool \| model \| verification\`|\`router \| agent\`|' rules/observability.md"
+
+case_ C27d "the 0-is-not-free caveat dropped from the Agent traces section is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|; do not read 0 as free||' rules/observability.md"
+
+case_ C27d "tokens_in dropped from the Agent traces field list is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|\`tokens_in\`, \`tokens_out\`, ||' rules/observability.md"
+
+case_ C27d "the span-kind alternation line deleted from the prose is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak '/router | coordinator | agent | tool | model | verification/d' rules/observability.md"
+
+case_ C27d "the status-is-a-floor caveat dropped from the prose is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|is a FLOOR|is a count|' rules/observability.md"
+
+case_ C27d "the slug claim re-broadened past note is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|every field EXCEPT \`note\` is a slug|every field is a slug|' rules/observability.md"
+
+case_ C27d "the slug guard re-claiming that it classifies content is caught" \
+      "exec-journal prose-mirror problems" \
+      "sed -i.bak 's|it does not classify the content|a PII value cannot be written through those|' rules/observability.md"
+
+case_ C27e "append and validate guarding different field sets is caught" \
+      "exec-journal slug-guard set problems" \
+      "sed -i.bak '/^  check_slug_flag --agent /d' scripts/exec-journal.sh"
+
+case_ C27e "note becoming a guarded slug field is caught" \
+      "exec-journal slug-guard set problems" \
+      "python3 -c \"
+p='scripts/exec-journal.sh'; s=open(p).read()
+old='  check_slug_flag --route          '
+open(p,'w').write(s.replace(old, '  check_slug_flag --note           \\\"\\\$note_set\\\"           \\\"\\\$note_val\\\"\\n'+old, 1))\""
+
+# The case the previous round could not have written, because the check could
+# not have caught it. Both of C27e's original comparisons derive their halves
+# from the guards, so removing a field's guard from BOTH boundaries leaves the
+# two halves equal and the check green — which is how `timestamp` stayed a
+# newline-and-control-character channel to disk after `agent` was fixed. Two
+# edits, one invariant: "a declared string field guarded on neither boundary".
+# Removing only one of them would fire the parity comparison instead and prove
+# nothing about the coverage one, so the expected string names the finding only
+# the declaration-driven comparison can produce.
+case_ C27e "a declared string field guarded on NEITHER boundary is caught" \
+      "declared-slug-field-not-guarded-on-append:timestamp" \
+      "sed -i.bak '/^  check_slug_flag --timestamp /d' scripts/exec-journal.sh; sed -i.bak 's|(\[\.timestamp, \.run_id,|([.run_id,|' scripts/exec-journal.sh"
+
+# ... and the declaration is only worth having if it cannot fall behind the
+# code, so it is pinned against the object append actually emits. Otherwise the
+# blind spot would just move: a field added to the writer and forgotten in
+# EJ_SCHEMA_FIELDS would be invisible again.
+case_ C27e "a field the writer emits but the schema declaration drops is caught" \
+      "emitted-but-not-declared-in-EJ_SCHEMA_FIELDS:route" \
+      "sed -i.bak 's| route:slug||' scripts/exec-journal.sh"
+
+case_ C27f "a span writer passing an unregistered capability_id is caught" \
+      "exec-journal capability_id problems" \
+      "sed -i.bak 's|--capability-id validate|--capability-id verify|' hooks/stop-verify.sh"
+
+# ---- C28 / C29: the pairs Tasks 6 and 7 land ----
+# Those artifacts live on other branches until the stack merges, and their
+# Checks skip on absent inputs (70-runtime.sh have_retrieval_metrics_inputs /
+# have_adoption_inputs). A case registered here anyway would assert a FAIL the
+# validator correctly does not emit, so registration is gated on the same
+# predicate: on the merged tree every case below runs and each is refutable on
+# its own mutation. Nothing here plants breakage in the guard input itself.
+tskip() { printf 'skip %s\n' "$1"; }
+
+if [ -d "$ROOT/skills/eval-harness/references" ]; then
+  case_ C28 "the RAG section deleted from rules/llm-apps.md is caught" \
+        "retrieval-metrics prose/data problems" \
+        "python3 -c \"
+import re
+p='rules/llm-apps.md'; s=open(p).read()
+open(p,'w').write(re.sub(r'## RAG\n(.*\n)*?(?=## )', '', s))\""
+
+  case_ C28 "a metric name dropped from the RAG section is caught" \
+        "retrieval-metrics prose/data problems" \
+        "sed -i.bak 's| and \*\*MRR\*\*||' rules/llm-apps.md"
+
+  case_ C28 "the retrieval-metrics reference deleted is caught" \
+        "retrieval-metrics prose/data problems" \
+        "rm -f skills/eval-harness/references/retrieval-metrics.md"
+else
+  tskip "C28 cases — skills/eval-harness/references/ is not in this tree yet"
+fi
+
+if [ -f "$ROOT/scripts/init-project.sh" ]; then
+  # One mutation per case. This one used to remove commands/init.md as well,
+  # which meant it passed on `commands/init.md-missing` and never on the exec
+  # bit it is named for.
+  case_ C29 "init-project.sh losing its exec bit is caught" \
+        "adoption entrypoint problems" \
+        "chmod -x scripts/init-project.sh"
+
+  case_ C29 "ensure-project-layout no longer sourcing scaffold-layout.sh is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak '/scaffold-layout.sh/d' hooks/ensure-project-layout.sh"
+
+  case_ C29 "docs/ADOPTION.md losing the /engineos:init command is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak 's|/engineos:init|/engineos:setup|g' docs/ADOPTION.md"
+
+  case_ C29 "commands/init.md no longer naming init-project.sh is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak 's|scripts/init-project.sh|scripts/setup-project.sh|g' commands/init.md"
+else
+  tskip "C29 cases — scripts/init-project.sh is not in this tree yet"
+fi
+
+# ---- C30: hook file modes ----
+# hooks.json registers hooks BY PATH, so an entry point without +x dies with
+# "permission denied" on every fire — a guardrail lost silently and for good.
+# All four directions get a case: the two mode bits, the list the installer
+# reads, and the installer going back to reading each file's own header for the
+# answer. That last one is the anchor itself, and it is the only case here whose
+# breakage a tree with correct modes cannot hide.
+case_ C30 "a hook entry point losing its exec bit is caught" \
+      "hook-entry-point-is-not-executable:prompt-advisor.sh" \
+      "chmod -x hooks/prompt-advisor.sh"
+
+case_ C30 "a sourced-only library carrying the exec bit is caught" \
+      "library-carries-the-executable-bit:lib-common.sh" \
+      "chmod +x hooks/lib-common.sh"
+
+case_ C30 "a library dropped from install.sh's list is caught" \
+      "introduces-itself-as-a-library-but-is-not-listed:lib-runner.sh" \
+      "sed -i.bak 's| lib-runner.sh||' install.sh"
+
+case_ C30 "install.sh going back to deciding executability from a file's own header is caught" \
+      "install.sh-decides-executability-from-the-file's-own-text-again" \
+      "sed -i.bak \"s#^  case .*ENGINEOS_HOOK_LIBRARIES.*#  head -8 \\\"\\\$_hook\\\" | grep -q 'Sourced only' \\&\\& continue#\" install.sh"
 
 flush_batch
 echo

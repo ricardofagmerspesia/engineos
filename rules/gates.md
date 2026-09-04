@@ -68,6 +68,9 @@ this before something shipped.
 - [ ] Residual risks written down and accepted by the owner.
 - [ ] For medium and high risk: what to watch after release, and for how long.
 - [ ] For high risk: human approval recorded before the external effect.
+- [ ] For any `hitl.required`: the human decision is recorded under
+      `## Human decisions` in the change record, with the reason ids
+      (`rules/risk-autonomy.md` "Human-in-the-loop").
 
 A release without a rollback path is a high-risk action regardless of what the
 diff looks like. Classify it that way.

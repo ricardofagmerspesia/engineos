@@ -36,11 +36,14 @@ this skill builds the machinery. Do not restate the rules here.
    - `numeric` — tolerance band
    - `contains` / `regex` — required fragments in text
    - `judge` — LLM-as-judge; scope per `rules/llm-apps.md` (fuzzy criteria such as tone, faithfulness, relevance — never exact-match-able fields)
+   - `retrieval` — `recall_at_k`, `precision_at_k`, `mrr` over `expected.relevant_chunk_ids` vs. the retriever's ranked ids; see `references/retrieval-metrics.md`
+   - `judge` criteria for RAG generation: `groundedness` (every claim maps to a retrieved chunk) and `faithfulness` (no claim contradicts one) — yes/no per claim, never a scale
 4. **Write the runner** `evals/<feature>/run.ts`, matching project conventions:
    - Load cases → call the real feature code (same entrypoint production uses, NOT a copy of the prompt) → score → report.
    - Concurrency-limited (p-limit ~5), per-case try/catch (one crash ≠ dead run), prompt version + model logged in the report header.
    - Output: table of failures (id, field, expected vs got), then `PASS n/m (x%)`. Exit code 1 below threshold.
    - Threshold: define per feature (start: ≥90% or current baseline, never lower it silently).
+   - For RAG features the runner calls the retriever and the generator separately and reports two tables — retrieval metrics per K, then generation pass rate — plus writes `evals/<feature>/retrieval/BASELINE.md`.
 5. **Judge setup (only if used):** separate, cheaper model than the feature under test. Rubric prompt: criteria as yes/no questions, 1–5 scale forbidden (drift), output via structured output `{pass: boolean, reason: string}`. Spot-check 10 judge verdicts by hand once before trusting it.
 6. **Wire up:** add `"eval:<feature>": "tsx evals/<feature>/run.ts"` to package.json. Mention CI: run on PRs touching the feature's prompts/ or feature dir.
 7. **Baseline:** run once, record the rate in `evals/<feature>/BASELINE.md` with date + prompt version. Change cadence (every prompt/model change pastes before/after) per `rules/llm-apps.md`.
@@ -51,3 +54,4 @@ this skill builds the machinery. Do not restate the rules here.
 - Cases include at least one prompt-injection attempt for any feature consuming untrusted content.
 - Judge never judges its own model family's output if avoidable; never judge without spot-check calibration.
 - Golden set grows: every production failure becomes a case in the same PR that fixes it.
+- A RAG eval that has no `retrieval` scorer is incomplete: it cannot tell a retrieval failure from a generation failure.

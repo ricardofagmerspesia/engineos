@@ -199,7 +199,35 @@ done
 # (every prompt, every edit, every stop) and stalls the tool that triggered it.
 # bash.exe is a plain console binary and stays invisible. Mirrors install.ps1.
 # On macOS/Linux the bare script path is correct and unchanged.
-chmod +x "$REPO_DIR"/hooks/*.sh
+# hooks/*.sh holds two kinds of file: hook entry points, which the harness
+# executes BY PATH (hooks/hooks.json registers the script itself, not
+# `bash <script>`), and libraries that are only ever `.`-sourced. A blanket
+# `chmod +x hooks/*.sh` flips the tracked mode of every library committed 644,
+# so merely running the installer left ` M hooks/...` in the checkout.
+#
+# Which files are libraries is DECLARED here, by name. It used to be read out of
+# each file's own first eight lines, by searching them for the phrase a library
+# introduces itself with — an unanchored substring match, so a header sentence
+# that merely CONTAINED the phrase while denying it ("unlike lib-common.sh, this
+# is not ...") made an entry point look like a library and it kept mode 644.
+# That failure is silent and permanent: a hook without +x is not skipped with a
+# warning, it dies with "permission denied" on every fire, and the guardrail is
+# simply gone. A file's own text should not decide whether the harness can
+# execute it.
+#
+# The cost of a list is that adding a library means editing this line. It is
+# paid loudly rather than silently: validate-engineos.sh C30 fails when a
+# hooks/*.sh introducing itself as sourced-only is missing here, when a name
+# here does not exist or does not introduce itself that way, or when either kind
+# carries the wrong mode bit. The mode is the honest signal only because that
+# check holds it to it.
+ENGINEOS_HOOK_LIBRARIES="lib-common.sh lib-runner.sh layout-manifest.sh scaffold-layout.sh"
+for _hook in "$REPO_DIR"/hooks/*.sh; do
+  [ -f "$_hook" ] || continue
+  case " $ENGINEOS_HOOK_LIBRARIES " in *" ${_hook##*/} "*) continue ;; esac
+  chmod +x "$_hook"
+done
+unset _hook
 if command -v jq >/dev/null 2>&1; then
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
   # write-once backup: never clobber the last known-good with an already-bad file
@@ -318,3 +346,4 @@ echo "MCP baseline: see templates/mcp.template.json — add servers with 'claude
 echo "or copy entries into settings.json. Use env var references, never literal tokens."
 echo ""
 green "EngineOS installed. Restart Claude Code sessions to pick up changes."
+echo "Next, per project: cd <project> && $REPO_DIR/scripts/init-project.sh   (or /engineos:init inside a session)"

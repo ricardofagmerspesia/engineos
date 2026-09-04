@@ -68,43 +68,52 @@ as not applicable. Nuclear option: comment out the `@…/engineos/CLAUDE.md` imp
 
 ---
 
-## 2. Add a project CLAUDE.md (deltas only)
-
-The constitution is global. The project file holds ONLY what differs — stack,
-commands, domain glossary, convention overrides.
+## 2. Adopt EngineOS in the project (one command)
 
 ```bash
 cd <project>
-cp ~/projects/engineos/templates/project-claude.md ./CLAUDE.md
+~/projects/engineos/scripts/init-project.sh
 ```
-Edit it: project name, stack, build/test/lint commands, any rule overrides.
-**Do not** copy EngineOS rules in — project `CLAUDE.md` > EngineOS > defaults, and
-the routing hook already appends "follow project CLAUDE.md" on every edit.
+Or, inside a Claude Code session in `<project>`: `/engineos:init`. Add `--dry-run`
+to see what it would do first.
 
-Verify: open a Claude session in `<project>` and confirm it reads the file.
+What it creates:
+- `.engineos/{changes,archived,memory}` plus `docs/{specs,prds,rules}`, each seeded
+  with its `README.md`/`_template.md`. `memory/` is part of the standard layout, not
+  optional — it's where durable, team-shared decisions get distilled
+  (`rules/memory.md`). `.engineos/audits/` is created separately, by `/audit`, on
+  first use.
+- `CLAUDE.md` from `templates/project-claude.md`, **only if the project has none**.
+  An existing one is never touched. Edit it: project name, stack, build/test/lint
+  commands, any rule overrides. **Do not** copy EngineOS rules in — project
+  `CLAUDE.md` > EngineOS > defaults, and the routing hook already appends "follow
+  project CLAUDE.md" on every edit.
 
----
+It is idempotent (re-run after every `git pull`) and it never overwrites a file you
+own. Exit codes: `0` done, `1` cannot proceed from this machine — the machine install
+is missing (Step 1 first), `$HOME` is unset, or the checkout is broken; the message
+says which, `2` not a git work tree, `3` you are inside the EngineOS repo itself,
+`64` bad usage.
 
-## 3. Enable the change-tracking lifecycle in the project
+**Commit `.engineos/` and `CLAUDE.md`.** That commit is what makes EngineOS the
+default for every teammate: the presence of `.engineos/` is the opt-in signal the
+`SessionStart` scaffold reads, and it's what puts the change-record Stop gate and the
+per-edit routing in force in their sessions too — not just yours.
 
-All EngineOS change-tracking state lives under a **single hidden folder**,
-`.engineos/`, so it doesn't clutter the project root. Scaffolding is **opt-in**
-so the hook never dirties repos that haven't adopted EngineOS: run
-`mkdir .engineos` in the project (or set `ENGINEOS_SCAFFOLD=1`), then **open a
-Claude Code session in `<project>`** and the `SessionStart` hook
-(`ensure-project-layout.sh`) creates anything missing —
-`.engineos/{changes,archived,memory}` plus `docs/{specs,prds,rules}` — non-blocking,
-safe to run every session. `ENGINEOS_SCAFFOLD=0` disables it entirely. `memory/` is part of the standard layout, not optional;
-it's where durable, team-shared decisions get distilled (`rules/memory.md`).
-`.engineos/audits/` is created separately, by `/audit`, on first use.
-
-Commit the scaffolded folders (with their `README.md`/`_template.md`, copied from
-this repo's `.engineos/`) once they appear. Now: open a
-`.engineos/changes/<date>-<slug>.md` when you start work, close it with the
-`record-change` skill when done (Step 7).
+Then: open a `.engineos/changes/<date>-<slug>.md` when you start work, close it with
+the `record-change` skill when done (Step 7).
 
 Verify: `ls .engineos/changes/ .engineos/archived/ .engineos/memory/ docs/specs/ docs/prds/ docs/rules/`
-all exist after your first session in the project.
+all exist, and a Claude session in `<project>` reads the project `CLAUDE.md`.
+
+### Manual equivalent
+
+The `SessionStart` hook (`ensure-project-layout.sh`) does the same scaffold, gated on
+opt-in so it never dirties repos that haven't adopted EngineOS. Without the script:
+run `mkdir .engineos` in the project (or set `ENGINEOS_SCAFFOLD=1`), then open a
+Claude Code session in `<project>` and the hook creates anything missing —
+non-blocking, safe to run every session. `ENGINEOS_SCAFFOLD=0` disables it entirely.
+You then copy `templates/project-claude.md` to `<project>/CLAUDE.md` by hand.
 
 ---
 

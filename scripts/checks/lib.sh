@@ -7,7 +7,8 @@
 #   - the always-on / task-contract rule sets and the deferral graph the rules
 #     family walks;
 #   - skip_once, so a family whose shared precondition is missing reports one
-#     FAIL for the whole family instead of one per Check.
+#     FAIL for the whole family instead of one per Check;
+#   - skip_pending, for a family whose input has not landed in this tree yet.
 # ok, bad and ROOT come from the harness and are in scope here.
 
 # Registries and the contract surfaces the Checks read.
@@ -21,6 +22,7 @@ IJ=registries/intents.json
 PJ=registries/policy.json
 KSH=scripts/kernel.sh
 TSH=scripts/telemetry.sh
+EJSH=scripts/exec-journal.sh
 ROUTER_MD=agents/router.md
 PROMPT_ADVISOR=hooks/prompt-advisor.sh
 HOOKS_JSON=hooks/hooks.json
@@ -58,6 +60,28 @@ skip_once() {
   case " $SKIPPED_GUARDS " in *" $token "*) return 0 ;; esac
   SKIPPED_GUARDS="$SKIPPED_GUARDS $token"
   bad "$message"
+}
+
+# skip_pending is skip_once's sibling for the other kind of absent input: not a
+# broken tree, but a tree that does not carry the artifact YET — a check landed
+# on one branch of a stack for a deliverable that lands on another. skip_once
+# calls bad() and would make an incomplete stack tip permanently red, which
+# teaches people to ignore FAIL lines; a silent `return` would instead hide the
+# fact that a check did not run. So it prints, on its own `skip` line, and
+# touches neither counter: `passed N, failed 0` keeps meaning "every check that
+# could run, ran and passed". Same one-line-per-family dedupe as skip_once.
+#
+# The trade this makes explicit: while the guard input is absent, a regression
+# in that family reads as a skip rather than a FAIL. Gate on the deliverable's
+# own primary artifact so the window closes the moment it lands, and never on
+# something a check's own findings name — a guard satisfiable by the thing under
+# test is how a negative case becomes vacuous.
+SKIPPED_PENDING=""
+skip_pending() {
+  local token="$1" message="$2"
+  case " $SKIPPED_PENDING " in *" $token "*) return 0 ;; esac
+  SKIPPED_PENDING="$SKIPPED_PENDING $token"
+  printf 'skip %s\n' "$message"
 }
 
 have_jq() {

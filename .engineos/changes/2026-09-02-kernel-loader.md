@@ -281,3 +281,6 @@ Judgement calls the brief left open:
   interface a directory without making any resolver simpler. PR6 and PR7 of the
   spec touch other files; if the kernel keeps growing, the split to argue for is
   one file per resolver family, which is a spec decision, not a drive-by.
+
+## Merge note (2026-09-03)
+Merging origin/main brought three new registry-reading subcommands (admit, breaker, hitl) written against the old `need_reg` + `$REG/<file>` pair. They were rewritten onto the `reg` seam in the merge commit, so the seam still owns every registry read. `retry` and `capability` stayed removed; docs/COMPATIBILITY.md now lists the three new arms as surface. exec-journal.sh kept the registry-read tiers and gained main's span constants; scripts/test-exec-journal.sh reads tiers from registries/models.json. Verified: test-kernel 334/0, test-exec-journal 56/0, validate-engineos 107/0, test-docs 190/0.

@@ -13,6 +13,12 @@
 #   kernel.sh risk --signals <json>
 #   kernel.sh gates --risk <tier>
 #   kernel.sh repair --check <id> --attempt <n> [--situation <sit>]
+#   kernel.sh admit --inflight <n> --queued <n>
+#   kernel.sh breaker --state closed --failures <n>
+#   kernel.sh breaker --state open --cooldown-elapsed <true|false>
+#   kernel.sh breaker --state half-open --probe-result <ok|failed>
+#   kernel.sh hitl --risk <tier> --autonomy <A0..A4> [--evidence thin|adequate]
+#                  [--external-effect true|false] [--conflict true|false] [--situation <s>]
 #   kernel.sh waves --units <json>
 #   kernel.sh decision-rules --prompt <text>
 #   kernel.sh scale --prompt <text>
@@ -195,7 +201,9 @@ cmd_model() {
 # Input: {"inputs": {<input-id>: low|medium|high}, "floors": [<floor-id>]}.
 # Tier = max over inputs; any recognized floor forces high. Unknown ids or
 # tier values are errors, not silently ignored — a risk resolver that guesses
-# around bad input is a fail-open gate.
+# around bad input is a fail-open gate. An empty payload (no inputs, no floors)
+# is an error for the same reason: absence of evidence is not evidence of low
+# risk, and answering "low" there was the same hole one step earlier.
 cmd_risk() {
   local signals=""
   while [ $# -gt 0 ]; do case "$1" in --signals) signals="${2:-}"; shift 2 ;; *) err "risk: unknown argument $1" ;; esac; done
@@ -211,6 +219,9 @@ cmd_risk() {
     | ([$p.risk.high_floors[]]) as $known_floors
     | ((.inputs // {}) | to_entries) as $in
     | ((.floors // [])) as $fl
+    | if ($in | length) == 0 and ($fl | length) == 0
+        then {error: "risk --signals needs a non-empty inputs{} or floors[] — an empty payload is not low risk, it is no evidence"}
+      else .
     | ([$in[] | select(.key as $k | $known_inputs | index($k) | not) | .key]) as $bad_in
     | ([$in[] | select(.value | test("^(low|medium|high)$") | not) | .key]) as $bad_val
     | ([$fl[] | select(. as $f | $known_floors | index($f) | not)]) as $bad_fl
@@ -221,13 +232,12 @@ cmd_risk() {
         ( if ($fl | length) > 0 then "high"
           elif ([$in[].value] | index("high")) then "high"
           elif ([$in[].value] | index("medium")) then "medium"
-          elif ($in | length) > 0 then "low"
           else "low" end ) as $tier
         | {risk: $tier,
            autonomy_ceiling: $p.autonomy.ceiling_by_risk[$tier],
            gates: $p.gates.by_risk[$tier],
            floors_applied: $fl}
-      end')
+      end end')
   if printf '%s' "$out" | jq -e '.error' >/dev/null 2>&1; then
     printf '%s\n' "$out"; exit 1
   fi
@@ -294,6 +304,257 @@ cmd_repair() {
   else
     jq -n --arg c "$check" '{check: $c, action: "stop-report-red", reason: "the bound is exhausted — stop, report the check red with what was tried; a loop continued past this point is sampling until it looks right, not fixing (rules/parallelism.md)"}'
   fi
+}
+
+# --------------------------------------------------------------------- admit
+# Backpressure: may one more unit be dispatched right now? Capacity is
+# parallelism.wave_concurrency_cap (never a second copy of the number); the
+# queue bound and the overload action live in parallelism.backpressure.
+# rules/parallelism.md "Backpressure" is the prose mirror; C24 guards both.
+cmd_admit() {
+  local inflight="" queued=""
+  # A flag whose value is missing must error, never spin: `shift 2` with one
+  # argument left fails silently (no set -e), $# never reaches 0, and the same
+  # flag re-matches forever. Check before shifting.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --inflight) [ $# -ge 2 ] || err "admit requires a value for --inflight"; inflight="$2"; shift 2 ;;
+      --queued)   [ $# -ge 2 ] || err "admit requires a value for --queued";   queued="$2";   shift 2 ;;
+      *) err "admit: unknown argument $1" ;;
+    esac
+  done
+  case "$inflight" in ''|*[!0-9]*) err "admit requires a numeric --inflight" ;; esac
+  case "$queued"   in ''|*[!0-9]*) err "admit requires a numeric --queued" ;; esac
+  local P
+  reg policy.json P
+
+  # reg proves the FILE exists, not that these fields do — and admit read
+  # through all three without checking any of them, unlike cmd_breaker and
+  # cmd_hitl. Two verified failures came out of that:
+  #   - a missing wave_concurrency_cap made jq abort on `null - 0` at exit 5
+  #     with EMPTY stdout and a raw jq message on stderr, which is precisely the
+  #     {"error": ...}-on-stdout contract the header states and the --arg +
+  #     tonumber comment below claims to be protecting;
+  #   - a missing (or hand-edited) overload_action was emitted VERBATIM at exit
+  #     0, so admit answered with an action outside the registry's own declared
+  #     `actions` vocabulary — up to and including a value nothing in EngineOS
+  #     can execute.
+  # Each field is therefore checked before anything reads through it. Fail
+  # closed, as every other registry-reading subcommand does.
+  jq -e '.parallelism.backpressure' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no parallelism.backpressure block — admit cannot resolve its own policy without it"
+  jq -e '.parallelism.wave_concurrency_cap | type == "number"' "$P" >/dev/null 2>&1 \
+    || err "policy.json parallelism.wave_concurrency_cap is not a number — admit cannot compute capacity without it"
+  jq -e '.parallelism.backpressure.max_queued_units | type == "number"' "$P" >/dev/null 2>&1 \
+    || err "policy.json parallelism.backpressure.max_queued_units is not a number — admit cannot compare the queue against it"
+  # The overload action is DATA, so it is checked against the registry's own
+  # declared vocabulary rather than against a second list spelled here.
+  jq -e '.parallelism.backpressure as $b
+         | ($b.actions | type == "array") and (($b.actions | index($b.overload_action)) != null)' "$P" >/dev/null 2>&1 \
+    || err "policy.json parallelism.backpressure.overload_action is not one of the declared backpressure.actions — admit will not emit an action the registry does not declare"
+
+  # --arg + tonumber, not --argjson: "06" passes the digits-only check above but
+  # is not valid JSON, and --argjson would fail inside jq with a parse error on
+  # stderr instead of the kernel's {"error": ...} contract on stdout.
+  jq -n --arg i "$inflight" --arg q "$queued" --slurpfile pol "$P" '
+    ($i | tonumber) as $i
+    | ($q | tonumber) as $q
+    | $pol[0].parallelism as $par
+    | $par.wave_concurrency_cap as $cap
+    | $par.backpressure.max_queued_units as $maxq
+    | ($cap - $i) as $capacity
+    | if $capacity > 0 then
+        {action: "dispatch", capacity: $capacity,
+         reason: "inflight \($i) below cap \($cap)"}
+      elif $q < $maxq then
+        {action: $par.backpressure.overload_action, capacity: 0,
+         reason: "cap \($cap) reached; \($q) of \($maxq) queued — hold the unit for the next wave"}
+      else
+        {action: "reject", capacity: 0,
+         reason: "cap \($cap) reached and queue full (\($q)/\($maxq)) — stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)"}
+      end'
+}
+
+# ------------------------------------------------------------------- breaker
+# Per-resource circuit breaker. The failure policy (rules/parallelism.md) asks
+# "try this UNIT again?";
+# breaker asks "why are we still calling this RESOURCE?". The orchestrator
+# owns the state and the consecutive-failure count (from the exec journal)
+# and passes them in — the kernel is the transition table, nothing more.
+# rules/parallelism.md "Circuit breaker" is the prose mirror; C25 guards both.
+cmd_breaker() {
+  local state="" failures="" cooldown="" probe=""
+  # Same fail-fast arg discipline as cmd_admit: a flag with no value must error
+  # rather than spin. `shift 2` on a single remaining argument fails silently
+  # (no set -e), $# never reaches 0, and the flag re-matches forever.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --state)            [ $# -ge 2 ] || err "breaker requires a value for --state";            state="$2";    shift 2 ;;
+      --failures)         [ $# -ge 2 ] || err "breaker requires a value for --failures";         failures="$2"; shift 2 ;;
+      --cooldown-elapsed) [ $# -ge 2 ] || err "breaker requires a value for --cooldown-elapsed"; cooldown="$2"; shift 2 ;;
+      --probe-result)     [ $# -ge 2 ] || err "breaker requires a value for --probe-result";     probe="$2";    shift 2 ;;
+      *) err "breaker: unknown argument $1" ;;
+    esac
+  done
+  case "$state" in closed|open|half-open) ;; *) err "breaker requires --state closed|open|half-open" ;; esac
+  local P
+  reg policy.json P
+
+  # reg proves the FILE exists, not that this block does. Without the
+  # guard, $b.failure_threshold is null, jq sorts null below every number, so
+  # `0 >= null` is true and a healthy resource is reported open with exit 0 —
+  # the fail-open class cmd_risk was fixed for. Same shape as route-escalate's
+  # router-block guard.
+  jq -e '.breaker' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no breaker block — breaker cannot resolve its own policy without it"
+
+  case "$state" in
+    closed)
+      case "$failures" in ''|*[!0-9]*) err "breaker --state closed requires a numeric --failures" ;; esac
+      # --arg + tonumber, not --argjson: "03" passes the digits-only check above
+      # but is not valid JSON, and --argjson would fail inside jq with a parse
+      # error on stderr instead of the kernel's {"error": ...} contract.
+      jq -n --arg f "$failures" --slurpfile pol "$P" '
+        ($f | tonumber) as $f
+        | $pol[0].breaker as $b
+        | if $f >= $b.failure_threshold
+          then {state: "open", allow: false,
+                reason: "\($f) consecutive failures reached threshold \($b.failure_threshold) — stop calling this resource for \($b.cooldown_waves) wave(s); route around or report DEGRADED"}
+          else {state: "closed", allow: true,
+                reason: "\($f) of \($b.failure_threshold) failures — resource healthy"} end' ;;
+    open)
+      case "$cooldown" in true|false) ;; *) err "breaker --state open requires --cooldown-elapsed true|false" ;; esac
+      if [ "$cooldown" = true ]; then
+        jq -n --slurpfile pol "$P" '{state: "half-open", allow: true,
+          reason: "cooldown elapsed — allow \($pol[0].breaker.half_open_probes) probe call(s); no fan-out through this resource until it closes"}'
+      else
+        jq -n '{state: "open", allow: false, reason: "cooldown not elapsed — do not call; route around or report DEGRADED"}'
+      fi ;;
+    half-open)
+      case "$probe" in ok|failed) ;; *) err "breaker --state half-open requires --probe-result ok|failed" ;; esac
+      if [ "$probe" = ok ]; then
+        jq -n '{state: "closed", allow: true, reason: "probe succeeded — resource recovered; reset the failure count to 0"}'
+      else
+        jq -n '{state: "open", allow: false, reason: "probe failed — reopen for another cooldown"}'
+      fi ;;
+  esac
+}
+
+# ---------------------------------------------------------------------- hitl
+# Human-in-the-loop as a queryable entity. autonomy.ceiling_by_risk answers
+# "how far may this unit go alone"; hitl answers "must a HUMAN decide, and for
+# which named reasons" — so a gate produces an auditable record instead of an
+# implication drawn from a tier. The reason vocabulary is the closed list in
+# policy.hitl.reasons and the emission order below is that list's order; a gate
+# may cite nothing else. rules/risk-autonomy.md "Human-in-the-loop" mirrors it.
+#
+# The four retry.never_retry ids collapse to the single reason
+# never-retry-situation — they are the same decision (stop, escalate to a
+# human, do not retry); the hitl.situations ids each carry their own reason.
+cmd_hitl() {
+  local risk="" autonomy="" evidence="adequate" external="false" conflict="false" situation=""
+  # Same fail-fast arg discipline as cmd_admit and cmd_breaker: a flag with no
+  # value must error rather than spin. `shift 2` on a single remaining argument
+  # fails silently (no set -e), $# never reaches 0, and the flag re-matches
+  # forever. Check before shifting.
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --risk)            [ $# -ge 2 ] || err "hitl requires a value for --risk";            risk="$2";      shift 2 ;;
+      --autonomy)        [ $# -ge 2 ] || err "hitl requires a value for --autonomy";        autonomy="$2";  shift 2 ;;
+      --evidence)        [ $# -ge 2 ] || err "hitl requires a value for --evidence";        evidence="$2";  shift 2 ;;
+      --external-effect) [ $# -ge 2 ] || err "hitl requires a value for --external-effect"; external="$2";  shift 2 ;;
+      --conflict)        [ $# -ge 2 ] || err "hitl requires a value for --conflict";        conflict="$2";  shift 2 ;;
+      --situation)       [ $# -ge 2 ] || err "hitl requires a value for --situation";       situation="$2"; shift 2 ;;
+      *) err "hitl: unknown argument $1" ;;
+    esac
+  done
+  case "$risk"     in low|medium|high) ;; *) err "hitl requires --risk low|medium|high" ;; esac
+  case "$autonomy" in A0|A1|A2|A3|A4) ;;  *) err "hitl requires --autonomy A0..A4" ;; esac
+  case "$evidence" in thin|adequate) ;;   *) err "hitl --evidence must be thin|adequate" ;; esac
+  case "$external" in true|false) ;;      *) err "hitl --external-effect must be true|false" ;; esac
+  case "$conflict" in true|false) ;;      *) err "hitl --conflict must be true|false" ;; esac
+  local P
+  reg policy.json P
+
+  # reg proves the FILE exists, not that this block does. Without the
+  # guard, the situation allowlist below reduces to `null | index($s)` — so
+  # every situation reads as unknown. Fail closed, as cmd_risk and cmd_breaker
+  # do.
+  jq -e '.hitl' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no hitl block — hitl cannot resolve its own reason vocabulary without it"
+
+  # record_home gets its OWN guard, because `jq -e '.hitl'` tests the BLOCK and
+  # the comment above used to claim it tested the key. It did not: deleting
+  # hitl.record_home alone left the block truthy and shipped
+  # {"required":true, ..., "record_home":null} at exit 0 — a caller told a human
+  # must decide, and given nowhere to record the decision, while
+  # rules/risk-autonomy.md holds that a tier requiring a human with no such
+  # record has not passed its gate. Now the guard matches the sentence.
+  jq -e '.hitl.record_home | (type == "string") and (length > 0)' "$P" >/dev/null 2>&1 \
+    || err "policy.json has no hitl.record_home — hitl will not require a human decision without naming where it is recorded"
+
+  # An unknown situation is an error, never an ignored flag: a caller reporting
+  # a situation the kernel silently drops would read required:false as "no
+  # human needed", when the truth is "the kernel did not understand the input".
+  if [ -n "$situation" ]; then
+    jq -e --arg s "$situation" '(.retry.never_retry + .hitl.situations) | index($s)' "$P" >/dev/null 2>&1 \
+      || err "unknown situation: $situation (one of retry.never_retry or hitl.situations)"
+  fi
+
+  # The thin-evidence landing at risk high is a registry value with a
+  # self-describing name -- autonomy.high_with_thin_evidence -- not a literal
+  # here. Read only on the path that uses it, and fail closed twice: a missing
+  # value would make jq index the level list with null, and a value that is not
+  # a level id would do the same, both producing a confident wrong ceiling.
+  local thin_target=""
+  if [ "$evidence" = thin ] && [ "$risk" = high ]; then
+    thin_target=$(jq -r '.autonomy.high_with_thin_evidence // empty' "$P")
+    [ -n "$thin_target" ] \
+      || err "policy.json has no autonomy.high_with_thin_evidence — hitl cannot resolve the thin-evidence ceiling at risk high"
+    case "$thin_target" in
+      A0|A1|A2|A3|A4) ;;
+      *) err "policy.json autonomy.high_with_thin_evidence is not an autonomy level: $thin_target" ;;
+    esac
+  fi
+
+  jq -n --arg r "$risk" --arg a "$autonomy" --arg e "$evidence" --arg s "$situation" \
+        --arg thin "$thin_target" \
+        --argjson x "$external" --argjson c "$conflict" --slurpfile pol "$P" '
+    $pol[0] as $p
+    | ([ (if $r == "high" then "high-risk" else empty end),
+         (if $e == "thin" then "evidence-insufficient" else empty end),
+         (if $x and ($a == "A3" or $a == "A4") then "external-effect" else empty end),
+         (if $c then "policy-conflict" else empty end),
+         (if $s != "" and ($p.retry.never_retry | index($s)) then "never-retry-situation" else empty end),
+         (if $s == "destructive" then "destructive-action" else empty end),
+         (if $s == "budget-exhausted" or $s == "reject" then "budget-exhausted" else empty end),
+         (if $s == "breaker-open" then "breaker-open" else empty end) ]) as $reasons
+    # Thin evidence DROPS autonomy; it can never raise it. The old expression
+    # assigned "A1" unconditionally, which turned A0 ("explain only, no
+    # writes") into A1 in response to WEAKER evidence -- inverting the rule the
+    # field exists to enforce -- and applied the landing of the high row to
+    # every tier, while rules/risk-autonomy.md says "drop autonomy one level".
+    #
+    # One level down, then two clamps: never above the level passed in (so A0
+    # stays A0), and never below A1, the lowest level at which "draft, do not
+    # apply" is still an answer -- A0 is a consequence of the task being a
+    # question, not of thin evidence. At risk high the registry value
+    # autonomy.high_with_thin_evidence caps the result, so that target lives in
+    # exactly one place. (No apostrophes in this comment: the jq program is a
+    # single-quoted shell string.)
+    | (["A0", "A1", "A2", "A3", "A4"]) as $levels
+    | ($levels | index($a)) as $ai
+    | (if $e != "thin" then $a
+       else ([$ai, ([1, ($ai - 1)] | max)] | min) as $dropped
+            | (if $r == "high"
+                 then ([$dropped, ($levels | index($thin))] | min)
+                 else $dropped end)
+            | $levels[.]
+       end) as $after
+    | {required: (($reasons | length) > 0),
+       reasons: $reasons,
+       autonomy_after: $after,
+       record_home: $p.hitl.record_home}'
 }
 
 # --------------------------------------------------------------------- waves
@@ -520,7 +781,52 @@ cmd_resolve_task() {
   decisions=$(cmd_decision_rules --prompt "$prompt"); rc=$?
   [ $rc -eq 0 ] || { printf '%s\n' "$decisions"; exit 1; }
 
+  # Human-in-the-loop, folded in so an adapter gets it from the same call
+  # instead of deriving a tier and then asking a second question.
+  #
+  # HITL is answered from a CLASSIFIED tier, never from a risk floor.
+  # decisions.any_high is a classification: a registered rule matched this
+  # prompt's own text and declared risk=high. route.risk_floor is not — it is
+  # an input to classification, inherited from whichever domain a path or a
+  # keyword landed in. Six intents carry risk_floor high, so folding the floor
+  # in made "fix the auth guard bug" announce a human gate nobody owed — the
+  # gate theatre rules/gates.md names, which teaches readers to skip the
+  # announcement that does matter. A floor-only prompt therefore gets
+  # hitl: null plus the risk_floor sibling below, which says a classification
+  # is still owed.
+  #
+  # A null floor (no domain intent, no matched rule, no scale signal) is not
+  # "low risk" either — it is no risk evidence, the distinction cmd_risk fails
+  # closed on. Same answer: hitl stays null and the advisor's
+  # `.hitl.required // false` reads it as "nothing to announce".
+  local any_high="" floor="" ceiling="" hitl=null
+  any_high=$(printf '%s' "$decisions" | jq -r '.any_high // false')
+  floor=$(printf '%s' "$route" | jq -r '.risk_floor // empty')
+  # A matched high rule raises the published floor to high, which is what the
+  # contract object reports. Written as a guarded assignment, not an if block,
+  # so the `if` below is the file's only `any_high = true` branch and a check
+  # can pin that branch by name.
+  [ "$any_high" != true ] || floor=high
+  # The ceiling lookup runs for any floor, classified or not: a floor with no
+  # entry in autonomy.ceiling_by_risk is a broken registry, and the contract
+  # object below publishes that same value.
+  if [ -n "$floor" ]; then
+    ceiling=$(jq -r --arg t "$floor" '.autonomy.ceiling_by_risk[$t] // empty' "$P")
+    [ -n "$ceiling" ] || err "policy.json has no autonomy.ceiling_by_risk[$floor] — resolve-task cannot resolve the ceiling hitl needs"
+  fi
+  if [ "$any_high" = true ]; then
+    # No --conflict here: a matched high rule on a task nobody has classified
+    # is not an observed disagreement between rule and tier, and asserting one
+    # would be the same unearned claim one level down. The flag stays on
+    # cmd_hitl's surface for a caller that has actually seen both.
+    hitl=$(cmd_hitl --risk high --autonomy "$ceiling"); rc=$?
+    # cmd_hitl's err exits its own subshell only, so the status is checked and
+    # re-raised here rather than trusted to abort the caller.
+    [ $rc -eq 0 ] || { printf '%s\n' "$hitl"; exit 1; }
+  fi
+
   jq -n --arg prompt "$prompt" --argjson route "$route" --argjson decisions "$decisions" \
+    --argjson hitl "$hitl" \
     --slurpfile intents "$I" --slurpfile pol "$P" '
     ($route.intents) as $ids
     | ([ $intents[0].intents[]
@@ -581,7 +887,14 @@ cmd_resolve_task() {
          gates: $gates,
          preferences: $preferences},
        route: $route,
-       decision_rules: $decisions}'
+       decision_rules: $decisions,
+       # No second risk_floor here: task_contract.risk_floor above already
+       # carries the value of this same jq binding, and a second name for it is
+       # surface with no caller (rules/base.md). The signal a floor-only prompt needs is
+       # emitted by hooks/prompt-advisor.sh, which reads that field and says a
+       # classification is owed -- as an instruction to classify, not as a gate.
+       hitl: (if $hitl == null then null
+              else {required: $hitl.required, reasons: $hitl.reasons} end)}'
 }
 
 # ---------------------------------------------------------------- dispatcher
@@ -594,10 +907,13 @@ case "$cmd" in
   risk)           cmd_risk "$@" ;;
   gates)          cmd_gates "$@" ;;
   repair)         cmd_repair "$@" ;;
+  admit)          cmd_admit "$@" ;;
+  breaker)        cmd_breaker "$@" ;;
+  hitl)           cmd_hitl "$@" ;;
   waves)          cmd_waves "$@" ;;
   decision-rules) cmd_decision_rules "$@" ;;
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
   resolve-task)   cmd_resolve_task "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|repair|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|repair|admit|breaker|hitl|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
 esac

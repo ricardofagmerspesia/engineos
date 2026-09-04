@@ -362,6 +362,69 @@ else
   no "case18 one-timeout-table: expected 1x TIMEOUT=90 and 1x TIMEOUT=180 in stop-verify.sh and no budget literal in lib-runner.sh, got 90=$T90 180=$T180 adapter=$ADAPTER_T"
 fi
 
+# ---------- Case 19: the Stop gate writes a verification SPAN ----------
+# The kernel-decision event (case 12) says which packages went red; the span
+# says the gate ran, how long it took and whether it passed
+# (rules/observability.md "Agent traces"). Same guarded block, so the re-entry
+# assertion below is the span half of case 14.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"lint":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vspan1"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":true,"session_id":"vspan1"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+XF="$T/.git/engineos-telemetry/vspan1.exec.jsonl"
+XLINES=$([ -f "$XF" ] && wc -l < "$XF" | tr -d ' ' || echo 0)
+if [ -f "$XF" ] \
+   && jq -e '.span_kind == "verification" and .status == "FAILED" and .capability_id == "validate"
+             and .trace_id == "vspan1" and (.duration_ms | type) == "number"' "$XF" >/dev/null 2>&1 \
+   && bash "$DIR/../scripts/exec-journal.sh" validate "$XF" >/dev/null 2>&1 \
+   && [ "$XLINES" = "1" ]; then
+  ok
+else
+  no "case19 stop-gate-writes-a-verification-span: lines=$XLINES file=$([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+fi
+rm -rf "$T" "$TSCRIPT"
+
+# ---------- Case 20: a green run writes status OK, not a missing span ----------
+# The failure direction alone would pass against a hook hardwired to FAILED.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"lint":"exit 0"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vspan2"}' "$T" "$TSCRIPT" \
+  | bash "$DIR/stop-verify.sh" >/dev/null
+XF="$T/.git/engineos-telemetry/vspan2.exec.jsonl"
+if [ -f "$XF" ] && jq -e '.span_kind == "verification" and .status == "OK"' "$XF" >/dev/null 2>&1; then
+  ok
+else
+  no "case20 green-run-writes-status-OK-span: file=$([ -f "$XF" ] && cat "$XF" || echo MISSING)"
+fi
+rm -rf "$T" "$TSCRIPT"
+
+# ---------- Case 21: ENGINEOS_TELEMETRY=0 writes no span either ----------
+# Case 15 covers the event file; the span shares the switch and the directory,
+# so an unguarded span writer would recreate the directory case 15 asserts away.
+T=$(mktemp -d)
+( cd "$T" && git init -q && git commit -q --allow-empty -m init )
+mkdir -p "$T/.engineos"
+printf '{"scripts":{"lint":"exit 1"}}\n' > "$T/package.json"
+mkdir -p "$T/src"; touch "$T/src/x.ts"
+TSCRIPT=$(mktemp)
+make_transcript "$TSCRIPT" "$T/src/x.ts"
+printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false,"session_id":"vspan3"}' "$T" "$TSCRIPT" \
+  | ENGINEOS_TELEMETRY=0 bash "$DIR/stop-verify.sh" >/dev/null
+[ ! -e "$T/.git/engineos-telemetry" ] && ok || no "case21 ENGINEOS_TELEMETRY=0-writes-no-span"
+rm -rf "$T" "$TSCRIPT"
+
 echo "---"
 echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]

@@ -11,6 +11,26 @@ KERNEL="$ROOT/scripts/kernel.sh"
 REG="$ROOT/registries"
 pass=0; fail=0
 
+# Every temp tree this suite builds lives under one root that an EXIT trap
+# removes. The router-block fixture below used to back the TRACKED registry up
+# to a fixed /tmp path and overwrite registries/policy.json in place: a ^C, a
+# crash or a second concurrent run left the checkout carrying a router-less or
+# truncated registry, which is exactly what produced six spurious failures in
+# another process and a >600s gate timeout during this epic. No fixture writes
+# through a predictable path, and none of them writes into $REG at all.
+TMPROOT=$(cd "$(mktemp -d)" && pwd -P) || exit 1
+trap 'rm -rf "$TMPROOT"' EXIT
+
+# Registry-derived fixture inputs, read once. Every expectation below that
+# depends on one of these numbers reads it from here instead of restating it:
+# re-parameterising the registry must MOVE the fixtures, never turn the suite
+# red. An unusable value is a loud abort rather than fixtures computing
+# nonsense off an empty string.
+CAP=$(jq -r '.parallelism.wave_concurrency_cap' "$REG/policy.json" 2>/dev/null)
+MAXQ=$(jq -r '.parallelism.backpressure.max_queued_units' "$REG/policy.json" 2>/dev/null)
+case "$CAP"  in ''|*[!0-9]*|0) echo "policy.json parallelism.wave_concurrency_cap is unusable: [$CAP]" >&2; exit 2 ;; esac
+case "$MAXQ" in ''|*[!0-9]*|0) echo "policy.json parallelism.backpressure.max_queued_units is unusable: [$MAXQ]" >&2; exit 2 ;; esac
+
 # ---------------------------------------------------------------- assertions
 
 # run <args...> — invokes the kernel, captures stdout+stderr into $OUT and the
@@ -44,6 +64,29 @@ assert_err() {  # <desc> — expects the last `run` to have exited non-zero with
     fail=$((fail+1)); printf 'FAIL %s — rc=%s out=%s\n' "$desc" "$RC" "$OUT"
   fi
 }
+
+# relocated_kernel <name> <jq-mutation-of-policy.json> -> the path of a PRIVATE
+# kernel copy whose registries/ carries policy.json with that mutation applied.
+# The kernel derives its own ROOT/REG from where it sits, so the copy answers
+# against THAT data and no fail-closed fixture ever has to write into the
+# tracked registries/. Lives under $TMPROOT, so the EXIT trap reaps it.
+relocated_kernel() {
+  # Separate statements, not one `local`: bash 3.2 (macOS) does not make an
+  # earlier name on the same `local` line visible to a later one, so
+  # `local name="$1" dir="$TMPROOT/$name"` aborts under `set -u`.
+  local name="$1" mutation="$2"
+  local dir="$TMPROOT/$name"
+  mkdir -p "$dir/scripts" "$dir/registries" || return 1
+  cp "$KERNEL" "$dir/scripts/kernel.sh" || return 1
+  cp "$REG"/*.json "$dir/registries/" || return 1
+  jq "$mutation" "$REG/policy.json" > "$dir/registries/policy.json" \
+    || { echo "fixture mutation failed: $mutation" >&2; return 1; }
+  printf '%s' "$dir/scripts/kernel.sh"
+}
+
+# runk <kernel-path> <args...> — the same capture as `run`, against a relocated
+# copy rather than the shipped kernel.
+runk() { local k="$1"; shift; OUT=$(bash "$k" "$@" 2>&1); RC=$?; }
 
 echo "== kernel.sh behavioral tests =="
 
@@ -94,7 +137,7 @@ assert_eq "a foreign project's hooks/x.ts -> not excluded" "$(jqval '.excluded')
 # at all, and the sub-case would pass vacuously.
 # pwd -P because mktemp -d hands back a symlinked path on macOS (/var -> /private/var)
 # while the kernel's own $ROOT is the resolved one — unresolved, nothing would match.
-SELFT=$(cd "$(mktemp -d)" && pwd -P)
+SELFT="$TMPROOT/self"
 for variant in with without; do
   mkdir -p "$SELFT/$variant/scripts" "$SELFT/$variant/registries"
   cp "$KERNEL" "$SELFT/$variant/scripts/kernel.sh"
@@ -274,22 +317,17 @@ assert_eq "same-file collision -> violation file" "$(jqval '.violations[0].file'
 assert_eq "same-file collision -> violation names both units" \
   "$(jqvalc '.violations[0].units | sort')" '["a","b"]'
 
-# 8 independent units, cap is 6 (registries/policy.json parallelism.wave_concurrency_cap)
-# -> one wave of 6, one wave of 2.
-run waves --units '[
-  {"id":"u1","files":[],"depends_on":[]},
-  {"id":"u2","files":[],"depends_on":[]},
-  {"id":"u3","files":[],"depends_on":[]},
-  {"id":"u4","files":[],"depends_on":[]},
-  {"id":"u5","files":[],"depends_on":[]},
-  {"id":"u6","files":[],"depends_on":[]},
-  {"id":"u7","files":[],"depends_on":[]},
-  {"id":"u8","files":[],"depends_on":[]}
-]'
-assert_ok "waves 8-unit cap split exits 0"
-assert_eq "8-unit split -> wave count" "$(jqval '.waves | length')" "2"
-assert_eq "8-unit split -> wave1 size" "$(jqval '.waves[0] | length')" "6"
-assert_eq "8-unit split -> wave2 size" "$(jqval '.waves[1] | length')" "2"
+# The cap split. The unit list is GENERATED from the cap rather than written
+# out as eight units against a cap of 6: a literal count is "two units over the
+# cap" only for one value of wave_concurrency_cap, so re-parameterising the
+# registry used to turn this fixture red against a kernel splitting correctly.
+# cap + 2 independent units is always exactly two waves, sized cap and 2.
+CAP_UNITS=$(jq -nc --argjson n "$((CAP + 2))" '[range(0; $n) | {id: "u\(. + 1)", files: [], depends_on: []}]')
+run waves --units "$CAP_UNITS"
+assert_ok "waves cap+2-unit split exits 0"
+assert_eq "cap+2 split -> wave count" "$(jqval '.waves | length')" "2"
+assert_eq "cap+2 split -> wave1 size is the cap" "$(jqval '.waves[0] | length')" "$CAP"
+assert_eq "cap+2 split -> wave2 size" "$(jqval '.waves[1] | length')" "2"
 
 # Cycle a -> b -> a is an error, not a silently-empty wave list.
 run waves --units '[
@@ -423,12 +461,32 @@ assert_err "route-escalate with no --prompt errors"
 run route-escalate --bogus x
 assert_err "route-escalate with unknown argument errors"
 
-cp "$REG/policy.json" /tmp/test-kernel-policy-bak.json
-jq 'del(.router)' /tmp/test-kernel-policy-bak.json > "$REG/policy.json"
-run route-escalate --prompt "add a feature"
+# The fail-closed router-block case, built as a RELOCATED kernel copy — the
+# same pattern the breaker's missing-block case uses, and for the same reason:
+# this fixture used to overwrite the tracked registries/policy.json in place
+# through a fixed /tmp backup with no trap, so a run that died between the two
+# `cp`s left the checkout carrying a router-less registry for every other
+# reader. Nothing here touches $REG.
+#
+# Run as a MATCHED PAIR: without the `with` control, the `without` half could
+# error for any reason at all (a missing registry, a relocated root that never
+# resolves) and still satisfy assert_err, which would make the fail-closed
+# claim vacuous.
+for variant in with without; do
+  mkdir -p "$TMPROOT/router-$variant/scripts" "$TMPROOT/router-$variant/registries"
+  cp "$KERNEL" "$TMPROOT/router-$variant/scripts/kernel.sh"
+  cp "$REG"/*.json "$TMPROOT/router-$variant/registries/"
+done
+jq 'del(.router)' "$REG/policy.json" > "$TMPROOT/router-without/registries/policy.json"
+
+OUT=$(bash "$TMPROOT/router-with/scripts/kernel.sh" route-escalate --prompt "add a feature" 2>&1); RC=$?
+assert_ok "relocated kernel copy with the router block intact still answers route-escalate"
+
+OUT=$(bash "$TMPROOT/router-without/scripts/kernel.sh" route-escalate --prompt "add a feature" 2>&1); RC=$?
 assert_err "route-escalate with no router policy block errors (fail-closed)"
-cp /tmp/test-kernel-policy-bak.json "$REG/policy.json"
-rm -f /tmp/test-kernel-policy-bak.json
+assert_eq "the router-block error names the missing block, not some other failure" \
+  "$(jqval '.error | test("router")')" "true"
+rm -rf "$TMPROOT/router-with" "$TMPROOT/router-without"
 
 # ---------------------------------------------- positional subcommands fail closed
 # The positional subcommands used to accept a flag SILENTLY: bash bound
@@ -562,6 +620,447 @@ assert_eq "resolve-task gives an unrouted action the closed safety bundle" \
 
 run resolve-task
 assert_err "resolve-task with no --prompt errors"
+
+# ----------------------------------------------------------------------- admit
+
+echo "-- admit --"
+
+# CAP and MAXQ are read once at the top of the file. Nothing below restates a
+# policy number, and nothing below picks an input that only happens to sit on
+# the right side of one: an inflight count of 3 was "below the cap" solely
+# because the cap is 6 today, so re-parameterising the registry to 2 turned
+# five of these fixtures red against a kernel that was answering correctly.
+# PARTIAL is a load strictly inside any cap >= 1, derived from the cap itself.
+PARTIAL=$((CAP / 2))
+
+run admit --inflight 0 --queued 0
+assert_ok "admit with idle capacity exits 0"
+assert_eq "admit idle -> dispatch" "$(jqval .action)" "dispatch"
+assert_eq "admit idle capacity == cap" "$(jqval .capacity)" "$CAP"
+
+# capacity is cap - inflight, not a constant: a partial load under the cap must
+# report the remainder, which a hardcoded cap would get wrong.
+run admit --inflight "$PARTIAL" --queued 0
+assert_eq "admit with a partial load -> dispatch" "$(jqval .action)" "dispatch"
+assert_eq "admit capacity is cap minus inflight" "$(jqval .capacity)" "$((CAP - PARTIAL))"
+assert_eq "admit answers exactly {action, capacity, reason}" \
+  "$(jqvalc '. | keys | sort')" '["action","capacity","reason"]'
+
+# a trailing flag with no value must error, not spin the arg loop forever
+run admit --inflight
+assert_err "admit with a valueless --inflight errors instead of hanging"
+
+run admit --inflight "$CAP" --queued 0
+assert_eq "admit at cap -> overload_action" "$(jqval .action)" "$(jq -r '.parallelism.backpressure.overload_action' "$REG/policy.json")"
+assert_eq "admit at cap capacity 0" "$(jqval .capacity)" "0"
+
+# over the cap with room in the queue is still the overload action, not reject.
+# The queued count is MAXQ - 1 rather than a literal: any literal is "a non-full
+# queue" only for as long as max_queued_units stays above it.
+run admit --inflight "$((CAP + 1))" --queued "$((MAXQ - 1))"
+assert_eq "admit over cap with a non-full queue -> defer" "$(jqval .action)" "defer"
+
+run admit --inflight "$CAP" --queued "$MAXQ"
+assert_eq "admit at cap and queue full -> reject" "$(jqval .action)" "reject"
+# Task 4's `hitl --situation reject` keys on this literal
+assert_eq "admit reject reason names the HITL trigger" \
+  "$(jqval '.reason | test("budget-exhausted")')" "true"
+
+# a leading zero is a shell-ism, not a JSON number: it normalises, and must
+# never surface as a bare jq parse error
+run admit --inflight 02 --queued 0
+assert_ok "admit normalises a leading-zero --inflight"
+assert_eq "admit treats 02 as 2" "$(jqval .capacity)" "$((CAP - 2))"
+
+run admit --inflight abc --queued 0
+assert_err "admit rejects a non-numeric --inflight"
+run admit --inflight 1 --queued abc
+assert_err "admit rejects a non-numeric --queued"
+run admit --inflight 1
+assert_err "admit requires --queued"
+
+# admit fail-closed. Every other registry-reading subcommand guards its block
+# before reading through it; admit validated nothing, and the two verified
+# consequences are both asserted here — each against a relocated copy, so the
+# tracked registry is never touched.
+#
+# The control comes first: without it, an assert_err below could be satisfied by
+# a relocated tree that fails for some reason other than the planted one, and
+# every case would pass vacuously.
+AK=$(relocated_kernel admit-control '.')
+runk "$AK" admit --inflight 0 --queued 0
+assert_ok "a relocated kernel copy with an unmutated policy still answers admit"
+
+# Verified before the guard: rc=5, EMPTY stdout, and a raw
+# "null (null) and number (0) cannot be subtracted" on stderr — the kernel
+# header promises 0-or-1 with {"error": ...} on stdout, so callers parsing a
+# single stream got nothing at all to parse.
+AK=$(relocated_kernel admit-no-cap 'del(.parallelism.wave_concurrency_cap)')
+runk "$AK" admit --inflight 0 --queued 0
+assert_err "admit with no wave_concurrency_cap errors on stdout (fail-closed, never a bare jq abort)"
+assert_eq "the missing-cap error names the field" \
+  "$(jqval '.error | test("wave_concurrency_cap")')" "true"
+
+AK=$(relocated_kernel admit-no-maxq 'del(.parallelism.backpressure.max_queued_units)')
+runk "$AK" admit --inflight 0 --queued 0
+assert_err "admit with no max_queued_units errors instead of comparing against null"
+
+AK=$(relocated_kernel admit-no-block 'del(.parallelism.backpressure)')
+runk "$AK" admit --inflight 0 --queued 0
+assert_err "admit with no backpressure block errors (fail-closed)"
+
+# Verified before the guard: rc=0 with the string emitted VERBATIM as the
+# action. cmd_hitl validates high_with_thin_evidence against A0..A4; admit
+# validated overload_action against nothing, so the kernel would hand an
+# orchestrator an action outside the registry's own declared vocabulary.
+AK=$(relocated_kernel admit-bogus-action '.parallelism.backpressure.overload_action = "launch-the-missiles"')
+runk "$AK" admit --inflight "$CAP" --queued 0
+assert_err "admit refuses an overload_action outside the declared actions list"
+assert_eq "the bogus-action error names the actions list" \
+  "$(jqval '.error | test("actions")')" "true"
+assert_eq "admit emitted no action at all for the bogus value" \
+  "$(printf '%s' "$OUT" | jq -r 'has("action")')" "false"
+
+# The declared action itself must still be answerable — a guard that rejected
+# every value would satisfy the case above while breaking the normal path.
+AK=$(relocated_kernel admit-declared-action '.parallelism.backpressure.overload_action = "reject"')
+runk "$AK" admit --inflight "$CAP" --queued 0
+assert_ok "admit still answers when overload_action is a declared action"
+assert_eq "the declared action is the one emitted" "$(jqval .action)" "reject"
+
+# --------------------------------------------------------------------- breaker
+
+echo "-- breaker --"
+
+# every number below comes from the registry, so a threshold change moves the
+# fixtures instead of turning them red
+thr=$(jq -r '.breaker.failure_threshold' "$REG/policy.json")
+
+run breaker --state closed --failures 0
+assert_ok "breaker with a healthy resource exits 0"
+assert_eq "closed with 0 failures stays closed" "$(jqval .state)" "closed"
+assert_eq "closed allows" "$(jqval .allow)" "true"
+assert_eq "breaker answers exactly {allow, reason, state}" \
+  "$(jqvalc '. | keys | sort')" '["allow","reason","state"]'
+
+# one below the threshold must NOT trip: a kernel that always opened would
+# otherwise pass on the threshold case alone
+run breaker --state closed --failures "$((thr - 1))"
+assert_eq "closed one failure below the threshold stays closed" "$(jqval .state)" "closed"
+
+run breaker --state closed --failures "$thr"
+assert_eq "closed at threshold opens" "$(jqval .state)" "open"
+assert_eq "open blocks" "$(jqval .allow)" "false"
+
+run breaker --state open --cooldown-elapsed false
+assert_eq "open before cooldown stays open" "$(jqval .state)" "open"
+run breaker --state open --cooldown-elapsed true
+assert_eq "open after cooldown goes half-open" "$(jqval .state)" "half-open"
+assert_eq "half-open allows a probe" "$(jqval .allow)" "true"
+
+run breaker --state half-open --probe-result ok
+assert_eq "successful probe closes" "$(jqval .state)" "closed"
+run breaker --state half-open --probe-result failed
+assert_eq "failed probe reopens" "$(jqval .state)" "open"
+
+run breaker --state closed
+assert_err "closed requires --failures"
+run breaker --state open
+assert_err "open requires --cooldown-elapsed"
+run breaker --state half-open
+assert_err "half-open requires --probe-result"
+run breaker --state bogus --failures 1
+assert_err "unknown state is an error"
+run breaker --failures 1
+assert_err "breaker requires --state"
+
+# a trailing flag with no value must error, not spin the arg loop forever
+run breaker --state
+assert_err "breaker with a valueless --state errors instead of hanging"
+
+# a leading zero is a shell-ism, not a JSON number: it normalises, and must
+# never surface as a bare jq parse error. The value is the threshold itself, so
+# the expected answer (open) is one only a correctly parsed number produces --
+# "00" would answer closed for any threshold >= 1 and discriminate nothing.
+run breaker --state closed --failures "0$thr"
+assert_ok "breaker normalises a leading-zero --failures"
+assert_eq "breaker treats 0$thr as $thr" "$(jqval .state)" "open"
+
+run breaker --state closed --failures abc
+assert_err "breaker rejects a non-numeric --failures"
+run breaker --state open --cooldown-elapsed maybe
+assert_err "breaker rejects a non-boolean --cooldown-elapsed"
+run breaker --state half-open --probe-result maybe
+assert_err "breaker rejects an unknown --probe-result"
+
+# need_reg proves only that policy.json exists. With .breaker absent, jq sorts
+# null below every number, so `0 >= null` held and the kernel answered
+# {"state":"open","allow":false} with exit 0 -- a healthy resource reported
+# open. Fail closed instead.
+#
+# Built as a relocated kernel copy rather than by mutating $REG in place: the
+# suite carries both patterns (route-escalate's router-block case backs up and
+# overwrites the real registry), and this one cannot leave the repo's
+# registries broken if the run dies mid-fixture.
+BRKT="$TMPROOT/breaker"
+mkdir -p "$BRKT/scripts" "$BRKT/registries"
+cp "$KERNEL" "$BRKT/scripts/kernel.sh"
+jq 'del(.breaker)' "$REG/policy.json" > "$BRKT/registries/policy.json"
+OUT=$(bash "$BRKT/scripts/kernel.sh" breaker --state closed --failures 0 2>&1); RC=$?
+assert_err "breaker with no breaker policy block errors (fail-closed, never a fabricated open)"
+rm -rf "$BRKT"
+
+# ------------------------------------------------------------------------ hitl
+
+echo "-- hitl --"
+
+# The record home, the situation list and the coupled reason id come from the
+# registry, so renaming a reason or adding a situation moves the fixtures rather
+# than turning them red. The tiers and autonomy levels stay literal on purpose:
+# they are the INPUTS the kernel is being asked about, not registry data being
+# mirrored back.
+RECORD_HOME=$(jq -r '.hitl.record_home' "$REG/policy.json")
+
+run hitl --risk low --autonomy A2
+assert_ok "hitl low/A2 exits 0"
+assert_eq "hitl low/A2 not required" "$(jqval .required)" "false"
+assert_eq "hitl low/A2 no reasons" "$(jqvalc .reasons)" "[]"
+# A no-HITL answer must still hand back the ceiling it was given, not "A0"
+# or the null a missing block would produce.
+assert_eq "hitl low/A2 keeps the given ceiling" "$(jqval .autonomy_after)" "A2"
+assert_eq "hitl record_home comes from the registry" "$(jqval .record_home)" "$RECORD_HOME"
+assert_eq "hitl answers exactly {autonomy_after, reasons, record_home, required}" \
+  "$(jqvalc '. | keys | sort')" '["autonomy_after","reasons","record_home","required"]'
+
+run hitl --risk high --autonomy A3
+assert_eq "hitl high required" "$(jqval .required)" "true"
+assert_eq "hitl high reason" "$(jqvalc .reasons)" '["high-risk"]'
+# required and autonomy_after are the two fields a gate switches on; asserting
+# only one would let a kernel that always dropped to A1 through.
+assert_eq "hitl high with adequate evidence keeps A3" "$(jqval .autonomy_after)" "A3"
+
+run hitl --risk medium --autonomy A3 --external-effect true
+assert_eq "hitl external effect at A3 required" "$(jqvalc .reasons)" '["external-effect"]'
+# below A3 an external effect is not reachable, so it must NOT be a reason --
+# without this case a kernel that ignored --autonomy would pass on the row above
+run hitl --risk medium --autonomy A2 --external-effect true
+assert_eq "hitl external effect below A3 is not a reason" "$(jqvalc .reasons)" "[]"
+assert_eq "hitl external effect below A3 not required" "$(jqval .required)" "false"
+
+# Thin evidence DROPS autonomy one level and never raises it. Every case here
+# used to pass --autonomy A2 and only A2, the single input where the old
+# unconditional "A1" happened to be right; at A0 that literal RAISED the
+# ceiling from "explain only, no writes" to "propose a diff" in response to
+# weaker evidence, and at medium/A3 it dropped two levels where
+# rules/risk-autonomy.md says one. The target at risk high comes from the
+# registry, never a literal here.
+THIN_HIGH=$(jq -r '.autonomy.high_with_thin_evidence' "$REG/policy.json")
+
+run hitl --risk medium --autonomy A2 --evidence thin
+assert_eq "thin evidence at medium/A2 drops one level" "$(jqval .autonomy_after)" "A1"
+assert_eq "thin evidence reason" "$(jqvalc .reasons)" '["evidence-insufficient"]'
+run hitl --risk low --autonomy A2 --evidence thin
+assert_eq "thin evidence at low/A2 drops one level" "$(jqval .autonomy_after)" "A1"
+run hitl --risk medium --autonomy A3 --evidence thin
+assert_eq "thin evidence at medium/A3 drops ONE level, not to A1" \
+  "$(jqval .autonomy_after)" "A2"
+run hitl --risk low --autonomy A4 --evidence thin
+assert_eq "thin evidence at low/A4 drops one level" "$(jqval .autonomy_after)" "A3"
+# The inversion this field existed to prevent: a drop must never hand back MORE
+# autonomy than it was given.
+run hitl --risk low --autonomy A0 --evidence thin
+assert_eq "thin evidence at low/A0 stays A0 and never raises" "$(jqval .autonomy_after)" "A0"
+run hitl --risk high --autonomy A0 --evidence thin
+assert_eq "thin evidence at high/A0 stays A0 and never raises" "$(jqval .autonomy_after)" "A0"
+run hitl --risk medium --autonomy A1 --evidence thin
+assert_eq "thin evidence at medium/A1 bottoms out at A1" "$(jqval .autonomy_after)" "A1"
+# Risk high is the one tier the registry overrides, and the expected value is
+# read from the field itself so a policy change moves the fixture with it.
+run hitl --risk high --autonomy A3 --evidence thin
+assert_eq "thin evidence at high/A3 lands on autonomy.high_with_thin_evidence" \
+  "$(jqval .autonomy_after)" "$THIN_HIGH"
+run hitl --risk high --autonomy A4 --evidence thin
+assert_eq "thin evidence at high/A4 lands on autonomy.high_with_thin_evidence" \
+  "$(jqval .autonomy_after)" "$THIN_HIGH"
+# Adequate evidence is the identity: without this half a kernel that always
+# dropped would pass every case above.
+run hitl --risk medium --autonomy A3
+assert_eq "adequate evidence at medium/A3 keeps the given ceiling" "$(jqval .autonomy_after)" "A3"
+run hitl --risk low --autonomy A0
+assert_eq "adequate evidence at low/A0 keeps A0" "$(jqval .autonomy_after)" "A0"
+
+run hitl --risk low --autonomy A2 --situation security-risk
+assert_eq "never-retry situation is a hitl reason" "$(jqvalc .reasons)" '["never-retry-situation"]'
+run hitl --risk low --autonomy A2 --situation reject
+assert_eq "backpressure reject maps to budget-exhausted" "$(jqvalc .reasons)" '["budget-exhausted"]'
+run hitl --risk low --autonomy A2 --situation breaker-open
+assert_eq "open breaker is a hitl reason" "$(jqvalc .reasons)" '["breaker-open"]'
+run hitl --risk high --autonomy A3 --conflict true --external-effect true
+assert_eq "reasons accumulate in fixed order" "$(jqvalc .reasons)" '["high-risk","external-effect","policy-conflict"]'
+
+# Every declared situation must produce at least one reason from the closed
+# vocabulary. A situation the kernel accepts and then drops would answer
+# required:false -- "no human needed" for an input the kernel did not act on.
+for sit in $(jq -r '(.retry.never_retry + .hitl.situations)[]' "$REG/policy.json"); do
+  run hitl --risk low --autonomy A2 --situation "$sit"
+  assert_eq "situation $sit requires a human" "$(jqval .required)" "true"
+  assert_eq "situation $sit cites only declared reasons" \
+    "$(printf '%s' "$OUT" | jq --slurpfile pol "$REG/policy.json" -c '[.reasons[] | select(. as $r | $pol[0].hitl.reasons | index($r) | not)]' 2>/dev/null)" "[]"
+done
+
+run hitl --risk low --autonomy A2 --situation nonsense
+assert_err "unknown situation is an error"
+run hitl --autonomy A2
+assert_err "hitl requires --risk"
+run hitl --risk low
+assert_err "hitl requires --autonomy"
+run hitl --risk low --autonomy A9
+assert_err "hitl rejects an autonomy level outside A0..A4"
+run hitl --risk low --autonomy A2 --evidence maybe
+assert_err "hitl rejects an unknown --evidence"
+run hitl --risk low --autonomy A2 --conflict yes
+assert_err "hitl rejects a non-boolean --conflict"
+run hitl --bogus x
+assert_err "hitl with an unknown argument errors"
+
+# a trailing flag with no value must error, not spin the arg loop forever
+run hitl --risk
+assert_err "hitl with a valueless --risk errors instead of hanging"
+run hitl --risk low --autonomy A2 --situation
+assert_err "hitl with a valueless --situation errors instead of hanging"
+
+# resolve-task carries the answer, so an adapter needs one call, not two — but
+# only for a CLASSIFIED tier. A matched decision rule carrying risk=high is a
+# classification: this prompt trips rule-destructive-ddl and rule-production-write.
+run resolve-task --prompt "drop the users table in production"
+assert_ok "resolve-task with a destructive prompt exits 0"
+assert_eq "resolve-task confirms the classification" "$(jqval .decision_rules.any_high)" "true"
+assert_eq "resolve-task carries hitl for a classified tier" "$(jqval .hitl.required)" "true"
+assert_eq "resolve-task hitl cites the classified high risk" \
+  "$(jqvalc '[.hitl.reasons[] | select(. == "high-risk")]')" '["high-risk"]'
+# Follow-on: no --conflict is synthesized from any_high, so a conflict nobody
+# observed is never claimed. This asserts the whole list, not a subset, so a
+# reason creeping back in fails here.
+assert_eq "resolve-task claims no unobserved policy conflict" \
+  "$(jqvalc .hitl.reasons)" '["high-risk"]'
+
+# The mirror, and the point of the whole distinction: a risk FLOOR is an input
+# to classification, not a classification. security-files carries risk_floor
+# high, so the old shape announced a human gate on every auth-guard edit — gate
+# theatre (rules/gates.md). hitl must be null even though the floor is high.
+#
+# task_contract.risk_floor is asserted alongside because otherwise `hitl: null`
+# proves nothing: a prompt that stopped resolving a high floor would satisfy the
+# assertion for the wrong reason. The expected floor is read from intents.json;
+# the intent id is named because the prompt has to be written to match some
+# specific intent, so it cannot be derived.
+FLOOR_EXP=$(jq -r '.intents[] | select(.id == "security-files") | .risk_floor' "$REG/intents.json")
+run resolve-task --prompt "fix the auth guard bug"
+assert_ok "resolve-task with a floor-only prompt exits 0"
+assert_eq "resolve-task resolves the security-files intent" \
+  "$(jqvalc .task_contract.intents)" '["security-files"]'
+assert_eq "resolve-task confirms no classification happened" \
+  "$(jqval .decision_rules.any_high)" "false"
+assert_eq "resolve-task still resolves the floor the registry declares" \
+  "$(jqval .task_contract.risk_floor)" "$FLOOR_EXP"
+assert_eq "resolve-task claims no hitl off a bare floor" "$(jqvalc .hitl)" "null"
+# The floor is carried in exactly one place. A second top-level copy shipped in
+# 58504dd with no reader outside its own tests (rules/base.md), so its absence
+# is asserted rather than left to drift back in.
+assert_eq "resolve-task publishes no second top-level risk_floor" \
+  "$(jqvalc 'has("risk_floor")')" "false"
+
+# No intent, no rule, no scale signal: no floor either, and still no hitl. This
+# separates "hitl null because the floor is unclassified" from "hitl null
+# because there is no risk evidence at all".
+run resolve-task --prompt "what does this function return?"
+assert_ok "resolve-task with no risk evidence exits 0"
+assert_eq "resolve-task reports no floor when there is none" \
+  "$(jqval .task_contract.risk_floor)" "null"
+assert_eq "resolve-task claims no hitl with no risk evidence" "$(jqvalc .hitl)" "null"
+
+# Amendment 5 coupling, from the caller's side: cmd_admit's reject message
+# embeds the literal "hitl: budget-exhausted", and `hitl --situation reject`
+# must answer with that same id. The id is read from the registry rather than
+# spelled here, and an id missing from hitl.reasons is its own named failure
+# above -- never a grep that matches vacuously.
+BX=$(jq -r '.hitl.reasons[] | select(. == "budget-exhausted")' "$REG/policy.json")
+assert_eq "hitl.reasons declares the id admit's reject message cites" "$BX" "budget-exhausted"
+if [ -n "$BX" ]; then
+  run admit --inflight "$CAP" --queued "$MAXQ"
+  assert_eq "admit's reject reason names hitl: $BX" \
+    "$(printf '%s' "$OUT" | jq -r --arg b "$BX" '.reason | test("hitl: " + $b)' 2>/dev/null)" "true"
+  run hitl --risk low --autonomy A2 --situation reject
+  assert_eq "hitl --situation reject answers with that same id" "$(jqvalc .reasons)" "[\"$BX\"]"
+fi
+
+# need_reg proves only that policy.json exists. With .hitl absent, the
+# situation allowlist is `null | index($s)` -- every situation reads as unknown
+# -- and any answer that got through would carry a null record_home with exit
+# 0. Fail closed instead.
+#
+# Built as a relocated kernel copy rather than by mutating $REG in place (the
+# breaker case above uses the same shape): a run that dies mid-fixture cannot
+# leave the repo's registries broken.
+HITLT="$TMPROOT/hitlt"
+mkdir -p "$HITLT/scripts" "$HITLT/registries"
+cp "$KERNEL" "$HITLT/scripts/kernel.sh"
+jq 'del(.hitl)' "$REG/policy.json" > "$HITLT/registries/policy.json"
+OUT=$(bash "$HITLT/scripts/kernel.sh" hitl --risk low --autonomy A2 2>&1); RC=$?
+assert_err "hitl with no hitl policy block errors (fail-closed, never a null record_home)"
+OUT=$(bash "$HITLT/scripts/kernel.sh" hitl --risk high --autonomy A3 2>&1); RC=$?
+assert_err "hitl with no hitl policy block errors even on the required path"
+rm -rf "$HITLT"
+
+# ... and the KEY, not just the block. `jq -e '.hitl'` tests the block, while
+# the comment beside it claimed it kept a null record_home from shipping. It
+# did not: deleting hitl.record_home alone answered
+# {"required":true,"reasons":["high-risk"],"record_home":null} at rc=0 — a
+# caller told a human must decide and given nowhere to record the decision,
+# which rules/risk-autonomy.md counts as a gate not passed.
+HK=$(relocated_kernel hitl-no-record-home 'del(.hitl.record_home)')
+runk "$HK" hitl --risk high --autonomy A3
+assert_err "hitl with no hitl.record_home errors (fail-closed, never a null record home)"
+assert_eq "the missing-record_home error names the field" \
+  "$(jqval '.error | test("record_home")')" "true"
+runk "$HK" hitl --risk low --autonomy A2
+assert_err "hitl with no hitl.record_home errors on the not-required path too"
+
+# The control: the same relocated shape with the key intact still answers, and
+# still answers with the registry's own value.
+HK=$(relocated_kernel hitl-record-home-control '.')
+runk "$HK" hitl --risk high --autonomy A3
+assert_ok "a relocated kernel copy with record_home intact still answers hitl"
+assert_eq "the answered record_home is the registry's" "$(jqval .record_home)" "$RECORD_HOME"
+
+# Same shape for the other registry value the answer depends on. Without the
+# guard, jq indexes the level list with null and autonomy_after comes back as a
+# confident wrong ceiling instead of an error. The adequate-evidence path does
+# not read the field, so it must still answer.
+THINT="$TMPROOT/thint"
+mkdir -p "$THINT/scripts" "$THINT/registries"
+cp "$KERNEL" "$THINT/scripts/kernel.sh"
+jq 'del(.autonomy.high_with_thin_evidence)' "$REG/policy.json" > "$THINT/registries/policy.json"
+OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 --evidence thin 2>&1); RC=$?
+assert_err "hitl errors when autonomy.high_with_thin_evidence is missing"
+OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 2>&1); RC=$?
+assert_ok "hitl still answers with adequate evidence, which does not read that field"
+jq '.autonomy.high_with_thin_evidence = "sideways"' "$REG/policy.json" > "$THINT/registries/policy.json"
+OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 --evidence thin 2>&1); RC=$?
+assert_err "hitl errors when autonomy.high_with_thin_evidence is not a level id"
+rm -rf "$THINT"
+
+# ------------------------------------------------------- risk fail-closed fix
+
+echo "-- risk fail-closed --"
+
+run risk --signals '{}'
+assert_err "risk with neither inputs nor floors is an error, not low"
+run risk --signals '{"inputs":{}}'
+assert_err "risk with empty inputs and no floors is an error"
+run risk --signals '{"floors":["destructive-ddl-dml"]}'
+assert_ok "risk with a floor and no inputs is still answerable"
+assert_eq "floor alone -> high" "$(jqval .risk)" "high"
 
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
