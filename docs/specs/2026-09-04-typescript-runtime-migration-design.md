@@ -85,7 +85,7 @@ src/
   hooks/
     envelope.ts       stdin decode into HookEnvelope (cwd, session_id, prompt, file, tool, transcript, stop_hook_active)
     bypass.ts         three-tier bypass: env > machine flag > per-repo marker
-    telemetry.ts      in-process writers for <sid>.jsonl, <sid>.exec.jsonl, spans/
+    telemetry.ts      span lifecycle: one Sink per hook (gate, clock, slugs, writer seam); withSpan / openSpan / closeSpan / event
     scaffold.ts       symlink-safe directory + seed creation, manifest as data
     runner.ts         nx / npm-family detection, target probe, run with timeout, infra-skip regexes
     cache.ts          route cache keyed by sid + routing.json signature + buster
@@ -256,7 +256,8 @@ and `post-edit-check`. The re-exec above is the lesser half and only serves us.
 No internal subprocesses except `git` and the project's own runners
 (`npm`/`pnpm`/`yarn`/`nx`) in `stop-verify` and `post-edit-check`. Telemetry,
 spans and journal lines are written in-process through `journal/` and
-`hooks/telemetry.ts`. Timeouts on runners use `spawnSync`'s `timeout` option.
+`hooks/telemetry.ts`'s sink ("Span lifecycle" below). Timeouts on runners use
+`spawnSync`'s `timeout` option.
 
 ### Journal schema (amended 2026-09-04, architecture review)
 
@@ -360,6 +361,56 @@ export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): Mirr
   check id for all mirrors (fifteen ids change meaning, mutation cases move);
   a single pattern kind (a scalar is not a list, and `both` has no meaning for it).
 
+### Span lifecycle (amended 2026-09-04, architecture review)
+
+Spans are emitted today through nine bash helpers whose ordering, id
+derivation and flag validity are the caller's job: the dispatch and return
+hooks derive the span id twice with a comment saying the two must match, the
+`ENGINEOS_TELEMETRY=0` guard is checked in five places, the duration clamp
+appears three times, and a wrong `--capability-id` is caught by a check that
+greps the writers after the fact. The port makes the lifecycle the interface.
+
+```ts
+// src/hooks/telemetry.ts
+export interface Sink { /* opaque: gate already decided, clock and writer bound */ }
+export function telemetrySink(env: HookEnvelope, ctx: HookContext): Sink | null
+//   null when the project has no .engineos/, ENGINEOS_TELEMETRY=0, or the session is bypassed; every call on null is a no-op
+export interface SpanFacts { kind: SpanKind; capability: CapabilityId; modelTier: ModelTier; status?: SpanStatus; fields?: SpanFields }
+export function withSpan<T>(sink: Sink | null, facts: SpanFacts, fn: () => { result: T; status: SpanStatus; fields?: SpanFields }): T
+//   times fn with ctx.now, clamps at 0, writes one span; the hook's own exceptions propagate, the write never throws
+export function spanIdFrom(env: HookEnvelope): string
+//   tool_use_id when present, else sha1(subagent_type + ':' + description) first 12 hex; slugged. The one derivation both announce hooks call
+export function openSpan(sink: Sink | null, id: string): void                    // start marker on disk, path-slugged name
+export function closeSpan(sink: Sink | null, id: string, facts: SpanFacts): void  // no marker -> no span; duration from the marker, clamped
+export function event(sink: Sink | null, id: TelemetryEventId, data: EventData): void
+// internal seam, not exported from the module's public surface
+interface SpanWriter { appendSpan(fields: SpanFields): void; appendEvent(id, data): void; openMarker(id, ms): void; closeMarker(id): number | null }
+```
+
+- `CapabilityId`, `TelemetryEventId`, `SpanKind`, `SpanStatus` and `ModelTier`
+  are literal unions exported by the registry loaders (`src/registry/`), each
+  pinned to its registry by a unit test that asserts the array of literals
+  equals the JSON. A wrong id is a compile error (deviation 6).
+- The sink owns: the opt-in gate, `hookSlug` on every field and `hookPathSlug`
+  on the marker name, the clock, the clamp, `run_id = trace_id = session`,
+  `tokens_in = tokens_out = 0`. Callers pass facts; none of them names a flag,
+  a file, or a slug class.
+- Two adapters satisfy `SpanWriter`: the file adapter (`<gitdir>/engineos-telemetry/`,
+  through `journal/appendLine` with the schema table) and a memory adapter for
+  tests. That is the real seam candidate 4 left implicit.
+- Consumers: `prompt-advisor` and `stop-verify` wrap their work in `withSpan`;
+  `announce-agent-dispatch` calls `openSpan(sink, spanIdFrom(env))`,
+  `announce-agent-return` calls `closeSpan(sink, spanIdFrom(env), facts)`.
+  The "must match exactly" comment has nothing left to say.
+- Tests: `telemetry.test.ts` drives the lifecycle against the memory writer
+  (gate null → no writes; open then close → one span with the clamped
+  duration; close without open → nothing; `spanIdFrom` with and without
+  `tool_use_id`; `event` rejects a key outside the event's declared keys).
+- Deletion test: remove the sink and the gate, clamp, slugs and id derivation
+  reappear in four hooks. Rejected: `openSpan`/`closeSpan` only (in-process
+  callers carry the ordering and write a marker for nothing); runtime id check
+  against the loaded registry (drops the span silently, keeps C27f alive).
+
 ### Shims and compatibility
 
 Every bash entry point becomes a shim:
@@ -458,6 +509,11 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    literal string and never opens `rules/gates.md`. As a mirror row it reads the
    `## The ladder` table for real. The check gets stricter; if the prose fails
    it, the PR that ports C16 fixes the prose, never the row.
+6. Check C27f (every `--capability-id` a span writer passes resolves against
+   `capabilities.json`) is deleted in the PR that ports the hook library. The
+   ids become a literal union pinned to the registry by a unit test, so a wrong
+   id fails `tsc` before it can reach a writer. C27c and C22c stay: they check
+   writer wiring, not ids.
 
 ## Testing
 
