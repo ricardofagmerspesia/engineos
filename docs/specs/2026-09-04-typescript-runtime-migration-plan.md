@@ -41,7 +41,9 @@ src/cli.ts                       entry, node guard, dispatch
 src/io.ts                        Io interface + processIo()
 src/lib/{fs,git,time,slug,json,glob}.ts
 src/registry/{paths,load,routing,intents,models,policy,decision-rules,capabilities,agents}.ts
-src/kernel/{context,cli,route-path,route-intent,model,risk,gates,repair,admit,breaker,hitl,waves,decision-rules,scale,route-escalate,resolve-task}.ts
+src/kernel/{index,context,resolve,cli}.ts                          public: resolve + types; cli = projections
+src/kernel/{route,risk,model,scale,decisions,hitl,admit,breaker,waves,repair}.ts   internal seams, not exported
+src/kernel/{resolve,cli,parity}.test.ts, test/fixtures/legacy-kernel/{kernel.sh,registries/}
 src/journal/{schema,exec-journal,telemetry,cli}.ts
 src/hooks/{envelope,bypass,telemetry,scaffold,runner,cache,cli}.ts
 src/hooks/{ensure-project-layout,prompt-advisor,route-before-change,announce-agent-dispatch,mark-unrecorded,announce-agent-return,stop-verify,record-verify,post-edit-check}.ts
@@ -57,7 +59,10 @@ registries/layout-manifest.json, registries/docs-ledger.json
 dist/engineos.cjs
 ```
 
-Each `.ts` module has a sibling `*.test.ts`. `build/` (tsc output) is git-ignored.
+Each `.ts` module has a sibling `*.test.ts`, except the kernel concept modules:
+they are internal seams tested through `resolve` (`resolve.test.ts`) and the
+projections (`cli.test.ts`); only pure helpers (glob match, tier max) get their
+own test file. `build/` (tsc output) is git-ignored.
 
 ---
 
@@ -623,7 +628,15 @@ PR title: `feat(runtime): node toolchain, CLI entry and drift guard (wave 0)`. B
 
 ---
 
-# Wave 1(a) — registry loader and `route-path` / `route-intent`
+# Wave 1(a) — `Registries`, `resolve` skeleton, route section, parity harness
+
+Amended 2026-09-04 (architecture review): `src/kernel/` is one deep module,
+`resolve(facts, ctx)`, and every legacy arm is a projection of its answer. The
+frozen contract (`DeclaredFacts`, `Answer`, `KernelContext`, `Registries`) is the
+"Kernel shape" section of the design spec; Tasks 7-13 below consume it verbatim.
+Code samples that predate the amendment read `routePath(ctx, x)` as
+`resolve({ path: x }, ctx).route` and `<arm>(ctx, flags)` as "parse flags into
+`DeclaredFacts`, call `resolve`, emit the section".
 
 ### Task 5: `lib/json.ts`, `lib/glob.ts`, `KernelError`
 
@@ -957,23 +970,32 @@ git add src/registry
 git commit -m "feat(kernel): resolve the runtime root and load routing.json"
 ```
 
-### Task 7: `kernel route-path`
+### Task 7: `resolve` skeleton and the route section (path form)
 
 **Files:**
-- Create: `src/kernel/context.ts`, `src/kernel/route-path.ts`, `src/kernel/route-path.test.ts`
-- Source of truth: `scripts/kernel.sh` lines 95-152 (`cmd_route_path`).
+- Create: `src/kernel/context.ts`, `src/kernel/index.ts`, `src/kernel/resolve.ts`, `src/kernel/route.ts`, `src/kernel/resolve.test.ts`
+- Source of truth: `scripts/kernel.sh` lines 95-152 (`cmd_route_path`); design spec "Kernel shape" for the types.
 
 **Interfaces:**
 - Produces:
   ```ts
   // src/kernel/context.ts
-  export interface KernelContext { root: string }
-  // src/kernel/route-path.ts
-  export type RoutePathAnswer =
+  export interface KernelContext { root: string; registries: Registries }
+  export interface Registries { readonly routing: Routing; readonly intents: Intents; readonly models: Models; readonly policy: Policy; readonly decisionRules: DecisionRules; readonly capabilities: Capabilities; readonly agents: Agents }
+  export function lazyRegistries(root: string): Registries      // getters parse on first access via Task 6 loaders, then cache
+  // src/kernel/index.ts -- the only exports of the module
+  export { resolve } from './resolve';
+  export type { DeclaredFacts, Answer, KernelContext, Registries };
+  // src/kernel/resolve.ts
+  export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer   // this task: facts.path -> answer.route only; every other section lands in Tasks 9-12
+  // src/kernel/route.ts (internal)
+  export type RouteSection =
     | { domain: null; excluded: boolean }
     | { domain: string; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; excluded: false };
-  export function routePath(ctx: KernelContext, file: string): RoutePathAnswer
+  export function routeByPath(file: string, regs: Registries): RouteSection
   ```
+- `resolve` throws `KernelError` when a declared fact's section cannot be built; it never fabricates a section. An empty `facts` object answers `{}`.
+- Tests below call `resolve({ path }, ctx).route`; `ctx = { root, registries: lazyRegistries(root) }`.
 
 - [ ] **Step 1: Failing tests against the shipped registry**
 
@@ -1099,7 +1121,7 @@ git commit -m "feat(kernel): port route-path"
   export function requirePositional(cmd: string, what: string, args: string[]): string   // throws KernelError with the three exact messages
   export function parseFlags(cmd: string, args: string[], allowed: readonly string[]): Map<string, string>  // `--k v` pairs; missing value -> KernelError `${cmd}: ${flag} requires a value`
   ```
-- Subcommand table inside `runKernel`: `route-path` (Task 7) now; Tasks 9-13 add the rest. Unknown subcommand -> `{"error": "unknown subcommand: <x>"}` exit 1.
+- Projection table inside `runKernel`: each arm parses its flags into `DeclaredFacts`, calls `resolve` once, and emits its section (or the legacy composite) with the legacy key order — `route-path` (Task 7) now; Tasks 9-12 add the rest and Task 12 adds the `resolve` arm. Unknown subcommand -> `{"error": "unknown subcommand: <x>"}` exit 1. `runKernel` builds `ctx` once per process (`resolveRoot` + `lazyRegistries`); no projection touches the filesystem itself.
 
 - [ ] **Step 1: Failing tests**
 
@@ -1208,11 +1230,19 @@ git commit -m "feat(kernel): CLI adapter with positional and flag parsing"
 
 The shim is NOT swapped yet: `scripts/kernel.sh` still answers every subcommand in bash until Task 13 swaps it in one step (a half-ported kernel behind one shim would need a bash-side dispatcher and buys nothing).
 
-### Task 9: `kernel route-intent`
+### Task 8b: differential parity harness
 
-**Files:** Create `src/registry/intents.ts`, `src/kernel/route-intent.ts`, `src/kernel/route-intent.test.ts`; register in `SUBCOMMANDS`.
+**Files:** Create `src/kernel/parity.test.ts`, `test/fixtures/legacy-kernel/kernel.sh` (a byte copy of `scripts/kernel.sh` at the commit before Task 13 swaps it), `test/fixtures/legacy-kernel/registries/` (snapshot of `registries/*.json` at the same commit), `test/fixtures/legacy-kernel/README.md` (which commit, how to refresh, deleted at 2.0).
+**Interfaces:** `parityCase(arm: string, args: string[])` runs `bash test/fixtures/legacy-kernel/kernel.sh <arm> <args>` with `ENGINEOS_ROOT=test/fixtures/legacy-kernel` and `runKernel([arm, ...args], memoryIo())` against `lazyRegistries('test/fixtures/legacy-kernel')`; asserts `JSON.parse` deep-equal on stdout and equal exit codes.
+**Cases:** for every arm, the args of every `run <arm> ...` block in `scripts/test-kernel.sh`, plus `policy.json .router.fixtures[]` for `route-escalate` and `resolve-task`. Skipped, never failed, when `bash` or `jq` is absent (prints one line naming the missing tool).
+**Invariant:** a projection that is not yet ported is skipped by name, not asserted; Task 13 removes the last skip. The harness needs `bash` + `jq` in CI until 2.0 and is deleted with the shim.
+**Commit:** `test(kernel): differential parity harness against the pinned bash kernel`.
+
+### Task 9: route section, intent form (`kernel route-intent`)
+
+**Files:** Create `src/registry/intents.ts`; extend `src/kernel/route.ts` and `src/kernel/resolve.ts`; add the `route-intent` projection to `src/kernel/cli.ts`; extend `resolve.test.ts` and `cli.test.ts`.
 **Source:** `scripts/kernel.sh` `cmd_route_intent` (line 154 onward) and the `bounded_contains` jq helper.
-**Interfaces:** `export function routeIntent(ctx: KernelContext, text: string): RouteIntentAnswer` where the answer's keys and order are exactly what the jq program in `cmd_route_intent` emits (read them from the source; `scripts/test-kernel.sh` asserts the fields).
+**Interfaces:** internal `routeByIntent(text: string, regs: Registries): RouteSection` (intent form: the keys and order the jq program in `cmd_route_intent` emits); `resolve({ prompt }, ctx).route` returns it; the `route-intent` projection emits exactly that section. The intent form of `RouteSection` widens the Task 7 type — one section, two declared-fact forms.
 **Invariants:** word-boundary matching identical to `bounded_contains` (signal must be bounded by start/end or a non-word character on both sides, case-insensitive if the jq uses `ascii_downcase`); one pass over all 136 signals; no regex built from registry text without escaping.
 **Tests:** at least one prompt per intent in `registries/intents.json` (use each intent's own `signals[0]`), one prompt that matches nothing, one prompt where a signal appears as a substring of a longer word and must NOT match.
 **Commit:** `feat(kernel): port route-intent`.
@@ -1223,15 +1253,17 @@ The shim is NOT swapped yet: `scripts/kernel.sh` still answers every subcommand 
 
 ### Task 10: port contract
 
-**Files:** Create `src/registry/models.ts`, `src/registry/policy.ts`, `src/kernel/{model,risk,gates,repair}.ts` + tests; register the four in `SUBCOMMANDS`.
+**Files:** Create `src/registry/models.ts`, `src/registry/policy.ts`, `src/kernel/{model,risk,repair}.ts` (internal); extend `resolve.ts`; add the `model`, `risk`, `gates`, `repair` projections to `cli.ts`; extend `resolve.test.ts`, `cli.test.ts`, `parity.test.ts`.
 **Source:** `scripts/kernel.sh` `cmd_model`, `cmd_risk`, `cmd_gates`, `cmd_repair`.
-**Interfaces:**
+**Interfaces (internal sections; `resolve` calls them when their facts are declared):**
 ```ts
-export function model(ctx, flags: Map<string,string>): unknown        // --work <type>
-export function risk(ctx, flags): unknown                              // --signals <json>; max over inputs; empty payload -> KernelError
-export function gates(ctx, flags): unknown                             // --risk <tier>
-export function repair(ctx, flags): unknown                            // --check <id> --attempt <n> [--situation <s>]
+export function modelSection(facts: { workType: string }, regs: Registries): ModelSection
+export function riskSection(facts: { signals?: Record<string, RiskTier>; riskTier?: RiskTier }, regs: Registries): RiskSection
+//   signals -> classify (aggregation from policy.risk.aggregation, never a literal 'max'); empty payload -> KernelError
+//   riskTier alone -> gates + spec_threshold for an already-classified tier
+export function repairSection(facts: { check: string; attempt: number; situation?: string }, regs: Registries): RepairSection
 ```
+Projections: `model --work` -> `.model`; `risk --signals` -> `.risk` (legacy keys); `gates --risk` -> `{gates, spec_threshold}` picked from `.risk` — no `gates` module exists, the arm is a projection of the risk section (`kernel.sh:238` vs `:254` emit the same value today); `repair --check --attempt [--situation]` -> `.repair`. `policy.autonomy.levels[].id` is read from the typed loader, never restated (`kernel.sh:545`).
 **Invariants:** `risk` never averages; `{}`/`[]` payload is an error, not `low`. `repair` reads `policy.json .repair` live: `max_fix_attempts_per_check`, `escalations`, `by_situation`, `never_repair`; a check id in `never_repair` or a `--situation` in `retry.never_retry` answers the stop action the bash answers. Every flag+value pair is required; missing value is an error.
 **Acceptance:** the `run model|risk|gates|repair` blocks of `scripts/test-kernel.sh` (run them via `--only`-style filtering by temporarily commenting nothing: run the whole suite after Task 13; until then the unit tests carry the assertions copied from the bash suite).
 **Commit:** `feat(kernel): port model, risk, gates and repair`. Split into two PRs if over 400 lines: (`model`+`gates`) and (`risk`+`repair`).
@@ -1240,9 +1272,9 @@ export function repair(ctx, flags): unknown                            // --chec
 
 ### Task 11: port contract
 
-**Files:** Create `src/kernel/{admit,breaker,hitl,waves}.ts` + tests; register.
+**Files:** Create `src/kernel/{admit,breaker,hitl,waves}.ts` (internal); extend `resolve.ts`; add the four projections to `cli.ts`; extend `resolve.test.ts`, `cli.test.ts`, `parity.test.ts`.
 **Source:** `scripts/kernel.sh` `cmd_admit`, `cmd_breaker`, `cmd_hitl`, `cmd_waves`.
-**Interfaces:** each `(ctx, flags) => unknown`; `waves` takes `--units <json array>`.
+**Interfaces:** internal `admitSection({inflight, queued}, regs)`, `breakerSection(facts.breaker, regs)`, `hitlSection({riskTier, autonomy, evidence?, externalEffect?, conflict?, situation?}, regs)`, `wavesSection({units}, regs)`; `resolve` calls each when its facts are declared; the projections parse the legacy flags (`waves` takes `--units <json array>`) and emit the section. `hitl.reasons` order and `breaker.states` come from the typed policy loader, never from a literal list (`kernel.sh:523-531`, `:399`).
 **Invariants:** each verifies its `policy.json` block exists before reading a field (a missing block is `KernelError`, never a fabricated answer). `hitl`: thin evidence drops autonomy exactly one level, never below A1, never raising, A0 stays A0; at risk high the drop is capped by `policy.json .autonomy.high_with_thin_evidence`; reasons are emitted in the order of `policy.json .hitl.reasons`; `--situation` accepts `hitl.situations` plus `retry.never_retry` ids, all collapsing to `never-retry-situation` except the `hitl.situations` ids' own reasons. `admit` reject message embeds the literal `hitl: budget-exhausted` (check C26d greps it). `breaker` implements all six transitions. `waves`: Kahn layering; a cycle is an error whose message strips the jq prefix and reads as the bash message does; same-file ownership inside a layer is a `violations` entry; layers wider than `wave_concurrency_cap` split.
 **Acceptance:** the corresponding `run` blocks of `scripts/test-kernel.sh` (copied into unit tests until Task 13).
 **Commit:** `feat(kernel): port admit, breaker, hitl and waves`. Two PRs if needed: (`admit`+`breaker`) and (`hitl`+`waves`).
@@ -1251,8 +1283,9 @@ export function repair(ctx, flags): unknown                            // --chec
 
 ### Task 12: port contract
 
-**Files:** Create `src/registry/decision-rules.ts`, `src/kernel/{decision-rules,scale,route-escalate,resolve-task}.ts` + tests; register.
+**Files:** Create `src/registry/decision-rules.ts`, `src/kernel/{scale,decisions}.ts` (internal); extend `route.ts` (the escalate composite), `resolve.ts` (the `task_contract` section, and the sparse-answer assembly is now complete); add the `decision-rules`, `scale`, `route-escalate`, `resolve-task` projections and the new `resolve --facts '<json>'` arm to `cli.ts`; add `resolve` to the kernel row of `docs/COMPATIBILITY.md` (MINOR); extend `resolve.test.ts`, `cli.test.ts`, `parity.test.ts` (the `resolve` arm has no bash counterpart; its parity case asserts each section deep-equals the matching legacy projection).
 **Source:** `scripts/kernel.sh` `cmd_decision_rules`, `cmd_scale`, `cmd_route_escalate`, `cmd_resolve_task`.
+**Projections:** `decision-rules --prompt` -> `.decision_rules`; `scale --prompt` -> `.scale`; `route-escalate --prompt` -> the legacy composite (route section, intent form, plus `escalate`, `reasons`, `suppressed`, `scale`); `resolve-task --prompt` -> `{task_contract, route, decision_rules, hitl}` in that key order.
 **Invariants:** `route-escalate` suppression is one non-transitive pass: an intent drops if it is suppressible and a non-suppressible intent matched, or if any raw-matched id is in its `suppressed_by`. `resolve-task` composes `route-escalate`, `decision-rules`, `scale`, the policy bundle (`gates models parallelism risk-autonomy verification`) and `hitl`, and folds `hitl` ONLY from `decisions.any_high`; on a floor-only prompt `.hitl` is `null` and `task_contract.risk_floor` carries the floor. Signal regexes in `decision-rules.json` are EREs; compile with `new RegExp(sig, 'i')` only after check C14 has validated them (it does), and treat a compile failure as `KernelError`.
 **Acceptance:** `scripts/test-kernel.sh` resolve-task and route-escalate blocks; `policy.json .router.fixtures[]` all match (check C18e); `bench` `resolve-task` < 500 ms.
 **Commit:** `feat(kernel): port decision-rules, scale, route-escalate and resolve-task`.
@@ -1269,8 +1302,8 @@ export function repair(ctx, flags): unknown                            // --chec
 # surface (docs/COMPATIBILITY.md); the implementation is src/kernel/ compiled into
 # dist/engineos.cjs. ENGINEOS_ROOT lets a relocated copy of this file answer from
 # its own registries/ (scripts/test-kernel.sh relocated_kernel).
-# Subcommands: route-path route-intent model risk gates repair admit breaker hitl
-#              waves decision-rules scale route-escalate resolve-task
+# Subcommands: resolve route-path route-intent model risk gates repair admit breaker
+#              hitl waves decision-rules scale route-escalate resolve-task
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINEOS_ROOT="$ROOT" exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 ```
@@ -1292,6 +1325,13 @@ Expected: all green; `bench` `route-intent` and `resolve-task` medians recorded 
 git add scripts/kernel.sh scripts/test-kernel.sh scripts/checks/70-runtime.sh
 git commit -m "refactor(kernel): route kernel.sh through the node runtime"
 ```
+
+### Task 13b: the router agent calls `resolve` once
+
+**Files:** Modify `agents/router.md` (steps 2, 3, 4, 6b, 7), `commands/route.md` (the kernel call it names), `commands/agents/router.md` if generated (run `scripts/gen-agent-commands.sh`); `scripts/checks/50-kernel.sh` C18b greps `agents/router.md` for five CLI literals — re-point it at the one `resolve` literal and the facts it must declare.
+**Change:** steps 2-4 become one call, `"$ENGINEOS_ROOT"/scripts/kernel.sh resolve --facts '{"prompt": "<request>", "signals": {...}}'`, copied verbatim into `kernel.resolve`; step 6b declares `workType` per unit and step 7 declares `units`, both through the same arm. Steps 5, 6a and 8 (the model-owned residue) are unchanged. Agent bodies are not versioned surface, so no deprecation window.
+**Acceptance:** `scripts/validate-engineos.sh` green (C18b re-pointed); one dry run of `/engineos:route` on `policy.json .router.fixtures[0]` shows a single kernel spawn in `.git/engineos-telemetry/<sid>.exec.jsonl`.
+**Commit:** `docs(router): resolve the plan with one kernel call`.
 
 Barrier 1: write a handoff (`templates/handoff.md`) listing measured budgets and any check adjusted.
 
