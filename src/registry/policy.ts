@@ -1,6 +1,6 @@
-import { KernelError, isRecord } from '../lib/json';
-import { loadRegistry } from './load';
 import type { RiskTier } from './intents';
+import { loadRegistry } from './load';
+import { strictReader } from './strict';
 
 // registries/policy.json is the registry whose answers ARE gates: a risk tier,
 // an autonomy ceiling, a repair action. A lenient loader that defaulted a
@@ -72,9 +72,39 @@ export interface BackpressurePolicy {
   actions: string[];
 }
 
+export interface PromptSignals {
+  action: string;
+  substantive_action: string;
+  scale: string;
+  spec: string;
+  design_strong: string;
+  design_weak: string;
+}
+
 export interface ParallelismPolicy {
   wave_concurrency_cap: number;
   backpressure: BackpressurePolicy;
+  prompt_signals: PromptSignals;
+}
+
+export interface EscalateWhen {
+  multi_agent_intents_min: number;
+  unrouted_scale_signals: string[];
+}
+
+export interface RouterFixture {
+  prompt: string;
+  escalate: boolean;
+  reasons: string[];
+  intents: string[];
+}
+
+export interface RouterPolicy {
+  agent: string;
+  capability: string;
+  reasons: string[];
+  escalate_when: EscalateWhen;
+  fixtures: RouterFixture[];
 }
 
 export interface BreakerPolicy {
@@ -101,7 +131,11 @@ export interface PolicyRegistry {
   parallelism: ParallelismPolicy;
   breaker: BreakerPolicy;
   hitl: HitlPolicy;
+  router: RouterPolicy;
 }
+
+const { requireRecord, requireString, requireNumber, requireBoolean, requireStrings, requireRows } =
+  strictReader('policy.json');
 
 export function loadPolicy(root: string): PolicyRegistry {
   const raw = loadRegistry(root, 'policy.json');
@@ -114,8 +148,11 @@ export function loadPolicy(root: string): PolicyRegistry {
   const specThreshold = requireRecord(gates['spec_threshold'], '.gates.spec_threshold');
   const parallelism = requireRecord(p['parallelism'], '.parallelism');
   const backpressure = requireRecord(parallelism['backpressure'], '.parallelism.backpressure');
+  const promptSignals = requireRecord(parallelism['prompt_signals'], '.parallelism.prompt_signals');
   const breaker = requireRecord(p['breaker'], '.breaker');
   const hitl = requireRecord(p['hitl'], '.hitl');
+  const router = requireRecord(p['router'], '.router');
+  const escalateWhen = requireRecord(router['escalate_when'], '.router.escalate_when');
   return {
     version: requireString(p['version'], '.version'),
     risk: {
@@ -184,6 +221,23 @@ export function loadPolicy(root: string): PolicyRegistry {
         ),
         actions: requireStrings(backpressure['actions'], '.parallelism.backpressure.actions'),
       },
+      prompt_signals: {
+        action: requireString(promptSignals['action'], '.parallelism.prompt_signals.action'),
+        substantive_action: requireString(
+          promptSignals['substantive_action'],
+          '.parallelism.prompt_signals.substantive_action',
+        ),
+        scale: requireString(promptSignals['scale'], '.parallelism.prompt_signals.scale'),
+        spec: requireString(promptSignals['spec'], '.parallelism.prompt_signals.spec'),
+        design_strong: requireString(
+          promptSignals['design_strong'],
+          '.parallelism.prompt_signals.design_strong',
+        ),
+        design_weak: requireString(
+          promptSignals['design_weak'],
+          '.parallelism.prompt_signals.design_weak',
+        ),
+      },
     },
     breaker: {
       failure_threshold: requireNumber(breaker['failure_threshold'], '.breaker.failure_threshold'),
@@ -197,41 +251,28 @@ export function loadPolicy(root: string): PolicyRegistry {
       situations: requireStrings(hitl['situations'], '.hitl.situations'),
       record_home: requireString(hitl['record_home'], '.hitl.record_home'),
     },
+    router: {
+      agent: requireString(router['agent'], '.router.agent'),
+      capability: requireString(router['capability'], '.router.capability'),
+      reasons: requireStrings(router['reasons'], '.router.reasons'),
+      escalate_when: {
+        multi_agent_intents_min: requireNumber(
+          escalateWhen['multi_agent_intents_min'],
+          '.router.escalate_when.multi_agent_intents_min',
+        ),
+        unrouted_scale_signals: requireStrings(
+          escalateWhen['unrouted_scale_signals'],
+          '.router.escalate_when.unrouted_scale_signals',
+        ),
+      },
+      fixtures: requireRows(router['fixtures'], '.router.fixtures').map((row, i) => ({
+        prompt: requireString(row['prompt'], `.router.fixtures[${i}].prompt`),
+        escalate: requireBoolean(row['escalate'], `.router.fixtures[${i}].escalate`),
+        reasons: requireStrings(row['reasons'], `.router.fixtures[${i}].reasons`),
+        intents: requireStrings(row['intents'], `.router.fixtures[${i}].intents`),
+      })),
+    },
   };
-}
-
-function malformed(what: string): never {
-  throw new KernelError(`registries/policy.json: ${what}`);
-}
-
-function requireRecord(value: unknown, path: string): Record<string, unknown> {
-  if (!isRecord(value)) malformed(`${path || 'the document'} must be an object`);
-  return value;
-}
-
-function requireString(value: unknown, path: string): string {
-  if (typeof value !== 'string') malformed(`${path} must be a string`);
-  return value;
-}
-
-function requireNumber(value: unknown, path: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) malformed(`${path} must be a number`);
-  return value;
-}
-
-function requireBoolean(value: unknown, path: string): boolean {
-  if (typeof value !== 'boolean') malformed(`${path} must be a boolean`);
-  return value;
-}
-
-function requireStrings(value: unknown, path: string): string[] {
-  if (!Array.isArray(value)) malformed(`${path} must be an array of strings`);
-  return value.map((item, i) => requireString(item, `${path}[${i}]`));
-}
-
-function requireRows(value: unknown, path: string): Record<string, unknown>[] {
-  if (!Array.isArray(value)) malformed(`${path} must be an array of objects`);
-  return value.map((item, i) => requireRecord(item, `${path}[${i}]`));
 }
 
 // Insertion order is the registry's, so an object emitted verbatim by a

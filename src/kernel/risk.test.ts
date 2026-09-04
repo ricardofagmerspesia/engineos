@@ -157,6 +157,7 @@ function policyRootWith(aggregation: string): string {
     parallelism: source.parallelism,
     breaker: source.breaker,
     hitl: source.hitl,
+    router: source.router,
   };
   writeFileSync(join(dir, 'registries', 'policy.json'), JSON.stringify(policy), 'utf8');
   return dir;

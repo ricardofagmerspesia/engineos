@@ -58,6 +58,19 @@ test('the shipped policy registry loads with every field the kernel reads', () =
   ]);
   assert.deepEqual(policy.hitl.situations, ['destructive', 'budget-exhausted', 'reject', 'breaker-open']);
   assert.equal(policy.hitl.record_home, '.engineos/changes/<record>.md#human-decisions');
+  assert.equal(typeof policy.parallelism.prompt_signals.action, 'string');
+  assert.equal(typeof policy.parallelism.prompt_signals.substantive_action, 'string');
+  assert.equal(policy.parallelism.prompt_signals.design_weak, '\\b(architect|architecture|design)\\b');
+  assert.equal(policy.router.agent, 'router');
+  assert.equal(policy.router.capability, 'route');
+  assert.deepEqual(policy.router.reasons, [
+    'multi-agent-dispatch',
+    'unrouted-scale',
+    'requires-dispatch-plan',
+  ]);
+  assert.equal(policy.router.escalate_when.multi_agent_intents_min, 2);
+  assert.deepEqual(policy.router.escalate_when.unrouted_scale_signals, ['big_task', 'design_work']);
+  assert.ok(policy.router.fixtures.length > 0);
 });
 
 test('gate statuses keep the registry key order they are emitted in', () => {
@@ -94,6 +107,12 @@ const malformed: [string, (policy: Record<string, unknown>) => void, string][] =
   ['a missing hitl block', (p) => { delete p['hitl']; }, '.hitl must be an object'],
   ['a reason that is not a string', (p) => { record(p, 'hitl')['reasons'] = [7]; }, '.hitl.reasons[0] must be a string'],
   ['a record home that is not a string', (p) => { delete record(p, 'hitl')['record_home']; }, '.hitl.record_home must be a string'],
+  ['a missing prompt_signals block', (p) => { delete record(p, 'parallelism')['prompt_signals']; }, '.parallelism.prompt_signals must be an object'],
+  ['a prompt signal that is not a string', (p) => { record(record(p, 'parallelism'), 'prompt_signals')['design_weak'] = ['design']; }, '.parallelism.prompt_signals.design_weak must be a string'],
+  ['a missing router block', (p) => { delete p['router']; }, '.router must be an object'],
+  ['a missing escalate_when block', (p) => { delete record(p, 'router')['escalate_when']; }, '.router.escalate_when must be an object'],
+  ['a non-numeric multi-agent threshold', (p) => { record(record(p, 'router'), 'escalate_when')['multi_agent_intents_min'] = '2'; }, '.router.escalate_when.multi_agent_intents_min must be a number'],
+  ['a fixture without an escalate verdict', (p) => { record(p, 'router')['fixtures'] = [{ prompt: 'x', reasons: [], intents: [] }]; }, '.router.fixtures[0].escalate must be a boolean'],
 ];
 
 for (const [name, breakIt, detail] of malformed) {
@@ -150,6 +169,14 @@ function basePolicy(): Record<string, unknown> {
     parallelism: {
       wave_concurrency_cap: 6,
       backpressure: { max_queued_units: 12, overload_action: 'defer', actions: ['dispatch', 'defer', 'reject'] },
+      prompt_signals: {
+        action: '\\b(add|build)\\b',
+        substantive_action: '\\b(add|build|review)\\b',
+        scale: '\\b(all|every)\\b',
+        spec: '\\b(spec|prd)\\b',
+        design_strong: '\\b(decompose|adr)\\b',
+        design_weak: '\\b(architecture|design)\\b',
+      },
     },
     breaker: {
       failure_threshold: 3,
@@ -162,6 +189,13 @@ function basePolicy(): Record<string, unknown> {
       reasons: ['high-risk'],
       situations: ['destructive'],
       record_home: '.engineos/changes/<record>.md#human-decisions',
+    },
+    router: {
+      agent: 'router',
+      capability: 'route',
+      reasons: ['multi-agent-dispatch'],
+      escalate_when: { multi_agent_intents_min: 2, unrouted_scale_signals: ['big_task'] },
+      fixtures: [{ prompt: 'modernize all services', escalate: true, reasons: ['unrouted-scale'], intents: [] }],
     },
   };
 }
