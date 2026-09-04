@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "EngineOS Architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/engineos-architecture.html",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/ricardofagmer/engineer-spec-ia-pattern",
+      "revision": "d1101a884afb8c1c6b241e8dc95a73351db3169a"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      110
+    ],
+    "cols": 5,
+    "gapX": 130,
+    "gapY": 100,
+    "cellW": 150,
+    "cellH": 64
+  },
+  "components": [
+    {
+      "id": "claude",
+      "type": "external",
+      "label": "Claude Code",
+      "sublabel": "hook events · agents",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "constitution",
+      "type": "frontend",
+      "label": "CLAUDE.md + rules",
+      "sublabel": "router table · rules",
+      "sources": [
+        {
+          "path": "CLAUDE.md",
+          "label": "router"
+        },
+        {
+          "path": "rules/base.md"
+        }
+      ],
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "agents",
+      "type": "frontend",
+      "label": "Agents & Skills",
+      "sublabel": "22 agents · skills",
+      "sources": [
+        {
+          "path": "registries/agents.json"
+        },
+        {
+          "path": "scripts/gen-agent-registry.sh"
+        }
+      ],
+      "row": 0,
+      "col": 2
+    },
+    {
+      "id": "hooks",
+      "type": "backend",
+      "label": "Hooks",
+      "sublabel": "prompt · edit · stop",
+      "sources": [
+        {
+          "path": "hooks/hooks.json"
+        },
+        {
+          "path": "hooks/lib-common.sh"
+        }
+      ],
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "kernel",
+      "type": "backend",
+      "label": "kernel.sh",
+      "sublabel": "route · risk · hitl",
+      "sources": [
+        {
+          "path": "scripts/kernel.sh"
+        }
+      ],
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "registries",
+      "type": "database",
+      "label": "Registries",
+      "sublabel": "7 JSON registries",
+      "sources": [
+        {
+          "path": "registries/routing.json"
+        },
+        {
+          "path": "registries/policy.json"
+        }
+      ],
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "validate",
+      "type": "security",
+      "label": "validate-engineos",
+      "sublabel": "108 integrity checks",
+      "sources": [
+        {
+          "path": "scripts/validate-engineos.sh"
+        }
+      ],
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "ci",
+      "type": "cloud",
+      "label": "GitHub Actions",
+      "sublabel": "shellcheck · tests",
+      "sources": [
+        {
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "row": 0,
+      "col": 4
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "dist/engineos.cjs",
+      "sublabel": "TS runtime · guard",
+      "sources": [
+        {
+          "path": "src/cli.ts"
+        },
+        {
+          "path": "src/node-guard.ts"
+        }
+      ],
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "records",
+      "type": "database",
+      "label": ".engineos/ records",
+      "sublabel": "changes · archived",
+      "sources": [
+        {
+          "path": ".engineos/changes/_template.md"
+        }
+      ],
+      "row": 2,
+      "col": 1
+    },
+    {
+      "id": "journal",
+      "type": "database",
+      "label": "Exec journal",
+      "sublabel": "telemetry *.jsonl",
+      "sources": [
+        {
+          "path": "scripts/exec-journal.sh"
+        }
+      ],
+      "row": 2,
+      "col": 2
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "EngineOS plugin (CLAUDE_PLUGIN_ROOT)",
+      "wraps": [
+        "constitution",
+        "agents",
+        "hooks",
+        "kernel",
+        "registries",
+        "validate",
+        "runtime"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Target project state",
+      "wraps": [
+        "records",
+        "journal"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "claude",
+      "to": "hooks",
+      "label": "hook events on stdin",
+      "variant": "emphasis"
+    },
+    {
+      "from": "hooks",
+      "to": "kernel",
+      "label": "route-path · risk · hitl",
+      "variant": "emphasis"
+    },
+    {
+      "from": "kernel",
+      "to": "registries",
+      "label": "reads",
+      "variant": "emphasis"
+    },
+    {
+      "from": "claude",
+      "to": "constitution",
+      "label": "@imports into context",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "from": "constitution",
+      "to": "agents",
+      "label": "router row names agent"
+    },
+    {
+      "from": "validate",
+      "to": "registries",
+      "label": "table vs registry drift",
+      "variant": "security",
+      "labelDy": 24
+    },
+    {
+      "from": "ci",
+      "to": "validate",
+      "label": "runs"
+    },
+    {
+      "from": "ci",
+      "to": "runtime",
+      "label": "npm test · drift guard",
+      "labelDy": 24
+    },
+    {
+      "from": "runtime",
+      "to": "registries",
+      "label": "wave 1 loader (planned)",
+      "variant": "dashed"
+    },
+    {
+      "from": "hooks",
+      "to": "records",
+      "label": "mark-unrecorded · record-verify",
+      "labelDy": 24
+    },
+    {
+      "from": "kernel",
+      "to": "journal",
+      "label": "kernel-decision events",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Control loop",
+      "items": [
+        "Every prompt, edit, agent dispatch and stop passes through a hook",
+        "Hooks ask kernel.sh; the kernel answers only from registries, never from prose",
+        "Stop gates: scoped lint/typecheck and an unrecorded-change check"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Two mirrors kept honest",
+      "items": [
+        "CLAUDE.md router table is the human mirror of registries/routing.json",
+        "validate-engineos.sh fails CI when the mirrors disagree",
+        "22 agents declare their tier; registries/agents.json is generated from them"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Runtime migration",
+      "items": [
+        "Wave 0 shipped the toolchain, Io seam and node guard as dist/engineos.cjs",
+        "Waves 1-6 shim hooks, kernel and checks onto the bundle",
+        "Bundle must rebuild byte-identical; CI enforces it"
+      ]
+    }
+  ]
+}
