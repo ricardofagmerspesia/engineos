@@ -97,3 +97,31 @@ Revisit triggers:
   `settings.json` instead of relying on PATH.
 - The plugin distribution model changes (a marketplace with a build step) — then
   option 3 becomes viable and the committed bundle can go.
+
+## Addendum 2026-09-04 — kernel shape
+
+The decision above is unchanged: TypeScript, one committed bundle, the fourteen
+kernel arms and their JSON answers byte-compatible. This addendum records how
+the kernel is shaped *inside* that surface, decided in the architecture review
+of the same day (source: the review's candidate 1 and the grilling rounds that
+followed; frozen contract in the migration design spec, "Kernel shape").
+
+- `src/kernel/` is one deep module, `resolve(facts, ctx)`, over declared facts.
+  The legacy arms are projections of its sparse answer, kept in `src/kernel/cli.ts`.
+- One arm is added, `resolve`, as a MINOR change under `docs/COMPATIBILITY.md`.
+  Nothing is removed by the migration; the arms with no external caller
+  (`gates`, `route-intent`, `scale`, `decision-rules`) are candidates for a later
+  MAJOR with the deprecation window.
+- Byte-compatibility is proven by a differential parity suite against a pinned
+  copy of the bash kernel, deleted at 2.0 with the shim.
+
+Rejected: one module per subcommand (the plan's original layout — it ports the
+shallow surface one to one, fourteen modules and fourteen test files for four
+arms that fail the deletion test); two modules split by task facts versus
+runtime facts (`hitl` and `repair` share the `never_retry` vocabulary across that
+seam, and the router agent would call both); deprecating the shallow arms inside
+this migration (largest consumer blast radius for no behaviour gain).
+
+Revisit trigger: a consumer is found calling `gates`, `route-intent`, `scale` or
+`decision-rules` directly — then the demotion is off the table and those arms
+stay first-class projections indefinitely.

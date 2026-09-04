@@ -19,9 +19,20 @@ The selected domain guidance and capabilities for a task or file.
 _Avoid_: Classification, dispatch
 
 **Decision kernel**:
-The deterministic resolver that turns declared task facts and policy into a
+The deterministic resolver that turns declared facts and policy into a
 route, risk tier, autonomy ceiling, required gates, and retry decision.
 _Avoid_: Router, orchestrator
+
+**Declared facts**:
+The caller-supplied inputs the decision kernel resolves over — a prompt, a
+file path, risk signals, work type, units to schedule. What is not declared is
+not resolved.
+_Avoid_: Args, flags, input, parameters
+
+**Projection**:
+A public kernel entry point that answers with one part of the decision kernel's
+full answer, named and shaped as callers already expect it.
+_Avoid_: Subcommand, wrapper, alias
 
 **Rule**:
 A durable constraint on engineering behavior.
@@ -68,6 +79,11 @@ _Avoid_: Integration, port
 The decoded facts a tool hook receives from the harness for one event — working
 directory, session, prompt, file, tool, transcript.
 _Avoid_: Payload, input JSON, stdin
+
+**Hook decision**:
+What a hook hands back to the harness for one event — silence, context to
+inject, a block with its reason, a message to show, or a failure.
+_Avoid_: Output, response, exit code, payload
 
 **Runner**:
 The tool that executes a project's verification targets, such as lint,
