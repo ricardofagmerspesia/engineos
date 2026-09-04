@@ -4,6 +4,7 @@ import { accessSync, constants, existsSync, readdirSync } from 'node:fs';
 import { processIo, writeJson } from './io';
 import { currentMajor, findNewerNode, guardOutcome, MIN_NODE_MAJOR, type GuardOutcome } from './node-guard';
 import { dispatch, type CommandTable } from './dispatch';
+import { runKernel } from './kernel/cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -49,5 +50,5 @@ if (currentMajor() < MIN_NODE_MAJOR) {
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 
-const table: CommandTable = {};
+const table: CommandTable = { kernel: runKernel };
 process.exit(dispatch(table, argv, io));

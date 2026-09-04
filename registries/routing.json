@@ -119,6 +119,7 @@
       ],
       "skills": [],
       "agent": "dba-coordinator",
+      "hint": "postgres/oracle",
       "risk_floor": "high",
       "hook_guidance": "rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)",
       "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves.",
@@ -141,8 +142,9 @@
       ],
       "skills": [],
       "agent": "ios-builder",
+      "hint": "signing",
       "risk_floor": "high",
-      "hook_guidance": "rules/security.md (signing) | agent:ios-builder",
+      "hook_guidance": "rules/security.md | agent:ios-builder (signing)",
       "note": "MUST precede mobile: matches only build/release files, so ordinary RN screens fall through.",
       "match": {
         "paths": [
@@ -166,8 +168,9 @@
       ],
       "skills": [],
       "agent": "android-builder",
+      "hint": "signing",
       "risk_floor": "high",
-      "hook_guidance": "rules/security.md (signing) | agent:android-builder",
+      "hook_guidance": "rules/security.md | agent:android-builder (signing)",
       "match": {
         "paths": [
           "*/android/*.gradle*",
@@ -188,6 +191,7 @@
       ],
       "skills": [],
       "agent": "devops-coordinator",
+      "hint": "kubernetes/gcp/cicd",
       "risk_floor": "high",
       "hook_guidance": "rules/architecture.md+observability.md | agent:devops-coordinator (kubernetes/gcp/cicd)",
       "note": "High floor: infra config changes reach production by definition.",
@@ -224,9 +228,10 @@
         "react-patterns"
       ],
       "agent": "mobile-coordinator",
+      "hint": "adapt to React Native",
       "risk_floor": "medium",
-      "hook_guidance": "rules/frontend.md+architecture.md+backend.md+testing.md+observability.md (adapt to React Native) | agent:mobile-coordinator",
-      "note": "MUST precede frontend: mobile screens are .tsx too. Skill react-patterns is adapted to React Native and is named in CLAUDE.md rather than the hook string.",
+      "hook_guidance": "rules/frontend.md+architecture.md+backend.md+testing.md+observability.md | skill:react-patterns | agent:mobile-coordinator (adapt to React Native)",
+      "note": "MUST precede frontend: mobile screens are .tsx too. Skill react-patterns is adapted to React Native, which the hint records.",
       "match": {
         "paths": [
           "*/mobile/*",

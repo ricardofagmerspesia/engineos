@@ -37,9 +37,9 @@ DEVOPS="rules/architecture.md+observability.md | agent:devops-coordinator (kuber
 LLM="rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator"
 TEST_G="rules/testing.md | agent:test-writer"
 SECURITY="rules/security.md | agent:security-reviewer"
-MOBILE="rules/frontend.md+architecture.md+backend.md+testing.md+observability.md (adapt to React Native) | agent:mobile-coordinator"
-IOS_BUILD="rules/security.md (signing) | agent:ios-builder"
-ANDROID_BUILD="rules/security.md (signing) | agent:android-builder"
+MOBILE="rules/frontend.md+architecture.md+backend.md+testing.md+observability.md | skill:react-patterns | agent:mobile-coordinator (adapt to React Native)"
+IOS_BUILD="rules/security.md | agent:ios-builder (signing)"
+ANDROID_BUILD="rules/security.md | agent:android-builder (signing)"
 
 check "tsx -> frontend"        "/tmp/app/Button.tsx"                 "$FRONTEND"
 check "controller -> backend"  "/tmp/api/user.controller.ts"        "$BACKEND"
