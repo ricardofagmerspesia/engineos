@@ -1438,21 +1438,27 @@ Barrier 1: write a handoff (`templates/handoff.md`) listing measured budgets and
 
 ### Task 14: exec-journal
 
-**Files:** Create `src/journal/schema.ts`, `src/journal/exec-journal.ts`, `src/journal/cli.ts` + tests; register `journal` in `src/cli.ts`; replace `scripts/exec-journal.sh` with a shim (`... exec node "$ROOT/dist/engineos.cjs" journal "$@"`); modify `scripts/checks/70-runtime.sh` so every C27 assertion that reads `scripts/exec-journal.sh` source (the `EJ_SCHEMA_FIELDS` declaration, the span-kind and status lists, the `MAX_VALUE_LEN` fallback) reads `src/journal/schema.ts` and `src/journal/exec-journal.ts` instead, same literals.
+**Files:** Create `src/journal/schema.ts`, `src/journal/exec-journal.ts`, `src/journal/cli.ts` + tests; register `journal` in `src/cli.ts`; replace `scripts/exec-journal.sh` with a shim (`... exec node "$ROOT/dist/engineos.cjs" journal "$@"`); modify `scripts/checks/70-runtime.sh`: delete `check_C27e` and the ten `ej_*` parsers (`ej_constant`, `ej_registry_list`, `ej_slug_flags`, `ej_validated_fields`, `ej_enum_flags`, `ej_validated_enums`, `ej_int_flags`, `ej_validated_ints`, `ej_declared_fields`, `ej_emitted_fields`); shrink `check_C27` to `policy.json` well-formedness (home suffix, `max_value_length` integer, `span_kinds`/`statuses` non-empty) plus writer existence, dropping the equality against the CLI's constants (design deviation 4). C27b, C27c, C27d, C27f unchanged.
 **Source:** `scripts/exec-journal.sh` (443 lines).
 **Interfaces:**
 ```ts
-// schema.ts — the ONE declaration both append and validate consume
-export type Guard = 'slug' | 'enum' | 'int' | 'free';
-export interface FieldSpec { name: string; flag: string; guard: Guard; required: boolean; v2: boolean; enumValues?: () => string[] }
-export const EXEC_JOURNAL_FIELDS: readonly FieldSpec[]
+// schema.ts — the ONE declaration append, validate, usage and the hook writer consume (design "Journal schema")
+export type Guard = 'slug' | 'enum' | 'int' | 'bool' | 'free';
+export type JsonType = 'string' | 'number' | 'boolean';
+export type Presence = 'required' | 'optional' | 'always';   // always: emitted as null when unset (agent, note)
+export interface FieldSpec { name: FieldName; flag: string; guard: Guard; json: JsonType; presence: Presence; values?: (regs: Registries) => readonly string[] }
+export const EXEC_JOURNAL_FIELDS: readonly FieldSpec[]       // 22 rows, emit order
+export type FieldName = 'timestamp' | 'run_id' | 'capability_id' | 'agent' | 'model_tier' | 'status' | 'tokens_in' | 'tokens_out' | 'duration_ms' | 'note' | 'trace_id' | 'span_id' | 'parent_span_id' | 'span_kind' | 'tool' | 'provider' | 'model' | 'cost_micros' | 'retry_attempt' | 'cache_hit' | 'route' | 'risk'
+export type SpanFields = Partial<Record<FieldName, string | number | boolean>>
 export const SLUG_RE = /^[A-Za-z0-9@_./:-]+$/
-// exec-journal.ts
-export function appendLine(root: string, file: string, argv: string[], now: () => string): void   // throws JournalError(text)
-export function validateFile(root: string, file: string): { lines: number; bad: number[] }
+// exec-journal.ts — every function below walks EXEC_JOURNAL_FIELDS; none names a field
+export function parseAppendArgs(argv: string[]): { file: string; fields: SpanFields }   // unknown flag -> usage
+export function appendLine(root: string, file: string, argv: string[], now: () => string, regs: Registries): void   // throws JournalError(text)
+export function validateFile(root: string, file: string, regs: Registries): { lines: number; bad: number[] }
+export function usage(argv0: string): string                  // rendered from the rows: --<flag> <TYPE>, [] around optional
 ```
-**Invariants:** length check on every value first, against `policy.json .telemetry.exec_journal.max_value_length` (fallback 256), reject not truncate; v2 keys absent unless set, `agent` and `note` always present (`null` when unset), so a v1 append is byte-identical to today; numbers validated as digit strings then converted (leading zeros accepted); default timestamp formatted then slug-guarded like a supplied one; `validate` anchors string regexes at true end of string (JS `$` without `m` flag is end-of-string; do not add `m`); `status` and `model_tier` are enum membership, `model_tier` read live from `models.json`. Error convention: plain text on stderr, exit 1. `validate` success text: `<file>: N line(s), all valid`.
-**Acceptance:** `bash scripts/test-exec-journal.sh` green; `bash scripts/validate-engineos.sh` green (C27 re-pointed in this PR).
+**Invariants:** length check on every value first, against `policy.json .telemetry.exec_journal.max_value_length` (fallback 256), reject not truncate; v2 keys absent unless set, `agent` and `note` always present (`null` when unset), so a v1 append is byte-identical to today; numbers validated as digit strings then converted (leading zeros accepted); default timestamp formatted then slug-guarded like a supplied one; `validate` anchors string regexes at true end of string (JS `$` without `m` flag is end-of-string; do not add `m`); `status` and `model_tier` are enum membership, `model_tier` read live from `models.json`, `span_kind` and `status` from `policy.json` `telemetry.exec_journal`, `risk` from the kernel's policy vocabulary — `schema.ts` holds no enum literal. `schema.test.ts` asserts the table itself (22 rows, order, `note` the only `free` row, `always` only on `agent` and `note`); `exec-journal.test.ts` drives append and validate once per guard class through the table. Error convention: plain text on stderr, exit 1. `validate` success text: `<file>: N line(s), all valid`.
+**Acceptance:** `bash scripts/test-exec-journal.sh` green; `bash scripts/validate-engineos.sh` green with C27e gone and C27 shrunk in this PR (its `passed N` total drops by one; the README check count follows).
 **Commit:** `feat(journal): port exec-journal`.
 
 ### Task 15: telemetry
@@ -1498,7 +1504,7 @@ export function bypassActive(cwd: string, env: NodeJS.ProcessEnv): boolean   // 
 export function telemetryDir(cwd: string): string | null            // only when the repo has .engineos/; creates <gitdir>/engineos-telemetry
 export function telemetry(dir: string, sid: string, event: string, data: Record<string, unknown>, env): void   // best effort, never throws; no-op when ENGINEOS_TELEMETRY=0
 export function spanOpen(dir, id, env): void; export function spanClose(dir, id, env): number | null
-export function span(dir, sid, kind, fields: Record<string,string>, env): void   // writes <sid>.exec.jsonl via journal/appendLine, tokens 0
+export function span(dir, sid, kind, fields: SpanFields, env): void   // SpanFields from journal/schema.ts; sanitizes per row class (slug -> hookSlug, enum -> member or drop, int -> non-negative or drop), then journal/appendLine with tokens 0
 export const hookSlug = (v: string) => string; export const hookPathSlug = (v: string) => string | null
 ```
 **Invariants:** telemetry writes only when the consumer repo carries `.engineos/`; every writer swallows its own errors; slug classes exact; `spanClose` clamps negative durations to 0. `render` is the only function in `src/` that writes a hook's stdout or chooses its exit code; `output.ts` has no imports so `src/cli.ts`'s node guard can call `render(message(...), io)` for the deviation-2 `systemMessage` — this task re-points the guard's `skip` branch (Task 3) to it and deletes the inline `writeJson`. `output.test.ts` asserts the exact JSON text and exit code of each of the five kinds; no other test in `src/hooks/` asserts stdout. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `output.test.ts`, `bypass.test.ts`, `telemetry.test.ts` covering each of its 13 assertions; remove the suite's CI step in the same PR.

@@ -60,6 +60,12 @@ _Avoid_: Gate, proof
 Source-attributed observations supporting a task state or gate decision.
 _Avoid_: Assertion, confidence
 
+**Span**:
+One recorded unit of execution inside a session's trace — a router decision,
+an agent dispatch, a tool or model call, a verification gate — with who ran,
+how long, and what outcome.
+_Avoid_: Event, log line, entry, record
+
 **Change record**:
 The durable account of a completed task, including scope, decisions, evidence,
 and residual risk.

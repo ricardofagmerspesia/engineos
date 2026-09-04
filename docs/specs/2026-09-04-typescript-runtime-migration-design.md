@@ -81,7 +81,7 @@ src/
   registry/           one typed loader per registries/*.json; lazy, path-bound
   kernel/             one deep module: resolve(facts, ctx); concept modules private;
                       cli.ts holds the projections (see "Kernel shape" below)
-  journal/            exec-journal and telemetry: schema declared once as data
+  journal/            exec-journal and telemetry: schema.ts is the one field table; append, validate, usage and the hook writers derive from it
   hooks/
     envelope.ts       stdin decode into HookEnvelope (cwd, session_id, prompt, file, tool, transcript, stop_hook_active)
     bypass.ts         three-tier bypass: env > machine flag > per-repo marker
@@ -258,49 +258,53 @@ No internal subprocesses except `git` and the project's own runners
 spans and journal lines are written in-process through `journal/` and
 `hooks/telemetry.ts`. Timeouts on runners use `spawnSync`'s `timeout` option.
 
-### Hook decision (amended 2026-09-04, architecture review)
+### Journal schema (amended 2026-09-04, architecture review)
 
-The hook envelope is the input half of the hook contract. The output half —
-what a hook hands back to the harness — was re-derived per hook in bash: one
-`hook_context` helper for `additionalContext`, three hand-written
-`{"decision":"block"}` literals (two of them in `stop-verify.sh` with different
-reason text), a `systemMessage` in the node guard, stderr plus `exit 2` in
-`post-edit-check`, and silence. The port gives that half one module.
+The span schema is spelled seven times in `scripts/exec-journal.sh` (usage
+comment, `usage()`, `EJ_SCHEMA_FIELDS`, flag ladder, guard block, jq emit, jq
+validate), its enums twice more inside the file and once in `policy.json`, and
+a check family sed-parses the copies back into agreement. The port declares it
+once.
 
 ```ts
-// src/hooks/output.ts — imports nothing but node:process types
-export type HookDecision =
-  | { kind: 'silent' }
-  | { kind: 'context'; event: HookEventName; text: string }   // hookSpecificOutput.additionalContext, exit 0
-  | { kind: 'block'; reason: string }                         // {"decision":"block","reason"}, exit 0
-  | { kind: 'message'; text: string }                         // {"systemMessage"}, exit 0
-  | { kind: 'fail'; stderr: string }                          // stderr text, exit 2 (post-edit-check)
-export const silent: HookDecision
-export function context(event: HookEventName, text: string): HookDecision
-export function block(reason: string): HookDecision
-export function message(text: string): HookDecision
-export function fail(stderr: string): HookDecision
-export function render(decision: HookDecision, io: Io): number   // writes stdout/stderr, returns the exit code
+// src/journal/schema.ts — the only file in src/ that names a journal field
+export type Guard = 'slug' | 'enum' | 'int' | 'bool' | 'free'
+export type JsonType = 'string' | 'number' | 'boolean'
+export type Presence = 'required' | 'optional' | 'always'   // always = emitted as null when unset (agent, note: v1 shape)
+export interface FieldSpec {
+  name: FieldName; flag: string; guard: Guard; json: JsonType; presence: Presence
+  values?: (regs: Registries) => readonly string[]           // enum members, read from a registry, never a literal here
+}
+export const EXEC_JOURNAL_FIELDS: readonly FieldSpec[]          // 22 rows; row order is emit order, so a v1 line is byte-identical
+export type FieldName = 'timestamp' | 'run_id' | … | 'risk'
+export type SpanFields = Partial<Record<FieldName, string | number | boolean>>
+export const SLUG_RE = /^[A-Za-z0-9@_./:-]+$/
 ```
 
-- Every hook module exports `run(env: HookEnvelope, ctx: HookContext): HookDecision`.
-  `ctx` carries the side-effect ports (`io`, `root`, `now`, `spawn`); telemetry,
-  markers, the route cache and the runner are reached through it, never through
-  globals.
-- `src/hooks/cli.ts` is the only adapter: `readEnvelope` → `null` is `silent` →
-  `run` → `render` → exit code. A hook never writes stdout and never picks an
-  exit code.
-- `route-before-change` caches the decision, not the rendered payload; the hit
-  path renders too. The cache format is internal (wiped every SessionStart), so
-  this costs no compatibility.
-- Tests assert on the decision value. `output.test.ts` alone asserts the JSON
-  text and exit code of each kind; the Wave 6 e2e ports keep their stdout
-  assertions through the shared harness's `runCli`, as the bash suites do.
-- Deletion test: remove `output.ts` and the five shapes reappear in nine hooks
-  plus the guard. Rejected: keep `(io: Io) => number` per hook with a `render`
-  helper (rendering stays the test surface); fold `render` into `envelope.ts`
-  (couples stdin decode with stdout policy); a sixth `error` kind for the CLI's
-  `{"error"}` exit 1 (that is a subcommand contract, not a hook one).
+- Enum members come from registry loaders: `span_kind` and `status` from
+  `policy.json` `telemetry.exec_journal`, `model_tier` from `models.json`, `risk`
+  from the policy vocabulary the kernel uses (see "Kernel shape"). `schema.ts`
+  carries no vocabulary literal; C27's "constants match the registry" assertion
+  has nothing left to compare and is retired.
+- `exec-journal.ts` derives from the table: the flag parser accepts exactly the
+  rows' flags, the guard runs each row's class, the emitter writes rows in order
+  with the row's JSON type, `validate` checks the same rows with the same
+  classes, and `usage()` renders `--<flag> <TYPE>` per row. The header comment
+  points at `schema.ts` instead of listing flags.
+- `hooks/telemetry.ts` `span(dir, sid, kind, fields: SpanFields)` is typed from
+  the table; an unknown field is a compile error. Its sanitizer walks the rows:
+  `slug` → `hookSlug`, `enum` → member or drop, `int` → non-negative integer or
+  drop, then the same append guards run in-process. The two boundaries keep
+  their documented difference: the CLI rejects, the hooks sanitize first.
+- Tests: `schema.test.ts` asserts the table (22 rows, order, one `free` row
+  named `note`, `always` only on `agent` and `note`); `exec-journal.test.ts`
+  drives append and validate per class through the table, not per field.
+- Deletion test: remove `schema.ts` and the field list reappears in the parser,
+  the guards, the emitter, the validator, the usage text, the hook writer and
+  the checks. Rejected: seven TS copies with `satisfies` on one (the drift the
+  checks exist to catch, moved to a new language); enum literals in `schema.ts`
+  pinned to `policy.json` by a `journal schema` JSON arm (a new public arm to
+  keep a copy honest); keeping C27e as a behavioural check (overlaps C27b).
 
 ### Shims and compatibility
 
@@ -350,8 +354,10 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - Slug class `^[A-Za-z0-9@_./:-]+$` for every journal field but `note`; path slug
   drops `.` and `/`. Over-length values are rejected, never truncated
   (`policy.json` `telemetry.exec_journal.max_value_length`).
-- The exec-journal schema is declared once as data and drives both `append` and
-  `validate`; check C27e's set-equality keeps holding.
+- The exec-journal schema is declared once as data (`journal/schema.ts`) and
+  drives `append`, `validate`, `usage` and the hook span writer; no other file in
+  `src/` names a journal field. Check C27e's set-equality holds by construction
+  and is retired with its parsers (deviation 4).
 - Kernel registry access is lazy: one injected `Registries` object whose getters
   parse on first access and cache for the process; no eager parse of all seven
   registries on every call. A projection that needs one registry pays for one.
@@ -387,6 +393,13 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    C27c, C29, C30). Each is re-pointed at the TypeScript module in the same PR
    that shims the file it grepped, before wave 5 ports the check family. The
    assertion is the same; the file it reads changes.
+4. Check C27e and the ten `ej_*` sed parsers in `scripts/checks/70-runtime.sh`
+   (`ej_constant` … `ej_emitted_fields`) are deleted in the PR that ports
+   `exec-journal`. They exist to prove seven bash restatements of the span
+   schema agree; with one table there is nothing to compare. C27 shrinks to
+   `policy.json` well-formedness and writer existence; C27b (behavioural
+   round-trip), C27c, C27d and C27f stay. Check ids are not versioned surface
+   in `docs/COMPATIBILITY.md`; the removal is recorded in the change record.
 
 ## Testing
 
