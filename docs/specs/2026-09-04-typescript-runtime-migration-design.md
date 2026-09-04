@@ -89,6 +89,7 @@ src/
     scaffold.ts       symlink-safe directory + seed creation, manifest as data
     runner.ts         nx / npm-family detection, target probe, run with timeout, infra-skip regexes
     cache.ts          route cache keyed by sid + routing.json signature + buster
+    output.ts         HookDecision (silent | context | block | message | fail) + render(): the one writer of hook stdout and exit codes
     <hook-name>.ts    one per registered hook (8)
   gen/                agent-commands, agent-registry
   init/               project adoption
@@ -234,7 +235,9 @@ re-executes itself with `spawnSync(newer, [__filename, ...argv], { stdio:
   (`stop-verify`, `ensure-project-layout`, `post-edit-check`) and the two announce
   hooks print `{"systemMessage": "[engineos] <hook> skipped: node >= 18 required
   (found v16.x)"}` and exit 0, so the user sees the Validation gate did not run
-  instead of a green silence. This is deviation 2 below;
+  instead of a green silence. This is deviation 2 below. The guard builds that as
+  a `message` hook decision and hands it to `hooks/output.ts` `render`, the same
+  writer every hook uses, so `output.ts` imports nothing and runs on any node;
 - every other subcommand prints `{"error": "node >= 18 required, found vX"}` and
   exits 1.
 
@@ -253,6 +256,50 @@ No internal subprocesses except `git` and the project's own runners
 (`npm`/`pnpm`/`yarn`/`nx`) in `stop-verify` and `post-edit-check`. Telemetry,
 spans and journal lines are written in-process through `journal/` and
 `hooks/telemetry.ts`. Timeouts on runners use `spawnSync`'s `timeout` option.
+
+### Hook decision (amended 2026-09-04, architecture review)
+
+The hook envelope is the input half of the hook contract. The output half —
+what a hook hands back to the harness — was re-derived per hook in bash: one
+`hook_context` helper for `additionalContext`, three hand-written
+`{"decision":"block"}` literals (two of them in `stop-verify.sh` with different
+reason text), a `systemMessage` in the node guard, stderr plus `exit 2` in
+`post-edit-check`, and silence. The port gives that half one module.
+
+```ts
+// src/hooks/output.ts — imports nothing but node:process types
+export type HookDecision =
+  | { kind: 'silent' }
+  | { kind: 'context'; event: HookEventName; text: string }   // hookSpecificOutput.additionalContext, exit 0
+  | { kind: 'block'; reason: string }                         // {"decision":"block","reason"}, exit 0
+  | { kind: 'message'; text: string }                         // {"systemMessage"}, exit 0
+  | { kind: 'fail'; stderr: string }                          // stderr text, exit 2 (post-edit-check)
+export const silent: HookDecision
+export function context(event: HookEventName, text: string): HookDecision
+export function block(reason: string): HookDecision
+export function message(text: string): HookDecision
+export function fail(stderr: string): HookDecision
+export function render(decision: HookDecision, io: Io): number   // writes stdout/stderr, returns the exit code
+```
+
+- Every hook module exports `run(env: HookEnvelope, ctx: HookContext): HookDecision`.
+  `ctx` carries the side-effect ports (`io`, `root`, `now`, `spawn`); telemetry,
+  markers, the route cache and the runner are reached through it, never through
+  globals.
+- `src/hooks/cli.ts` is the only adapter: `readEnvelope` → `null` is `silent` →
+  `run` → `render` → exit code. A hook never writes stdout and never picks an
+  exit code.
+- `route-before-change` caches the decision, not the rendered payload; the hit
+  path renders too. The cache format is internal (wiped every SessionStart), so
+  this costs no compatibility.
+- Tests assert on the decision value. `output.test.ts` alone asserts the JSON
+  text and exit code of each kind; the Wave 6 e2e ports keep their stdout
+  assertions through the shared harness's `runCli`, as the bash suites do.
+- Deletion test: remove `output.ts` and the five shapes reappear in nine hooks
+  plus the guard. Rejected: keep `(io: Io) => number` per hook with a `render`
+  helper (rendering stays the test surface); fold `render` into `envelope.ts`
+  (couples stdin decode with stdout policy); a sixth `error` kind for the CLI's
+  `{"error"}` exit 1 (that is a subcommand contract, not a hook one).
 
 ### Shims and compatibility
 
@@ -355,8 +402,11 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
   the projection; JSON deep-equal and exit code equal. It needs `bash` and `jq`
   in CI until 2.0, when it is deleted with the shim.
 - `hooks/test-lib-common.sh` (white-box) is replaced by unit tests for
-  `hooks/envelope.ts`, `hooks/bypass.ts` and `hooks/telemetry.ts` in the PR that
-  ports the hook library.
+  `hooks/envelope.ts`, `hooks/bypass.ts`, `hooks/output.ts` and
+  `hooks/telemetry.ts` in the PR that ports the hook library.
+- Hook tests assert on the `HookDecision` a hook returns, never on stdout text;
+  `hooks/output.test.ts` is the one place the harness JSON and exit code per
+  kind are asserted ("Hook decision" above).
 - Wave 6 ports each bash suite to a `node:test` file in the same black-box style
   (spawn the CLI, feed stdin, assert stdout and state files), deletes the `.sh`
   suite, and removes `shellcheck` and `jq` from CI when the last one lands.

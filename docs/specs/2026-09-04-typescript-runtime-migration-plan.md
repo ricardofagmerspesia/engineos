@@ -45,7 +45,7 @@ src/kernel/{index,context,resolve,cli}.ts                          public: resol
 src/kernel/{route,risk,model,scale,decisions,hitl,admit,breaker,waves,repair}.ts   internal seams, not exported
 src/kernel/{resolve,cli,parity}.test.ts, test/fixtures/legacy-kernel/{kernel.sh,registries/}
 src/journal/{schema,exec-journal,telemetry,cli}.ts
-src/hooks/{envelope,bypass,telemetry,scaffold,runner,cache,cli}.ts
+src/hooks/{envelope,output,bypass,telemetry,scaffold,runner,cache,cli}.ts
 src/hooks/{ensure-project-layout,prompt-advisor,route-before-change,announce-agent-dispatch,mark-unrecorded,announce-agent-return,stop-verify,record-verify,post-edit-check}.ts
 src/gen/{agent-commands,agent-registry,frontmatter}.ts
 src/init/project.ts
@@ -1373,15 +1373,29 @@ Barrier 2 (with Barrier 1): handoff.
 
 # Wave 3 — hooks
 
-### Task 16: hook library, part 1 — envelope, bypass, telemetry writer
+### Task 16: hook library, part 1 — envelope, output, bypass, telemetry writer
 
-**Files:** Create `src/hooks/envelope.ts`, `src/hooks/bypass.ts`, `src/hooks/telemetry.ts`, `src/lib/git.ts`, `src/lib/slug.ts`, `src/lib/time.ts` + tests. Delete nothing yet.
+**Files:** Create `src/hooks/envelope.ts`, `src/hooks/output.ts`, `src/hooks/bypass.ts`, `src/hooks/telemetry.ts`, `src/lib/git.ts`, `src/lib/slug.ts`, `src/lib/time.ts` + tests. Delete nothing yet.
 **Source:** `hooks/lib-common.sh` (`hook_read_envelope`, `hook_context`, `hook_telemetry_dir`, `hook_telemetry`, `hook_slug`, `hook_path_slug`, `hook_now_ms`, `hook_span_open/close`, `hook_span`, `git_dir`, `repo_root`, `find_up`, `find_up_file`), `hooks/bypass.sh`.
 **Interfaces:**
 ```ts
 export interface HookEnvelope { cwd: string; sessionId: string; prompt: string; file: string; tool: string; transcriptPath: string; stopHookActive: boolean; raw: unknown }
 export function readEnvelope(io: Io): HookEnvelope | null            // null when stdin is not a JSON object (caller decides: most hooks exit 0)
-export function hookContext(event: string, text: string): { hookSpecificOutput: { hookEventName: string; additionalContext: string } }
+// src/hooks/output.ts — the output half of the hook contract (design "Hook decision"). Imports nothing.
+export type HookEventName = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Stop' | 'SubagentStart' | 'SubagentStop'
+export type HookDecision =
+  | { kind: 'silent' }
+  | { kind: 'context'; event: HookEventName; text: string }
+  | { kind: 'block'; reason: string }
+  | { kind: 'message'; text: string }
+  | { kind: 'fail'; stderr: string }
+export const silent: HookDecision
+export function context(event: HookEventName, text: string): HookDecision
+export function block(reason: string): HookDecision
+export function message(text: string): HookDecision
+export function fail(stderr: string): HookDecision
+export function render(decision: HookDecision, io: Io): number   // context/block/message -> stdout JSON + 0; fail -> stderr + 2; silent -> 0
+export interface HookContext { io: Io; root: string; now: () => number; spawn: typeof spawnSync }
 export function bypassMarker(cwd: string): string | null             // <gitdir>/ENGINEOS_BYPASS
 export function bypassActive(cwd: string, env: NodeJS.ProcessEnv): boolean   // env ENGINEOS_BYPASS=1 > flag file (ENGINEOS_BYPASS_FLAG or ~/.claude/engineos.bypass) > marker
 export function telemetryDir(cwd: string): string | null            // only when the repo has .engineos/; creates <gitdir>/engineos-telemetry
@@ -1390,8 +1404,8 @@ export function spanOpen(dir, id, env): void; export function spanClose(dir, id,
 export function span(dir, sid, kind, fields: Record<string,string>, env): void   // writes <sid>.exec.jsonl via journal/appendLine, tokens 0
 export const hookSlug = (v: string) => string; export const hookPathSlug = (v: string) => string | null
 ```
-**Invariants:** telemetry writes only when the consumer repo carries `.engineos/`; every writer swallows its own errors; slug classes exact; `spanClose` clamps negative durations to 0. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `bypass.test.ts`, `telemetry.test.ts` covering each of its 13 assertions; remove the suite's CI step in the same PR.
-**Commit:** `feat(hooks): port the hook envelope, bypass and telemetry library`.
+**Invariants:** telemetry writes only when the consumer repo carries `.engineos/`; every writer swallows its own errors; slug classes exact; `spanClose` clamps negative durations to 0. `render` is the only function in `src/` that writes a hook's stdout or chooses its exit code; `output.ts` has no imports so `src/cli.ts`'s node guard can call `render(message(...), io)` for the deviation-2 `systemMessage` — this task re-points the guard's `skip` branch (Task 3) to it and deletes the inline `writeJson`. `output.test.ts` asserts the exact JSON text and exit code of each of the five kinds; no other test in `src/hooks/` asserts stdout. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `output.test.ts`, `bypass.test.ts`, `telemetry.test.ts` covering each of its 13 assertions; remove the suite's CI step in the same PR.
+**Commit:** `feat(hooks): port the hook envelope, decision output, bypass and telemetry library`.
 
 ### Task 17: hook library, part 2 — scaffold, runner, cache, manifests as data
 
@@ -1426,7 +1440,8 @@ Common shape for every hook task:
   ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   exec node "$ROOT/dist/engineos.cjs" hook <name>
   ```
-- **Interface:** `export function <camelName>(io: Io): number` reading the envelope via Task 16 and returning the exit code; the CLI adapter maps it.
+- **Interface:** `export function run(env: HookEnvelope, ctx: HookContext): HookDecision` (Task 16 types). The hook never writes stdout and never picks an exit code. `src/hooks/cli.ts` is the one adapter: `readEnvelope(io)` → `null` means `silent` → `run` → `render` → exit code. Side effects (telemetry, markers, cache, runner) go through `ctx`, so `<name>.test.ts` calls `run` with a harness `envelope()` and a `memoryIo`-backed `ctx` and `deepEqual`s the decision.
+- **Tests:** assert on the returned `HookDecision`, never on stdout text (`output.test.ts` owns that, Task 16). The Wave 6 e2e port of the hook's bash suite keeps its stdout assertions through `runCli`.
 - **Check re-point (spec deviation 3):** every `scripts/checks/*.sh` assertion that greps `hooks/<name>.sh` changes its target path to `src/hooks/<name>.ts` in the same PR, keeping the literal it looks for (the TS module carries the same `--event <id>` strings as constants, the same `hook_span`/`hook_span_open` function names as imports, the same registry key text). The last column of the table names the checks; C22c and C27c list every writer, so most hook PRs touch both.
 - **Acceptance:** the named bash suite green in the same PR; `bash scripts/validate-engineos.sh` green in the same PR.
 - **Commit:** `refactor(hooks): port <name> to the node runtime`.
@@ -1435,14 +1450,14 @@ Common shape for every hook task:
 |---|---|---|---|---|---|
 | 18 | `ensure-project-layout` | 96 | `hooks/test-layout.sh` | bypass marker removed and stale `ENGINEOS_UNRECORDED.*` (+7 days) reaped BEFORE the self-repo skip; route cache wiped every start; telemetry reaped by `policy.json .telemetry.retention_days`; `ENGINEOS_SCAFFOLD` tri-state; exact hint text; always exit 0; grep/sed `cwd` fallback becomes lenient JSON decode | C29 (`scaffold-layout.sh` sourced -> `./scaffold` imported), C22c (`--event` ids), C27c (`exec.jsonl`, `engineos-telemetry/spans`) |
 | 19 | `mark-unrecorded` | 51 | `hooks/test-governance.sh` | extension allowlist `ts tsx js jsx py go rs sql` shared constant; skips `*/.engineos/*`; self_dirs from `routing.json` resolved against the plugin root; marker `ENGINEOS_UNRECORDED.<sid>`; silent | C22c if listed as a writer |
-| 20 | `record-verify` | 34 | `hooks/test-governance.sh` | bypass, then `stop_hook_active` guard; `.deferred` marker silences; block reason text verbatim with the `touch "<path>"` suggestion; exit 0 with `{"decision":"block"}` | C22c if listed as a writer |
-| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached `.output` fast path only when project and change notes are empty; bypass checks before any kernel call; default guide `base.md+git.md only`; never sets `permissionDecision` | C22c (`--event` ids) |
+| 20 | `record-verify` | 34 | `hooks/test-governance.sh` | bypass, then `stop_hook_active` guard; `.deferred` marker silences; block reason text verbatim with the `touch "<path>"` suggestion, returned as `block(reason)` (the adapter renders `{"decision":"block"}` and exits 0) | C22c if listed as a writer |
+| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached fast path only when project and change notes are empty — the cache stores the `HookDecision` JSON, not the rendered payload, and the hit path returns it to the adapter to render (cache format is internal, wiped every SessionStart); bypass checks before any kernel call; default guide `base.md+git.md only`; never sets `permissionDecision` | C22c (`--event` ids) |
 | 22 | `prompt-advisor` | 118 | `hooks/test-prompt-advisor.sh` | calls `resolveTask` in-process; guidance strings verbatim (copy from the jq program lines 64-115); telemetry ids only, never prompt text; `route` id slugged, default `none`; risk allowlisted to low/medium/high; span `--model-tier cheap` | C18f (`resolve-task` literal: the TS imports `resolveTask` from `../kernel/resolve-task`, which contains it), C22c, C27c |
 | 23 | `announce-agent-dispatch` | 39 | `hooks/test-agent-announce.sh` | opens a span keyed by tool-use id; banner text verbatim; under an unusable node prints the `systemMessage` (not in the silent set) | C27c (`hook_span_open`, `--capability-id` literals) |
 | 24 | `announce-agent-return` | 77 | `hooks/test-agent-announce.sh` | status floor derived only from structure (error flag, top-level `.status`, first token of a string response); `model_tier` from `agents.json`; closes the span | C27c (`hook_span`, `exec-journal` literals) |
-| 25 | `stop-verify` | 203 | `hooks/test-verify.sh`, `hooks/test-bypass.sh` | reads stdin and transcript leniently (never exits on decode failure); bypass then loop guard; runner spawned with `runnerEnv` (node-20 PATH fix); node < 18 on the runner PATH after that fix is an infra skip; `Edit|Write|NotebookEdit` tool_use only; `ts tsx js jsx` only; targets `lint typecheck` (+`test` when `ENGINEOS_VERIFY_TESTS=1`); timeouts 90 s / 180 s; infra-skip after a non-zero run; block reason with repair-bound text from `policy.json .repair`; telemetry once per stop cycle | C20d (`repair.max_fix_attempts_per_check` literal, no hardcoded bound), C22c, C27c |
+| 25 | `stop-verify` | 203 | `hooks/test-verify.sh`, `hooks/test-bypass.sh` | reads stdin and transcript leniently (never exits on decode failure); bypass then loop guard; runner spawned with `runnerEnv` (node-20 PATH fix); node < 18 on the runner PATH after that fix is an infra skip; `Edit|Write|NotebookEdit` tool_use only; `ts tsx js jsx` only; targets `lint typecheck` (+`test` when `ENGINEOS_VERIFY_TESTS=1`); timeouts 90 s / 180 s; infra-skip after a non-zero run; one `block(reason)` with the repair-bound text from `policy.json .repair` — the bash file's second, jq-less literal with different reason text disappears with jq; telemetry once per stop cycle | C20d (`repair.max_fix_attempts_per_check` literal, no hardcoded bound), C22c, C27c |
 
-Also port `post-edit-check` (81 lines, unregistered) as Task 25b in the same PR as Task 25 if the size allows; suite `hooks/test-post-edit.sh`; keeps `exit 2`.
+Also port `post-edit-check` (81 lines, unregistered) as Task 25b in the same PR as Task 25 if the size allows; suite `hooks/test-post-edit.sh`; returns `fail(stderr)`, which `render` maps to stderr + `exit 2`.
 
 ### Task 26: `init` (moved here from wave 4: it needs `scaffold.ts`)
 
