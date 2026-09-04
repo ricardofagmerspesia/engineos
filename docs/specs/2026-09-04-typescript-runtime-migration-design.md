@@ -63,6 +63,7 @@ shape; the workarounds above are the tax.
 | Old node on PATH | Guard re-execs a newer node when found | Warn-and-exit only |
 | Test framework | `node:test`, no framework | vitest/jest |
 | PR size | `rules/git.md` limit of 400 lines holds; 30-36 PRs | Fewer, larger PRs |
+| Kernel shape (2026-09-04, architecture review) | One `resolve(facts, ctx)` module; legacy arms are projections; new `resolve` arm (MINOR); parity suite until 2.0 | One module per subcommand (ports the shallow surface one to one); two modules `resolve`/`govern`; deprecating the shallow arms in this migration |
 
 ## Architecture
 
@@ -78,7 +79,8 @@ src/
     slug.ts           SLUG_RE, PATH_SLUG_RE and the two sanitizers
     json.ts           readJson with typed narrowing; error helpers per CLI convention
   registry/           one typed loader per registries/*.json; lazy, path-bound
-  kernel/             one module per subcommand + resolve-task composition
+  kernel/             one deep module: resolve(facts, ctx); concept modules private;
+                      cli.ts holds the projections (see "Kernel shape" below)
   journal/            exec-journal and telemetry: schema declared once as data
   hooks/
     envelope.ts       stdin decode into HookEnvelope (cwd, session_id, prompt, file, tool, transcript, stop_hook_active)
@@ -103,12 +105,89 @@ tsconfig.json         strict, ES2022 lib, CommonJS output for tests
 (`registries/docs-ledger.json`, `registries/layout-manifest.json`); the two test
 assertions that source them read the JSON instead.
 
+### Kernel shape (amended 2026-09-04, architecture review)
+
+`src/kernel/` is one deep module. Its interface is a single function over
+**declared facts**; the fourteen legacy arms are **projections** of its answer
+(`CONTEXT.md` for both terms). This is the frozen contract Wave 1's parallel
+PRs consume.
+
+```ts
+// src/kernel/index.ts -- the module's only exports
+export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer
+export type { DeclaredFacts, Answer, KernelContext, Registries }
+
+export interface KernelContext { root: string; registries: Registries }
+export interface Registries {            // lazy: each getter parses on first access, then caches
+  readonly routing: Routing; readonly intents: Intents; readonly models: Models;
+  readonly policy: Policy; readonly decisionRules: DecisionRules;
+  readonly capabilities: Capabilities; readonly agents: Agents;
+}
+
+export interface DeclaredFacts {
+  prompt?: string;                        // -> route (intent form), scale, decision_rules, hitl, task_contract
+  path?: string;                          // -> route (path form)
+  signals?: Record<string, RiskTier>;     // -> risk (classified from inputs)
+  riskTier?: RiskTier;                    // -> risk.gates for an already-classified tier (the `gates` projection)
+  workType?: string;                      // -> model
+  autonomy?: Autonomy; evidence?: 'thin'; externalEffect?: boolean;
+  conflict?: boolean; situation?: string; // -> hitl (with riskTier)
+  inflight?: number; queued?: number;     // -> admit
+  breaker?: { state: BreakerState; failures: number; cooldownElapsed?: number; probeResult?: string }; // -> breaker
+  units?: Unit[];                         // -> waves
+  repair?: { check: string; attempt: number; situation?: string };   // -> repair
+}
+
+export interface Answer {                // sparse: a section is present iff the facts it needs were declared
+  route?: RouteSection; risk?: RiskSection; model?: ModelSection; scale?: ScaleSection;
+  decision_rules?: DecisionRulesSection; hitl?: HitlSection; admit?: AdmitSection;
+  breaker?: BreakerSection; waves?: WavesSection; repair?: RepairSection;
+  task_contract?: TaskContract;          // the resolve-task composition; needs prompt
+}
+```
+
+Rules of the shape:
+
+- Sections are optional, never null-filled. Absence means "those facts were not
+  declared", and a caller that needs a section declares its facts.
+- Every legacy arm is one projection in `src/kernel/cli.ts`: parse its flags into
+  `DeclaredFacts`, call `resolve`, emit its section (or the legacy composite, for
+  `resolve-task` and `route-escalate`) with the legacy key order. Answers stay
+  byte-compatible; the parity suite below is the proof.
+- One new public arm, `engineos kernel resolve --facts '<json>'`, emits the whole
+  sparse `Answer`. Adding it is MINOR under `docs/COMPATIBILITY.md`. No arm is
+  removed by this migration; demoting `gates`, `route-intent`, `scale` and
+  `decision-rules` (no caller outside `kernel.sh` or the router agent) is a later
+  MAJOR with the deprecation window.
+- Concept modules `src/kernel/{route,risk,model,scale,decisions,hitl,admit,breaker,waves,repair}.ts`
+  are internal seams: not exported from `index.ts`, tested through `resolve`.
+  Only pure helpers (glob match, tier max) carry their own unit tests.
+- Vocabularies come from the typed policy loader and are never restated in code:
+  `autonomy.levels`, `hitl.reasons` and their order, `breaker.states`,
+  `risk.aggregation`. Today's literals at `kernel.sh:545`, `:523-531`, `:399` and
+  `:232` are the debt this removes.
+- Differential parity: `src/kernel/parity.test.ts` runs every arm's fixture args
+  through a pinned copy of the bash kernel (`test/fixtures/legacy-kernel/`:
+  `kernel.sh` plus a `registries/` snapshot) and through the projection, and
+  asserts deep-equal JSON and the same exit code. It lives until 2.0 and is
+  deleted with the shim.
+
+Why this shape, by the deletion test: `gates` is a subset of `risk`'s own answer
+(`kernel.sh:238` vs `:254`); `route-intent`, `scale` and `decision-rules` have no
+caller outside the file; the router agent hand-composes 4+N processes over the
+same registries `resolve-task` already composes (`agents/router.md:52-85`).
+Fourteen modules with fourteen test files would port that shallowness one to one.
+Rejected: two modules (`resolve` for task facts, `govern` for admit/breaker/waves/
+repair) — the router calls both, and `hitl` and `repair` share the `never_retry`
+vocabulary across the seam.
+
 ### CLI surface
 
-One binary. Subcommands mirror today's files so every shim is a one-line mapping.
+One binary. Subcommands mirror today's files so every shim is a one-line mapping;
+`kernel` adds one arm, `resolve`, on top of the fourteen it mirrors.
 
 ```
-engineos kernel <route-path|route-intent|model|risk|gates|repair|admit|breaker|hitl|waves|decision-rules|scale|route-escalate|resolve-task> [args]
+engineos kernel <resolve|route-path|route-intent|model|risk|gates|repair|admit|breaker|hitl|waves|decision-rules|scale|route-escalate|resolve-task> [args]
 engineos hook <ensure-project-layout|prompt-advisor|route-before-change|announce-agent-dispatch|mark-unrecorded|announce-agent-return|stop-verify|record-verify>
 engineos journal append <file> [flags] | validate <file>
 engineos telemetry append <file> [flags] | validate <file>
@@ -225,8 +304,11 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
   (`policy.json` `telemetry.exec_journal.max_value_length`).
 - The exec-journal schema is declared once as data and drives both `append` and
   `validate`; check C27e's set-equality keeps holding.
-- Kernel registry access is lazy and path-bound per subcommand; no eager parse of
-  all seven registries on every call.
+- Kernel registry access is lazy: one injected `Registries` object whose getters
+  parse on first access and cache for the process; no eager parse of all seven
+  registries on every call. A projection that needs one registry pays for one.
+- The fourteen legacy arms are projections of `resolve`'s answer ("Kernel shape");
+  their names, flags, JSON key order and exit codes are unchanged.
 - `risk` is max over inputs, never averaged; an empty payload is an error.
 - `hitl` derives from a classified tier only, never from a risk floor.
 - Intent suppression in `route-escalate` is a single non-transitive pass.
@@ -264,7 +346,14 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
   white-box suite) remain in CI unchanged until wave 6. Each PR that swaps a shim
   keeps its suite green; that is the PR's acceptance criterion.
 - New unit tests are `node:test` files under `src/**/*.test.ts`, compiled by
-  `tsc` to `build/` and run with `node --test build/`.
+  `tsc` to `build/` and run with `node --test build/`. Kernel concept modules are
+  the exception to "one test file per module": they are tested through
+  `resolve` (`src/kernel/resolve.test.ts`) and the projections through
+  `src/kernel/cli.test.ts`; the interface is the test surface.
+- `src/kernel/parity.test.ts` is differential: for every arm, fixture args run
+  through the pinned bash kernel under `test/fixtures/legacy-kernel/` and through
+  the projection; JSON deep-equal and exit code equal. It needs `bash` and `jq`
+  in CI until 2.0, when it is deleted with the shim.
 - `hooks/test-lib-common.sh` (white-box) is replaced by unit tests for
   `hooks/envelope.ts`, `hooks/bypass.ts` and `hooks/telemetry.ts` in the PR that
   ports the hook library.
@@ -285,7 +374,7 @@ description and excluded from the count as generated output (`rules/git.md`).
 | Wave | Units | Parallelism | Acceptance |
 |---|---|---|---|
 | 0 | `package.json`, `tsconfig.json`, esbuild script, `src/cli.ts` with node guard, `dist/` + drift guard, `--version` | one PR | CI green; `node dist/engineos.cjs --version` |
-| 1 | kernel: (a) registry loaders + `route-path`, `route-intent`; (b) `model`, `risk`, `gates`, `repair`; (c) `admit`, `breaker`, `hitl`, `waves`; (d) `decision-rules`, `scale`, `route-escalate`, `resolve-task` + swap `kernel.sh` shim | (a) first; (b), (c) parallel; (d) last | `test-kernel.sh`; checks C17*, C18*, C20b, C24b, C25b, C26*; `bench` |
+| 1 | kernel: (a) `Registries` loaders, `resolve` skeleton, route section (path + intent forms), projections `route-path`/`route-intent`, parity harness; (b) risk (with gates), model, repair sections + projections; (c) admit, breaker, hitl, waves sections + projections; (d) scale, decision_rules, route-escalate composite, task_contract + `resolve` arm + swap `kernel.sh` shim; (e) `agents/router.md` steps 2-4, 6b, 7 become one `resolve` call | (a) first; (b), (c) parallel; (d) then (e) | `test-kernel.sh`; `parity.test.ts`; checks C17*, C18*, C20b, C24b, C25b, C26*; `bench` |
 | 2 | `journal` and `telemetry` CLIs + shims | parallel with wave 1 | `test-exec-journal.sh`, `test-telemetry.sh`; C22b, C27* |
 | 3 | hook library in 2 PRs (envelope/bypass/telemetry; scaffold/runner/cache); then 8 hooks, one PR each, each re-pointing the source-text check that grepped it (deviation 3); then `init` (it needs `scaffold.ts`); then `hooks.json` + `settings-merge` + installers | library serial; hooks in two batches of four | the 10 black-box hook suites + `test-install-hooks.sh`; `validate-engineos.sh` green at the barrier; one Windows run of the node hook form |
 | 4 | `gen agent-commands`, `gen agent-registry`, `evals`, `bench`, `usage-report`, `bypass` CLI | one PR each, all parallel after wave 0 | drift guards, `test-gen-agent-registry.sh`, `run-evals` step |
