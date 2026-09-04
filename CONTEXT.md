@@ -80,6 +80,11 @@ The decoded facts a tool hook receives from the harness for one event — workin
 directory, session, prompt, file, tool, transcript.
 _Avoid_: Payload, input JSON, stdin
 
+**Hook decision**:
+What a hook hands back to the harness for one event — silence, context to
+inject, a block with its reason, a message to show, or a failure.
+_Avoid_: Output, response, exit code, payload
+
 **Runner**:
 The tool that executes a project's verification targets, such as lint,
 typecheck, and tests — Nx or a package-manager script runner.
