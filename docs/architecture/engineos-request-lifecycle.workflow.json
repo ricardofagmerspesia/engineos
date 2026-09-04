@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "EngineOS Request Lifecycle",
+    "subtitle": "Request in, record out: hooks, kernel, agents, gate",
+    "output": "docs/architecture/engineos-request-lifecycle.html",
+    "locale": "en",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "external": { "label": "User / exits" },
+        "backend": { "label": "Hooks" },
+        "frontend": { "label": "Orchestrator" },
+        "cloud": { "label": "Agents" },
+        "security": { "label": "Human gate" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "hooks", "label": "Claude Code hooks (hooks.json)" },
+    { "id": "agents", "label": "Agents" },
+    { "id": "orch", "label": "Orchestrator (main loop)" },
+    { "id": "exits", "label": "Exits", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "Intake", "fromCol": 0, "toCol": 1 },
+    { "id": "classify_p", "label": "Classify", "fromCol": 2, "toCol": 2, "variant": "emphasis" },
+    { "id": "execute", "label": "Execute", "fromCol": 3, "toCol": 3 },
+    { "id": "verify", "label": "Verify", "fromCol": 4, "toCol": 4, "variant": "security" },
+    { "id": "close_p", "label": "Close", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "edit_hooks", "label": "Per Edit | Write", "lane": "hooks", "fromCol": 3, "toCol": 4 },
+    { "id": "wave", "label": "One wave, disjoint file scopes", "lane": "agents", "fromCol": 3, "toCol": 4, "variant": "emphasis" }
+  ],
+  "mainPath": ["request", "advisor", "contract", "classify", "dispatch", "agent", "barrier", "gate", "record", "stop"],
+  "semanticChecks": {
+    "allowedRoots": ["request"],
+    "allowedTerminals": ["stop", "bypass", "human", "blocked", "red", "postedit"],
+    "requiredPaths": [
+      { "from": "request", "to": "stop" },
+      { "from": "agent", "to": "postedit" }
+    ]
+  },
+  "nodes": [
+    { "id": "request", "lane": "hooks", "col": 0, "type": "external", "label": "Request", "sublabel": "you type it", "width": 124 },
+    { "id": "advisor", "lane": "hooks", "col": 1, "type": "backend", "label": "prompt-advisor", "sublabel": "kernel resolve-task", "width": 124 },
+    { "id": "preedit", "lane": "hooks", "col": 3, "type": "backend", "label": "route-before-change", "sublabel": "kernel route-path", "width": 124 },
+    { "id": "postedit", "lane": "hooks", "col": 4, "type": "backend", "label": "mark-unrecorded", "sublabel": "flags change record", "width": 124 },
+    { "id": "stop", "lane": "hooks", "col": 5, "type": "backend", "label": "Stop hooks", "sublabel": "verify · record → done", "tag": "block once", "width": 124 },
+
+    { "id": "spec", "lane": "agents", "col": 2, "type": "cloud", "label": "Spec + plan", "sublabel": "brainstorm → docs/specs/", "tag": "> 2 files or feature", "width": 124 },
+    { "id": "agent", "lane": "agents", "col": 3, "type": "cloud", "label": "Specialists", "sublabel": "AUDIT | IMPLEMENT", "tag": "<= 6 per wave", "width": 124 },
+    { "id": "barrier", "lane": "agents", "col": 4, "type": "cloud", "label": "Barrier", "sublabel": "integrate · handoff", "width": 124 },
+
+    { "id": "bypass", "lane": "orch", "col": 0, "type": "external", "label": "Bypass", "sublabel": "[engineos] bypassed", "tag": "no gates", "width": 124 },
+    { "id": "contract", "lane": "orch", "col": 1, "type": "frontend", "label": "Task contract", "sublabel": "intents · rules · floor", "width": 124 },
+    { "id": "classify", "lane": "orch", "col": 2, "type": "frontend", "label": "[router] line", "sublabel": "kernel risk · hitl", "tag": "before first write", "width": 124 },
+    { "id": "dispatch", "lane": "orch", "col": 3, "type": "frontend", "label": "Dispatch", "sublabel": "kernel admit per wave", "width": 124 },
+    { "id": "gate", "lane": "orch", "col": 4, "type": "frontend", "label": "FINAL GATE", "sublabel": "lint · typecheck, once", "tag": "tests if ON", "width": 124 },
+    { "id": "record", "lane": "orch", "col": 5, "type": "frontend", "label": "record-change", "sublabel": "archives the record", "width": 124 },
+
+    { "id": "human", "lane": "exits", "col": 2, "type": "security", "label": "Human decides", "sublabel": "## Human decisions", "width": 124 },
+    { "id": "blocked", "lane": "exits", "col": 3, "type": "external", "label": "BLOCKED", "sublabel": "admit: reject", "width": 124 },
+    { "id": "red", "lane": "exits", "col": 4, "type": "external", "label": "Report red", "sublabel": "repair bound spent", "width": 124 }
+  ],
+  "edges": [
+    { "from": "request", "to": "advisor", "label": "UserPromptSubmit", "variant": "emphasis", "role": "main" },
+    { "from": "request", "to": "bypass", "variant": "dashed", "role": "branch" },
+    { "from": "advisor", "to": "contract", "variant": "emphasis", "role": "main" },
+    { "from": "contract", "to": "classify", "label": "classify", "variant": "emphasis", "role": "main" },
+    { "from": "classify", "to": "human", "label": "hitl", "variant": "security", "role": "error" },
+    { "from": "classify", "to": "spec", "label": "spec", "variant": "dashed", "role": "branch" },
+    { "from": "spec", "to": "dispatch", "label": "plan", "role": "branch" },
+    { "from": "classify", "to": "dispatch", "label": "small change", "variant": "emphasis", "role": "main" },
+    { "from": "dispatch", "to": "blocked", "label": "reject", "variant": "security", "role": "error" },
+    { "from": "dispatch", "to": "agent", "variant": "emphasis", "role": "main" },
+    { "from": "agent", "to": "preedit", "label": "edit", "role": "branch" },
+    { "from": "preedit", "to": "postedit", "label": "edit lands", "role": "branch" },
+    { "from": "agent", "to": "barrier", "label": "envelope", "variant": "emphasis", "role": "main" },
+    { "from": "barrier", "to": "gate", "variant": "emphasis", "role": "main" },
+    { "from": "gate", "to": "red", "label": "red", "variant": "security", "role": "error" },
+    { "from": "gate", "to": "record", "label": "green", "variant": "emphasis", "role": "main" },
+    { "from": "record", "to": "stop", "variant": "emphasis", "role": "main" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Classify before writing", "items": ["One task contract per prompt", "[router] line before the first edit", "Tier sets autonomy, gates and hitl"] },
+    { "dot": "emerald", "title": "Verify once", "items": ["No per-edit test runs", "Final gate: lint + typecheck, tests if ON", "Red: 2 repairs, 1 escalation, report"] },
+    { "dot": "amber", "title": "Every change leaves a record", "items": ["First Edit raises the unrecorded flag", "record-change archives the record", "Stop refuses done until the flag clears"] }
+  ]
+}
