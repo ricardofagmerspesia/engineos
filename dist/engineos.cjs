@@ -3,7 +3,7 @@
 
 // src/cli.ts
 var import_node_child_process8 = require("node:child_process");
-var import_node_fs31 = require("node:fs");
+var import_node_fs32 = require("node:fs");
 
 // src/io.ts
 var import_node_fs = require("node:fs");
@@ -2075,15 +2075,15 @@ function validate(argv2, io2) {
   const [file] = argv2;
   if (file === void 0 || file === "") throw new JournalError("", { usage: true });
   const root = resolveRoot(io2.env);
-  const result = validateFile(root, file, journalRegistries(root));
-  for (const line of result.bad) io2.err(`line ${line}: does not match the exec-journal schema
+  const result2 = validateFile(root, file, journalRegistries(root));
+  for (const line of result2.bad) io2.err(`line ${line}: does not match the exec-journal schema
 `);
-  if (result.bad.length > 0) {
-    io2.err(`${result.bad.length} invalid line(s) in ${file}
+  if (result2.bad.length > 0) {
+    io2.err(`${result2.bad.length} invalid line(s) in ${file}
 `);
     return 1;
   }
-  io2.out(`${file}: ${result.lines} line(s), all valid
+  io2.out(`${file}: ${result2.lines} line(s), all valid
 `);
   return 0;
 }
@@ -2386,9 +2386,9 @@ var import_node_path6 = require("node:path");
 // src/lib/git.ts
 var import_node_fs8 = require("node:fs");
 function gitOutput(cwd, args, spawn) {
-  const result = spawn("git", ["-C", cwd, ...args], { encoding: "utf8" });
-  if (result.error !== void 0 || result.status !== 0) return null;
-  const out = typeof result.stdout === "string" ? result.stdout.trim() : "";
+  const result2 = spawn("git", ["-C", cwd, ...args], { encoding: "utf8" });
+  if (result2.error !== void 0 || result2.status !== 0) return null;
+  const out = typeof result2.stdout === "string" ? result2.stdout.trim() : "";
   return out === "" ? null : out;
 }
 function gitDir(cwd, spawn) {
@@ -2761,9 +2761,9 @@ function dirOf(file) {
   return cut === 0 ? "/" : file.slice(0, cut);
 }
 function gitInfo(cwd, ctx) {
-  const result = ctx.spawn("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--absolute-git-dir", "--show-prefix"], { encoding: "utf8" });
-  if (result.error !== void 0 || result.status !== 0) return NO_GIT;
-  const lines = (typeof result.stdout === "string" ? result.stdout : "").split("\n");
+  const result2 = ctx.spawn("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--absolute-git-dir", "--show-prefix"], { encoding: "utf8" });
+  if (result2.error !== void 0 || result2.status !== 0) return NO_GIT;
+  const lines = (typeof result2.stdout === "string" ? result2.stdout : "").split("\n");
   return { repo: lines[0] ?? "", gitDir: lines[1] ?? "", prefix: lines[2] ?? "" };
 }
 function cachePaths(env, git, ctx) {
@@ -3413,15 +3413,15 @@ function runnerHasTarget(sel, handle, target, readFile = defaultReadFile, spawn 
 function runnerRun(sel, handle, target, timeoutSeconds, env, spawn = defaultSpawn, cwd = process.cwd()) {
   const argv2 = sel.kind === "nx" ? [...words(sel.exec), "nx", "run", `${handle}:${target}`] : [...words(sel.run), "-s", target];
   const runCwd = sel.kind === "nx" ? cwd : handle;
-  const result = spawn(argv2[0] ?? "", argv2.slice(1), {
+  const result2 = spawn(argv2[0] ?? "", argv2.slice(1), {
     cwd: runCwd,
     env,
     encoding: "utf8",
     timeout: timeoutSeconds * 1e3
   });
-  const timedOut = errorCodeOf(result.error) === "ETIMEDOUT" || result.signal === "SIGTERM";
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  const code = typeof result.status === "number" ? result.status : timedOut ? 124 : 1;
+  const timedOut = errorCodeOf(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM";
+  const output = `${result2.stdout ?? ""}${result2.stderr ?? ""}`;
+  const code = typeof result2.status === "number" ? result2.status : timedOut ? 124 : 1;
   return { code, output, timedOut };
 }
 function runnerEnv(env, nodeMajorOnPath, exists = defaultExists, readLink = defaultReadFile, listDir = defaultListDir) {
@@ -3552,10 +3552,10 @@ function runnerFound(sel, env, spawn, cwd) {
   return execRun(spawn, command, ["--version"], cwd, env, PROBE_TIMEOUT_SECONDS).code === 0;
 }
 function execRun(spawn, command, args, cwd, env, timeoutSeconds) {
-  const result = spawn(command, args, { cwd, env, encoding: "utf8", timeout: timeoutSeconds * 1e3 });
-  const timedOut = errorCodeOf2(result.error) === "ETIMEDOUT" || result.signal === "SIGTERM";
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  const code = typeof result.status === "number" ? result.status : timedOut ? 124 : 1;
+  const result2 = spawn(command, args, { cwd, env, encoding: "utf8", timeout: timeoutSeconds * 1e3 });
+  const timedOut = errorCodeOf2(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM";
+  const output = `${result2.stdout ?? ""}${result2.stderr ?? ""}`;
+  const code = typeof result2.status === "number" ? result2.status : timedOut ? 124 : 1;
   return { code, output, timedOut };
 }
 function failureBlock(target, subject, output) {
@@ -3616,8 +3616,8 @@ function verify(env, ctx, spawn, nodeVersion = process.versions.node) {
   }
   const sink = telemetrySink(env, ctx, { bypassed: false });
   const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
-    const result = runLadder(selection, packages, targets, environment.env, spawn, root);
-    return { result, status: ladderStatus(result) };
+    const result2 = runLadder(selection, packages, targets, environment.env, spawn, root);
+    return { result: result2, status: ladderStatus(result2) };
   });
   event(sink, "verify", verifyEvent(root, packages, ladder));
   if (ladder.failures.length > 0) return block(blockReason(ctx.root, ladder.failures));
@@ -3684,11 +3684,11 @@ function runLadder(selection, packages, targets, env, spawn, root) {
     for (const target of targets) {
       if (!runnerHasTarget(selection, handle, target, void 0, spawn, root)) continue;
       const seconds = target === TEST_TARGET ? 180 : 90;
-      const result = runnerRun(selection, handle, target, seconds, env, spawn, root);
-      const verdict = classify2({ kind: "run", runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+      const result2 = runnerRun(selection, handle, target, seconds, env, spawn, root);
+      const verdict = classify2({ kind: "run", runner: selection.kind, target, code: result2.code, output: result2.output, timedOut: result2.timedOut });
       if (verdict === null) continue;
       if (verdict.situation === "red") {
-        failures.push({ target, handle, output: result.output });
+        failures.push({ target, handle, output: result2.output });
         continue;
       }
       if (verdict.reason === "timeout") timeouts.push({ target, handle, seconds });
@@ -3776,8 +3776,8 @@ function typecheck(selection, packageDir, root, env, spawn) {
   const handle = runnerHandle(selection, packageDir);
   if (handle === null) return [];
   if (!runnerHasTarget(selection, handle, TYPECHECK_TARGET, void 0, spawn, root)) return [];
-  const result = runnerRun(selection, handle, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, env, spawn, root);
-  return redOf(selection, TYPECHECK_TARGET, handle, result);
+  const result2 = runnerRun(selection, handle, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, env, spawn, root);
+  return redOf(selection, TYPECHECK_TARGET, handle, result2);
 }
 function lint(selection, file, start, root, env, spawn) {
   for (const linter of LINTERS) {
@@ -3788,15 +3788,15 @@ function lint(selection, file, start, root, env, spawn) {
     const rest = exec.slice(1);
     if (execRun(spawn, command, [...rest, linter.target, "--version"], root, env, PROBE_TIMEOUT_SECONDS).code !== 0) return [];
     const args = linter.target === "biome" ? [...rest, linter.target, "check", file] : [...rest, linter.target, file];
-    const result = execRun(spawn, command, args, root, env, LINT_TIMEOUT_SECONDS);
-    return redOf(selection, linter.target, file, result);
+    const result2 = execRun(spawn, command, args, root, env, LINT_TIMEOUT_SECONDS);
+    return redOf(selection, linter.target, file, result2);
   }
   return [];
 }
-function redOf(selection, target, subject, result) {
-  const verdict = classify2({ kind: "run", runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+function redOf(selection, target, subject, result2) {
+  const verdict = classify2({ kind: "run", runner: selection.kind, target, code: result2.code, output: result2.output, timedOut: result2.timedOut });
   if (verdict === null || verdict.situation !== "red") return [];
-  return [{ target, subject, output: result.output }];
+  return [{ target, subject, output: result2.output }];
 }
 
 // src/hooks/cli.ts
@@ -4931,8 +4931,8 @@ function liveDeps(env) {
     // bash `$(claude -p "$inp" 2>/dev/null)` did: a case whose model call died
     // grades as a missing router line, never as a pass.
     runClaude: (prompt) => {
-      const result = (0, import_node_child_process5.spawnSync)("claude", ["-p", prompt], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-      return result.stdout ?? "";
+      const result2 = (0, import_node_child_process5.spawnSync)("claude", ["-p", prompt], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      return result2.stdout ?? "";
     }
   };
 }
@@ -4985,11 +4985,11 @@ function runOnce(cmd, deps) {
     stdio: ["pipe", "ignore", "ignore"],
     env: cmd.env
   };
-  const result = deps.spawn(bin, args, options);
+  const result2 = deps.spawn(bin, args, options);
   const label = cmd.command.join(" ");
-  if (result.error !== void 0) throw new KernelError(`bench: ${label} exited ${result.error.message}`);
-  if (result.signal !== null) throw new KernelError(`bench: ${label} exited ${result.signal}`);
-  if (result.status !== 0) throw new KernelError(`bench: ${label} exited ${String(result.status)}`);
+  if (result2.error !== void 0) throw new KernelError(`bench: ${label} exited ${result2.error.message}`);
+  if (result2.signal !== null) throw new KernelError(`bench: ${label} exited ${result2.signal}`);
+  if (result2.status !== 0) throw new KernelError(`bench: ${label} exited ${String(result2.status)}`);
 }
 function medianMs(cmd, deps) {
   const durations = [];
@@ -5342,12 +5342,191 @@ function compareDesc(a, b) {
   return a < b ? 1 : -1;
 }
 
+// src/checks/index.ts
+var CHECKS = [];
+function orderIds(ids) {
+  return [...ids].sort((a, b) => {
+    const left = idKey(a);
+    const right = idKey(b);
+    if (left.numeric !== right.numeric) return left.numeric - right.numeric;
+    return byteOrder(left.suffix, right.suffix);
+  });
+}
+function selectIds(ids, only) {
+  if (only === ALL) return { selected: [...ids], unknown: [] };
+  const wants = only.split(/[\s,]+/).filter((want) => want !== "");
+  const known = /* @__PURE__ */ new Set();
+  for (const id of ids) {
+    known.add(id);
+    known.add(parentOf3(id));
+  }
+  const unknown = wants.filter((want) => !known.has(want));
+  const wanted = new Set(wants);
+  const selected = ids.filter((id) => wanted.has(id) || wanted.has(parentOf3(id)));
+  return { selected: [...new Set(selected)], unknown };
+}
+var ALL = "all";
+function parentOf3(id) {
+  const cut = id.search(/[a-z]/);
+  return cut === -1 ? id : id.slice(0, cut);
+}
+function idKey(id) {
+  const matched = /^[^0-9]*([0-9]+)([a-z]*)$/.exec(id);
+  const digits = matched == null ? void 0 : matched[1];
+  if (digits === void 0) return { numeric: 0, suffix: id };
+  return { numeric: Number.parseInt(digits, 10), suffix: (matched == null ? void 0 : matched[2]) ?? "" };
+}
+function byteOrder(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/checks/findings.ts
+var HARNESS_FINDINGS = ["precondition-missing", "artifact-pending"];
+var CODE_PATTERN = /^[a-z][a-z0-9-]*$/;
+var HARNESS_CODES = new Set(HARNESS_FINDINGS);
+function finding(check, code, subject) {
+  if (!CODE_PATTERN.test(code)) {
+    throw new KernelError(`check ${check} declares an invalid finding code: ${code}`);
+  }
+  return subject === void 0 ? { code } : { code, subject };
+}
+function result(check, title, findings, opts) {
+  const collected = [...findings];
+  return { check, title, status: statusOf(collected.length, (opts == null ? void 0 : opts.pending) === true), findings: collected };
+}
+function statusOf(count, pending) {
+  if (count === 0) return "ok";
+  return pending ? "skip" : "fail";
+}
+function render2(outcome) {
+  if (outcome.status === "ok") return `ok   ${outcome.title}`;
+  const prefix = outcome.status === "fail" ? "FAIL" : "skip";
+  return `${prefix} ${outcome.title}: ${outcome.findings.map(renderFinding).join(" ")}`;
+}
+function renderFinding(entry) {
+  return entry.subject === void 0 ? `[${entry.code}]` : `[${entry.code}:${entry.subject}]`;
+}
+
+// src/checks/lib.ts
+var import_node_fs31 = require("node:fs");
+var import_node_path25 = require("node:path");
+function makeContext(root, io2) {
+  return {
+    root,
+    io: io2,
+    registries: lazyRegistries(root),
+    skipped: /* @__PURE__ */ new Set(),
+    readText(rel) {
+      try {
+        return (0, import_node_fs31.readFileSync)((0, import_node_path25.join)(root, rel), "utf8");
+      } catch {
+        return void 0;
+      }
+    },
+    exists(rel) {
+      return (0, import_node_fs31.existsSync)((0, import_node_path25.join)(root, rel));
+    },
+    list(relDir) {
+      try {
+        return (0, import_node_fs31.readdirSync)((0, import_node_path25.join)(root, relDir)).sort(byteOrder2);
+      } catch {
+        return [];
+      }
+    }
+  };
+}
+function byteOrder2(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/validate/cli.ts
+var EXIT_OK8 = 0;
+var EXIT_VIOLATION = 1;
+var EXIT_USAGE4 = 2;
+var ALL2 = "all";
+function runValidate2(argv2, io2, checks = CHECKS) {
+  const args = parseArgs3(argv2, io2);
+  if (args === void 0) return EXIT_USAGE4;
+  const ids = orderIds(checks.map((check) => check.id));
+  if (ids.length === 0) {
+    io2.err("no Checks registered\n");
+    return EXIT_USAGE4;
+  }
+  if (args.list) {
+    for (const id of ids) io2.out(`${id}
+`);
+    return EXIT_OK8;
+  }
+  const { selected, unknown } = selectIds(ids, args.only);
+  if (unknown.length > 0) {
+    io2.err(`unknown check id: ${unknown.join(" ")}
+`);
+    return EXIT_USAGE4;
+  }
+  const byId = new Map(checks.map((check) => [check.id, check]));
+  const context2 = makeContext(resolveRoot(io2.env), io2);
+  io2.out("== EngineOS integrity ==\n");
+  let passed = 0;
+  let failed = 0;
+  for (const id of selected) {
+    const check = byId.get(id);
+    if (check === void 0) continue;
+    for (const checkResult of runCheck(check, context2, io2)) {
+      io2.out(`${render2(checkResult)}
+`);
+      if (checkResult.status === "ok") passed += 1;
+      if (checkResult.status === "fail") failed += 1;
+    }
+  }
+  io2.out(`
+passed ${passed}, failed ${failed}
+`);
+  return failed > 0 ? EXIT_VIOLATION : EXIT_OK8;
+}
+function parseArgs3(argv2, io2) {
+  let only = ALL2;
+  let list = false;
+  for (let index = 0; index < argv2.length; index += 1) {
+    const arg = argv2[index];
+    if (arg === "--only") {
+      const value = argv2[index + 1];
+      if (value === void 0) {
+        io2.err("--only requires a comma-separated check list\n");
+        return void 0;
+      }
+      only = value;
+      index += 1;
+      continue;
+    }
+    if (arg === "--list") {
+      list = true;
+      continue;
+    }
+    io2.err(`unknown argument: ${arg ?? ""}
+`);
+    return void 0;
+  }
+  return { only, list };
+}
+function runCheck(check, context2, io2) {
+  try {
+    return check.run(context2);
+  } catch (error) {
+    io2.err(`validate: ${check.id} threw: ${messageOf(error)}
+`);
+    return [result(check.id, check.id, [finding(check.id, "precondition-missing", check.id)])];
+  }
+}
+function messageOf(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
 function isExecutable2(path) {
   try {
-    (0, import_node_fs31.accessSync)(path, import_node_fs31.constants.X_OK);
+    (0, import_node_fs32.accessSync)(path, import_node_fs32.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -5377,7 +5556,7 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs31.existsSync, import_node_fs31.readdirSync, isExecutable2);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs32.existsSync, import_node_fs32.readdirSync, isExecutable2);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 var table = {
@@ -5391,6 +5570,7 @@ var table = {
   gen: runGen,
   evals: runEvals,
   bench: runBench,
-  "usage-report": runUsageReport
+  "usage-report": runUsageReport,
+  validate: runValidate2
 };
 process.exit(dispatch(table, argv, io));
