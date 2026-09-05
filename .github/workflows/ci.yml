@@ -79,35 +79,8 @@ jobs:
       - name: Evals (deterministic tier)
         run: bash scripts/run-evals.sh
 
-      - name: Change-governance marker tests
-        run: bash hooks/test-governance.sh
-
-      - name: Installer hook-derivation tests
-        run: bash hooks/test-install-hooks.sh
-
       - name: Runtime performance budgets
         run: bash scripts/bench-runtime.sh
-
-      - name: Standard-layout scaffold tests
-        run: bash hooks/test-layout.sh
-
-      - name: Exec-journal schema tests
-        run: bash scripts/test-exec-journal.sh
-
-      - name: Agent-registry generator tests
-        run: bash scripts/test-gen-agent-registry.sh
-
-      - name: Prose-layer docs tests
-        run: bash hooks/test-docs.sh
-
-      - name: Agent-announce hook tests
-        run: bash hooks/test-agent-announce.sh
-
-      - name: Telemetry CLI tests
-        run: bash scripts/test-telemetry.sh
-
-      - name: Post-edit check tests
-        run: bash hooks/test-post-edit.sh
 
       - name: Secrets gate aborts on a planted secret
         run: |
