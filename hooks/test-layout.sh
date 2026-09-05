@@ -41,7 +41,8 @@ done
 [ -f "$T/docs/specs/README.md" ] && ok || no "specs README not seeded"
 [ -f "$T/docs/prds/_template.md" ] && ok || no "prd template not seeded as _template.md"
 [ -f "$T/.engineos/changes/_template.md" ] && ok || no "changes template not seeded"
-printf '%s' "$OUT" | grep -q '^\[engineos\] scaffolded' && ok || no "no warn line on scaffold"
+printf '%s' "$OUT" | grep -q '"hookEventName":"SessionStart"' && ok || no "scaffold line not emitted as SessionStart context"
+printf '%s' "$OUT" | grep -q '\[engineos\] scaffolded standard layout' && ok || no "no warn line on scaffold"
 
 # --- idempotent: re-run creates nothing, prints nothing ---
 OUT2=$(printf '{"cwd":"%s","session_id":"S1"}' "$T" | bash "$DIR/ensure-project-layout.sh")
@@ -63,12 +64,14 @@ rm -rf "$N"
 OUT4=$(printf '{"cwd":"%s","session_id":"S1"}' "$REPO" | bash "$DIR/ensure-project-layout.sh")
 [ -z "$OUT4" ] && ok || no "engineos repo not skipped"
 
-# --- no-jq fallback: cwd parsed via grep/sed path still scaffolds ---
-# Build a minimal PATH that includes git/grep/sed/etc. but excludes jq.
-# On macOS both git and jq live in /usr/bin, so we symlink the needed tools
-# into a temp dir and leave jq out.
+# --- no-jq: the hook still scaffolds on a PATH without jq ---
+# The hook decodes its payload in the node runtime now (src/hooks/ensure-project-layout.ts),
+# so there is no grep/sed fallback left to exercise — but jq-independence is still
+# the claim, and this is what asserts it. Build a minimal PATH that includes
+# git/node/grep/sed/etc. but excludes jq. On macOS both git and jq live in
+# /usr/bin, so we symlink the needed tools into a temp dir and leave jq out.
 NOJQ_BIN=$(mktemp -d)
-for _t in git grep sed head bash cp mkdir dirname; do
+for _t in git node grep sed head bash cp mkdir dirname; do
   _p=$(command -v "$_t" 2>/dev/null)
   [ -f "$_p" ] && ln -s "$_p" "$NOJQ_BIN/$_t" 2>/dev/null || true
 done
@@ -80,14 +83,15 @@ done
 # every git call silently produces nothing.
 if PATH="$NOJQ_BIN:/bin" git --version >/dev/null 2>&1 \
    && [ -n "$(PATH="$NOJQ_BIN:/bin" git --version 2>/dev/null)" ] \
+   && PATH="$NOJQ_BIN:/bin" node -e '' >/dev/null 2>&1 \
    && [ -x "$NOJQ_BIN/grep" ] && [ -x "$NOJQ_BIN/sed" ]; then
   J=$(mktemp -d); ( cd "$J" && git init -q )
   OUT5=$(printf '{"cwd":"%s","session_id":"S1"}' "$J" | PATH="$NOJQ_BIN:/bin" ENGINEOS_SCAFFOLD=1 bash "$DIR/ensure-project-layout.sh")
-  [ -d "$J/docs/specs" ] && printf '%s' "$OUT5" | grep -q '^\[engineos\] scaffolded' \
-    && ok || no "no-jq fallback path did not scaffold"
+  [ -d "$J/docs/specs" ] && printf '%s' "$OUT5" | grep -q '\[engineos\] scaffolded standard layout' \
+    && ok || no "no-jq path did not scaffold"
   rm -rf "$J"
 else
-  sk "no-jq fallback — cannot build a jq-free PATH here (symlinks unavailable)"
+  sk "no-jq path — cannot build a jq-free PATH here (symlinks or node unavailable)"
 fi
 rm -rf "$NOJQ_BIN"
 unset NOJQ_BIN _t _p
