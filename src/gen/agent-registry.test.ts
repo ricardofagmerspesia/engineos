@@ -17,7 +17,7 @@ const models: ModelsRegistry = loadModels(checkout);
 const capabilities: CapabilitiesRegistry = loadCapabilities(checkout);
 
 // The fixture the bash suite plants, one field set per case. Mirrors
-// scripts/test-gen-agent-registry.sh so the two suites cover the same edges.
+// src/gen/gen-agent-registry.e2e.test.ts so the two suites cover the same edges.
 function fixture(frontmatter: string): AgentFile[] {
   return [{ path: '/tmp/agents/zz-fixture.md', text: `---\n${frontmatter}\n---\nbody\n` }];
 }

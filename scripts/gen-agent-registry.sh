@@ -5,7 +5,7 @@
 # run of this path — so the entry point stays while the implementation moved to
 # src/gen/agent-registry.ts, compiled into dist/engineos.cjs. jq is no longer
 # needed. ENGINEOS_ROOT makes a relocated copy of the tree (the temp tree
-# scripts/test-gen-agent-registry.sh builds) generate from and into itself
+# src/gen/gen-agent-registry.e2e.test.ts builds) generate from and into itself
 # rather than from the checkout the runtime happens to live in.
 # Usage: ./scripts/gen-agent-registry.sh
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
