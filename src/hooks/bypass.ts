@@ -18,7 +18,11 @@ import { gitDir } from '../lib/git';
 
 // Overridable so a test run is never at the mercy of the operator's real machine
 // state: point ENGINEOS_BYPASS_FLAG at a path that does not exist to isolate.
-function flagPath(env: NodeJS.ProcessEnv): string {
+//
+// Exported because `engineos bypass` has to NAME the switch that is on, not just
+// answer whether one is (src/bypass/cli.ts) — a second copy of this resolution
+// there is exactly the drift the single source of truth exists to prevent.
+export function bypassFlagPath(env: NodeJS.ProcessEnv): string {
   const configured = env['ENGINEOS_BYPASS_FLAG'];
   if (configured !== undefined && configured !== '') return configured;
   const home = env['HOME'];
@@ -36,7 +40,7 @@ export function bypassMarker(cwd: string, spawn: typeof spawnSync): string | nul
 
 export function bypassActive(cwd: string, env: NodeJS.ProcessEnv, spawn: typeof spawnSync): boolean {
   if (env['ENGINEOS_BYPASS'] === '1') return true;
-  if (existsSync(flagPath(env))) return true;
+  if (existsSync(bypassFlagPath(env))) return true;
   const marker = bypassMarker(cwd, spawn);
   return marker !== null && existsSync(marker);
 }
