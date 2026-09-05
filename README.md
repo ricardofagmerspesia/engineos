@@ -49,11 +49,11 @@ Use `install.ps1` (mode A). Two Windows-specific facts:
   on every hook fire (every prompt, every edit, every stop). Git Bash is no longer on
   the hook path; it is still needed for `scripts/kernel.sh` until 2.0. Without node on
   the PATH Claude Code uses, no hook fires.
-- **`jq` is not an install or runtime dependency any more.** The installer merges
-  `settings.json` through `engineos settings-merge`, and the hooks parse tool input
-  natively; the two agent generators are shims over `engineos gen` and need node,
-  not `jq`. `jq` is only needed to work *on* EngineOS — the registry checks in
-  `scripts/validate-engineos.sh`.
+- **`jq` is not a dependency at all any more.** The installer merges
+  `settings.json` through `engineos settings-merge`, the hooks parse tool input
+  natively, and the generators, the eval runner, the bench, the usage report and
+  the validator all run inside `dist/engineos.cjs`. Working *on* EngineOS needs
+  node >= 18 and `shellcheck` (for `install.sh` and the bash shims); nothing else.
 
 Mode B (plugin) registers exactly the same node commands from `hooks/hooks.json`, so
 both modes behave the same on Windows now.

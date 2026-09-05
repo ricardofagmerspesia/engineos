@@ -20,6 +20,7 @@ Changing any of these is a **breaking change**:
 | Hook event contract in `hooks/hooks.json` | Consumers wire these into their settings |
 | `registries/*.json` top-level shape | Read by hooks and by tooling |
 | `scripts/kernel.sh` subcommand names and their JSON answer shape | Called by hooks, by the router agent, and by consumers' own tooling |
+| Runtime entry point `dist/engineos.cjs` subcommand names (`kernel`, `journal`, `telemetry`, `hook`, `init`, `bypass`, `gen`, `evals`, `bench`, `usage-report`, `validate`, `settings-merge`) and their stdout/exit contracts | Registered in `hooks/hooks.json`, called by the installers, CI and every `.sh` shim; the shims' deprecation window assumes these names hold |
 | The `## Return format` envelope fields | Parsed by orchestrators |
 
 The kernel subcommands covered by that row are `resolve`, `route-path`, `route-intent`,
@@ -325,15 +326,21 @@ a detail the shim removed.
 ### 1.7.0: hooks.json registers node directly; installers drop jq and bash.exe
 
 `1.7.0` is a **MINOR** release. Nothing in the public surface is removed and
-nothing is renamed; deprecation windows open on the bash shims — the hook shims
-and, since the runtime ports, the two `scripts/gen-agent-*.sh` entry points plus
-`scripts/run-evals.sh`, `scripts/bench-runtime.sh` and
-`scripts/usage-report.sh` — and one runtime requirement becomes explicit.
+nothing is renamed; deprecation windows open on every bash shim — the hook
+shims, `scripts/kernel.sh`, `scripts/exec-journal.sh`, `scripts/telemetry.sh`,
+`scripts/init-project.sh`, `hooks/bypass.sh`, the two `scripts/gen-agent-*.sh`
+entry points, `scripts/run-evals.sh`, `scripts/bench-runtime.sh`,
+`scripts/usage-report.sh` and `scripts/validate-engineos.sh` — and one runtime
+requirement becomes explicit: `node >= 18`, with `jq` and `python3` gone.
 
 | Surface | 1.7.0 change | Kind |
 |---|---|---|
 | `hooks/hooks.json` command form | `"${CLAUDE_PLUGIN_ROOT}"/hooks/<name>.sh` -> `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>` | value change, backward compatible |
 | `hooks/<name>.sh` shims | deprecated in 1.7.0, removed in 2.0 | deprecated |
+| `scripts/kernel.sh`, `scripts/exec-journal.sh`, `scripts/telemetry.sh`, `scripts/init-project.sh`, `hooks/bypass.sh` | shims over `engineos kernel` / `journal` / `telemetry` / `init` / `bypass` since 1.6.x; deprecated in 1.7.0, removed in 2.0. `scripts/kernel.sh` still needs a bash on Windows until then | deprecated |
+| `hooks/layout-manifest.sh`, `hooks/scaffold-layout.sh` | frozen bash until 2.0 — sourced functions cannot be shimmed; `engineos init` requires them as siblings. Not deprecated: they go when `init` stops shelling out, in 2.0 | frozen |
+| `python3` | no longer used by anything shipped (`scripts/bench-runtime.sh` was the last caller) | requirement removed |
+| CI (`.github/workflows/ci.yml`) | "Tools present" checks `shellcheck`, `bash`, `node` only; JSON validation, the validator, the evals and the bench call `node dist/engineos.cjs` directly. The two gen drift guards stay on the `.sh` shims so the deprecated shims get one CI exercise before 2.0 | changed |
 | `engineos settings-merge` | new subcommand of the runtime entry point | added |
 | `engineos bypass` | new subcommand of the runtime entry point | added |
 | `engineos gen` | new subcommand of the runtime entry point | added |
@@ -373,8 +380,8 @@ the 1.6.x port. The two agent generators dropped it with the shim swap below,
 and so did the eval runner and the usage report.
 `jq` is no longer a dependency of the validator either: the check families now
 run in-process under `engineos validate`, and check C1 asks for `node >= 18` in
-its place. The remaining `jq` callers are the bash hook self-tests, which Wave 6
-retires.
+its place. No shipped file calls `jq` any more: the bash test suites that did
+are ported to `*.e2e.test.ts` and deleted, and CI validates JSON with node.
 
 **The two agent generators are shims now.** `scripts/gen-agent-commands.sh` and
 `scripts/gen-agent-registry.sh` `exec` `engineos gen agent-commands` and
@@ -391,9 +398,10 @@ call `engineos gen <target>` directly to get ahead of that.
 `scripts/run-evals.sh`, `scripts/bench-runtime.sh` and `scripts/usage-report.sh`
 `exec` `engineos evals`, `engineos bench` and `engineos usage-report`; the
 implementations live in `src/evals/`, `src/bench/` and `src/report/` and ship in
-`dist/engineos.cjs`. What a caller sees is what the shims exist to preserve, so
-CI's "Evals (deterministic tier)", "Runtime performance budgets" and
-`.github/workflows/live-evals.yml` steps keep running against the `.sh` paths:
+`dist/engineos.cjs`. What a caller sees is what the shims exist to preserve —
+CI's "Evals (deterministic tier)" and "Runtime performance budgets" steps now
+call `engineos evals` and `engineos bench` directly, while
+`.github/workflows/live-evals.yml` still runs `scripts/run-evals.sh`:
 `run-evals.sh` keeps its `ok` / `FAIL` / `SKIP` lines, its summary line and its
 exit codes, and `ENGINEOS_EVAL_LIVE=1` still adds the live tier;
 `bench-runtime.sh` keeps the five budget names and the `ok` / `FAIL` line format,
