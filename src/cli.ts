@@ -12,6 +12,7 @@ import { runHook } from './hooks/cli';
 import { runInit } from './init/cli';
 import { runSettingsMerge } from './install/cli';
 import { runBypass } from './bypass/cli';
+import { runGen } from './gen/cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -66,5 +67,6 @@ const table: CommandTable = {
   init: runInit,
   'settings-merge': runSettingsMerge,
   bypass: runBypass,
+  gen: runGen,
 };
 process.exit(dispatch(table, argv, io));
