@@ -9,7 +9,7 @@ EngineOS requires a golden set before iterating on any prompt or agent
 |---|---|---|
 | Intent routing | `intent-routing-cases.jsonl` | Deterministic conformance always; live model grading opt-in |
 | Agent behaviour | `agent-cases.jsonl` | Deterministic conformance always; live model grading opt-in |
-| Path routing | covered by `hooks/test-route.sh` | Fully deterministic, already in CI |
+| Path routing | covered by `src/hooks/route-before-change.e2e.test.ts` | Fully deterministic, already in CI |
 
 Run: `scripts/run-evals.sh`. Live grading: `ENGINEOS_EVAL_LIVE=1 scripts/run-evals.sh`
 (requires the `claude` CLI on PATH). Without it the runner reports the live tier
