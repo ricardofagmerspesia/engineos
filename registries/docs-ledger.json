@@ -1,5 +1,5 @@
 {
-  "note": "Declarations for hooks/test-docs.sh. No logic — six lists the probe suite reads. Every entry is a promise: the gap is known, the reason is written down, and one more instance of it turns the suite red. hooks/docs-ledger.sh reads this file with jq and keeps a literal copy as its jq-free fallback; the prose behind each list lives in that file's comments.",
+  "note": "Declarations for src/docs/prose-layer.e2e.test.ts. No logic — six lists the probe suite reads. Every entry is a promise: the gap is known, the reason is written down, and one more instance of it turns the suite red.",
   "always_on": ["base", "security", "git", "context"],
   "task_contract_rules": ["gates", "models", "parallelism", "risk-autonomy", "verification"],
   "closure_exceptions": [],
