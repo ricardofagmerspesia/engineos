@@ -185,12 +185,12 @@ taken here.
 which is not the same as being the only field a consumer must distrust. Every
 other field is shape-bounded, not classified: harness-supplied characters still
 reach disk dash-joined, and the class admits `.` and `/`, so a journal field is
-never safe as a filesystem path component without `hooks/lib-common.sh`'s
-`hook_path_slug`.
+never safe as a filesystem path component without `src/lib/slug.ts`'s
+`hookPathSlug`.
 Adding a second free-text field to the journal is a compatibility event, not a
 convenience. The guard bounds the shape and the size of what reaches disk; it
-does not classify content, and `hooks/lib-common.sh` sanitizes rather than
-rejects at the hook boundary, so a harness-supplied value's characters still
+does not classify content, and the hook boundary (`src/lib/slug.ts`'s `hookSlug`,
+applied by `src/hooks/telemetry.ts`) sanitizes rather than rejects, so a harness-supplied value's characters still
 transit dash-joined.
 
 ### `scripts/kernel.sh` becomes a shim, and `routing.json` drops two derived fields
@@ -285,3 +285,37 @@ convention, and `validate`'s `<file>: N line(s), all valid` /
 texts. Changed: the runtime dependency is node >= 18 instead of jq, and
 `ENGINEOS_ROOT` now relocates the registry lookup. `usage` names
 `scripts/telemetry.sh` rather than interpolating `$0`.
+
+### The hooks become shims, and the telemetry writer rosters follow
+
+Same release train, same trade. Every `hooks/*.sh` registered in
+`hooks/hooks.json` is now a shim that `exec`s `node dist/engineos.cjs hook
+<name>`; the implementations live in `src/hooks/<name>.ts`.
+
+| Surface | Change | Kind |
+|---|---|---|
+| `hooks/hooks.json` registrations | unchanged — the same nine paths, the same events and matchers | unchanged |
+| `hooks/<name>.sh` | now a shim over `dist/engineos.cjs hook <name>` | implementation, surface unchanged |
+| `registries/policy.json` `telemetry.events[].written_by` | values move from `hooks/<name>.sh` to `src/hooks/<name>.ts` | value change, see below |
+| `registries/policy.json` `telemetry.exec_journal.written_by` | same move | value change, see below |
+| `registries/policy.json` `telemetry.exec_journal.written_by_helper` | `hooks/lib-common.sh` -> `src/hooks/telemetry.ts` | value change, see below |
+
+The hook event contract does not change: same events, same matchers, same
+registered paths, same stdout shapes and exit codes. What changes for a consumer
+is the runtime requirement — the hooks needed `bash` and `jq`, and now need
+`bash` and **node >= 18** — and the three roster fields above.
+
+Those rosters are data whose *values* are file paths, and the files that write
+the events moved. A consumer reading `written_by` to know where an event comes
+from now gets a TypeScript module path instead of a shell script path. Nothing
+about the key, its array shape, or the event ids changes; only the paths do, and
+they point at the file that actually writes the line, which is what the field has
+always meant. `written_by_helper` names the shared append site, which is now the
+sink in `src/hooks/telemetry.ts` rather than the sourced bash library.
+
+Two implementation details that were *inside* the bash hooks and are not public
+surface: `hook_slug` / `hook_path_slug` are `hookSlug` / `hookPathSlug` in
+`src/lib/slug.ts`, and the `hook_span` / `hook_telemetry` emitters are the span
+lifecycle (`withSpan`, `openSpan`, `closeSpan`) and `event` in
+`src/hooks/telemetry.ts`. A consumer grepping a hook file for either is reading
+a detail the shim removed.

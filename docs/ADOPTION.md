@@ -12,13 +12,15 @@ project. Follow in order. Each step says what it does and how to verify it.
 ## 0. Prerequisites
 
 - **Claude Code** installed (CLI / desktop / IDE).
-- **`jq`** (the installer and hooks need it): `brew install jq` (macOS) / `apt install jq`.
+- **node >= 18** (every hook runs on it: each `hooks/*.sh` is a shim over `dist/engineos.cjs`).
+- **`jq`** (the installer and `scripts/validate-engineos.sh` need it; the hooks no longer do):
+  `brew install jq` (macOS) / `apt install jq`.
 - macOS only: **`coreutils`** for the post-edit timeout safety net: `brew install coreutils`.
 - The plugins EngineOS routes to — install both:
   - `superpowers` (brainstorming, TDD, debugging, verification)
   - `tlc-spec-driven` (spec → design → tasks → execute)
 
-Verify: `jq --version` and `claude --version` both print.
+Verify: `node --version` (>= 18), `jq --version` and `claude --version` all print.
 
 ---
 

@@ -108,14 +108,26 @@ check_C20c() {
 check_C20d() {
   have_jq || return 0
   have_repair_inputs || return 0
-  # C20d: the hook carries no private copy of the numbers — a shim, not a copy
+  # C20d: the hook carries no private copy of the numbers — a shim, not a copy.
+  # The bash hook read policy.json .repair.max_fix_attempts_per_check itself and
+  # rendered the sentence; the port asks the kernel for the whole repair section
+  # and renders what comes back, so the field name is no longer the thing to
+  # look for. What is checkable is that the call is still there and that no
+  # count has crept back in as a literal.
   h_bad=""
-  grep -q 'repair\.max_fix_attempts_per_check' hooks/stop-verify.sh 2>/dev/null \
-    || h_bad="$h_bad stop-verify.sh-does-not-read-the-registry-field"
-  grep -qE '[0-9]+ fix attempts' hooks/stop-verify.sh 2>/dev/null \
-    && h_bad="$h_bad stop-verify.sh-has-a-hardcoded-number-literal"
-  [ -z "$h_bad" ] && ok "hooks/stop-verify.sh reads the repair bound from the registry, not a private copy" \
-                   || bad "stop-verify.sh repair-wiring problems:$h_bad"
+  sv=src/hooks/stop-verify.ts
+  if [ ! -f "$sv" ]; then
+    h_bad="$h_bad $sv-missing"
+  else
+    grep -qF "from '../kernel/repair'" "$sv" 2>/dev/null \
+      || h_bad="$h_bad stop-verify.ts-does-not-import-the-kernel-repair-section"
+    grep -qF 'repairSection(' "$sv" 2>/dev/null \
+      || h_bad="$h_bad stop-verify.ts-does-not-call-repairSection"
+    grep -qE '[0-9]+ fix attempts' "$sv" 2>/dev/null \
+      && h_bad="$h_bad stop-verify.ts-has-a-hardcoded-number-literal"
+  fi
+  [ -z "$h_bad" ] && ok "src/hooks/stop-verify.ts asks the kernel's repair section for the bound, keeping no private copy" \
+                   || bad "stop-verify.ts repair-wiring problems:$h_bad"
 }
 
 # ------------- C22: telemetry — policy + plumbing, never the event data (P7)
@@ -191,54 +203,61 @@ check_C22b() {
 check_C22c() {
   have_jq || return 0
   have_telemetry_inputs || return 0
-  # C22c: wiring — each written_by hook calls telemetry.sh with its event id,
-  # no hook's append invocation sources $PROMPT/$INPUT, no private retention
-  # copy, and both readers still mention the source.
+  # C22c: wiring — each written_by module emits its event id, no emitter feeds
+  # prompt text into the append, no private retention copy, and both readers
+  # still mention the source.
+  #
+  # The hooks are TypeScript now. A writer names its event at the sink —
+  # `event(sink, '<id>', …)` from src/hooks/telemetry.ts — instead of spelling
+  # out a `--event <id>` CLI call, so that call shape is what both directions
+  # below look for. The id is still a literal at the call site, which is what
+  # makes the roster checkable at all.
   w_bad=""
-  # Forward: every hook the registry names as a writer really appends the
+  # Forward: every module the registry names as a writer really emits the
   # event. written_by is an array, so an event with two producers gets both
   # checked instead of only whichever one a scalar field could hold.
   while IFS=$'\t' read -r eid wb; do
-    # The append invocation itself now lives in hooks/lib-common.sh
-    # (hook_telemetry); a hook names its event at that helper instead of
-    # spelling out the CLI call. Either form counts as wired.
-    grep -qE 'telemetry\.sh|hook_telemetry' "$wb" \
-      || w_bad="$w_bad [$wb:does-not-call-telemetry.sh]"
-    grep -qE -- "(--event|hook_telemetry)[[:space:]]+$eid([[:space:]]|\$)" "$wb" \
-      || w_bad="$w_bad [$wb:missing-literal---event-$eid]"
-    { grep -A2 'telemetry.sh" append' "$wb"; grep 'hook_telemetry ' "$wb"; } \
-      | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
-      && w_bad="$w_bad [$wb:append-invocation-references-prompt-text]"
+    grep -qF "event(sink, '$eid'" "$wb" 2>/dev/null \
+      || w_bad="$w_bad [$wb:does-not-emit-event-$eid]"
+    # Telemetry stores registry ids, never prompt text. In bash the leak shape
+    # was `$PROMPT`/`$INPUT` reaching the append; here it is the envelope's own
+    # prompt or raw payload reaching an event call.
+    grep -F "event(sink, '$eid'" "$wb" 2>/dev/null | grep -qE 'env\.prompt|env\.raw' \
+      && w_bad="$w_bad [$wb:event-call-references-prompt-text]"
   done < <(jq -r '.telemetry.events[] | .id as $i | .written_by[]? | select(type=="string") | [$i, .] | @tsv' "$PJ")
-  # Reverse: every hook that appends a registered event is declared as one of
+  # Reverse: every module that emits a registered event is declared as one of
   # that event's writers. Without this half, a second hook could start emitting
   # `route` and the registry — which skills/retro and usage-report.sh read to
   # know where events come from — would never say so.
   #
-  # hooks/test-*.sh are excluded: a test that names an event id asserts on it,
-  # it does not produce it. hooks/lib-common.sh passes the id through as "$1"
-  # and so never matches a literal.
+  # *.test.ts are excluded: a test that names an event id asserts on it, it does
+  # not produce it. telemetry.ts and span-writer.ts are the sink and the append
+  # boundary — they pass the id through as a parameter and so never carry a
+  # literal call of this shape.
   for eid in $(jq -r '.telemetry.events[].id' "$PJ"); do
-    for hk in hooks/*.sh; do
-      case "$hk" in hooks/test-*) continue ;; esac
-      grep -qE -- "(--event|hook_telemetry)[[:space:]]+$eid([[:space:]]|\$)" "$hk" || continue
+    for hk in src/hooks/*.ts; do
+      case "$hk" in *.test.ts|src/hooks/telemetry.ts|src/hooks/span-writer.ts) continue ;; esac
+      grep -qF "event(sink, '$eid'" "$hk" || continue
       jq -e --arg e "$eid" --arg h "$hk" \
         '.telemetry.events[] | select(.id==$e) | .written_by | index($h)' "$PJ" >/dev/null 2>&1 \
-        || w_bad="$w_bad [$hk:appends-$eid-but-is-not-in-its-written_by]"
+        || w_bad="$w_bad [$hk:emits-$eid-but-is-not-in-its-written_by]"
     done
   done
-  # The shared emitter is the real append site now, so the prompt-text ban has
-  # to be enforced there too, not only at the hooks that call it.
-  grep -A3 'telemetry.sh" append' hooks/lib-common.sh \
-    | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
-    && w_bad="$w_bad [hooks/lib-common.sh:append-invocation-references-prompt-text]"
-  grep -q 'telemetry\.retention_days' hooks/ensure-project-layout.sh \
-    || w_bad="$w_bad ensure-project-layout.sh-does-not-read-the-registry-field"
-  grep -qE '\-mtime "\+[0-9]' hooks/ensure-project-layout.sh \
-    && w_bad="$w_bad ensure-project-layout.sh-has-a-hardcoded-retention-literal"
+  # The sink is the real append site now, so the prompt-text ban is enforced
+  # there too, not only at the callers. It takes the whole envelope (it needs
+  # cwd and session id), so `env.prompt` appearing in it at all is the leak.
+  grep -q 'env\.prompt' src/hooks/telemetry.ts 2>/dev/null \
+    && w_bad="$w_bad [src/hooks/telemetry.ts:sink-references-prompt-text]"
+  grep -q 'loadTelemetryPolicy(' src/hooks/ensure-project-layout.ts 2>/dev/null \
+    || w_bad="$w_bad ensure-project-layout.ts-does-not-read-the-registry-field"
+  # bash hardcoded a window as `-mtime "+90"`; the port would hardcode it as a
+  # literal in the days argument of a reap call, where `days` (from the
+  # registry) belongs.
+  grep -qE '(reapIfStale|reapFilesBelow)\(.*, *[0-9]+, *now\)' src/hooks/ensure-project-layout.ts 2>/dev/null \
+    && w_bad="$w_bad ensure-project-layout.ts-has-a-hardcoded-retention-literal"
   grep -q 'engineos-telemetry' skills/retro/SKILL.md || w_bad="$w_bad retro-SKILL.md-lost-the-telemetry-source"
   grep -q 'engineos-telemetry' scripts/usage-report.sh || w_bad="$w_bad usage-report.sh-lost-the-telemetry-source"
-  [ -z "$w_bad" ] && ok "telemetry wiring is complete in both directions (every declared writer appends its event, every appending hook is declared), private-copy-free and prompt-text-free" \
+  [ -z "$w_bad" ] && ok "telemetry wiring is complete in both directions (every declared writer emits its event, every emitting module is declared), private-copy-free and prompt-text-free" \
                    || bad "telemetry wiring problems:$w_bad"
 }
 
@@ -1019,6 +1038,13 @@ check_C27c() {
   # C27c: wiring, in both directions — every declared writer really writes a
   # span, every hook that writes one is declared, the shared append site cannot
   # see prompt text, and the reaper covers the new file.
+  #
+  # The hooks are TypeScript now. A writer reaches the journal through the span
+  # lifecycle in src/hooks/telemetry.ts — `withSpan` for work it can time in one
+  # process, or the `openSpan`/`closeSpan` pair a PreToolUse and its PostToolUse
+  # need — and states the kind as a `kind: '<k>'` field on the facts it passes.
+  # openSpan is the one deliberate exception: the dispatch hook records only the
+  # start instant, and the kind is stated by the return hook that closes it.
   w_bad=""
   kinds=$(jq -r '[.telemetry.exec_journal.span_kinds[]?] | join("|")' "$PJ")
   if [ -z "$kinds" ]; then
@@ -1026,50 +1052,49 @@ check_C27c() {
     # against a hook that writes nothing at all.
     w_bad="$w_bad span_kinds-empty-cannot-check-wiring"
   else
-    # Forward. The append itself lives in hooks/lib-common.sh (hook_span); a
-    # writer names its span KIND at that helper rather than spelling out the
-    # CLI call, and either form counts as wired.
+    # Forward. Any of the three lifecycle calls counts as wired: the pair below
+    # is what pins which hook must use which.
     while IFS= read -r wb; do
       [ -n "$wb" ] || continue
       [ -f "$wb" ] || continue   # missing file is C27a's finding, not a second one here
-      grep -qE 'exec-journal\.sh|hook_span' "$wb" \
+      grep -qE 'openSpan\(|closeSpan\(|withSpan\(' "$wb" \
         || w_bad="$w_bad [$wb:does-not-write-a-span]"
-      grep -qE -- "(hook_span|hook_span_open|hook_span_close)[[:space:]]" "$wb" \
-        || w_bad="$w_bad [$wb:names-no-span-helper]"
     done < <(jq -r '.telemetry.exec_journal.written_by[]? | select(type=="string")' "$PJ")
     # The dispatch hook opens a span it cannot close and the return hook closes
     # it; one without the other leaks markers or fabricates durations.
-    grep -q 'hook_span_open' hooks/announce-agent-dispatch.sh 2>/dev/null \
-      || w_bad="$w_bad announce-agent-dispatch.sh-does-not-open-a-span"
-    grep -q 'hook_span_close' hooks/announce-agent-return.sh 2>/dev/null \
-      || w_bad="$w_bad announce-agent-return.sh-does-not-close-a-span"
+    grep -qF 'openSpan(' src/hooks/announce-agent-dispatch.ts 2>/dev/null \
+      || w_bad="$w_bad announce-agent-dispatch.ts-does-not-open-a-span"
+    grep -qF 'closeSpan(' src/hooks/announce-agent-return.ts 2>/dev/null \
+      || w_bad="$w_bad announce-agent-return.ts-does-not-close-a-span"
     # Reverse: a hook that emits a span kind is declared as a writer. Without
     # this half a second hook could start writing `router` spans and the
     # registry — which the retro and the breaker count read to know where spans
-    # come from — would never say so. test-*.sh assert on a kind, they do not
-    # produce it; lib-common.sh passes the kind through as "$kind".
-    for hk in hooks/*.sh; do
-      case "$hk" in hooks/test-*|hooks/lib-common.sh) continue ;; esac
-      grep -qE -- "hook_span[[:space:]]+($kinds)([[:space:]]|\$)" "$hk" || continue
+    # come from — would never say so. *.test.ts assert on a kind, they do not
+    # produce it; telemetry.ts and span-writer.ts pass the kind through as a
+    # parameter and never carry a kind literal.
+    for hk in src/hooks/*.ts; do
+      case "$hk" in *.test.ts|src/hooks/telemetry.ts|src/hooks/span-writer.ts) continue ;; esac
+      grep -qE -- "kind: '($kinds)'" "$hk" || continue
       jq -e --arg h "$hk" '.telemetry.exec_journal.written_by | index($h)' "$PJ" >/dev/null 2>&1 \
         || w_bad="$w_bad [$hk:writes-a-span-but-is-not-in-written_by]"
     done
   fi
-  # The shared append site is where a prompt-text leak would actually happen,
-  # so the ban is enforced there and not only at the callers (mirrors C22c).
+  # The sink is where a prompt-text leak would actually happen, so the ban is
+  # enforced there and not only at the callers (mirrors C22c). It receives the
+  # whole envelope — it needs cwd and session id — so `env.prompt` appearing in
+  # it at all is the leak.
   helper=$(jq -r '.telemetry.exec_journal.written_by_helper // empty' "$PJ")
   if [ -n "$helper" ] && [ -f "$helper" ]; then
-    grep -A6 'exec-journal.sh" append' "$helper" \
-      | grep -qE '\$PROMPT|\$HOOK_PROMPT|"\$INPUT"|"\$HOOK_INPUT"' \
+    grep -q 'env\.prompt' "$helper" \
       && w_bad="$w_bad [$helper:span-append-references-prompt-text]"
   fi
-  # The reaper: <session>.exec.jsonl is covered by the existing '*.jsonl' glob,
-  # and the span start markers live one level down where that glob never looks.
-  grep -q 'exec\.jsonl' hooks/ensure-project-layout.sh 2>/dev/null \
-    || w_bad="$w_bad ensure-project-layout.sh-does-not-account-for-.exec.jsonl"
-  grep -q 'engineos-telemetry/spans' hooks/ensure-project-layout.sh 2>/dev/null \
-    || w_bad="$w_bad ensure-project-layout.sh-does-not-reap-the-span-start-markers"
-  [ -z "$w_bad" ] && ok "exec-journal span wiring is complete in both directions (every declared writer writes a span, every span-writing hook is declared), prompt-text-free at the shared append site, and reaped by ensure-project-layout.sh" \
+  # The reaper: <session>.exec.jsonl is covered by the '.jsonl' suffix pass, and
+  # the span start markers live one level down where that pass never looks.
+  grep -qF "endsWith('.jsonl')" src/hooks/ensure-project-layout.ts 2>/dev/null \
+    || w_bad="$w_bad ensure-project-layout.ts-does-not-account-for-.exec.jsonl"
+  grep -qF 'reapFilesBelow(spans' src/hooks/ensure-project-layout.ts 2>/dev/null \
+    || w_bad="$w_bad ensure-project-layout.ts-does-not-reap-the-span-start-markers"
+  [ -z "$w_bad" ] && ok "exec-journal span wiring is complete in both directions (every declared writer writes a span, every span-writing hook is declared), prompt-text-free at the sink, and reaped by src/hooks/ensure-project-layout.ts" \
                    || bad "exec-journal wiring problems:$w_bad"
 }
 
@@ -1246,17 +1271,26 @@ check_C29() {
   elif ! grep -qF 'scripts/init-project.sh' commands/init.md; then
     a_bad="$a_bad commands/init.md-does-not-name-scripts/init-project.sh"
   fi
-  if [ ! -f hooks/scaffold-layout.sh ]; then
-    a_bad="$a_bad hooks/scaffold-layout.sh-missing"
-  elif ! grep -qF 'scaffold-layout.sh' hooks/ensure-project-layout.sh; then
-    a_bad="$a_bad ensure-project-layout.sh-does-not-source-scaffold-layout.sh"
+  # The scaffolder is a TypeScript module now, and both adoption entrypoints
+  # reach the layout through it: the SessionStart hook imports it as
+  # './scaffold', `engineos init` as '../hooks/scaffold'. Asserting the import
+  # rather than the retired `. scaffold-layout.sh` line keeps the claim about
+  # what actually runs — and covers both entrypoints, where the bash version
+  # only ever saw the hook.
+  if [ ! -f src/hooks/scaffold.ts ]; then
+    a_bad="$a_bad src/hooks/scaffold.ts-missing"
+  else
+    grep -qF "from './scaffold'" src/hooks/ensure-project-layout.ts 2>/dev/null \
+      || a_bad="$a_bad ensure-project-layout.ts-does-not-import-the-scaffolder"
+    grep -qF "from '../hooks/scaffold'" src/init/project.ts 2>/dev/null \
+      || a_bad="$a_bad init/project.ts-does-not-import-the-scaffolder"
   fi
   if [ ! -f docs/ADOPTION.md ]; then
     a_bad="$a_bad docs/ADOPTION.md-missing"
   elif ! grep -qF '/engineos:init' docs/ADOPTION.md; then
     a_bad="$a_bad docs/ADOPTION.md-does-not-name-the-/engineos:init-command"
   fi
-  [ -z "$a_bad" ] && ok "the adoption entrypoints are wired: scripts/init-project.sh is executable, commands/init.md invokes it, ensure-project-layout.sh sources hooks/scaffold-layout.sh, and docs/ADOPTION.md names /engineos:init" \
+  [ -z "$a_bad" ] && ok "the adoption entrypoints are wired: scripts/init-project.sh is executable, commands/init.md invokes it, both the SessionStart hook and engineos init import src/hooks/scaffold.ts, and docs/ADOPTION.md names /engineos:init" \
                    || bad "adoption entrypoint problems:$a_bad"
 }
 

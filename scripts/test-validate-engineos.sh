@@ -455,6 +455,12 @@ p='hooks/hooks.json'; d=json.load(open(p))
 d['hooks']['UserPromptSubmit'][0]['hooks'] = [h for h in d['hooks']['UserPromptSubmit'][0]['hooks'] if 'prompt-advisor' not in h['command']]
 json.dump(d,open(p,'w'),indent=2)\""
 
+# The other half of C18f: the shim stays registered, but the module behind it
+# stops making the one deep kernel call the hot path is supposed to be.
+case_ C18f "the resolve-task call renamed out of src/hooks/prompt-advisor.ts is caught" \
+      "prompt-advisor" \
+      "sed -i.bak 's|resolve-task|resolve-later|g' src/hooks/prompt-advisor.ts"
+
 # ---- C19: handoff template <-> registry section contract (P4) ----
 
 case_ C19b "a required section removed from the handoff template is caught" \
@@ -536,9 +542,11 @@ case_ C20c "until clean reintroduced into the CLAUDE.md verify-done row is caugh
       "repair prose-mirror problems" \
       "sed -i.bak 's|a bounded fix loop.*reports done\\.|fix loop until clean before reporting done.|' CLAUDE.md"
 
-case_ C20d "the hook's registry read replaced with a hardcoded number is caught" \
-      "stop-verify.sh repair-wiring problems" \
-      "sed -i.bak 's|MAXFIX=\$(jq -r .\\{0,1\\}\\.repair\\.max_fix_attempts_per_check[^)]*)|MAXFIX=2|' hooks/stop-verify.sh"
+# One mutation, both findings: dropping the kernel call is exactly how a private
+# copy of the number gets reintroduced.
+case_ C20d "the hook's kernel repair call replaced with a hardcoded sentence is caught" \
+      "stop-verify.ts repair-wiring problems" \
+      "sed -i.bak \"s|return repairSection({ check, attempt: FIRST_ATTEMPT }, lazyRegistries(engineosRoot)).reason;|return 'stop after 2 fix attempts';|\" src/hooks/stop-verify.ts"
 
 # ---- C21: change-record contract — template, archive, mirrors (P6) ----
 
@@ -636,17 +644,17 @@ for e in d['telemetry']['events']:
     if e['id']=='decision-rules': e['sample']['rules']=['two words']
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ C22c "the route telemetry event removed from prompt-advisor.sh is caught" \
+case_ C22c "the route telemetry event removed from prompt-advisor.ts is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|hook_telemetry route|hook_telemetry route-missing|' hooks/prompt-advisor.sh"
+      "sed -i.bak \"s|event(sink, 'route', routeData)|event(sink, 'route-missing', routeData)|\" src/hooks/prompt-advisor.ts"
 
-case_ C22c "prompt-advisor's append reading the prompt instead of \$ROUTE_DATA is caught" \
+case_ C22c "prompt-advisor's event call reading the prompt instead of the route data is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|hook_telemetry route \"\$ROUTE_DATA\"|hook_telemetry route \"\$HOOK_PROMPT\"|' hooks/prompt-advisor.sh"
+      "sed -i.bak \"s|event(sink, 'route', routeData)|event(sink, 'route', { intents: [env.prompt] })|\" src/hooks/prompt-advisor.ts"
 
 case_ C22c "ensure-project-layout's registry read replaced with a hardcoded retention window is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|-mtime \"+\$RET\"|-mtime \"+90\"|' hooks/ensure-project-layout.sh"
+      "sed -i.bak 's|reapIfStale(join(dir, name), days, now)|reapIfStale(join(dir, name), 90, now)|' src/hooks/ensure-project-layout.ts"
 
 case_ C22 "written_by demoted from an array back to a bare string is caught" \
       "telemetry policy problems" \
@@ -666,17 +674,17 @@ for e in d['telemetry']['events']:
     if e['id']=='hitl': e['written_by']=e['written_by']+['hooks/no-such-hook.sh']
 json.dump(d,open(p,'w'),indent=2)\""
 
-# The reverse half of C22c: a hook that appends a registered event without
-# being declared as one of its writers. Named zz- rather than test-, because
-# hooks/test-*.sh are excluded by design (a test asserts on an event, it does
-# not produce one).
-case_ C22c "a hook appending a registered event without being declared its writer is caught" \
+# The reverse half of C22c: a module that emits a registered event without
+# being declared as one of its writers. Named zz- rather than *.test.ts, because
+# tests are excluded by design (a test asserts on an event, it does not produce
+# one).
+case_ C22c "a hook emitting a registered event without being declared its writer is caught" \
       "telemetry wiring problems" \
-      "printf '#!/usr/bin/env bash\\nhook_telemetry hitl \"\$DATA\"\\n' > hooks/zz-fake-writer.sh"
+      "printf \"event(sink, 'hitl', data);\\n\" > src/hooks/zz-fake-writer.ts"
 
-case_ C22c "the hitl telemetry event removed from prompt-advisor.sh is caught" \
+case_ C22c "the hitl telemetry event removed from prompt-advisor.ts is caught" \
       "telemetry wiring problems" \
-      "sed -i.bak 's|hook_telemetry hitl|hook_telemetry hitl-missing|' hooks/prompt-advisor.sh"
+      "sed -i.bak \"s|event(sink, 'hitl',|event(sink, 'hitl-missing',|\" src/hooks/prompt-advisor.ts"
 
 # ---- C23: constitution preamble mirrors (P8, epic close) ----
 
@@ -908,25 +916,28 @@ case_ C27b "the agent field losing its slug guard is caught by the canary" \
       "exec-journal span canary failed" \
       "sed -i.bak 's|flag: \"--agent\", guard: \"slug\"|flag: \"--agent\", guard: \"free\"|' dist/engineos.cjs"
 
+# esbuild suffixes a local (`text` -> `text2`) whenever another module in the
+# bundle owns the same name, so the mutation matches the identifier by pattern,
+# not by the spelling the bundle happened to pick this build.
 case_ C27b "the length bound no longer enforced on append is caught" \
       "exec-journal span canary failed" \
-      "sed -i.bak 's|if (text.length > maxLength) {|if (false) {|' dist/engineos.cjs"
+      "sed -E -i.bak 's|if \\(text[0-9]*\\.length > maxLength\\) \\{|if (false) {|' dist/engineos.cjs"
 
-case_ C27c "the router span removed from prompt-advisor.sh is caught" \
+case_ C27c "the router span removed from prompt-advisor.ts is caught" \
       "exec-journal wiring problems" \
-      "sed -i.bak '/^hook_span router /,+1d' hooks/prompt-advisor.sh"
+      "sed -i.bak '/withSpan(sink, ROUTER_SPAN,/d' src/hooks/prompt-advisor.ts"
 
-case_ C27c "the verification span removed from stop-verify.sh is caught" \
+case_ C27c "the verification span removed from stop-verify.ts is caught" \
       "exec-journal wiring problems" \
-      "sed -i.bak '/^  hook_span verification /,+2d' hooks/stop-verify.sh"
+      "sed -i.bak '/withSpan(sink, VERIFICATION_SPAN,/d' src/hooks/stop-verify.ts"
 
 case_ C27c "the span start marker no longer opened at dispatch is caught" \
       "exec-journal wiring problems" \
-      "sed -i.bak '/hook_span_open/d' hooks/announce-agent-dispatch.sh"
+      "sed -i.bak '/openSpan(/d' src/hooks/announce-agent-dispatch.ts"
 
 case_ C27c "the span start markers no longer reaped is caught" \
       "exec-journal wiring problems" \
-      "sed -i.bak '/engineos-telemetry\/spans/d' hooks/ensure-project-layout.sh"
+      "sed -i.bak '/reapFilesBelow(spans/d' src/hooks/ensure-project-layout.ts"
 
 case_ C27d "the Agent traces section renamed in rules/observability.md is caught" \
       "exec-journal prose-mirror problems" \
@@ -1014,9 +1025,13 @@ if [ -f "$ROOT/scripts/init-project.sh" ]; then
         "adoption entrypoint problems" \
         "chmod -x scripts/init-project.sh"
 
-  case_ C29 "ensure-project-layout no longer sourcing scaffold-layout.sh is caught" \
+  case_ C29 "ensure-project-layout no longer importing the scaffolder is caught" \
         "adoption entrypoint problems" \
-        "sed -i.bak '/scaffold-layout.sh/d' hooks/ensure-project-layout.sh"
+        "sed -i.bak \"/from '.\\/scaffold'/d\" src/hooks/ensure-project-layout.ts"
+
+  case_ C29 "engineos init no longer importing the scaffolder is caught" \
+        "adoption entrypoint problems" \
+        "sed -i.bak \"/from '..\\/hooks\\/scaffold'/d\" src/init/project.ts"
 
   case_ C29 "docs/ADOPTION.md losing the /engineos:init command is caught" \
         "adoption entrypoint problems" \

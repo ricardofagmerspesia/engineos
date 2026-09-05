@@ -50,8 +50,10 @@ Use `install.ps1` (mode A). Two Windows-specific facts:
   commands; re-run it if you see terminal windows appearing.
   WSL's `bash` is not a substitute — it cannot resolve the `C:/...` paths in the
   hook commands.
-- **`jq` is required.** Without it every hook that parses tool input exits 0
-  silently: no `[router]` guidance, no change-record Stop gate. `winget install jqlang.jq`.
+- **node >= 18 is required.** Every hook is a shim over `dist/engineos.cjs`; without
+  node on the hook PATH nothing fires. `jq` is still needed by `install.ps1` (it merges
+  the hooks into `settings.json`) and by `scripts/validate-engineos.sh`, but no longer by
+  the hooks themselves. `winget install jqlang.jq`.
 
 Mode B (plugin) registers the hooks as bare `${CLAUDE_PLUGIN_ROOT}/hooks/*.sh` paths,
 which hits the terminal-window behaviour above. On Windows, prefer mode A.

@@ -32,6 +32,11 @@ EJSH=scripts/exec-journal.sh
 EJ_POLICY_TS=src/registry/policy-exec-journal.ts
 ROUTER_MD=agents/router.md
 PROMPT_ADVISOR=hooks/prompt-advisor.sh
+# hooks/prompt-advisor.sh is a shim over dist/engineos.cjs too, and the two halves
+# of C18f now read different files on purpose: hooks.json executes the SHIM, so
+# the registration half must keep reading it, while the kernel call it makes is
+# owned by the TypeScript module and a Check that greps for it reads there.
+PROMPT_ADVISOR_TS=src/hooks/prompt-advisor.ts
 HOOKS_JSON=hooks/hooks.json
 TPL=templates/handoff.md
 CT=.engineos/changes/_template.md
