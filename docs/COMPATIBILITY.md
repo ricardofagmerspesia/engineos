@@ -340,6 +340,7 @@ and, since the runtime ports, the two `scripts/gen-agent-*.sh` entry points plus
 | `engineos evals` | new subcommand of the runtime entry point | added |
 | `engineos bench` | new subcommand of the runtime entry point | added |
 | `engineos usage-report` | new subcommand of the runtime entry point | added |
+| `engineos validate` | new subcommand of the runtime entry point; an empty check registry until the check families port (Wave 5(b)) — `scripts/validate-engineos.sh` stays the bash validator until then | added |
 | `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `scripts/run-evals.sh`, `scripts/bench-runtime.sh`, `scripts/usage-report.sh` | bash implementation -> shim over `engineos evals` / `engineos bench` / `engineos usage-report`; all three shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `install.sh` / `install.ps1` dependency | `jq` -> `node >= 18` | requirement change |
@@ -396,6 +397,17 @@ section header and line format the `retro` skill reads. Dependencies dropped wit
 the swap: `jq` for the eval runner and the usage report, `python3` for the bench.
 All three need `node >= 18` in their place — the same trade the hooks made in
 1.6.x — and like the other shims they are deprecated in 1.7.0 and removed in 2.0.
+
+**The validator harness ships ahead of its checks.** `engineos validate` carries
+the `--only` / `--list` surface, the `== EngineOS integrity ==` header, the
+`ok   ` / `FAIL ` / `skip ` prefixes, `passed N, failed N` and the 0/1/2 exit codes
+of `scripts/validate-engineos.sh`, over an explicit check registry
+(`src/checks/index.ts`) that is empty in this release — it exits 2 with
+`no Checks registered` until the seven check families port in Wave 5(b), and
+`scripts/validate-engineos.sh` stays the bash validator CI runs until the last
+family lands. What changes for good is the tail of a `FAIL` line: it is rendered
+from the check's findings as `[<code>]` / `[<code>:<subject>]`, and that prose is
+not versioned surface (design deviation 8).
 
 **`usage-report` says more than the bash did, in three places.**
 `./scripts/usage-report.sh abc` now prints `usage: engineos usage-report [days]`

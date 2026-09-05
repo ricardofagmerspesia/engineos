@@ -16,6 +16,7 @@ import { runGen } from './gen/cli';
 import { runEvals } from './evals/run';
 import { runBench } from './bench/run';
 import { runUsageReport } from './report/usage';
+import { runValidate } from './validate/cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -74,5 +75,6 @@ const table: CommandTable = {
   evals: runEvals,
   bench: runBench,
   'usage-report': runUsageReport,
+  validate: runValidate,
 };
 process.exit(dispatch(table, argv, io));
