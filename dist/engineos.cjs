@@ -112,6 +112,33 @@ function dispatch(table2, argv2, io2) {
   return command(rest, io2);
 }
 
+// src/hooks/output.ts
+function message(text) {
+  return { kind: "message", text };
+}
+function render(decision, io2) {
+  switch (decision.kind) {
+    case "silent":
+      return 0;
+    case "context":
+      io2.out(`${JSON.stringify({ hookSpecificOutput: { hookEventName: decision.event, additionalContext: decision.text } })}
+`);
+      return 0;
+    case "block":
+      io2.out(`${JSON.stringify({ decision: "block", reason: decision.reason })}
+`);
+      return 0;
+    case "message":
+      io2.out(`${JSON.stringify({ systemMessage: decision.text })}
+`);
+      return 0;
+    case "fail":
+      io2.err(`${decision.stderr}
+`);
+      return 2;
+  }
+}
+
 // src/lib/json.ts
 var import_node_fs3 = require("node:fs");
 var KernelError = class extends Error {
@@ -825,12 +852,12 @@ function autonomyAfter(drop) {
   if (after === void 0) throw new KernelError("hitl requires --autonomy A0..A4");
   return after;
 }
-function asBoolean(value, message) {
+function asBoolean(value, message2) {
   if (value === void 0) return false;
   if (typeof value === "boolean") return value;
   if (value === "true") return true;
   if (value === "false") return false;
-  throw new KernelError(message);
+  throw new KernelError(message2);
 }
 
 // src/kernel/model.ts
@@ -978,14 +1005,14 @@ function maxTier(tiers) {
   if (tiers.includes("medium")) return "medium";
   return "low";
 }
-function optionalRecord(value, message) {
+function optionalRecord(value, message2) {
   if (value === void 0 || value === null) return {};
-  if (!isRecord(value)) throw new KernelError(message);
+  if (!isRecord(value)) throw new KernelError(message2);
   return value;
 }
-function optionalArray(value, message) {
+function optionalArray(value, message2) {
   if (value === void 0 || value === null) return [];
-  if (!Array.isArray(value)) throw new KernelError(message);
+  if (!Array.isArray(value)) throw new KernelError(message2);
   return value;
 }
 
@@ -1204,12 +1231,12 @@ function parseUnits(value) {
     };
   });
 }
-function stringList(value, message) {
+function stringList(value, message2) {
   if (value === void 0 || value === null) return [];
-  if (!Array.isArray(value)) throw new KernelError(message);
+  if (!Array.isArray(value)) throw new KernelError(message2);
   const items = value;
   return items.map((item) => {
-    if (typeof item !== "string") throw new KernelError(message);
+    if (typeof item !== "string") throw new KernelError(message2);
     return item;
   });
 }
@@ -1824,8 +1851,8 @@ function memo2(make) {
 var JournalError = class extends Error {
   kind = "journal";
   usage;
-  constructor(message, opts = {}) {
-    super(message);
+  constructor(message2, opts = {}) {
+    super(message2);
     this.usage = opts.usage ?? false;
   }
 };
@@ -2323,8 +2350,7 @@ function applyOutcome(outcome) {
       process.exit(0);
       break;
     case "skip":
-      writeJson(io, { systemMessage: outcome.message });
-      process.exit(0);
+      process.exit(render(message(outcome.message), io));
       break;
     case "refuse":
       writeJson(io, { error: outcome.message });
