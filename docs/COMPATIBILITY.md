@@ -326,8 +326,9 @@ a detail the shim removed.
 
 `1.7.0` is a **MINOR** release. Nothing in the public surface is removed and
 nothing is renamed; deprecation windows open on the bash shims — the hook shims
-and, since the generator port, the two `scripts/gen-agent-*.sh` entry points —
-and one runtime requirement becomes explicit.
+and, since the runtime ports, the two `scripts/gen-agent-*.sh` entry points plus
+`scripts/run-evals.sh`, `scripts/bench-runtime.sh` and
+`scripts/usage-report.sh` — and one runtime requirement becomes explicit.
 
 | Surface | 1.7.0 change | Kind |
 |---|---|---|
@@ -336,7 +337,11 @@ and one runtime requirement becomes explicit.
 | `engineos settings-merge` | new subcommand of the runtime entry point | added |
 | `engineos bypass` | new subcommand of the runtime entry point | added |
 | `engineos gen` | new subcommand of the runtime entry point | added |
+| `engineos evals` | new subcommand of the runtime entry point | added |
+| `engineos bench` | new subcommand of the runtime entry point | added |
+| `engineos usage-report` | new subcommand of the runtime entry point | added |
 | `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
+| `scripts/run-evals.sh`, `scripts/bench-runtime.sh`, `scripts/usage-report.sh` | bash implementation -> shim over `engineos evals` / `engineos bench` / `engineos usage-report`; all three shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `install.sh` / `install.ps1` dependency | `jq` -> `node >= 18` | requirement change |
 | Windows hook path | `bash.exe` no longer resolved or registered | requirement removed |
 
@@ -358,7 +363,8 @@ print the by-hand fallback pointing at `hooks/hooks.json`. This replaces the old
 **`jq` is no longer needed by the installers or the hooks.** The settings.json
 merge — scrub, append, `permissions.allow` set union — moved into
 `engineos settings-merge`, and the hooks have parsed tool input natively since
-the 1.6.x port. The two agent generators dropped it with the shim swap below.
+the 1.6.x port. The two agent generators dropped it with the shim swap below,
+and so did the eval runner and the usage report.
 `jq` remains a *development* dependency of this repo: the registry checks in
 `scripts/validate-engineos.sh` (check C1 says so) still require it. Adopting
 EngineOS does not.
@@ -374,6 +380,35 @@ generators now need `node >= 18` where they used to need `jq`, which is the same
 trade the hooks made in 1.6.x. Like the `hooks/<name>.sh` shims, both are
 deprecated in 1.7.0 and removed in 2.0; call `engineos gen <target>` directly to
 get ahead of that.
+
+**The eval runner, the perf bench and the usage report are shims now.**
+`scripts/run-evals.sh`, `scripts/bench-runtime.sh` and `scripts/usage-report.sh`
+`exec` `engineos evals`, `engineos bench` and `engineos usage-report`; the
+implementations live in `src/evals/`, `src/bench/` and `src/report/` and ship in
+`dist/engineos.cjs`. What a caller sees is what the shims exist to preserve, so
+CI's "Evals (deterministic tier)", "Runtime performance budgets" and
+`.github/workflows/live-evals.yml` steps keep running against the `.sh` paths:
+`run-evals.sh` keeps its `ok` / `FAIL` / `SKIP` lines, its summary line and its
+exit codes, and `ENGINEOS_EVAL_LIVE=1` still adds the live tier;
+`bench-runtime.sh` keeps the five budget names and the `ok` / `FAIL` line format,
+and `ENGINEOS_PERF_MULTIPLIER` still scales them; `usage-report.sh` keeps every
+section header and line format the `retro` skill reads. Dependencies dropped with
+the swap: `jq` for the eval runner and the usage report, `python3` for the bench.
+All three need `node >= 18` in their place — the same trade the hooks made in
+1.6.x — and like the other shims they are deprecated in 1.7.0 and removed in 2.0.
+
+**`usage-report` says more than the bash did, in three places.**
+`./scripts/usage-report.sh abc` now prints `usage: engineos usage-report [days]`
+on stderr and exits 1; bash handed the value to `find -mtime`, which failed
+quietly and printed `No transcripts in window.` — an empty report that read as a
+finding rather than as a typo. Any window that is not a positive integer (`0`,
+`-5`, `1.5`) is rejected the same way. And the router section's
+`(none found — router not announcing?)` line is reachable at last: it hung off a
+`||` after a `grep | sed | sort | uniq` pipeline that exits 0 on no matches, so
+that section used to be silently empty instead. The telemetry section's
+`(none — telemetry not adopted here)` line lost its `, or jq missing` clause,
+which is now a cause it cannot have. Every other line of the report is byte for
+byte what the bash printed.
 
 **Git Bash is off the hook path on Windows.** Hook commands are `node ...`, so
 Windows spawns node directly instead of resolving a `.sh` path through the file

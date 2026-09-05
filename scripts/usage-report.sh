@@ -1,58 +1,8 @@
 #!/usr/bin/env bash
-# EngineOS usage report — which intents/skills actually fire, from local session transcripts.
+# Compatibility shim. The section headers and line formats are the surface the
+# retro skill reads, so they stay put; the implementation is src/report/usage.ts
+# compiled into dist/engineos.cjs. It reads ~/.claude/projects transcripts and
+# this repo's .git/engineos-telemetry events natively — jq is no longer needed.
 # Run quarterly; prune rules/skills with zero hits. Usage: ./scripts/usage-report.sh [days]
-set -uo pipefail
-
-DAYS="${1:-30}"
-PROJECTS_DIR="$HOME/.claude/projects"
-[ -d "$PROJECTS_DIR" ] || { echo "No transcripts at $PROJECTS_DIR"; exit 1; }
-
-echo "EngineOS usage — last $DAYS days"
-echo "================================="
-
-FILES=$(find "$PROJECTS_DIR" -name '*.jsonl' -mtime "-$DAYS" 2>/dev/null)
-[ -z "$FILES" ] && { echo "No transcripts in window."; exit 0; }
-
-echo ""
-echo "## Router intents ([router] announce lines)"
-# shellcheck disable=SC2086
-grep -h -oE '\[router\] intent=[a-zA-Z-]+' $FILES 2>/dev/null \
-  | sed 's/\[router\] intent=//' | sort | uniq -c | sort -rn \
-  || echo "(none found — router not announcing?)"
-
-echo ""
-echo "## EngineOS skill invocations"
-for s in nestjs-patterns react-patterns llm-engineering adr eval-harness release-notes record-change strategy; do
-  # shellcheck disable=SC2086
-  n=$(grep -hl "\"skill\"[[:space:]]*:[[:space:]]*\"$s\"" $FILES 2>/dev/null | wc -l | tr -d ' ')
-  printf "%6s  %s\n" "$n" "$s"
-done
-
-echo ""
-echo "## Subagent dispatches"
-for a in security-reviewer test-writer; do
-  # shellcheck disable=SC2086
-  n=$(grep -hl "$a" $FILES 2>/dev/null | wc -l | tr -d ' ')
-  printf "%6s  %s (sessions mentioning)\n" "$n" "$a"
-done
-
-echo ""
-echo "## Hook gate hits (stop-verify blocks)"
-# shellcheck disable=SC2086
-grep -h -c 'EngineOS gate' $FILES 2>/dev/null | awk '{s+=$1} END {print s+0 " blocks"}'
-
-echo ""
-echo "## Kernel telemetry (this repo, .git/engineos-telemetry)"
-TDIR=$(git rev-parse --absolute-git-dir 2>/dev/null)/engineos-telemetry
-if [ -d "$TDIR" ] && command -v jq >/dev/null 2>&1; then
-  find "$TDIR" -name '*.jsonl' -mtime "-$DAYS" -exec cat {} + 2>/dev/null | jq -rs '
-    "prompts routed: \([.[] | select(.event=="route")] | length) (\([.[] | select(.event=="route" and (.data.intents|length)==0)] | length) unrouted, \([.[] | select(.event=="route" and .data.escalate)] | length) escalated)",
-    "intents fired:", ([.[] | select(.event=="route") | .data.intents[]] | group_by(.) | map("  \(length)  \(.[0])") | .[]),
-    "decision rules fired:", ([.[] | select(.event=="decision-rules") | .data.rules[]] | group_by(.) | map("  \(length)  \(.[0])") | .[]),
-    "verify runs: \([.[] | select(.event=="verify")] | length) (\([.[] | select(.event=="verify" and .data.failed)] | length) red)"'
-else
-  echo "(none — telemetry not adopted here, or jq missing)"
-fi
-
-echo ""
-echo "Zero-hit items are prune candidates — but check the announce habit first."
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "$ROOT/dist/engineos.cjs" usage-report "$@"

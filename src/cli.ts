@@ -13,6 +13,9 @@ import { runInit } from './init/cli';
 import { runSettingsMerge } from './install/cli';
 import { runBypass } from './bypass/cli';
 import { runGen } from './gen/cli';
+import { runEvals } from './evals/run';
+import { runBench } from './bench/run';
+import { runUsageReport } from './report/usage';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -68,5 +71,8 @@ const table: CommandTable = {
   'settings-merge': runSettingsMerge,
   bypass: runBypass,
   gen: runGen,
+  evals: runEvals,
+  bench: runBench,
+  'usage-report': runUsageReport,
 };
 process.exit(dispatch(table, argv, io));
