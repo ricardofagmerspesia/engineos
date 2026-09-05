@@ -341,7 +341,8 @@ and, since the runtime ports, the two `scripts/gen-agent-*.sh` entry points plus
 | `engineos bench` | new subcommand of the runtime entry point | added |
 | `engineos usage-report` | new subcommand of the runtime entry point | added |
 | `engineos validate` | new subcommand of the runtime entry point; all 62 checks registered in `src/checks/index.ts` — `scripts/validate-engineos.sh` is now a shim over it | added |
-| `scripts/validate-engineos.sh` | shim over `engineos validate`; `scripts/checks/*.sh` deleted, `scripts/test-validate-engineos.sh` shrunk to the harness surface (the planted-breakage cases moved to `src/checks/*.test.ts`) | deprecated, removed in 2.0 |
+| `scripts/validate-engineos.sh` | shim over `engineos validate`; `scripts/checks/*.sh` deleted, `scripts/test-validate-engineos.sh` deleted (harness cases in `src/validate/validate.e2e.test.ts`, planted-breakage cases in `src/checks/*.test.ts`) | deprecated, removed in 2.0 |
+| Bash test suites `hooks/test-*.sh`, `scripts/test-*.sh` | ported one by one to `*.e2e.test.ts` files beside the module they exercise and run by `npm test`; each port deletes the `.sh` suite and its CI step. Ported so far: `test-validate-engineos`, `test-kernel`, `test-route`, `test-prompt-advisor`, `test-bypass`, `test-verify` | removed |
 | Check C1 | reads `node >= 18 present`, not `jq present` — `jq` is no longer a validator dependency; same id, same exit semantics | changed message |
 | `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `scripts/run-evals.sh`, `scripts/bench-runtime.sh`, `scripts/usage-report.sh` | bash implementation -> shim over `engineos evals` / `engineos bench` / `engineos usage-report`; all three shims deprecated in 1.7.0, removed in 2.0 | deprecated |
@@ -408,9 +409,10 @@ prefixes, `passed N, failed N` and the 0/1/2 exit codes of
 (`src/checks/index.ts`) holding all 62 checks, one module per family under
 `src/checks/`. `scripts/validate-engineos.sh` is a shim that execs it (deprecated
 in 1.7.0, removed in 2.0); `scripts/checks/*.sh` are gone, and
-`scripts/test-validate-engineos.sh` now exercises only the harness surface — the
-planted-breakage cases live beside each family as `src/checks/<family>.test.ts`
-and assert on finding codes. Check ids and the ok/FAIL/skip verdicts are
+`scripts/test-validate-engineos.sh` is gone: its harness cases run as
+`src/validate/validate.e2e.test.ts` under `npm test`, and the planted-breakage
+cases live beside each family as `src/checks/<family>.test.ts`, asserting on
+finding codes. Check ids and the ok/FAIL/skip verdicts are
 unchanged; C1's title now reads `node >= 18 present` instead of `jq present`,
 because `jq` is no longer a dependency of anything the validator runs. What
 changes for good is the tail of a `FAIL` line: it is rendered from the check's

@@ -189,10 +189,11 @@ explicit registry in `src/checks/index.ts`, one module per family under
 the ids, `--only C17,C21c` runs a subset (a parent id also selects its
 letter-suffixed sub-checks).
 
-CI runs both, plus `scripts/test-validate-engineos.sh` — the validator's own
-surface (`--list`, `--only`, exit codes, a planted failure). The planted-breakage
-cases live beside each family as `src/checks/<family>.test.ts`, asserting on
-finding codes rather than on rendered lines.
+CI runs it, and `npm test` covers the validator's own surface (`--list`,
+`--only`, exit codes, a planted failure) in `src/validate/validate.e2e.test.ts`.
+The planted-breakage cases live beside each family as
+`src/checks/<family>.test.ts`, asserting on finding codes rather than on
+rendered lines.
 
 `.github/workflows/live-evals.yml` runs the eval set's live tier weekly (manual
 dispatch also works) — real model calls, so it is cost-gated off the PR path
