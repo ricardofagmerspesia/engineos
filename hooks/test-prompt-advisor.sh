@@ -204,21 +204,26 @@ jq -nc '{prompt:"add a paginated orders endpoint to the API and mirror the scree
 printf 'not json at all' | bash "$HOOK" >/dev/null 2>&1
 [ "$?" -eq 0 ] && ok || no "malformed payload exits non-zero"
 
-# No jq: silent exit 0. Dropping jq's dir from PATH is not enough on a machine
-# with jq installed twice (e.g. /usr/bin AND a conda env), so build an isolated
-# PATH with symlinks for only what the hook needs besides jq.
+# No jq. The adapter is node now, so the old form of this case ("no jq -> silent
+# exit 0") would assert nothing: the shim reads no payload and the runtime never
+# calls jq, so the hook cannot notice its absence. What the case still has to
+# prove is that jq is no longer a DEPENDENCY, and the way to prove it is to run
+# the hook with jq genuinely off PATH and require the guidance anyway. Dropping
+# jq's dir from PATH is not enough on a machine with jq installed twice (e.g.
+# /usr/bin AND a conda env), so build an isolated PATH with symlinks for exactly
+# what the shim needs: dirname, and node.
 TMPBIN=$(mktemp -d)
-ln -s "$(command -v cat)" "$TMPBIN/cat"
 ln -s "$(command -v dirname)" "$TMPBIN/dirname"
+ln -s "$(command -v node)" "$TMPBIN/node"
 BASH_ABS="$(command -v bash)"
 OUT=$(printf '{"prompt":"implement the notifications feature across all services"}' \
   | PATH="$TMPBIN" "$BASH_ABS" "$HOOK" 2>&1)
 RC=$?
 rm -rf "$TMPBIN"
-if [ "$RC" -eq 0 ] && [ -z "$(printf '%s' "$OUT" | tr -d '[:space:]')" ]; then
-  ok
+if [ "$RC" -eq 0 ]; then
+  want "big-task signal" "$OUT" "no-jq run still answers"
 else
-  no "no-jq run — rc=$RC out=[$OUT], want rc=0 and no output"
+  no "no-jq run — rc=$RC out=[$OUT], want rc=0"
 fi
 
 # Telemetry switches: off by env, and off in a repo that never adopted EngineOS.
