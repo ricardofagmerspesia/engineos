@@ -122,7 +122,7 @@ test('spec authoring names the most-capable tier', () => {
   assert.match(guidance('Write the PRD for the billing rework'), /model: fable/);
 });
 
-// The scale rows of hooks/test-prompt-advisor.sh, prompt for prompt. Which of
+// The scale rows of src/hooks/prompt-advisor.e2e.test.ts, prompt for prompt. Which of
 // the three signals fires is the kernel's answer; which STRING each one prints
 // is this adapter's, so the pairing is asserted here and not in scale.test.ts.
 const SCALE_CASES: readonly (readonly [string, string])[] = [

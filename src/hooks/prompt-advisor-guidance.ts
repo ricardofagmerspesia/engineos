@@ -2,7 +2,7 @@
 // program of hooks/prompt-advisor.sh (:64-115), string for string.
 //
 // It lives beside ./prompt-advisor rather than inside it because the strings ARE
-// the contract — hooks/test-prompt-advisor.sh asserts substrings of them, and the
+// the contract — src/hooks/prompt-advisor.e2e.test.ts asserts substrings of them, and the
 // Wave 6 e2e keeps doing so — while the hook itself is a kernel call, three
 // telemetry writes and one decision. Mixing the two would hide both.
 import type { DecisionMatch, DecisionsSection, EscalateRouteSection, HitlSection, TaskContractSection } from '../kernel';
