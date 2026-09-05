@@ -52,7 +52,7 @@ check "return tells banner format" \
 # hooks in order, because the duration only exists as the difference between
 # them and a return with no matching dispatch must write nothing.
 # Boolean assertions, alongside the substring-matching check() above. Named as
-# hooks/test-verify.sh names them, so the two suites read the same way.
+# src/hooks/stop-verify.e2e.test.ts names them, so the two suites read the same way.
 ok() { pass=$((pass+1)); }
 no() { fail=$((fail+1)); echo "FAIL: $1"; }
 
