@@ -12,8 +12,8 @@ import { RECORDED_EXTENSIONS, run } from './mark-unrecorded';
 
 const checkout = resolveRoot({}, __dirname);
 
-// The operator's machine-wide bypass must never decide a case (hooks/test-governance.sh
-// exports the same isolation before it runs).
+// The operator's machine-wide bypass must never decide a case (src/hooks/governance.e2e.test.ts
+// pins the same isolation on every run).
 const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass' };
 
 function hasGit(): boolean {
