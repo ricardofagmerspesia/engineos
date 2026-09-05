@@ -1,20 +1,22 @@
 # shellcheck shell=bash
-# Checks on the constitution and the rule corpus: the tooling this validator and
-# the installer need, the always-on imports, cross-reference resolution, and the
-# two closure invariants CLAUDE.md states in prose.
+# Checks on the constitution and the rule corpus: the tooling this validator
+# needs, the always-on imports, cross-reference resolution, and the two closure
+# invariants CLAUDE.md states in prose.
 
 # ---------------------------------------------------------------- C1: tooling
-# The registered hooks no longer read JSON with jq — every one of them is a shim
-# over dist/engineos.cjs and parses tool input natively, so the old "four hooks
-# go silent" reason retired with the port. jq is still load-bearing one layer
-# out: every registry Check below reads policy/routing JSON through it (lib.sh
-# have_jq), install.sh merges hooks into settings.json with it, and
-# scripts/gen-agent-registry.sh refuses to run without it.
+# Neither the hooks nor the installers read JSON with jq any more. Every hook is
+# a shim over dist/engineos.cjs and parses tool input natively, and install.sh /
+# install.ps1 hand the settings.json merge to `engineos settings-merge` — so the
+# old "four hooks go silent" and "the installer cannot register hooks" reasons
+# both retired with the port. What still needs jq is one layer out and entirely
+# development-side: every registry Check below reads policy/routing JSON through
+# it (lib.sh have_jq), and scripts/gen-agent-registry.sh refuses to run without
+# it. Adopting EngineOS needs node >= 18; only working ON EngineOS needs jq.
 check_C1() {
   if command -v jq >/dev/null 2>&1; then
-    ok "jq present (this validator's registry Checks, install.sh's hook registration and scripts/gen-agent-registry.sh need it)"
+    ok "jq present (this validator's registry Checks and scripts/gen-agent-registry.sh need it; the installers and hooks no longer do)"
   else
-    bad "jq missing — every registry Check below skips, install.sh cannot register the hooks, and scripts/gen-agent-registry.sh will not run"
+    bad "jq missing — every registry Check below skips and scripts/gen-agent-registry.sh will not run"
   fi
 }
 

@@ -209,9 +209,10 @@ check_C18f() {
   have_jq || return 0
   have_router_inputs || return 0
   # C18f: the hot path is one registered adapter and one deep kernel call.
-  # Two files, because the adapter is now a shim: hooks.json executes
-  # hooks/prompt-advisor.sh, so the registration half reads it and its mode bit,
-  # while the resolve-task call lives in the TypeScript module behind it.
+  # Two files, because the adapter is now a shim: hooks.json registers the node
+  # form, but a consumer who copied the old entry still executes
+  # hooks/prompt-advisor.sh by path, so the registration half reads the shim and
+  # its mode bit, while the resolve-task call lives in the TypeScript module.
   if [ -x "$PROMPT_ADVISOR" ] \
      && jq -e '[.hooks.UserPromptSubmit[].hooks[]?.command] as $h | ($h|length)==1 and ($h[0]|test("prompt-advisor"))' "$HOOKS_JSON" >/dev/null 2>&1 \
      && grep -q 'resolve-task' "$PROMPT_ADVISOR_TS" 2>/dev/null; then

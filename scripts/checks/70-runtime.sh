@@ -1295,8 +1295,9 @@ check_C29() {
 }
 
 # ------------- C30: hook entry points are executable, libraries are not
-# hooks/hooks.json registers each hook BY PATH, so the harness executes the file
-# itself. An entry point that loses +x therefore does not degrade — it dies with
+# hooks/hooks.json registers the node form now, but a settings.json that copied
+# the old entries still executes each hooks/*.sh shim BY PATH, and so does every
+# bash suite. An entry point that loses +x therefore does not degrade — it dies with
 # "permission denied" on every fire and the guardrail is gone, silently and
 # permanently. The mode bit is load-bearing, and nothing checked it.
 #
