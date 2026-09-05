@@ -87,9 +87,6 @@ jobs:
       - name: Unified prompt advisor tests
         run: bash hooks/test-prompt-advisor.sh
 
-      - name: Hook-envelope library tests
-        run: bash hooks/test-lib-common.sh
-
       - name: Installer hook-derivation tests
         run: bash hooks/test-install-hooks.sh
 

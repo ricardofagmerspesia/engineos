@@ -971,9 +971,12 @@ case_ C27d "the slug guard re-claiming that it classifies content is caught" \
 # only free-text one, and that each enumerated row resolves against the registry
 # that owns it.
 
-case_ C27f "a span writer passing an unregistered capability_id is caught" \
-      "exec-journal capability_id problems" \
-      "sed -i.bak 's|--capability-id validate|--capability-id verify|' hooks/stop-verify.sh"
+# C27f is gone with the hook-library port (design deviation 6). It grepped the
+# declared span writers for a --capability-id that resolved against nothing --
+# which is what you do when the writers are shell scripts. The ids are now the
+# literal union src/registry/capabilities.ts exports, pinned to the registry by
+# src/registry/capabilities.test.ts, so a wrong one fails tsc before it can reach
+# a writer and there is no runtime state left for a case here to mutate into.
 
 # ---- C28 / C29: the pairs Tasks 6 and 7 land ----
 # Those artifacts live on other branches until the stack merges, and their

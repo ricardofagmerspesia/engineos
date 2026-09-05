@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KernelError } from '../lib/json';
-import { loadModels } from './models';
+import { loadModels, MODEL_TIER_IDS } from './models';
 import { resolveRoot } from './paths';
 
 const root = resolveRoot(process.env, __dirname);
@@ -22,6 +22,14 @@ test('loads the shipped tiers, their escalation and the work types', () => {
   if (adr === undefined) throw new Error('the adr work type is missing from the registry');
   assert.equal(adr.tier, 'most-capable');
   assert.notEqual(adr.title, '');
+});
+
+// The pin. ModelTierId is derived from MODEL_TIER_IDS, so a tier added to or
+// renamed in registries/models.json fails here rather than reaching a span,
+// where an unknown tier is rejected by the journal's enum guard and the line is
+// silently lost.
+test('the ModelTierId literals are exactly the registry tier ids, in registry order', () => {
+  assert.deepEqual([...MODEL_TIER_IDS], loadModels(root).tiers.map((tier) => tier.id));
 });
 
 test('every shipped work type resolves to a defined tier', () => {

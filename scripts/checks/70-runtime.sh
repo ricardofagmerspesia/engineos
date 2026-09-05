@@ -1157,46 +1157,6 @@ check_C27d() {
                    || bad "exec-journal prose-mirror problems:$p_bad"
 }
 
-check_C27f() {
-  have_jq || return 0
-  have_exec_journal_inputs || return 0
-  # C27f: every capability_id a hook writes into a span resolves against
-  # registries/capabilities.json. Two did not — the verification span wrote
-  # `verify`, which shadowed the real `validate`, and the agent span wrote
-  # `dispatch`, which exists nowhere — so a consumer joining spans to
-  # capabilities silently dropped the two highest-volume span kinds. C13 polices
-  # the registry's own entries; nothing looked at what the writers pass.
-  q_bad=""
-  ids=$(jq -r '[.capabilities[]?.id | select(type=="string")] | join(" ")' "$C" 2>/dev/null)
-  if [ -z "$ids" ]; then
-    q_bad="$q_bad cannot-read-capability-ids-from-$C"
-  else
-    seen=0
-    while IFS= read -r wb; do
-      [ -n "$wb" ] || continue
-      [ -f "$wb" ] || continue   # missing file is C27a's finding
-      while IFS= read -r cid; do
-        [ -n "$cid" ] || continue
-        seen=$((seen + 1))
-        case "$cid" in
-          # A computed value defeats this check, so it is a finding rather than
-          # a skip: whoever needs one updates this Check in the same change.
-          *'$'*|*'"'*) q_bad="$q_bad [$wb:capability-id-is-not-a-literal:$cid]"; continue ;;
-        esac
-        case " $ids " in
-          *" $cid "*) ;;
-          *) q_bad="$q_bad [$wb:capability-id-resolves-against-nothing:$cid]" ;;
-        esac
-      done < <(sed -n 's/.*--capability-id  *\([^ ]*\).*/\1/p' "$wb")
-    done < <(jq -r '.telemetry.exec_journal.written_by[]? | select(type=="string")' "$PJ")
-    # A writer set that yielded no id at all would pass the loop above without
-    # having checked anything.
-    [ "$seen" -gt 0 ] || q_bad="$q_bad no-capability-id-found-in-any-declared-writer"
-  fi
-  [ -z "$q_bad" ] && ok "every capability_id the declared span writers pass is a literal that resolves against $C" \
-                   || bad "exec-journal capability_id problems:$q_bad"
-}
-
 # ------------- C28: retrieval-metrics prose/data pair
 # The eval-harness reference defines how retrieval quality is measured; the
 # `## RAG` section of rules/llm-apps.md is the rule that says to measure it.

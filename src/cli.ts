@@ -4,6 +4,7 @@ import { accessSync, constants, existsSync, readdirSync } from 'node:fs';
 import { processIo, writeJson } from './io';
 import { currentMajor, findNewerNode, guardOutcome, MIN_NODE_MAJOR, type GuardOutcome } from './node-guard';
 import { dispatch, type CommandTable } from './dispatch';
+import { message, render } from './hooks/output';
 import { runKernel } from './kernel/cli';
 import { runJournal } from './journal/cli';
 import { runTelemetry } from './journal/telemetry-cli';
@@ -38,8 +39,9 @@ function applyOutcome(outcome: GuardOutcome): void {
       process.exit(0);
       break;
     case 'skip':
-      writeJson(io, { systemMessage: outcome.message });
-      process.exit(0);
+      // hooks/output.ts imports nothing, so the guard can render through the same
+      // writer every hook uses even on the node it is about to refuse.
+      process.exit(render(message(outcome.message), io));
       break;
     case 'refuse':
       writeJson(io, { error: outcome.message });
