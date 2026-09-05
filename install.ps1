@@ -322,8 +322,8 @@ Write-Warn "NOTE (Windows): hooks need node >= 18 on the PATH Claude Code uses."
 Write-Warn "  - Node.js: https://nodejs.org/en/download"
 Write-Warn "  - Git Bash is no longer on the hook path. It is still required for"
 Write-Warn "    scripts/kernel.sh until 2.0: https://git-scm.com/download/win"
-Write-Warn "  - jq is no longer needed by this installer or by the hooks; only"
-Write-Warn "    scripts/validate-engineos.sh and scripts/gen-agent-registry.sh use it."
+Write-Warn "  - jq is no longer needed by this installer, the hooks or the generators;"
+Write-Warn "    only scripts/validate-engineos.sh uses it."
 
 # ---------- 7. MCP reminder ----------
 Write-Host ""

@@ -51,8 +51,9 @@ Use `install.ps1` (mode A). Two Windows-specific facts:
   the PATH Claude Code uses, no hook fires.
 - **`jq` is not an install or runtime dependency any more.** The installer merges
   `settings.json` through `engineos settings-merge`, and the hooks parse tool input
-  natively. `jq` is only needed to work *on* EngineOS — `scripts/validate-engineos.sh`
-  and `scripts/gen-agent-registry.sh`.
+  natively; the two agent generators are shims over `engineos gen` and need node,
+  not `jq`. `jq` is only needed to work *on* EngineOS — the registry checks in
+  `scripts/validate-engineos.sh`.
 
 Mode B (plugin) registers exactly the same node commands from `hooks/hooks.json`, so
 both modes behave the same on Windows now.

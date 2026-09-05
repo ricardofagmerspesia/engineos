@@ -9,14 +9,16 @@
 # install.ps1 hand the settings.json merge to `engineos settings-merge` — so the
 # old "four hooks go silent" and "the installer cannot register hooks" reasons
 # both retired with the port. What still needs jq is one layer out and entirely
-# development-side: every registry Check below reads policy/routing JSON through
-# it (lib.sh have_jq), and scripts/gen-agent-registry.sh refuses to run without
-# it. Adopting EngineOS needs node >= 18; only working ON EngineOS needs jq.
+# development-side, and it is now one thing rather than two: every registry
+# Check below reads policy/routing JSON through it (lib.sh have_jq). The two
+# agent generators dropped their jq dependency with the shim swap — they run on
+# node like every other entry point. Adopting EngineOS needs node >= 18; only
+# working ON EngineOS needs jq.
 check_C1() {
   if command -v jq >/dev/null 2>&1; then
-    ok "jq present (this validator's registry Checks and scripts/gen-agent-registry.sh need it; the installers and hooks no longer do)"
+    ok "jq present (this validator's registry Checks need it; the installers, hooks and generators no longer do)"
   else
-    bad "jq missing — every registry Check below skips and scripts/gen-agent-registry.sh will not run"
+    bad "jq missing — every registry Check below skips"
   fi
 }
 

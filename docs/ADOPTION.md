@@ -16,7 +16,7 @@ project. Follow in order. Each step says what it does and how to verify it.
   `hooks/hooks.json` registers `node "<repo>/dist/engineos.cjs" hook <name>`, and
   `install.sh` merges `settings.json` by calling `engineos settings-merge`.
 - `jq` is **not** needed to adopt EngineOS. Only working *on* this repo needs it —
-  `scripts/validate-engineos.sh` and `scripts/gen-agent-registry.sh`:
+  the registry checks in `scripts/validate-engineos.sh`:
   `brew install jq` (macOS) / `apt install jq`.
 - macOS only: **`coreutils`** for the post-edit timeout safety net: `brew install coreutils`.
 - The plugins EngineOS routes to — install both:

@@ -325,8 +325,9 @@ a detail the shim removed.
 ### 1.7.0: hooks.json registers node directly; installers drop jq and bash.exe
 
 `1.7.0` is a **MINOR** release. Nothing in the public surface is removed and
-nothing is renamed; two deprecation windows open and one runtime requirement
-becomes explicit.
+nothing is renamed; deprecation windows open on the bash shims — the hook shims
+and, since the generator port, the two `scripts/gen-agent-*.sh` entry points —
+and one runtime requirement becomes explicit.
 
 | Surface | 1.7.0 change | Kind |
 |---|---|---|
@@ -334,6 +335,8 @@ becomes explicit.
 | `hooks/<name>.sh` shims | deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `engineos settings-merge` | new subcommand of the runtime entry point | added |
 | `engineos bypass` | new subcommand of the runtime entry point | added |
+| `engineos gen` | new subcommand of the runtime entry point | added |
+| `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `install.sh` / `install.ps1` dependency | `jq` -> `node >= 18` | requirement change |
 | Windows hook path | `bash.exe` no longer resolved or registered | requirement removed |
 
@@ -355,9 +358,22 @@ print the by-hand fallback pointing at `hooks/hooks.json`. This replaces the old
 **`jq` is no longer needed by the installers or the hooks.** The settings.json
 merge — scrub, append, `permissions.allow` set union — moved into
 `engineos settings-merge`, and the hooks have parsed tool input natively since
-the 1.6.x port. `jq` remains a *development* dependency of this repo:
-`scripts/validate-engineos.sh` (check C1 says so) and
-`scripts/gen-agent-registry.sh` still require it. Adopting EngineOS does not.
+the 1.6.x port. The two agent generators dropped it with the shim swap below.
+`jq` remains a *development* dependency of this repo: the registry checks in
+`scripts/validate-engineos.sh` (check C1 says so) still require it. Adopting
+EngineOS does not.
+
+**The two agent generators are shims now.** `scripts/gen-agent-commands.sh` and
+`scripts/gen-agent-registry.sh` `exec` `engineos gen agent-commands` and
+`engineos gen agent-registry`; the implementations live in `src/gen/` and ship in
+`dist/engineos.cjs`. What a caller sees is unchanged and is what the shims exist
+to preserve — same stdout and stderr messages, byte-identical `commands/agents/`
+and `registries/agents.json`, same exit codes — so CI's two drift guards and
+`scripts/test-gen-agent-registry.sh` keep running against the `.sh` paths. The
+generators now need `node >= 18` where they used to need `jq`, which is the same
+trade the hooks made in 1.6.x. Like the `hooks/<name>.sh` shims, both are
+deprecated in 1.7.0 and removed in 2.0; call `engineos gen <target>` directly to
+get ahead of that.
 
 **Git Bash is off the hook path on Windows.** Hook commands are `node ...`, so
 Windows spawns node directly instead of resolving a `.sh` path through the file
