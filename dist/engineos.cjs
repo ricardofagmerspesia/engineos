@@ -2,8 +2,8 @@
 "use strict";
 
 // src/cli.ts
-var import_node_child_process = require("node:child_process");
-var import_node_fs8 = require("node:fs");
+var import_node_child_process4 = require("node:child_process");
+var import_node_fs21 = require("node:fs");
 
 // src/io.ts
 var import_node_fs = require("node:fs");
@@ -19,11 +19,11 @@ function processIo() {
         return "";
       }
     },
-    out(text) {
-      process.stdout.write(text);
+    out(text2) {
+      process.stdout.write(text2);
     },
-    err(text) {
-      process.stderr.write(text);
+    err(text2) {
+      process.stderr.write(text2);
     },
     env: process.env,
     cwd: () => process.cwd()
@@ -113,8 +113,18 @@ function dispatch(table2, argv2, io2) {
 }
 
 // src/hooks/output.ts
-function message(text) {
-  return { kind: "message", text };
+var silent = { kind: "silent" };
+function context(event2, text2) {
+  return { kind: "context", event: event2, text: text2 };
+}
+function block(reason) {
+  return { kind: "block", reason };
+}
+function message(text2) {
+  return { kind: "message", text: text2 };
+}
+function fail(stderr) {
+  return { kind: "fail", stderr };
 }
 function render(decision, io2) {
   switch (decision.kind) {
@@ -145,14 +155,14 @@ var KernelError = class extends Error {
   kind = "kernel";
 };
 function readJsonFile(path) {
-  let text;
+  let text2;
   try {
-    text = (0, import_node_fs3.readFileSync)(path, "utf8");
+    text2 = (0, import_node_fs3.readFileSync)(path, "utf8");
   } catch {
     throw new KernelError(`cannot read ${path}`);
   }
   try {
-    return JSON.parse(text);
+    return JSON.parse(text2);
   } catch {
     throw new KernelError(`invalid JSON in ${path}`);
   }
@@ -196,11 +206,11 @@ function strictReader(file) {
   function malformed(what) {
     throw new KernelError(`registries/${file}: ${what}`);
   }
-  function requireRecord3(value, path) {
+  function requireRecord4(value, path) {
     if (!isRecord(value)) malformed(`${path || "the document"} must be an object`);
     return value;
   }
-  function requireString4(value, path) {
+  function requireString5(value, path) {
     if (typeof value !== "string") malformed(`${path} must be a string`);
     return value;
   }
@@ -214,15 +224,15 @@ function strictReader(file) {
   }
   function requireStrings3(value, path) {
     if (!Array.isArray(value)) malformed(`${path} must be an array of strings`);
-    return value.map((item, i) => requireString4(item, `${path}[${i}]`));
+    return value.map((item, i) => requireString5(item, `${path}[${i}]`));
   }
-  function requireRows4(value, path) {
+  function requireRows5(value, path) {
     if (!Array.isArray(value)) malformed(`${path} must be an array of objects`);
-    return value.map((item, i) => requireRecord3(item, `${path}[${i}]`));
+    return value.map((item, i) => requireRecord4(item, `${path}[${i}]`));
   }
   function optionalString3(value, path) {
     if (value === void 0 || value === null) return null;
-    return requireString4(value, path);
+    return requireString5(value, path);
   }
   function optionalStrings2(value, path) {
     if (value === void 0 || value === null) return [];
@@ -230,12 +240,12 @@ function strictReader(file) {
   }
   return {
     malformed,
-    requireRecord: requireRecord3,
-    requireString: requireString4,
+    requireRecord: requireRecord4,
+    requireString: requireString5,
     requireNumber: requireNumber3,
     requireBoolean: requireBoolean2,
     requireStrings: requireStrings3,
-    requireRows: requireRows4,
+    requireRows: requireRows5,
     optionalString: optionalString3,
     optionalStrings: optionalStrings2
   };
@@ -302,6 +312,7 @@ function loadIntents(root) {
 }
 
 // src/registry/models.ts
+var MODEL_TIER_IDS = ["most-capable", "design", "build", "cheap"];
 function loadModels(root) {
   const raw = loadRegistry(root, "models.json");
   const r = isRecord(raw) ? raw : {};
@@ -322,24 +333,24 @@ function loadModels(root) {
     }))
   };
 }
-function fail(field, expected) {
+function fail2(field, expected) {
   throw new KernelError(`registries/models.json: ${field} must be ${expected}`);
 }
 function requireString2(value, field) {
-  if (typeof value !== "string" || value === "") fail(field, "a non-empty string");
+  if (typeof value !== "string" || value === "") fail2(field, "a non-empty string");
   return value;
 }
 function optionalString2(value, field) {
   if (value === void 0 || value === null) return null;
-  if (typeof value !== "string" || value === "") fail(field, "a non-empty string or null");
+  if (typeof value !== "string" || value === "") fail2(field, "a non-empty string or null");
   return value;
 }
 function requireRows2(value, field) {
-  const rows = Array.isArray(value) ? value : fail(field, "an array");
-  return rows.map((row, index) => isRecord(row) ? row : fail(`${field}[${index}]`, "an object"));
+  const rows = Array.isArray(value) ? value : fail2(field, "an array");
+  return rows.map((row, index) => isRecord(row) ? row : fail2(`${field}[${index}]`, "an object"));
 }
 function requireStringArray(value, field) {
-  const items = Array.isArray(value) ? value : fail(field, "an array");
+  const items = Array.isArray(value) ? value : fail2(field, "an array");
   return items.map((item, index) => requireString2(item, `${field}[${index}]`));
 }
 
@@ -916,19 +927,19 @@ function repairSection(facts, regs) {
     if (answer === void 0) throw new KernelError(`unknown situation: ${situation}`);
     return { check, action: answer.action, reason: answer.reason };
   }
-  const attempt = facts.attempt;
-  if (attempt === void 0 || !Number.isInteger(attempt) || attempt < 0) {
+  const attempt2 = facts.attempt;
+  if (attempt2 === void 0 || !Number.isInteger(attempt2) || attempt2 < 0) {
     throw new KernelError("repair (red ladder) requires a numeric --attempt");
   }
   const bound = repair.max_fix_attempts_per_check;
-  if (attempt < bound) {
+  if (attempt2 < bound) {
     return {
       check,
       action: "fix-same-tier",
       reason: "first red \u2014 fix and re-run the check at the same tier"
     };
   }
-  if (attempt < bound + repair.escalations) {
+  if (attempt2 < bound + repair.escalations) {
     return {
       check,
       action: "escalate-one-tier",
@@ -1090,8 +1101,8 @@ function routeByPath(file, regs, root) {
   }
   return { domain: null, excluded: false };
 }
-function routeByIntent(text, regs) {
-  const lower = asciiDowncase2(text);
+function routeByIntent(text2, regs) {
+  const lower = asciiDowncase2(text2);
   const matches = [];
   for (const intent of regs.intents.intents) {
     if (!intent.signals.some((signal) => boundedContains(lower, asciiDowncase2(signal)))) continue;
@@ -1111,10 +1122,10 @@ function routeByIntent(text, regs) {
   return { matches, ambiguous: matches.length === 0 };
 }
 var RISK_ORDER = ["low", "medium", "high"];
-function routeEscalate(text, regs) {
+function routeEscalate(text2, regs) {
   const router = regs.policy.router;
-  const raw = routeByIntent(text, regs);
-  const scale = scaleSection({ prompt: text }, regs);
+  const raw = routeByIntent(text2, regs);
+  const scale = scaleSection({ prompt: text2 }, regs);
   const rawIds = new Set(raw.matches.map((m) => m.id));
   const matched = regs.intents.intents.filter((i) => rawIds.has(i.id));
   const hasNonSuppressible = matched.some((i) => !i.suppressible);
@@ -1181,8 +1192,8 @@ function highest(values, order) {
   }
   return best;
 }
-function asciiDowncase2(text) {
-  return text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+function asciiDowncase2(text2) {
+  return text2.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 function boundedContains(haystack, needle) {
   if (needle === "") return false;
@@ -1477,8 +1488,8 @@ function routePathSection(ctx, file) {
   if (section === void 0) throw new KernelError("route-path: the kernel answered no route section");
   return section;
 }
-function routeIntentSection(ctx, text) {
-  const section = resolve({ prompt: text }, ctx).route;
+function routeIntentSection(ctx, text2) {
+  const section = resolve({ prompt: text2 }, ctx).route;
   if (section === void 0) throw new KernelError("route-intent: the kernel answered no route section");
   return section;
 }
@@ -1520,8 +1531,8 @@ function repairProjection(ctx, args) {
   const check = flags.get("--check");
   if (check === void 0 || check === "") throw new KernelError("repair requires --check");
   const repair = { check };
-  const attempt = flags.get("--attempt");
-  if (attempt !== void 0) repair.attempt = parseCount(attempt);
+  const attempt2 = flags.get("--attempt");
+  if (attempt2 !== void 0) repair.attempt = parseCount(attempt2);
   const situation = flags.get("--situation");
   if (situation !== void 0 && situation !== "") repair.situation = situation;
   const section = resolve({ repair }, ctx).repair;
@@ -1772,19 +1783,20 @@ var import_node_fs6 = require("node:fs");
 var import_node_path4 = require("node:path");
 
 // src/registry/policy-exec-journal.ts
+var SPAN_STATUSES = ["OK", "BLOCKED", "FAILED", "DEGRADED"];
 var MAX_VALUE_LENGTH_FALLBACK = 256;
 function loadExecJournalPolicy(root) {
   const r = strictReader("policy.json");
   const raw = loadRegistry(root, "policy.json");
   const telemetry = r.requireRecord(isRecord(raw) ? raw["telemetry"] : void 0, ".telemetry");
-  const block = r.requireRecord(telemetry["exec_journal"], ".telemetry.exec_journal");
+  const block2 = r.requireRecord(telemetry["exec_journal"], ".telemetry.exec_journal");
   return {
-    home: r.requireString(block["home"], ".telemetry.exec_journal.home"),
+    home: r.requireString(block2["home"], ".telemetry.exec_journal.home"),
     // bash read this through `// empty` and then a digits-only case statement,
     // so an absent, non-numeric or zero value reached the same fallback.
-    max_value_length: positiveInteger(block["max_value_length"]),
-    span_kinds: r.requireStrings(block["span_kinds"], ".telemetry.exec_journal.span_kinds"),
-    statuses: r.requireStrings(block["statuses"], ".telemetry.exec_journal.statuses")
+    max_value_length: positiveInteger(block2["max_value_length"]),
+    span_kinds: r.requireStrings(block2["span_kinds"], ".telemetry.exec_journal.span_kinds"),
+    statuses: r.requireStrings(block2["statuses"], ".telemetry.exec_journal.statuses")
   };
 }
 function positiveInteger(value) {
@@ -1879,9 +1891,9 @@ function appendLine(root, file, argv2, now, regs) {
   requireModelsRegistry(root);
   const { fields } = parseAppendArgs(argv2);
   const maxLength = regs.execJournal.max_value_length;
-  for (const { spec, text } of setInArgvOrder(fields)) {
-    if (text.length > maxLength) {
-      throw new JournalError(`${spec.flag} must be at most ${maxLength} characters, got ${text.length}`);
+  for (const { spec, text: text2 } of setInArgvOrder(fields)) {
+    if (text2.length > maxLength) {
+      throw new JournalError(`${spec.flag} must be at most ${maxLength} characters, got ${text2.length}`);
     }
   }
   if (unset(fields[DEFAULTED_FIELD])) fields[DEFAULTED_FIELD] = now();
@@ -1898,13 +1910,13 @@ function appendLine(root, file, argv2, now, regs) {
 function validateFile(root, file, regs) {
   if (!(0, import_node_fs6.existsSync)(file)) throw new JournalError(`no such file: ${file}`);
   requireModelsRegistry(root);
-  let text;
+  let text2;
   try {
-    text = (0, import_node_fs6.readFileSync)(file, "utf8");
+    text2 = (0, import_node_fs6.readFileSync)(file, "utf8");
   } catch {
     throw new JournalError(`no such file: ${file}`);
   }
-  const lines = text.split("\n");
+  const lines = text2.split("\n");
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   const bad = [];
   lines.forEach((line, index) => {
@@ -1982,8 +1994,8 @@ function emit(fields) {
       if (spec.presence === "always") row[spec.name] = null;
       continue;
     }
-    const text = String(value);
-    row[spec.name] = spec.json === "number" ? Number.parseInt(text, 10) : spec.json === "boolean" ? text === "true" : text;
+    const text2 = String(value);
+    row[spec.name] = spec.json === "number" ? Number.parseInt(text2, 10) : spec.json === "boolean" ? text2 === "true" : text2;
   }
   return row;
 }
@@ -2125,11 +2137,11 @@ function requirePolicyPresent(root) {
 function appendEvent(root, file, options, now = utcNow) {
   requirePolicyPresent(root);
   const policy = loadTelemetryPolicy(root);
-  const event = policy.events.find((row) => row.id === options.event);
-  if (event === void 0) throw new TelemetryError(`unknown event: ${options.event}`);
+  const event2 = policy.events.find((row) => row.id === options.event);
+  if (event2 === void 0) throw new TelemetryError(`unknown event: ${options.event}`);
   const data = parseData(options.data);
   const pattern = compilePattern(policy.value_pattern);
-  if (!dataIsValid(data, event.keys, pattern)) {
+  if (!dataIsValid(data, event2.keys, pattern)) {
     throw new TelemetryError(`data failed schema/value_pattern check for event ${options.event}: ${options.data}`);
   }
   const ts = options.ts === void 0 || options.ts === "" ? now() : options.ts;
@@ -2177,11 +2189,11 @@ function parseAppendFlags(args) {
     index += 2;
   }
   const session = values.get("--session") ?? "";
-  const event = values.get("--event") ?? "";
+  const event2 = values.get("--event") ?? "";
   const data = values.get("--data") ?? "";
-  if (session === "" || event === "" || data === "") throw new TelemetryUsageError();
+  if (session === "" || event2 === "" || data === "") throw new TelemetryUsageError();
   const ts = values.get("--ts") ?? "";
-  return ts === "" ? { session, event, data } : { session, event, data, ts };
+  return ts === "" ? { session, event: event2, data } : { session, event: event2, data, ts };
 }
 function parseData(raw) {
   let parsed;
@@ -2224,11 +2236,11 @@ function lineIsValid(line, policy, pattern) {
   if (!isRecord(parsed)) return false;
   const ts = parsed["ts"];
   const session = parsed["session_id"];
-  const event = parsed["event"];
+  const event2 = parsed["event"];
   if (typeof ts !== "string" || ts.length === 0) return false;
   if (typeof session !== "string" || session.length === 0) return false;
-  if (typeof event !== "string") return false;
-  const known = policy.events.find((row) => row.id === event);
+  if (typeof event2 !== "string") return false;
+  const known = policy.events.find((row) => row.id === event2);
   if (known === void 0) return false;
   const raw = parsed["data"];
   const data = raw === void 0 || raw === null || raw === false ? {} : raw;
@@ -2242,14 +2254,14 @@ function isFile(path) {
   }
 }
 function readLines(file) {
-  let text;
+  let text2;
   try {
-    text = (0, import_node_fs7.readFileSync)(file, "utf8");
+    text2 = (0, import_node_fs7.readFileSync)(file, "utf8");
   } catch {
     throw new TelemetryError(`no such file: ${file}`);
   }
-  if (text === "") return [];
-  const parts = text.split("\n");
+  if (text2 === "") return [];
+  const parts = text2.split("\n");
   if (parts[parts.length - 1] === "") parts.pop();
   return parts;
 }
@@ -2323,12 +2335,1674 @@ function runValidate(args, io2) {
   return 0;
 }
 
+// src/hooks/envelope.ts
+var import_node_child_process = require("node:child_process");
+var NO_SESSION = "nosession";
+function text(value) {
+  return typeof value === "string" ? value : "";
+}
+function nested(payload, outer, inner) {
+  const child = payload[outer];
+  return isRecord(child) ? child[inner] : void 0;
+}
+function readEnvelope(io2) {
+  let parsed;
+  try {
+    parsed = JSON.parse(io2.readStdin());
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  const sessionId = text(parsed["session_id"]);
+  return {
+    cwd: text(parsed["cwd"]),
+    sessionId: sessionId === "" ? NO_SESSION : sessionId,
+    prompt: text(parsed["prompt"]),
+    file: text(nested(parsed, "tool_input", "file_path")),
+    tool: text(parsed["tool_name"]),
+    transcriptPath: text(parsed["transcript_path"]),
+    stopHookActive: parsed["stop_hook_active"] === true,
+    raw: parsed
+  };
+}
+function hookContext(env, io2, spawn = import_node_child_process.spawnSync) {
+  return {
+    io: io2,
+    root: resolveRoot(io2.env),
+    now: Date.now,
+    spawn
+  };
+}
+
+// src/hooks/ensure-project-layout.ts
+var import_node_fs11 = require("node:fs");
+var import_node_path8 = require("node:path");
+
+// src/hooks/bypass.ts
+var import_node_fs9 = require("node:fs");
+var import_node_os = require("node:os");
+var import_node_path6 = require("node:path");
+
+// src/lib/git.ts
+var import_node_fs8 = require("node:fs");
+function gitOutput(cwd, args, spawn) {
+  const result = spawn("git", ["-C", cwd, ...args], { encoding: "utf8" });
+  if (result.error !== void 0 || result.status !== 0) return null;
+  const out = typeof result.stdout === "string" ? result.stdout.trim() : "";
+  return out === "" ? null : out;
+}
+function gitDir(cwd, spawn) {
+  return gitOutput(cwd, ["rev-parse", "--absolute-git-dir"], spawn);
+}
+function repoRoot(cwd, spawn) {
+  return gitOutput(cwd, ["rev-parse", "--show-toplevel"], spawn);
+}
+function parentOf(dir) {
+  const cut = dir.lastIndexOf("/");
+  if (cut === -1) return ".";
+  const head = dir.slice(0, cut);
+  return head === "" ? "/" : head;
+}
+function walkUp(start, visit) {
+  let dir = start;
+  let previous = "";
+  while (dir !== "/" && dir !== previous && dir !== "") {
+    const hit = visit(dir);
+    if (hit !== null) return hit;
+    previous = dir;
+    dir = parentOf(dir);
+  }
+  return null;
+}
+function findUpFile(start, name) {
+  return walkUp(start, (dir) => {
+    const candidate = `${dir}/${name}`;
+    return (0, import_node_fs8.existsSync)(candidate) ? candidate : null;
+  });
+}
+
+// src/hooks/bypass.ts
+function flagPath(env) {
+  const configured = env["ENGINEOS_BYPASS_FLAG"];
+  if (configured !== void 0 && configured !== "") return configured;
+  const home = env["HOME"];
+  return (0, import_node_path6.join)(home !== void 0 && home !== "" ? home : (0, import_node_os.homedir)(), ".claude", "engineos.bypass");
+}
+function bypassMarker(cwd, spawn) {
+  const dir = gitDir(cwd === "" ? process.cwd() : cwd, spawn);
+  return dir === null ? null : `${dir}/ENGINEOS_BYPASS`;
+}
+function bypassActive(cwd, env, spawn) {
+  if (env["ENGINEOS_BYPASS"] === "1") return true;
+  if ((0, import_node_fs9.existsSync)(flagPath(env))) return true;
+  const marker = bypassMarker(cwd, spawn);
+  return marker !== null && (0, import_node_fs9.existsSync)(marker);
+}
+
+// src/hooks/scaffold.ts
+var import_node_fs10 = require("node:fs");
+var import_node_path7 = require("node:path");
+var { requireRecord: requireRecord3, requireString: requireString4, requireRows: requireRows4 } = strictReader("layout-manifest.json");
+function loadLayoutManifest(engineosRoot) {
+  const raw = readJsonFile((0, import_node_path7.join)(engineosRoot, "registries", "layout-manifest.json"));
+  const doc = requireRecord3(raw, "");
+  return requireRows4(doc["entries"], ".entries").map((row, i) => ({
+    dir: requireString4(row["dir"], `.entries[${i}].dir`),
+    seeds: requireRows4(row["seeds"], `.entries[${i}].seeds`).map((seed, j) => ({
+      src: requireString4(seed["src"], `.entries[${i}].seeds[${j}].src`),
+      dest: requireString4(seed["dest"], `.entries[${i}].seeds[${j}].dest`)
+    }))
+  }));
+}
+function scaffoldLayout(projectRoot, engineosRoot, manifest) {
+  const created = [];
+  for (const entry of manifest) {
+    const existed = isDirectory((0, import_node_path7.join)(projectRoot, entry.dir));
+    const parent = scaffoldDir(projectRoot, entry.dir);
+    if (parent === null) continue;
+    if (!existed) created.push(entry.dir);
+    for (const seed of entry.seeds) {
+      const abs = seed.src.startsWith("@") ? (0, import_node_path7.join)(engineosRoot, seed.src.slice(1)) : (0, import_node_path7.join)(engineosRoot, "templates", "project-layout", seed.src);
+      scaffoldSeed(parent, seed.dest, abs);
+    }
+  }
+  return created;
+}
+function physDir(dir) {
+  try {
+    const real = (0, import_node_fs10.realpathSync)(dir);
+    return (0, import_node_fs10.statSync)(real).isDirectory() ? real : null;
+  } catch {
+    return null;
+  }
+}
+function within(rootPhys, phys) {
+  return phys === rootPhys || phys.startsWith(`${rootPhys}/`);
+}
+function scaffoldDir(root, rel) {
+  const rootPhys = physDir(root);
+  if (rootPhys === null) return null;
+  let cur = rootPhys;
+  for (const comp of rel.split("/")) {
+    if (comp === "" || comp === ".") continue;
+    if (comp === "..") return null;
+    const next = `${cur}/${comp}`;
+    const entry = lstatOrNull(next);
+    if (entry === null) {
+      try {
+        (0, import_node_fs10.mkdirSync)(next);
+      } catch {
+        return null;
+      }
+    } else if (entry.isSymbolicLink() || !entry.isDirectory()) {
+      return null;
+    }
+    cur = next;
+  }
+  const phys = physDir(cur);
+  if (phys === null || !within(rootPhys, phys)) return null;
+  return phys;
+}
+function scaffoldSeed(parent, name, src) {
+  if (name === "" || name === "." || name === ".." || name.includes("/")) return;
+  if (!isFile2(src)) return;
+  if (lstatOrNull(`${parent}/${name}`) !== null) return;
+  try {
+    (0, import_node_fs10.copyFileSync)(src, `${parent}/${name}`);
+  } catch {
+  }
+}
+function lstatOrNull(path) {
+  try {
+    return (0, import_node_fs10.lstatSync)(path);
+  } catch {
+    return null;
+  }
+}
+function isDirectory(path) {
+  try {
+    return (0, import_node_fs10.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isFile2(path) {
+  try {
+    return (0, import_node_fs10.statSync)(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// src/hooks/ensure-project-layout.ts
+var DAY_MS = 864e5;
+var UNRECORDED_PREFIX = "ENGINEOS_UNRECORDED.";
+var UNRECORDED_MAX_AGE_DAYS = 7;
+var ROUTE_CACHE = "engineos-route-cache";
+var TELEMETRY = "engineos-telemetry";
+var SPANS = "spans";
+var OPT_IN_HINT = "[engineos] layout not scaffolded (opt-in): run `mkdir .engineos` in the project or set ENGINEOS_SCAFFOLD=1";
+function run(env, ctx) {
+  if (env.cwd === "") return silent;
+  const marker = bypassMarker(env.cwd, ctx.spawn);
+  if (marker !== null) removeFile(marker);
+  const project = repoRoot(env.cwd, ctx.spawn);
+  if (project === null) return silent;
+  const git = gitDir(env.cwd, ctx.spawn);
+  if (git !== null && isDirectory2(git)) {
+    const now = ctx.now();
+    reapUnrecordedFlags(git, now);
+    wipeTree((0, import_node_path8.join)(git, ROUTE_CACHE));
+    reapTelemetry(git, ctx, now);
+  }
+  if (isFile3((0, import_node_path8.join)(project, "hooks", "layout-manifest.sh")) && isFile3((0, import_node_path8.join)(project, "install.sh"))) return silent;
+  const optIn = ctx.io.env["ENGINEOS_SCAFFOLD"];
+  if (optIn === "0") return silent;
+  if (optIn !== "1" && !isDirectory2((0, import_node_path8.join)(project, ".engineos"))) return context("SessionStart", OPT_IN_HINT);
+  let created;
+  try {
+    created = scaffoldLayout(project, ctx.root, loadLayoutManifest(ctx.root));
+  } catch {
+    return silent;
+  }
+  if (created.length === 0) return silent;
+  return context("SessionStart", `[engineos] scaffolded standard layout: ${created.join(", ")} (review seeded READMEs)`);
+}
+function reapUnrecordedFlags(git, now) {
+  for (const name of readDirNames(git)) {
+    if (!name.startsWith(UNRECORDED_PREFIX)) continue;
+    reapIfStale((0, import_node_path8.join)(git, name), UNRECORDED_MAX_AGE_DAYS, now);
+  }
+}
+function reapTelemetry(git, ctx, now) {
+  const dir = (0, import_node_path8.join)(git, TELEMETRY);
+  if (!isDirectory2(dir)) return;
+  let days;
+  try {
+    days = loadTelemetryPolicy(ctx.root).retention_days;
+  } catch {
+    return;
+  }
+  if (!Number.isInteger(days) || days < 0) return;
+  for (const name of readDirNames(dir)) {
+    if (name.endsWith(".jsonl")) reapIfStale((0, import_node_path8.join)(dir, name), days, now);
+  }
+  const spans = (0, import_node_path8.join)(dir, SPANS);
+  if (isDirectory2(spans)) reapFilesBelow(spans, days, now);
+}
+function reapFilesBelow(dir, days, now) {
+  for (const entry of readDirEntries(dir)) {
+    const path = (0, import_node_path8.join)(dir, entry.name);
+    if (entry.isDirectory()) reapFilesBelow(path, days, now);
+    else if (entry.isFile()) reapIfStale(path, days, now);
+  }
+}
+function reapIfStale(path, days, now) {
+  const stat = lstatOrNull2(path);
+  if (stat === null || !stat.isFile()) return;
+  if (Math.floor((now - stat.mtimeMs) / DAY_MS) > days) removeFile(path);
+}
+function wipeTree(dir) {
+  if (!isDirectory2(dir)) return;
+  try {
+    (0, import_node_fs11.rmSync)(dir, { recursive: true, force: true });
+  } catch {
+  }
+}
+function removeFile(path) {
+  try {
+    (0, import_node_fs11.unlinkSync)(path);
+  } catch {
+  }
+}
+function readDirNames(dir) {
+  try {
+    return (0, import_node_fs11.readdirSync)(dir);
+  } catch {
+    return [];
+  }
+}
+function readDirEntries(dir) {
+  try {
+    return (0, import_node_fs11.readdirSync)(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+function lstatOrNull2(path) {
+  try {
+    return (0, import_node_fs11.lstatSync)(path);
+  } catch {
+    return null;
+  }
+}
+function isDirectory2(path) {
+  try {
+    return (0, import_node_fs11.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isFile3(path) {
+  try {
+    return (0, import_node_fs11.statSync)(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// src/hooks/mark-unrecorded.ts
+var import_node_fs12 = require("node:fs");
+var RECORDED_EXTENSIONS = ["ts", "tsx", "js", "jsx", "py", "go", "rs", "sql"];
+var ENGINEOS_META = "*/.engineos/*";
+var UNRECORDED_MARKER_PREFIX = "ENGINEOS_UNRECORDED.";
+function isRecordedExtension(file) {
+  return RECORDED_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
+}
+function selfDirs(root) {
+  try {
+    return loadRouting(root).excluded.self_dirs;
+  } catch {
+    return [];
+  }
+}
+function run2(env, ctx) {
+  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
+  if (env.file === "") return silent;
+  if (!isRecordedExtension(env.file)) return silent;
+  if (globMatch(ENGINEOS_META, env.file)) return silent;
+  for (const dir2 of selfDirs(ctx.root)) {
+    if (dir2 === "") continue;
+    if (env.file.startsWith(`${ctx.root}/${dir2}/`)) return silent;
+  }
+  if (env.cwd === "") return silent;
+  const dir = gitDir(env.cwd, ctx.spawn);
+  if (dir === null) return silent;
+  try {
+    (0, import_node_fs12.writeFileSync)(`${dir}/${UNRECORDED_MARKER_PREFIX}${env.sessionId}`, "");
+  } catch {
+  }
+  return silent;
+}
+
+// src/hooks/record-verify.ts
+var import_node_fs13 = require("node:fs");
+var DEFERRED_SUFFIX = ".deferred";
+function recordGateReason(deferMarker) {
+  return `EngineOS gate: code changed but the change was not recorded. Run the record-change skill \u2014 mark the changes/ record done, register files + movements, git mv it to archived/. That step clears this flag. To defer recording for this session instead, create the marker: touch "${deferMarker}"`;
+}
+function run3(env, ctx) {
+  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
+  if (env.stopHookActive) return silent;
+  if (env.cwd === "") return silent;
+  const dir = gitDir(env.cwd, ctx.spawn);
+  if (dir === null) return silent;
+  const marker = `${dir}/${UNRECORDED_MARKER_PREFIX}${env.sessionId}`;
+  if (!(0, import_node_fs13.existsSync)(marker)) return silent;
+  const deferred = `${marker}${DEFERRED_SUFFIX}`;
+  if ((0, import_node_fs13.existsSync)(deferred)) return silent;
+  return block(recordGateReason(deferred));
+}
+
+// src/hooks/route-before-change.ts
+var import_node_fs14 = require("node:fs");
+var import_node_path9 = require("node:path");
+
+// src/hooks/cache.ts
+function routeCachePaths(gitDir2, sid, routingSig, buster, rel) {
+  if (gitDir2 === "" || rel === "") return null;
+  if (/\/\.\.?\//.test(`/${rel}/`)) return null;
+  const key = `${safeSid(sid)}-${routingSig}-${buster === "" ? "0" : buster}`;
+  const route = `${gitDir2}/engineos-route-cache/${key}/${rel}.route`;
+  return { route, output: `${route}.output` };
+}
+function safeSid(sid) {
+  return sid.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+// src/hooks/route-before-change.ts
+var EXCLUDED_SENTINEL = "__ENGINEOS_EXCLUDED__";
+var DEFAULT_GUIDE = "base.md+git.md only";
+var CHANGE_RECORD_NOTE = " | no active .engineos/changes record \u2014 open one (.engineos/changes/_template.md)";
+var CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".sql"];
+var ACTIVE_RECORD = /^status:[ \t\f\v\r]*active/m;
+var NO_GIT = { repo: "", gitDir: "", prefix: "" };
+function run4(env, ctx) {
+  if (env.file === "") return silent;
+  const start = dirOf(env.file);
+  const from = env.cwd === "" ? start : env.cwd;
+  if (bypassActive(from, ctx.io.env, ctx.spawn)) return silent;
+  const git = gitInfo(from, ctx);
+  const cache3 = cachePaths(env, git, ctx);
+  let guide = cache3 === null ? null : readGuide(cache3.route);
+  if (guide === null) {
+    guide = kernelGuide(env.file, ctx);
+    if (cache3 !== null) writeAtomic(cache3.route, `${guide}
+`);
+  }
+  if (guide === EXCLUDED_SENTINEL) return silent;
+  const projectClaude = findUpFile(start, "CLAUDE.md");
+  const projectNote = projectClaude === null ? "" : ` | follow project CLAUDE.md (project > EngineOS): ${projectClaude}`;
+  const changeNote = changeRecordNote(env.file, git.repo);
+  if (guide === "" && projectNote === "" && changeNote === "") return silent;
+  const reusable = projectNote === "" && changeNote === "" ? cache3 : null;
+  if (reusable !== null) {
+    const cached = readDecision(reusable.output);
+    if (cached !== null) return cached;
+  }
+  const decision = context("PreToolUse", `[router] ${guide === "" ? DEFAULT_GUIDE : guide}${projectNote}${changeNote}`);
+  if (reusable !== null) writeAtomic(reusable.output, `${JSON.stringify(decision)}
+`);
+  return decision;
+}
+function dirOf(file) {
+  const cut = file.lastIndexOf("/");
+  if (cut === -1) return ".";
+  return cut === 0 ? "/" : file.slice(0, cut);
+}
+function gitInfo(cwd, ctx) {
+  const result = ctx.spawn("git", ["-C", cwd, "rev-parse", "--show-toplevel", "--absolute-git-dir", "--show-prefix"], { encoding: "utf8" });
+  if (result.error !== void 0 || result.status !== 0) return NO_GIT;
+  const lines = (typeof result.stdout === "string" ? result.stdout : "").split("\n");
+  return { repo: lines[0] ?? "", gitDir: lines[1] ?? "", prefix: lines[2] ?? "" };
+}
+function cachePaths(env, git, ctx) {
+  if (git.gitDir === "") return null;
+  const rel = cacheRel(env.file, git, env.cwd);
+  if (rel === "") return null;
+  return routeCachePaths(git.gitDir, env.sessionId, routingSignature(ctx.root), ctx.io.env["ENGINEOS_ROUTE_CACHE_BUSTER"] ?? "", rel);
+}
+function cacheRel(file, git, cwd) {
+  if (git.repo !== "" && file.startsWith(`${git.repo}/`)) return file.slice(git.repo.length + 1);
+  const base = cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
+  if (file.startsWith(`${base}/`)) return `${git.prefix}${file.slice(base.length + 1)}`;
+  return "";
+}
+function routingSignature(root) {
+  try {
+    const stats = (0, import_node_fs14.statSync)((0, import_node_path9.join)(root, "registries", "routing.json"));
+    return `${Math.floor(stats.mtimeMs / 1e3)}-${stats.size}`;
+  } catch {
+    return "unknown";
+  }
+}
+function readGuide(path) {
+  let contents;
+  try {
+    contents = (0, import_node_fs14.readFileSync)(path, "utf8");
+  } catch {
+    return null;
+  }
+  if (contents === "") return null;
+  const newline = contents.indexOf("\n");
+  return newline === -1 ? contents : contents.slice(0, newline);
+}
+function kernelGuide(file, ctx) {
+  try {
+    const kernel = { root: ctx.root, registries: lazyRegistries(ctx.root) };
+    const route = resolve({ path: file }, kernel).route;
+    if (route === void 0 || !("domain" in route)) return "";
+    if (route.excluded) return EXCLUDED_SENTINEL;
+    return route.domain === null ? "" : route.hook_guidance;
+  } catch {
+    return "";
+  }
+}
+function readDecision(path) {
+  let parsed;
+  try {
+    parsed = JSON.parse((0, import_node_fs14.readFileSync)(path, "utf8"));
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  if (parsed["kind"] !== "context" || parsed["event"] !== "PreToolUse") return null;
+  const text2 = parsed["text"];
+  return typeof text2 === "string" ? context("PreToolUse", text2) : null;
+}
+function changeRecordNote(file, repo) {
+  if (repo === "") return "";
+  if (!CODE_EXTENSIONS.some((extension) => file.endsWith(extension))) return "";
+  const dir = (0, import_node_path9.join)(repo, ".engineos", "changes");
+  if (!isDirectory3(dir)) return "";
+  return hasActiveRecord(dir) ? "" : CHANGE_RECORD_NOTE;
+}
+function isDirectory3(path) {
+  try {
+    return (0, import_node_fs14.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function hasActiveRecord(dir) {
+  let entries;
+  try {
+    entries = (0, import_node_fs14.readdirSync)(dir);
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    if (!entry.endsWith(".md") || entry.startsWith(".")) continue;
+    let contents;
+    try {
+      contents = (0, import_node_fs14.readFileSync)((0, import_node_path9.join)(dir, entry), "utf8");
+    } catch {
+      continue;
+    }
+    if (ACTIVE_RECORD.test(contents)) return true;
+  }
+  return false;
+}
+function writeAtomic(path, contents) {
+  const cut = path.lastIndexOf("/");
+  try {
+    if (cut > 0) (0, import_node_fs14.mkdirSync)(path.slice(0, cut), { recursive: true });
+    const tmp = `${path}.${process.pid}`;
+    (0, import_node_fs14.writeFileSync)(tmp, contents);
+    (0, import_node_fs14.renameSync)(tmp, path);
+  } catch {
+  }
+}
+
+// src/lib/slug.ts
+var SLUG_EXTRA = "@_./:-";
+var PATH_EXTRA = "@_:-";
+function hookSlug(value) {
+  return mapBytes(value, SLUG_EXTRA);
+}
+function hookPathSlug(value) {
+  const narrowed = mapBytes(value, PATH_EXTRA);
+  return narrowed === "" ? null : narrowed;
+}
+function mapBytes(value, extra) {
+  const bytes = Buffer.from(value, "utf8");
+  let out = "";
+  for (const byte of bytes) out += inClass(byte, extra) ? String.fromCharCode(byte) : "-";
+  return out;
+}
+function inClass(byte, extra) {
+  if (byte >= 48 && byte <= 57) return true;
+  if (byte >= 65 && byte <= 90) return true;
+  if (byte >= 97 && byte <= 122) return true;
+  return extra.includes(String.fromCharCode(byte));
+}
+
+// src/hooks/prompt-advisor-guidance.ts
+function guidanceNotes(task) {
+  return [
+    ...scaleNotes(task.contract),
+    ...decisionNote(task.decisions),
+    ...routeNote(task),
+    ...hitlNote(task.hitl),
+    ...classifyNote(task)
+  ];
+}
+function scaleNotes(contract) {
+  const notes = [];
+  if (contract.scale.big_task) {
+    notes.push(
+      "[engineos] big-task signal \u2014 apply rules/parallelism.md: freeze shared contracts first, decompose into disjoint-scope units, group into waves, dispatch each wave as MULTIPLE Task calls in ONE message, announce '[fanout] waves=... '. Do not do independent units sequentially yourself."
+    );
+  }
+  if (contract.scale.spec_authoring) {
+    notes.push(
+      "[engineos] spec/PRD authoring \u2014 rules/models.md: use the most-capable tier (model: fable). If the session model is lower, delegate the authoring to a subagent with that model."
+    );
+  }
+  if (contract.scale.design_work) {
+    notes.push(
+      "[engineos] design/architecture work \u2014 rules/models.md: design tier (model: opus) for the design pass, build tier (model: opus) for the code that follows."
+    );
+  }
+  return notes;
+}
+function decisionNote(decisions) {
+  if (decisions.matches.length === 0) return [];
+  const lines = decisions.matches.map(matchLine).join("\n");
+  const high = decisions.any_high ? "\n[engineos] a matched rule sets risk=high \u2014 autonomy ceiling A3 per rules/risk-autonomy.md: human approval before any external effect, and a rollback path before release." : "";
+  return [
+    `[engineos] decision rules matched this prompt (registries/decision-rules.json).
+${lines}
+Confirm each requirement is met or explicitly waived with a reason before claiming done. These are keyword matches on the prompt only \u2014 apply the full registry per rules/gates.md, and classify risk per rules/risk-autonomy.md.${high}`
+  ];
+}
+function matchLine(match) {
+  return `  - ${match.id}` + (match.require.length > 0 ? ` \u2014 require: ${match.require.join(", ")}` : "") + (declared2(match.prefer) ? ` \u2014 prefer: ${match.prefer}` : "") + (declared2(match.gate) ? ` [gate: ${match.gate}]` : "") + (declared2(match.risk) ? ` [risk: ${match.risk}]` : "");
+}
+function routeNote(task) {
+  const { route, contract } = task;
+  if (route.escalate) {
+    const scale = Object.entries(route.scale).map(([key, value]) => `${key}=${String(value)}`).join(" ");
+    return [
+      `[engineos] route escalation \u2014 the kernel could not fully resolve this request: ${route.reasons.join(", ")}. Dispatch the \`router\` agent (agents/router.md, model opus) via the Task tool with the request text and follow its dispatch plan; do not fan out before it returns. Kernel facts so far: intents=${csv(route.intents)} agents=${csv(route.agents)} scale=(${scale}). A hook cannot dispatch an agent \u2014 you must invoke it.`
+    ];
+  }
+  if (contract.substantive) {
+    return [
+      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)} \u2014 load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed.`
+    ];
+  }
+  return [];
+}
+function hitlNote(hitl) {
+  if (hitl === null || !hitl.required) return [];
+  return [
+    `[engineos] human-in-the-loop required \u2014 reasons: ${hitl.reasons.join(", ")}. A human decides before any external effect; the autonomy ceiling does not cover this. Record who, when, which reason ids, and what was approved or refused under "## Human decisions" in the change record (rules/risk-autonomy.md "Human-in-the-loop"; rules/gates.md release checklist).`
+  ];
+}
+function classifyNote(task) {
+  if (task.contract.risk_floor !== "high" || task.hitl !== null) return [];
+  return [
+    "[engineos] risk floor is high and no tier has been classified \u2014 classify this task per rules/risk-autonomy.md (reversibility, blast radius, data sensitivity, contract surface, spend; the shortcut floors are high outright) BEFORE claiming that no human decision is owed. None of the gate reasons in registries/policy.json hitl.reasons has fired: a floor is an input to classification, not a verdict, so this is an instruction to classify and not an approval gate."
+  ];
+}
+function csv(values) {
+  return values.length === 0 ? "-" : values.join(",");
+}
+function orDash(value) {
+  return value === null ? "-" : value;
+}
+function declared2(value) {
+  return value !== null && value !== "";
+}
+
+// src/hooks/telemetry.ts
+var import_node_crypto = require("node:crypto");
+var import_node_fs16 = require("node:fs");
+var import_node_path11 = require("node:path");
+
+// src/hooks/span-writer.ts
+var import_node_fs15 = require("node:fs");
+var import_node_path10 = require("node:path");
+
+// src/lib/time.ts
+var MS_DIGITS_MIN = 12;
+function plausibleMs(value) {
+  if (!/^[0-9]+$/.test(value)) return false;
+  return value.length >= MS_DIGITS_MIN;
+}
+function parseMs(text2) {
+  const trimmed = text2.trim();
+  if (!plausibleMs(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+function clampMs(value) {
+  if (!Number.isFinite(value)) return 0;
+  const floored = Math.floor(value);
+  return floored > 0 ? floored : 0;
+}
+
+// src/hooks/span-writer.ts
+function fileSpanWriter(opts) {
+  const regs = journalRegistries(opts.root);
+  const name = hookPathSlug(opts.session) ?? "nosession";
+  const journalFile = (0, import_node_path10.join)(opts.dir, `${name}.exec.jsonl`);
+  const eventsFile = (0, import_node_path10.join)(opts.dir, `${name}.jsonl`);
+  const markers = (0, import_node_path10.join)(opts.dir, "spans");
+  return {
+    appendSpan(fields) {
+      appendLine(opts.root, journalFile, [journalFile, ...toArgv(fields)], opts.timestamp, regs);
+    },
+    appendEvent(id, data) {
+      appendEvent(
+        opts.root,
+        eventsFile,
+        { session: opts.session, event: id, data: JSON.stringify(data) },
+        opts.timestamp
+      );
+    },
+    openMarker(id, ms) {
+      const marker = markerPath(markers, id);
+      if (marker === null) return;
+      (0, import_node_fs15.mkdirSync)(markers, { recursive: true });
+      (0, import_node_fs15.writeFileSync)(marker, String(ms));
+    },
+    closeMarker(id) {
+      const marker = markerPath(markers, id);
+      if (marker === null) return null;
+      const text2 = readMarker(marker);
+      if (text2 === null) return null;
+      (0, import_node_fs15.rmSync)(marker, { force: true });
+      return parseMs(text2);
+    }
+  };
+}
+function toArgv(fields) {
+  const argv2 = [];
+  for (const spec of EXEC_JOURNAL_FIELDS) {
+    const value = fields[spec.name];
+    if (value === void 0) continue;
+    argv2.push(spec.flag, String(value));
+  }
+  return argv2;
+}
+function readMarker(path) {
+  try {
+    return (0, import_node_fs15.readFileSync)(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+function markerPath(dir, id) {
+  const name = hookPathSlug(id);
+  return name === null ? null : (0, import_node_path10.join)(dir, name);
+}
+
+// src/hooks/telemetry.ts
+function telemetrySink(env, ctx, opts) {
+  if (ctx.io.env["ENGINEOS_TELEMETRY"] === "0") return null;
+  if (opts.bypassed) return null;
+  if (env.cwd === "") return null;
+  const project = repoRoot(env.cwd, ctx.spawn);
+  if (project === null || !(0, import_node_fs16.existsSync)((0, import_node_path11.join)(project, ".engineos"))) return null;
+  const git = gitDir(env.cwd, ctx.spawn);
+  if (git === null || git === "") return null;
+  const dir = (0, import_node_path11.join)(git, "engineos-telemetry");
+  try {
+    (0, import_node_fs16.mkdirSync)(dir, { recursive: true });
+  } catch {
+  }
+  const session = hookSlug(env.sessionId === "" ? "nosession" : env.sessionId);
+  const now = ctx.now;
+  return {
+    writer: fileSpanWriter({ root: ctx.root, dir, session, timestamp: () => utcSeconds(now()) }),
+    now,
+    session
+  };
+}
+function withSpan(sink, facts, fn) {
+  if (sink === null) return fn().result;
+  const start = sink.now();
+  const outcome = fn();
+  const duration = clampMs(sink.now() - start);
+  const merged = {
+    ...facts,
+    status: outcome.status,
+    fields: { ...facts.fields ?? {}, ...outcome.fields ?? {} }
+  };
+  writeSpan(sink, merged, duration, null);
+  return outcome.result;
+}
+function spanIdFrom(env) {
+  const payload = isRecord(env.raw) ? env.raw : {};
+  const toolUseId = payload["tool_use_id"];
+  if (typeof toolUseId === "string" && toolUseId !== "") return hookSlug(toolUseId);
+  const input = isRecord(payload["tool_input"]) ? payload["tool_input"] : {};
+  const brief = `${orEmpty(input["subagent_type"])}:${orEmpty(input["description"])}
+`;
+  return hookSlug((0, import_node_crypto.createHash)("sha1").update(brief, "utf8").digest("hex").slice(0, 12));
+}
+function openSpan(sink, id) {
+  if (sink === null || id === "") return;
+  const started = sink.now();
+  attempt(() => {
+    sink.writer.openMarker(id, started);
+  });
+}
+function closeSpan(sink, id, facts) {
+  if (sink === null || id === "") return;
+  let start = null;
+  try {
+    start = sink.writer.closeMarker(id);
+  } catch {
+    return;
+  }
+  if (start === null) return;
+  writeSpan(sink, facts, clampMs(sink.now() - start), id);
+}
+function event(sink, id, data) {
+  if (sink === null) return;
+  attempt(() => {
+    sink.writer.appendEvent(id, data);
+  });
+}
+function writeSpan(sink, facts, durationMs, spanId) {
+  const fields = {
+    // run_id and trace_id are both the session, so every span of one session
+    // joins without four call sites repeating it. Tokens are 0 because a hook
+    // cannot see a subagent's usage; a caller that CAN (the headless runner)
+    // passes its own through facts.fields, which is spread after these.
+    run_id: sink.session,
+    trace_id: sink.session,
+    span_kind: facts.kind,
+    tokens_in: 0,
+    tokens_out: 0,
+    ...facts.fields ?? {},
+    // Named facts last: a fields entry may override the defaults above, but it
+    // cannot contradict the four values the signature made the caller state.
+    capability_id: facts.capability,
+    model_tier: facts.modelTier,
+    status: facts.status ?? "OK",
+    duration_ms: durationMs
+  };
+  if (spanId !== null) fields.span_id = spanId;
+  const row = sanitize(fields);
+  attempt(() => {
+    sink.writer.appendSpan(row);
+  });
+}
+function sanitize(fields) {
+  const row = {};
+  for (const spec of EXEC_JOURNAL_FIELDS) {
+    const value = fields[spec.name];
+    if (value === void 0) continue;
+    row[spec.name] = spec.guard === "slug" || spec.guard === "enum" ? hookSlug(String(value)) : value;
+  }
+  return row;
+}
+function attempt(write) {
+  try {
+    write();
+  } catch {
+  }
+}
+function orEmpty(value) {
+  return typeof value === "string" ? value : "";
+}
+function utcSeconds(ms) {
+  const at = Number.isFinite(ms) && Math.abs(ms) <= 864e13 ? ms : 0;
+  return `${new Date(at).toISOString().slice(0, 19)}Z`;
+}
+
+// src/hooks/prompt-advisor.ts
+var BYPASS_NOTICE = "[engineos] BYPASS ACTIVE \u2014 routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness's own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run `/engineos:bypass off` to restore EngineOS.";
+var ROUTER_SPAN = { kind: "router", capability: "route", modelTier: "cheap" };
+var NO_ROUTE = "none";
+function run5(env, ctx) {
+  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return context("UserPromptSubmit", BYPASS_NOTICE);
+  if (env.prompt === "") return silent;
+  const sink = telemetrySink(env, ctx, { bypassed: false });
+  const task = resolveTask(env.prompt, ctx, sink);
+  if (task === null) return silent;
+  writeEvents(sink, task);
+  const notes = guidanceNotes(task);
+  if (notes.length === 0) return silent;
+  return context("UserPromptSubmit", notes.join("\n"));
+}
+function resolveTask(prompt, ctx, sink) {
+  const kernel = { root: ctx.root, registries: lazyRegistries(ctx.root) };
+  try {
+    return withSpan(sink, ROUTER_SPAN, () => {
+      const task = narrow(resolve({ prompt, taskContract: true }, kernel));
+      return { result: task, status: "OK", fields: spanFields(task) };
+    });
+  } catch {
+    return null;
+  }
+}
+function narrow(answer) {
+  const { route, decision_rules: decisions, task_contract: contract } = answer;
+  if (contract === void 0 || decisions === void 0 || route === void 0 || !("escalate" in route)) {
+    throw new KernelError("resolve-task: the kernel answered no task contract");
+  }
+  return { route, decisions, contract, hitl: answer.hitl ?? null };
+}
+function spanFields(task) {
+  const first = task.route.intents[0] ?? task.contract.intents[0] ?? NO_ROUTE;
+  const route = hookSlug(first);
+  const floor = task.contract.risk_floor;
+  return {
+    route: route === "" ? NO_ROUTE : route,
+    // Allowlisted rather than trusted: `risk` is an enum field of the journal,
+    // and a value outside the three tiers would be rejected on append — losing
+    // the whole span rather than one field.
+    risk: floor !== null && isRiskTier(floor) ? floor : "low"
+  };
+}
+function writeEvents(sink, task) {
+  const routeData = {
+    escalate: task.route.escalate,
+    reasons: task.route.reasons,
+    intents: task.route.intents,
+    suppressed: task.route.suppressed.map((entry) => entry.id),
+    agents: task.route.agents
+  };
+  event(sink, "route", routeData);
+  if (task.decisions.matches.length > 0) {
+    event(sink, "decision-rules", {
+      rules: task.decisions.matches.map((match) => match.id),
+      any_high: task.decisions.any_high
+    });
+  }
+  const { hitl } = task;
+  if (hitl !== null && hitl.required) {
+    event(sink, "hitl", { required: hitl.required, reasons: hitl.reasons });
+  }
+}
+
+// src/hooks/announce-agent-dispatch.ts
+var UNNAMED_AGENT = "general-purpose";
+function subagentType(env) {
+  const input = toolInput(env);
+  return firstString(input["subagent_type"], input["agentType"]) ?? UNNAMED_AGENT;
+}
+function run6(env, ctx) {
+  const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
+  if (bypassed) return silent;
+  const banner = dispatchBanner(subagentType(env), briefDescription(env));
+  try {
+    openSpan(telemetrySink(env, ctx, { bypassed }), spanIdFrom(env));
+  } catch {
+  }
+  return context("PreToolUse", banner);
+}
+function dispatchBanner(type, description) {
+  const descPart = description === "" ? "" : `, desc="${description}"`;
+  return `[subagent-announce] dispatching agent(type=${type}${descPart}) \u2014 per rules/subagents.md, before any other output for this turn, emit a green diff-fenced line: \`+ [agent] <alias>(<type>) | model: <tier> | mode: AUDIT|IMPLEMENT | scope: <files>\`. One line per agent, its own fenced diff block, blank line above and below. Do not narrate this in prose instead.`;
+}
+function briefDescription(env) {
+  return firstString(toolInput(env)["description"]) ?? "";
+}
+function toolInput(env) {
+  const payload = isRecord(env.raw) ? env.raw : {};
+  const input = payload["tool_input"];
+  return isRecord(input) ? input : {};
+}
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value === "string") return value;
+  }
+  return null;
+}
+
+// src/registry/agents.ts
+var DEFAULT_AGENT_TIER = "build";
+function isModelTierId(value) {
+  return typeof value === "string" && MODEL_TIER_IDS.some((id) => id === value);
+}
+function loadAgents(root) {
+  let document;
+  try {
+    document = loadRegistry(root, "agents.json");
+  } catch {
+    return [];
+  }
+  const rows = isRecord(document) ? document["agents"] : void 0;
+  if (!Array.isArray(rows)) return [];
+  const agents = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const name = row["name"];
+    if (typeof name !== "string" || name === "") continue;
+    const tier = row["model_tier"];
+    agents.push({ name, model_tier: isModelTierId(tier) ? tier : null });
+  }
+  return agents;
+}
+function agentModelTier(root, name) {
+  const match = loadAgents(root).find((agent) => agent.name === name && agent.model_tier !== null);
+  return (match == null ? void 0 : match.model_tier) ?? DEFAULT_AGENT_TIER;
+}
+
+// src/hooks/announce-agent-return.ts
+function run7(env, ctx) {
+  const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
+  if (bypassed) return silent;
+  const type = subagentType(env);
+  const banner = returnBanner(type);
+  try {
+    const agent = hookSlug(type);
+    closeSpan(telemetrySink(env, ctx, { bypassed }), spanIdFrom(env), {
+      kind: "agent",
+      // `implement`, not a `dispatch` id of its own: dispatching is what the
+      // ORCHESTRATOR does, so no capability binds an agent to it. Known
+      // imprecision, recorded in rules/observability.md — a consumer grouping
+      // agent spans by capability sees them all as `implement` (a
+      // security-review dispatch included) and disambiguates on `agent`.
+      capability: "implement",
+      // The agent's own tier, from the registry, so a design-tier agent is not
+      // recorded as build. Absent or unregistered -> build (../registry/agents).
+      modelTier: agentModelTier(ctx.root, agent),
+      status: responseStatus(env.raw),
+      // tokens_in/tokens_out are 0 and cost_micros absent by construction:
+      // this hook never sees the subagent's usage. ./telemetry writes the
+      // zeros; rules/observability.md says so in prose so nobody reads a 0 as
+      // "free".
+      fields: { agent }
+    });
+  } catch {
+  }
+  return context("PostToolUse", banner);
+}
+function responseStatus(raw) {
+  const payload = isRecord(raw) ? raw : {};
+  const response = payload["tool_response"];
+  const flag = isRecord(response) ? response["is_error"] : null;
+  if (alternative(flag, payload["is_error"]) === true) return "FAILED";
+  if (isRecord(response)) {
+    const status = response["status"];
+    return typeof status === "string" ? allowlisted(status) : "OK";
+  }
+  const first = /^(OK|BLOCKED|FAILED|DEGRADED)\b/.exec(typeof response === "string" ? response : "");
+  return first === null ? "OK" : allowlisted(first[1]);
+}
+function returnBanner(type) {
+  return `[subagent-announce] agent(type=${type}) returned \u2014 per rules/subagents.md, emit its green diff-fenced return line before continuing: \`+ [agent] <alias> -> done|FAILED | <result summary>\`.`;
+}
+function alternative(first, second) {
+  if (first !== null && first !== void 0 && first !== false) return first;
+  if (second !== null && second !== void 0 && second !== false) return second;
+  return false;
+}
+function allowlisted(value) {
+  return SPAN_STATUSES.find((status) => status === value) ?? "OK";
+}
+
+// src/hooks/stop-verify.ts
+var import_node_path14 = require("node:path");
+var import_node_fs19 = require("node:fs");
+
+// src/hooks/classify-failure.ts
+var NODE_FLOOR = 18;
+var TARGET_ABSENT = {
+  nx: "cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task",
+  "npm-family": 'missing script:|command "<t>" not found|find a script named "<t>"'
+};
+function classify2(evidence) {
+  switch (evidence.kind) {
+    case "environment":
+      return evidence.nodeMajor < NODE_FLOOR ? { situation: "infra", reason: "node-too-old" } : null;
+    case "runner":
+      return evidence.found ? null : { situation: "infra", reason: "runner-missing" };
+    case "run": {
+      if (evidence.timedOut) return { situation: "infra", reason: "timeout" };
+      if (evidence.code === 0) return null;
+      if (targetAbsent(evidence.runner, evidence.target).test(evidence.output)) {
+        return { situation: "infra", reason: "target-absent" };
+      }
+      return { situation: "red" };
+    }
+  }
+}
+function targetAbsent(runner, target) {
+  return new RegExp(TARGET_ABSENT[runner].split("<t>").join(escapeRegExp(target)), "i");
+}
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// src/hooks/runner.ts
+var import_node_child_process2 = require("node:child_process");
+var import_node_fs17 = require("node:fs");
+var import_node_path12 = require("node:path");
+var defaultSpawn = (command, args, options) => (0, import_node_child_process2.spawnSync)(command, args, options);
+var MODERN_NODE_MAJOR = 20;
+function runnerSelect(root, exists = defaultExists) {
+  const kind = exists((0, import_node_path12.join)(root, "nx.json")) ? "nx" : "npm-family";
+  if (exists((0, import_node_path12.join)(root, "pnpm-lock.yaml"))) return { kind, run: "pnpm run", exec: "pnpm exec" };
+  if (exists((0, import_node_path12.join)(root, "yarn.lock"))) return { kind, run: "yarn run", exec: "yarn" };
+  return { kind, run: "npm run", exec: "npx --no-install" };
+}
+function runnerHandle(sel, pkgDir, readFile = defaultReadFile) {
+  if (sel.kind !== "nx") return pkgDir;
+  const project = readName(readFile((0, import_node_path12.join)(pkgDir, "project.json")));
+  if (project !== null) return project;
+  const pkg = readName(readFile((0, import_node_path12.join)(pkgDir, "package.json")));
+  return pkg === null ? null : pkg.replace(/^@[^/]*\//, "");
+}
+function runnerHasTarget(sel, handle, target, readFile = defaultReadFile, spawn = defaultSpawn, cwd = process.cwd()) {
+  if (sel.kind === "nx") {
+    const argv2 = [...words(sel.exec), "nx", "show", "project", handle, "--json"];
+    const shown = spawn(argv2[0] ?? "", argv2.slice(1), { cwd, encoding: "utf8" });
+    if (shown.status !== 0) return false;
+    return declared3(parseJson(shown.stdout), "targets", target);
+  }
+  return declared3(parseJson(readFile((0, import_node_path12.join)(handle, "package.json"))), "scripts", target);
+}
+function runnerRun(sel, handle, target, timeoutSeconds, env, spawn = defaultSpawn, cwd = process.cwd()) {
+  const argv2 = sel.kind === "nx" ? [...words(sel.exec), "nx", "run", `${handle}:${target}`] : [...words(sel.run), "-s", target];
+  const runCwd = sel.kind === "nx" ? cwd : handle;
+  const result = spawn(argv2[0] ?? "", argv2.slice(1), {
+    cwd: runCwd,
+    env,
+    encoding: "utf8",
+    timeout: timeoutSeconds * 1e3
+  });
+  const timedOut = errorCodeOf(result.error) === "ETIMEDOUT" || result.signal === "SIGTERM";
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  const code = typeof result.status === "number" ? result.status : timedOut ? 124 : 1;
+  return { code, output, timedOut };
+}
+function runnerEnv(env, nodeMajorOnPath, exists = defaultExists, readLink = defaultReadFile, listDir = defaultListDir) {
+  if (nodeMajorOnPath >= MODERN_NODE_MAJOR) return env;
+  const home = env["HOME"];
+  const nvmDir = env["NVM_DIR"] ?? (home === void 0 || home === "" ? null : (0, import_node_path12.join)(home, ".nvm"));
+  if (nvmDir === null || nvmDir === "") return env;
+  const alias = (0, import_node_path12.join)(nvmDir, "alias", "default");
+  if (!exists(alias)) return env;
+  const wanted = (readLink(alias) ?? "").trim();
+  if (wanted === "") return env;
+  const versionsDir = (0, import_node_path12.join)(nvmDir, "versions", "node");
+  let bin = null;
+  for (const name of listDir(versionsDir).sort()) {
+    if (!name.startsWith(`v${wanted}`)) continue;
+    if (majorOf(name) < MODERN_NODE_MAJOR) continue;
+    const candidate = (0, import_node_path12.join)(versionsDir, name, "bin");
+    if (exists((0, import_node_path12.join)(candidate, "node"))) bin = candidate;
+  }
+  if (bin === null) return env;
+  const current = env["PATH"] ?? "";
+  return { ...env, PATH: current === "" ? bin : `${bin}${import_node_path12.delimiter}${current}` };
+}
+function declared3(doc, field, name) {
+  if (!isRecord(doc)) return false;
+  const table2 = doc[field];
+  if (!isRecord(table2)) return false;
+  const value = table2[name];
+  return value !== void 0 && value !== null && value !== false;
+}
+function errorCodeOf(error) {
+  const candidate = error;
+  if (!isRecord(candidate)) return null;
+  const code = candidate["code"];
+  return typeof code === "string" ? code : null;
+}
+function readName(text2) {
+  const doc = parseJson(text2);
+  if (!isRecord(doc)) return null;
+  const name = doc["name"];
+  return typeof name === "string" && name !== "" ? name : null;
+}
+function parseJson(text2) {
+  if (text2 === null || text2 === void 0 || text2 === "") return null;
+  try {
+    return JSON.parse(text2);
+  } catch {
+    return null;
+  }
+}
+function words(command) {
+  return command.split(" ").filter((part) => part !== "");
+}
+function majorOf(versionDir) {
+  const parsed = Number.parseInt(versionDir.replace(/^v/, ""), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+function defaultExists(p) {
+  return (0, import_node_fs17.existsSync)(p);
+}
+function defaultReadFile(p) {
+  try {
+    return (0, import_node_fs17.readFileSync)(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+function defaultListDir(p) {
+  try {
+    return (0, import_node_fs17.readdirSync)(p);
+  } catch {
+    return [];
+  }
+}
+
+// src/hooks/verify-targets.ts
+var import_node_fs18 = require("node:fs");
+var import_node_path13 = require("node:path");
+var VERIFY_EXTENSIONS = ["ts", "tsx", "js", "jsx"];
+var PACKAGE_MARKERS = ["package.json", "project.json"];
+var SUMMARY_LINES = 80;
+var PROBE_TIMEOUT_SECONDS = 15;
+function hasVerifyExtension(file) {
+  return VERIFY_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
+}
+function findUpAny(start, names) {
+  let dir = start;
+  let previous = "";
+  while (dir !== "/" && dir !== previous && dir !== "") {
+    for (const name of names) {
+      if ((0, import_node_fs18.existsSync)(`${dir}/${name}`)) return dir;
+    }
+    previous = dir;
+    dir = parentOf2(dir);
+  }
+  return null;
+}
+function isDirectory4(path) {
+  try {
+    return (0, import_node_fs18.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isFile4(path) {
+  try {
+    return (0, import_node_fs18.statSync)(path).isFile();
+  } catch {
+    return false;
+  }
+}
+function verifyEnvironment(env, version = process.versions.node) {
+  const onPath = majorOf2(version);
+  const fixed = runnerEnv(env, onPath);
+  if (fixed === env) return { env, nodeMajor: onPath };
+  const prepended = (fixed["PATH"] ?? "").split(import_node_path13.delimiter)[0] ?? "";
+  const found = /\/v(\d+)[^/]*\/bin$/.exec(prepended);
+  const rescued = found === null ? Number.NaN : Number.parseInt(found[1] ?? "", 10);
+  return { env: fixed, nodeMajor: Number.isNaN(rescued) ? onPath : rescued };
+}
+function runnerCommand(sel) {
+  const command = (sel.kind === "nx" ? sel.exec : sel.run).split(" ").find((part) => part !== "");
+  return command ?? "";
+}
+function runnerFound(sel, env, spawn, cwd) {
+  const command = runnerCommand(sel);
+  if (command === "") return false;
+  return execRun(spawn, command, ["--version"], cwd, env, PROBE_TIMEOUT_SECONDS).code === 0;
+}
+function execRun(spawn, command, args, cwd, env, timeoutSeconds) {
+  const result = spawn(command, args, { cwd, env, encoding: "utf8", timeout: timeoutSeconds * 1e3 });
+  const timedOut = errorCodeOf2(result.error) === "ETIMEDOUT" || result.signal === "SIGTERM";
+  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  const code = typeof result.status === "number" ? result.status : timedOut ? 124 : 1;
+  return { code, output, timedOut };
+}
+function failureBlock(target, subject, output) {
+  return `--- ${target} failed (${subject}) ---
+${output.replace(/\n+$/, "")}`;
+}
+function firstLines(text2, limit) {
+  return text2.split("\n").slice(0, limit).join("\n");
+}
+function parentOf2(dir) {
+  const cut = dir.lastIndexOf("/");
+  if (cut === -1) return ".";
+  const head = dir.slice(0, cut);
+  return head === "" ? "/" : head;
+}
+function majorOf2(version) {
+  const parsed = Number.parseInt(version.replace(/^v/, ""), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+function errorCodeOf2(error) {
+  if (error === void 0) return null;
+  const candidate = error;
+  if (!isRecord(candidate)) return null;
+  const code = candidate["code"];
+  return typeof code === "string" ? code : null;
+}
+
+// src/hooks/stop-verify.ts
+var EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"];
+var DEFAULT_TARGETS = ["lint", "typecheck"];
+var TEST_TARGET = "test";
+var FIRST_ATTEMPT = 1;
+var VERIFICATION_SPAN = { kind: "verification", capability: "validate", modelTier: "cheap" };
+function run8(env, ctx) {
+  return verify(env, ctx, ctx.spawn);
+}
+function verify(env, ctx, spawn, nodeVersion = process.versions.node) {
+  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
+  if (env.stopHookActive) return silent;
+  if (!isFile4(env.transcriptPath)) return silent;
+  if (env.cwd === "") return silent;
+  const root = repoRoot(env.cwd, ctx.spawn);
+  if (root === null) return silent;
+  const files = changedFiles(env.transcriptPath);
+  if (files.length === 0) return silent;
+  const environment = verifyEnvironment(ctx.io.env, nodeVersion);
+  const tooOld = classify2({ kind: "environment", nodeMajor: environment.nodeMajor });
+  if (tooOld !== null && tooOld.situation === "infra") {
+    return message(infraLine(tooOld.reason, targetsFor(ctx.io.env), `node ${environment.nodeMajor} cannot start the toolchain`));
+  }
+  const packages = packageDirs(files);
+  if (packages.length === 0) return silent;
+  const targets = targetsFor(ctx.io.env);
+  const selection = runnerSelect(root);
+  const missing = classify2({ kind: "runner", found: runnerFound(selection, environment.env, spawn, root) });
+  if (missing !== null && missing.situation === "infra") {
+    return message(infraLine(missing.reason, targets, `${runnerCommand(selection)} is not on PATH`));
+  }
+  const sink = telemetrySink(env, ctx, { bypassed: false });
+  const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
+    const result = runLadder(selection, packages, targets, environment.env, spawn, root);
+    return { result, status: ladderStatus(result) };
+  });
+  event(sink, "verify", verifyEvent(root, packages, ladder));
+  if (ladder.failures.length > 0) return block(blockReason(ctx.root, ladder.failures));
+  if (ladder.timeouts.length > 0) return message(timeoutLines(ladder.timeouts));
+  return silent;
+}
+function targetsFor(env) {
+  return env["ENGINEOS_VERIFY_TESTS"] === "1" ? [...DEFAULT_TARGETS, TEST_TARGET] : DEFAULT_TARGETS;
+}
+function changedFiles(path) {
+  let text2;
+  try {
+    text2 = (0, import_node_fs19.readFileSync)(path, "utf8");
+  } catch {
+    return [];
+  }
+  const files = /* @__PURE__ */ new Set();
+  for (const line of text2.split("\n")) {
+    if (line === "") continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isRecord(parsed) || parsed["type"] !== "assistant") continue;
+    const messageField = parsed["message"];
+    if (!isRecord(messageField)) continue;
+    const content = messageField["content"];
+    if (!Array.isArray(content)) continue;
+    for (const entry of content) {
+      if (!isRecord(entry) || entry["type"] !== "tool_use") continue;
+      const name = entry["name"];
+      if (typeof name !== "string" || !EDIT_TOOLS.includes(name)) continue;
+      const file = filePathOf(entry);
+      if (file !== "" && hasVerifyExtension(file)) files.add(file);
+    }
+  }
+  return [...files].sort();
+}
+function filePathOf(entry) {
+  const input = entry["input"];
+  const primary = isRecord(input) ? input["file_path"] : void 0;
+  if (typeof primary === "string") return primary;
+  const legacy = entry["tool_input"];
+  const fallback = isRecord(legacy) ? legacy["file_path"] : void 0;
+  return typeof fallback === "string" ? fallback : "";
+}
+function packageDirs(files) {
+  const dirs = /* @__PURE__ */ new Set();
+  for (const file of files) {
+    const owner = findUpAny((0, import_node_path14.dirname)(file), PACKAGE_MARKERS);
+    if (owner !== null) dirs.add(owner);
+  }
+  return [...dirs].sort();
+}
+function runLadder(selection, packages, targets, env, spawn, root) {
+  const failures = [];
+  const timeouts = [];
+  for (const packageDir of packages) {
+    if (!isDirectory4(packageDir)) continue;
+    const handle = runnerHandle(selection, packageDir);
+    if (handle === null) continue;
+    for (const target of targets) {
+      if (!runnerHasTarget(selection, handle, target, void 0, spawn, root)) continue;
+      const seconds = target === TEST_TARGET ? 180 : 90;
+      const result = runnerRun(selection, handle, target, seconds, env, spawn, root);
+      const verdict = classify2({ kind: "run", runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+      if (verdict === null) continue;
+      if (verdict.situation === "red") {
+        failures.push({ target, handle, output: result.output });
+        continue;
+      }
+      if (verdict.reason === "timeout") timeouts.push({ target, handle, seconds });
+    }
+  }
+  return { failures, timeouts };
+}
+function ladderStatus(ladder) {
+  if (ladder.failures.length > 0) return "FAILED";
+  return ladder.timeouts.length > 0 ? "DEGRADED" : "OK";
+}
+function relativeToRoot(root, dir) {
+  if (dir === root) return ".";
+  return dir.startsWith(`${root}/`) ? dir.slice(root.length + 1) : dir;
+}
+function verifyEvent(root, packages, ladder) {
+  const data = {
+    failed: ladder.failures.length > 0,
+    targets: packages.map((dir) => relativeToRoot(root, dir))
+  };
+  if (ladder.failures.length > 0) {
+    data["situation"] = "red";
+    return data;
+  }
+  if (ladder.timeouts.length > 0) {
+    data["situation"] = "infra";
+    data["reason"] = "timeout";
+  }
+  return data;
+}
+var GATE_PREFIX = "EngineOS gate: verification failed.";
+function blockReason(engineosRoot, failures) {
+  const summary = firstLines(failures.map((f) => failureBlock(f.target, f.handle, f.output)).join("\n"), SUMMARY_LINES);
+  const first = failures[0];
+  const ladder = first === void 0 ? "" : repairReason(engineosRoot, first.target);
+  return ladder === "" ? `${GATE_PREFIX} ${summary}` : `${GATE_PREFIX} ${ladder} ${summary}`;
+}
+function repairReason(engineosRoot, check) {
+  try {
+    return repairSection({ check, attempt: FIRST_ATTEMPT }, lazyRegistries(engineosRoot)).reason;
+  } catch {
+    return "";
+  }
+}
+function infraLine(reason, targets, subject) {
+  return `EngineOS gate: ${targets.join(", ")} skipped \u2014 infra (${reason}): ${subject}. No fix attempt is consumed.`;
+}
+function timeoutLines(timeouts) {
+  return timeouts.map((t) => infraLine("timeout", [t.target], `${t.handle} hit its ${t.seconds}s budget`)).join("\n");
+}
+
+// src/hooks/post-edit-check.ts
+var import_node_path15 = require("node:path");
+var TYPECHECK_TARGET = "typecheck";
+var WORKSPACE_MARKERS = ["nx.json", "pnpm-workspace.yaml", ".git"];
+var LINTERS = [
+  { target: "biome", configs: ["biome.json", "biome.jsonc"] },
+  { target: "eslint", configs: [".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", "eslint.config.js", "eslint.config.mjs"] }
+];
+var TYPECHECK_TIMEOUT_SECONDS = 90;
+var LINT_TIMEOUT_SECONDS = 45;
+function run9(env, ctx) {
+  return verify2(env, ctx, ctx.spawn);
+}
+function verify2(env, ctx, spawn) {
+  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
+  if (env.file === "") return silent;
+  if (!hasVerifyExtension(env.file)) return silent;
+  if (!isFile4(env.file)) return silent;
+  const start = (0, import_node_path15.dirname)(env.file);
+  const packageDir = findUpAny(start, PACKAGE_MARKERS);
+  if (packageDir === null) return silent;
+  const root = findUpAny(start, WORKSPACE_MARKERS) ?? packageDir;
+  const environment = verifyEnvironment(ctx.io.env);
+  const selection = runnerSelect(root);
+  const failures = [
+    ...typecheck(selection, packageDir, root, environment.env, spawn),
+    ...lint(selection, env.file, start, root, environment.env, spawn)
+  ];
+  if (failures.length === 0) return silent;
+  return fail(firstLines(`
+${failures.map((f) => failureBlock(f.target, f.subject, f.output)).join("\n")}`, SUMMARY_LINES));
+}
+function typecheck(selection, packageDir, root, env, spawn) {
+  const handle = runnerHandle(selection, packageDir);
+  if (handle === null) return [];
+  if (!runnerHasTarget(selection, handle, TYPECHECK_TARGET, void 0, spawn, root)) return [];
+  const result = runnerRun(selection, handle, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, env, spawn, root);
+  return redOf(selection, TYPECHECK_TARGET, handle, result);
+}
+function lint(selection, file, start, root, env, spawn) {
+  for (const linter of LINTERS) {
+    if (findUpAny(start, linter.configs) === null) continue;
+    const exec = selection.exec.split(" ").filter((part) => part !== "");
+    const command = exec[0] ?? "";
+    if (command === "") return [];
+    const rest = exec.slice(1);
+    if (execRun(spawn, command, [...rest, linter.target, "--version"], root, env, PROBE_TIMEOUT_SECONDS).code !== 0) return [];
+    const args = linter.target === "biome" ? [...rest, linter.target, "check", file] : [...rest, linter.target, file];
+    const result = execRun(spawn, command, args, root, env, LINT_TIMEOUT_SECONDS);
+    return redOf(selection, linter.target, file, result);
+  }
+  return [];
+}
+function redOf(selection, target, subject, result) {
+  const verdict = classify2({ kind: "run", runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+  if (verdict === null || verdict.situation !== "red") return [];
+  return [{ target, subject, output: result.output }];
+}
+
+// src/hooks/cli.ts
+var HOOKS = {
+  "ensure-project-layout": run,
+  "mark-unrecorded": run2,
+  "record-verify": run3,
+  "route-before-change": run4,
+  "prompt-advisor": run5,
+  "announce-agent-dispatch": run6,
+  "announce-agent-return": run7,
+  "stop-verify": run8,
+  "post-edit-check": run9
+};
+var runHook = (argv2, io2) => {
+  const name = argv2[0];
+  const hook = name === void 0 ? void 0 : HOOKS[name];
+  if (hook === void 0) return render(fail(`engineos hook: unknown hook: ${name ?? ""}
+`), io2);
+  const env = readEnvelope(io2);
+  if (env === null) return render(silent, io2);
+  try {
+    return render(hook(env, hookContext(env, io2)), io2);
+  } catch (e) {
+    io2.err(`[engineos] ${name ?? "hook"} failed: ${e instanceof Error ? e.message : String(e)}
+`);
+    return render(silent, io2);
+  }
+};
+
+// src/init/cli.ts
+var import_node_child_process3 = require("node:child_process");
+
+// src/init/project.ts
+var import_node_fs20 = require("node:fs");
+var import_node_path16 = require("node:path");
+var IMPORT_LINE = /^@\S+[/\\]CLAUDE\.md\s*$/;
+var EXIT_OK = 0;
+var EXIT_ENVIRONMENT = 1;
+var EXIT_NOT_GIT = 2;
+var EXIT_SELF = 3;
+var EXIT_USAGE = 64;
+var USAGE = "usage: engineos init [--dir PATH] [--dry-run]";
+var REQUIRED_SIBLINGS = ["hooks/scaffold-layout.sh", "hooks/layout-manifest.sh", "registries/layout-manifest.json"];
+var CLAUDE_MD_SEED = [
+  { dir: "", seeds: [{ src: "@templates/project-claude.md", dest: "CLAUDE.md" }] }
+];
+function initProject(argv2, deps) {
+  const { io: io2, root } = deps;
+  const parsed = parseArgs(argv2, io2.cwd());
+  if (!parsed.ok) {
+    io2.err(`${parsed.message}
+`);
+    return EXIT_USAGE;
+  }
+  const { dir: target, dryRun } = parsed.options;
+  const project = repoRoot(target, deps.spawn);
+  if (project === null) {
+    io2.err(`[engineos] ${target} is not inside a git work tree
+`);
+    return EXIT_NOT_GIT;
+  }
+  if (isEngineosCheckout(project, root)) {
+    io2.err("[engineos] refusing to init inside the EngineOS repo\n");
+    return EXIT_SELF;
+  }
+  const home = io2.env["HOME"];
+  if (home === void 0 || home === "") {
+    io2.err("[engineos] HOME is unset or empty \u2014 cannot locate ~/.claude/CLAUDE.md\n");
+    return EXIT_ENVIRONMENT;
+  }
+  if (!hasMachineInstall((0, import_node_path16.join)(home, ".claude", "CLAUDE.md"))) {
+    io2.err(`[engineos] machine install not found in ~/.claude/CLAUDE.md \u2014 run once: ${root}/install.sh
+`);
+    return EXIT_ENVIRONMENT;
+  }
+  for (const sibling of REQUIRED_SIBLINGS) {
+    if (!isFile5(`${root}/${sibling}`)) {
+      io2.err(`[engineos] broken checkout: ${root}/${sibling} is missing
+`);
+      return EXIT_ENVIRONMENT;
+    }
+  }
+  let manifest;
+  try {
+    manifest = loadLayoutManifest(root);
+  } catch {
+    io2.err(`[engineos] broken checkout: ${root}/registries/layout-manifest.json is unreadable
+`);
+    return EXIT_ENVIRONMENT;
+  }
+  io2.out(`[engineos] adopting EngineOS in ${project}
+`);
+  if (dryRun) io2.out("(dry run \u2014 nothing written)\n");
+  if (dryRun) {
+    io2.out(`  would ensure: ${manifest.map((entry) => entry.dir).join(", ")}
+`);
+  } else {
+    const created = scaffoldLayout(project, root, manifest);
+    io2.out(created.length > 0 ? `  created: ${created.join(", ")}
+` : "  layout: already complete\n");
+  }
+  writeProjectClaudeMd({ io: io2, project, root, dryRun });
+  io2.out(doneMessage(root));
+  return EXIT_OK;
+}
+function writeProjectClaudeMd(opts) {
+  const { io: io2, project, root, dryRun } = opts;
+  const claudeMd = (0, import_node_path16.join)(project, "CLAUDE.md");
+  if (lstatOk(claudeMd)) {
+    io2.out("  CLAUDE.md: exists, left untouched (declare your stack there \u2014 see templates/project-claude.md)\n");
+    return;
+  }
+  if (dryRun) {
+    io2.out("  would create CLAUDE.md from templates/project-claude.md\n");
+    return;
+  }
+  scaffoldLayout(project, root, CLAUDE_MD_SEED);
+  io2.out(
+    isFile5(claudeMd) ? "  CLAUDE.md: created from templates/project-claude.md \u2014 fill in the Stack and Commands sections\n" : "  CLAUDE.md: skipped \u2014 the project root did not resolve to a directory inside itself\n"
+  );
+}
+function doneMessage(root) {
+  return `
+Done. EngineOS is now the default methodology for this project:
+  - routing, risk, gates and the change-record Stop gate are active on the next Claude Code session
+  - commit .engineos/ and CLAUDE.md so teammates get the same behaviour
+
+Optional next steps (docs/ADOPTION.md sections 4-6):
+  - MCP servers for the read-only specialists: ${root}/templates/mcp.template.json
+  - CI agents:                                  ${root}/docs/ADOPTION.md#5
+  - confirm the gates are live:                 open a session, edit a file, expect a [router] line
+`;
+}
+function parseArgs(argv2, cwd) {
+  let dir = cwd;
+  let dryRun = false;
+  for (let i = 0; i < argv2.length; i += 1) {
+    const arg = argv2[i];
+    if (arg === "--dir") {
+      const value = argv2[i + 1];
+      if (value === void 0) return { ok: false, message: "--dir needs a path" };
+      dir = value;
+      i += 1;
+    } else if (arg === "--dry-run") {
+      dryRun = true;
+    } else {
+      return { ok: false, message: USAGE };
+    }
+  }
+  return { ok: true, options: { dir, dryRun } };
+}
+function isEngineosCheckout(project, root) {
+  const marked = isFile5((0, import_node_path16.join)(project, "hooks", "layout-manifest.sh")) && isFile5((0, import_node_path16.join)(project, "hooks", "hooks.json")) && isFile5((0, import_node_path16.join)(project, "install.sh"));
+  return marked || project === root || physical(project) === physical(root);
+}
+function hasMachineInstall(claudeMd) {
+  let text2;
+  try {
+    text2 = (0, import_node_fs20.readFileSync)(claudeMd, "utf8");
+  } catch {
+    return false;
+  }
+  return text2.split("\n").some((line) => IMPORT_LINE.test(line));
+}
+function physical(path) {
+  try {
+    return (0, import_node_fs20.realpathSync)(path);
+  } catch {
+    return path;
+  }
+}
+function lstatOk(path) {
+  try {
+    (0, import_node_fs20.lstatSync)(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isFile5(path) {
+  try {
+    return (0, import_node_fs20.statSync)(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// src/init/cli.ts
+var runInit = (argv2, io2) => {
+  let root;
+  try {
+    root = resolveRoot(io2.env);
+  } catch {
+    io2.err("[engineos] broken checkout: cannot locate the EngineOS root (no registries/routing.json above the runtime)\n");
+    return 1;
+  }
+  return initProject(argv2, { io: io2, root, spawn: import_node_child_process3.spawnSync });
+};
+
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
 function isExecutable(path) {
   try {
-    (0, import_node_fs8.accessSync)(path, import_node_fs8.constants.X_OK);
+    (0, import_node_fs21.accessSync)(path, import_node_fs21.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -2339,7 +4013,7 @@ function applyOutcome(outcome) {
     case "proceed":
       return;
     case "reexec": {
-      const r = (0, import_node_child_process.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
+      const r = (0, import_node_child_process4.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
       if (r.error === void 0 && r.status !== null) {
         process.exit(r.status);
       }
@@ -2358,8 +4032,8 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs8.existsSync, import_node_fs8.readdirSync, isExecutable);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs21.existsSync, import_node_fs21.readdirSync, isExecutable);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
-var table = { kernel: runKernel, journal: runJournal, telemetry: runTelemetry };
+var table = { kernel: runKernel, journal: runJournal, telemetry: runTelemetry, hook: runHook, init: runInit };
 process.exit(dispatch(table, argv, io));
