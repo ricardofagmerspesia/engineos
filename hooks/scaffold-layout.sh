@@ -24,7 +24,7 @@
 # `pwd -P` is a bash builtin, resolves every symlink in the path, and needs
 # nothing on PATH. `realpath` does exist on this machine (/bin/realpath), but
 # it is an external binary that older macOS did not ship and that a hook run
-# under a reduced PATH cannot count on — hooks/test-layout.sh deliberately
+# under a reduced PATH cannot count on — src/hooks/ensure-project-layout.e2e.test.ts deliberately
 # exercises exactly such a PATH.
 
 # engineos_scaffold_physdir <dir> -> the fully symlink-resolved path of an

@@ -11,7 +11,7 @@
 # The DATA now lives in registries/layout-manifest.json, which src/hooks/scaffold.ts
 # reads directly; this file is the sourced-library face of it and keeps the array
 # contract its callers already have. The literal below is the degraded copy, used
-# when jq is absent — hooks/test-layout.sh deliberately runs the scaffolder under a
+# when jq is absent — src/hooks/ensure-project-layout.e2e.test.ts deliberately runs the scaffolder under a
 # jq-free PATH — and it is also what scripts/init-project.sh's sed reads out of this
 # file's text. Both forms must stay byte-identical; the JSON is the source of truth.
 LAYOUT_MANIFEST=(
