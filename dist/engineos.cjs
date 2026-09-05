@@ -2,8 +2,8 @@
 "use strict";
 
 // src/cli.ts
-var import_node_child_process4 = require("node:child_process");
-var import_node_fs21 = require("node:fs");
+var import_node_child_process5 = require("node:child_process");
+var import_node_fs23 = require("node:fs");
 
 // src/io.ts
 var import_node_fs = require("node:fs");
@@ -117,8 +117,8 @@ var silent = { kind: "silent" };
 function context(event2, text2) {
   return { kind: "context", event: event2, text: text2 };
 }
-function block(reason) {
-  return { kind: "block", reason };
+function block(reason2) {
+  return { kind: "block", reason: reason2 };
 }
 function message(text2) {
   return { kind: "message", text: text2 };
@@ -801,13 +801,13 @@ function hitlSection(facts, regs) {
     externalFloorIndex,
     neverRetry: policy.retry.never_retry
   });
-  const undeclared = triggered.filter((reason) => !policy.hitl.reasons.includes(reason));
+  const undeclared = triggered.filter((reason2) => !policy.hitl.reasons.includes(reason2));
   if (undeclared.length > 0) {
     throw new KernelError(
       `policy.json .hitl.reasons does not declare: ${undeclared.join(", ")} \u2014 a gate may cite nothing outside the closed vocabulary`
     );
   }
-  const reasons = policy.hitl.reasons.filter((reason) => triggered.includes(reason));
+  const reasons = policy.hitl.reasons.filter((reason2) => triggered.includes(reason2));
   return {
     required: reasons.length > 0,
     reasons,
@@ -1156,7 +1156,7 @@ function routeEscalate(text2, regs) {
     "unrouted-scale": rawIds.size === 0 && router.escalate_when.unrouted_scale_signals.some((signal) => scaleFlags[signal] === true),
     "requires-dispatch-plan": surviving.some((i) => i.requires_dispatch_plan)
   };
-  const reasons = router.reasons.filter((reason) => triggered[reason] === true);
+  const reasons = router.reasons.filter((reason2) => triggered[reason2] === true);
   return {
     escalate: reasons.length > 0,
     reasons,
@@ -2422,7 +2422,7 @@ function findUpFile(start, name) {
 }
 
 // src/hooks/bypass.ts
-function flagPath(env) {
+function bypassFlagPath(env) {
   const configured = env["ENGINEOS_BYPASS_FLAG"];
   if (configured !== void 0 && configured !== "") return configured;
   const home = env["HOME"];
@@ -2434,7 +2434,7 @@ function bypassMarker(cwd, spawn) {
 }
 function bypassActive(cwd, env, spawn) {
   if (env["ENGINEOS_BYPASS"] === "1") return true;
-  if ((0, import_node_fs9.existsSync)(flagPath(env))) return true;
+  if ((0, import_node_fs9.existsSync)(bypassFlagPath(env))) return true;
   const marker = bypassMarker(cwd, spawn);
   return marker !== null && (0, import_node_fs9.existsSync)(marker);
 }
@@ -3733,8 +3733,8 @@ function repairReason(engineosRoot, check) {
     return "";
   }
 }
-function infraLine(reason, targets, subject) {
-  return `EngineOS gate: ${targets.join(", ")} skipped \u2014 infra (${reason}): ${subject}. No fix attempt is consumed.`;
+function infraLine(reason2, targets, subject) {
+  return `EngineOS gate: ${targets.join(", ")} skipped \u2014 infra (${reason2}): ${subject}. No fix attempt is consumed.`;
 }
 function timeoutLines(timeouts) {
   return timeouts.map((t) => infraLine("timeout", [t.target], `${t.handle} hit its ${t.seconds}s budget`)).join("\n");
@@ -3997,12 +3997,345 @@ var runInit = (argv2, io2) => {
   return initProject(argv2, { io: io2, root, spawn: import_node_child_process3.spawnSync });
 };
 
+// src/install/cli.ts
+var import_node_fs21 = require("node:fs");
+
+// src/install/settings-merge.ts
+var SETTINGS_NOT_OBJECT = "settings.json is not a JSON object";
+var PLACEHOLDER = "${CLAUDE_PLUGIN_ROOT}";
+var QUOTED_PLACEHOLDER = '"${CLAUDE_PLUGIN_ROOT}"';
+var OLD_PREFIX = '"${CLAUDE_PLUGIN_ROOT}"/hooks/';
+var NEW_PREFIX = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook ';
+var EXPECTED_FORMS = 'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh or node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>';
+var RUNTIME_BUNDLE = "dist/engineos.cjs";
+var UNPLACEABLE_NAME = /[/\\ ]/;
+var SettingsMergeError = class extends Error {
+  kind = "settings-merge";
+  // Rendered as a second stderr line: the installer's ABORT message carries the
+  // accepted forms under it, exactly as the bash `red` pair did.
+  detail;
+  constructor(message2, detail) {
+    super(message2);
+    this.name = "SettingsMergeError";
+    this.detail = detail;
+  }
+};
+function pluginFile(pluginRoot, relativePath) {
+  return `${trimTrailingSeparators(pluginRoot)}/${relativePath}`;
+}
+function isEngineosCommand(command, pluginRoot) {
+  const normalized = toSlashes(command);
+  if (normalized.includes(RUNTIME_BUNDLE)) return true;
+  return normalized.includes(`${toSlashes(trimTrailingSeparators(pluginRoot))}/hooks/`);
+}
+function mergeSettings(settings, hooksJson, pluginRoot, permissionsTemplate) {
+  if (!isRecord(settings)) throw new SettingsMergeError(SETTINGS_NOT_OBJECT);
+  const derived = deriveHooks(hooksJson, pluginRoot);
+  const before = JSON.stringify(settings);
+  const cloned = JSON.parse(before);
+  if (!isRecord(cloned)) throw new SettingsMergeError(SETTINGS_NOT_OBJECT);
+  const events = objectField(cloned, "hooks", "hooks");
+  const removed = scrubEngineosHooks(events, pluginRoot);
+  for (const hook of derived) addHook(events, hook);
+  cloned["hooks"] = events;
+  if (permissionsTemplate !== null && permissionsTemplate !== void 0) {
+    mergePermissions(cloned, permissionsTemplate);
+  }
+  return {
+    settings: cloned,
+    // Idempotence is judged on the output, not on the counters: a second run
+    // removes and re-adds the same N entries and still reports changed=false.
+    result: { added: derived.length, removed, changed: JSON.stringify(cloned) !== before }
+  };
+}
+function deriveHooks(hooksJson, pluginRoot) {
+  const root = trimTrailingSeparators(pluginRoot);
+  const source = pluginFile(root, "hooks/hooks.json");
+  const container = isRecord(hooksJson) ? hooksJson["hooks"] : void 0;
+  if (!isRecord(container)) throw new SettingsMergeError(`no .hooks object in ${source}`);
+  const derived = [];
+  for (const [event2, value] of Object.entries(container)) {
+    const entries = asArray(value);
+    if (entries === null) throw new SettingsMergeError(`${source}: hooks.${event2} is not an array`);
+    for (const entry of entries) {
+      if (!isRecord(entry)) throw new SettingsMergeError(`${source}: an entry under hooks.${event2} is not a JSON object`);
+      const matcher = typeof entry["matcher"] === "string" ? entry["matcher"] : "";
+      const inner = asArray(entry["hooks"]);
+      if (inner === null) throw new SettingsMergeError(`${source}: an entry under hooks.${event2} has no hooks array`);
+      for (const hook of inner) {
+        const raw = isRecord(hook) && typeof hook["command"] === "string" ? hook["command"] : "";
+        derived.push({ event: event2, matcher, command: resolveCommand(raw, root, source) });
+      }
+    }
+  }
+  return derived;
+}
+function resolveCommand(raw, root, source) {
+  const name = hookNameOf(raw);
+  if (name === null || name === "" || UNPLACEABLE_NAME.test(name)) {
+    throw new SettingsMergeError(`ABORT: unrecognized hook command in ${source}: ${raw}`, EXPECTED_FORMS);
+  }
+  return raw.split(QUOTED_PLACEHOLDER).join(root).split(PLACEHOLDER).join(root);
+}
+function hookNameOf(raw) {
+  if (raw.startsWith(OLD_PREFIX)) return raw.slice(OLD_PREFIX.length);
+  if (raw.startsWith(NEW_PREFIX)) return raw.slice(NEW_PREFIX.length);
+  return null;
+}
+function scrubEngineosHooks(events, pluginRoot) {
+  let removed = 0;
+  for (const [event2, value] of Object.entries(events)) {
+    if (value === null || value === void 0) continue;
+    const entries = asArray(value);
+    if (entries === null) throw new SettingsMergeError(`settings.json "hooks.${event2}" is not an array`);
+    const kept = [];
+    for (const entry of entries) {
+      const inner = isRecord(entry) ? asArray(entry["hooks"]) : null;
+      if (!isRecord(entry) || inner === null) {
+        kept.push(entry);
+        continue;
+      }
+      const survivors = inner.filter((hook) => !isEngineosHook(hook, pluginRoot));
+      removed += inner.length - survivors.length;
+      if (survivors.length === 0) continue;
+      kept.push({ ...entry, hooks: survivors });
+    }
+    events[event2] = kept;
+  }
+  return removed;
+}
+function isEngineosHook(hook, pluginRoot) {
+  if (!isRecord(hook)) return false;
+  const command = hook["command"];
+  return typeof command === "string" && isEngineosCommand(command, pluginRoot);
+}
+function addHook(events, hook) {
+  const existing = asArray(events[hook.event]) ?? [];
+  existing.push({ matcher: hook.matcher, hooks: [{ type: "command", command: hook.command }] });
+  events[hook.event] = existing;
+}
+function mergePermissions(settings, template) {
+  if (!isRecord(template)) throw new SettingsMergeError("permissions template is not a JSON object");
+  const permissions = objectField(settings, "permissions", "permissions");
+  const existing = arrayField(permissions, "allow", "permissions.allow");
+  const shared = asArray(template["allow"]) ?? [];
+  const seen = /* @__PURE__ */ new Set();
+  const union = [];
+  for (const value of [...existing, ...shared]) {
+    const key = typeof value === "string" ? `s:${value}` : `j:${JSON.stringify(value)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    union.push(value);
+  }
+  permissions["allow"] = union;
+  settings["permissions"] = permissions;
+}
+function objectField(container, key, label) {
+  const value = container[key];
+  if (value === void 0 || value === null || value === false) return {};
+  if (!isRecord(value)) throw new SettingsMergeError(`settings.json "${label}" is not a JSON object`);
+  return value;
+}
+function arrayField(container, key, label) {
+  const value = container[key];
+  if (value === void 0 || value === null || value === false) return [];
+  const array = asArray(value);
+  if (array === null) throw new SettingsMergeError(`settings.json "${label}" is not an array`);
+  return array;
+}
+function asArray(value) {
+  return Array.isArray(value) ? value : null;
+}
+function toSlashes(value) {
+  return value.split("\\").join("/");
+}
+function trimTrailingSeparators(value) {
+  return value.replace(/[\\/]+$/, "");
+}
+
+// src/install/cli.ts
+var EXIT_OK2 = 0;
+var EXIT_FAILURE = 1;
+var USAGE2 = "usage: engineos settings-merge --settings <path> --plugin-root <path> [--dry-run]";
+var runSettingsMerge = (argv2, io2) => {
+  const parsed = parseArgs2(argv2);
+  if (!parsed.ok) return fail3(io2, parsed.message);
+  const { settings: settingsPath, pluginRoot, dryRun } = parsed.options;
+  const hooksJsonPath = pluginFile(pluginRoot, "hooks/hooks.json");
+  const hooksJson = readJson(hooksJsonPath);
+  if (!hooksJson.ok) return fail3(io2, hooksJson.message);
+  const settings = readSettings(settingsPath);
+  if (!settings.ok) return fail3(io2, settings.message);
+  const templatePath = pluginFile(pluginRoot, "templates/permissions.template.json");
+  let template = null;
+  if ((0, import_node_fs21.existsSync)(templatePath)) {
+    const read = readJson(templatePath);
+    if (!read.ok) return fail3(io2, read.message);
+    template = read.value;
+  } else {
+    io2.err(`permissions template missing (${templatePath}) \u2014 skipped allowlist merge.
+`);
+  }
+  let merged;
+  try {
+    merged = mergeSettings(settings.value, hooksJson.value, pluginRoot, template);
+  } catch (error) {
+    if (error instanceof SettingsMergeError) {
+      io2.err(`${error.message}
+`);
+      if (error.detail !== void 0) io2.err(`${error.detail}
+`);
+      return EXIT_FAILURE;
+    }
+    throw error;
+  }
+  if (dryRun) {
+    writeJson(io2, merged.result);
+    return EXIT_OK2;
+  }
+  return writeAtomically(io2, settingsPath, `${JSON.stringify(merged.settings, null, 2)}
+`);
+};
+function parseArgs2(argv2) {
+  let settings;
+  let pluginRoot;
+  let dryRun = false;
+  for (let index = 0; index < argv2.length; index += 1) {
+    const arg = argv2[index];
+    if (arg === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (arg === "--settings" || arg === "--plugin-root") {
+      const value = argv2[index + 1];
+      if (value === void 0 || value === "") return { ok: false, message: `${arg} needs a path` };
+      if (arg === "--settings") settings = value;
+      else pluginRoot = value;
+      index += 1;
+      continue;
+    }
+    return { ok: false, message: USAGE2 };
+  }
+  if (settings === void 0) return { ok: false, message: USAGE2 };
+  if (pluginRoot === void 0) return { ok: false, message: USAGE2 };
+  return { ok: true, options: { settings, pluginRoot, dryRun } };
+}
+function readJson(path) {
+  try {
+    return { ok: true, value: readJsonFile(path) };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : `cannot read ${path}` };
+  }
+}
+function readSettings(path) {
+  if (!(0, import_node_fs21.existsSync)(path)) return { ok: true, value: {} };
+  let text2;
+  try {
+    text2 = (0, import_node_fs21.readFileSync)(path, "utf8");
+  } catch {
+    return { ok: false, message: `cannot read ${path}` };
+  }
+  if (text2.trim() === "") return { ok: true, value: {} };
+  try {
+    return { ok: true, value: JSON.parse(text2) };
+  } catch {
+    return { ok: false, message: SETTINGS_NOT_OBJECT };
+  }
+}
+function writeAtomically(io2, path, contents) {
+  const temporary = `${path}.tmp`;
+  try {
+    (0, import_node_fs21.writeFileSync)(temporary, contents);
+    (0, import_node_fs21.renameSync)(temporary, path);
+  } catch (error) {
+    discard(temporary);
+    return fail3(io2, `cannot write ${path}: ${error instanceof Error ? error.message : "unknown error"}`);
+  }
+  return EXIT_OK2;
+}
+function discard(path) {
+  try {
+    (0, import_node_fs21.rmSync)(path, { force: true });
+  } catch {
+    return;
+  }
+}
+function fail3(io2, message2) {
+  io2.err(`${message2}
+`);
+  return EXIT_FAILURE;
+}
+
+// src/bypass/cli.ts
+var import_node_child_process4 = require("node:child_process");
+var import_node_fs22 = require("node:fs");
+var EXIT_OK3 = 0;
+var EXIT_FAILURE2 = 1;
+var EXIT_USAGE2 = 2;
+var USAGE3 = "usage: engineos bypass on|off|status [cwd]";
+var DEFAULT_DEPS = { spawn: import_node_child_process4.spawnSync };
+function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
+  const action = argv2[0] ?? "status";
+  const target = argv2[1] ?? io2.cwd();
+  const marker = bypassMarker(target, deps.spawn);
+  if (marker === null) {
+    io2.err("engineos: not a git repository \u2014 bypass has no effect here\n");
+    return EXIT_FAILURE2;
+  }
+  const flag = bypassFlagPath(io2.env);
+  switch (action) {
+    case "on":
+      try {
+        (0, import_node_fs22.writeFileSync)(marker, "");
+      } catch (e) {
+        io2.err(`engineos: cannot create ${marker}: ${reason(e)}
+`);
+        return EXIT_FAILURE2;
+      }
+      io2.out("engineos: BYPASSED \u2014 routing, agent dispatch, and Stop gates are off for this session\n");
+      return EXIT_OK3;
+    case "off":
+      try {
+        (0, import_node_fs22.rmSync)(marker, { force: true });
+      } catch (e) {
+        io2.err(`engineos: cannot clear ${marker}: ${reason(e)}
+`);
+        return EXIT_FAILURE2;
+      }
+      if (io2.env["ENGINEOS_BYPASS"] === "1") {
+        io2.err("engineos: repo marker cleared, but ENGINEOS_BYPASS=1 still bypasses everything \u2014 unset it to restore\n");
+      } else if ((0, import_node_fs22.existsSync)(flag)) {
+        io2.err(`engineos: repo marker cleared, but ${flag} still bypasses everything \u2014 delete it to restore
+`);
+      } else {
+        io2.out("engineos: active \u2014 routing, agent dispatch, and Stop gates restored\n");
+      }
+      return EXIT_OK3;
+    case "status":
+      io2.out(`${statusLine(marker, flag, io2.env)}
+`);
+      return EXIT_OK3;
+    default:
+      io2.err(`${USAGE3}
+`);
+      return EXIT_USAGE2;
+  }
+}
+function statusLine(marker, flag, env) {
+  if (env["ENGINEOS_BYPASS"] === "1") return "bypassed (ENGINEOS_BYPASS=1)";
+  if ((0, import_node_fs22.existsSync)(flag)) return `bypassed (${flag})`;
+  return (0, import_node_fs22.existsSync)(marker) ? "bypassed (repo marker)" : "active";
+}
+function reason(e) {
+  return e instanceof Error ? e.message : String(e);
+}
+
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
 function isExecutable(path) {
   try {
-    (0, import_node_fs21.accessSync)(path, import_node_fs21.constants.X_OK);
+    (0, import_node_fs23.accessSync)(path, import_node_fs23.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -4013,7 +4346,7 @@ function applyOutcome(outcome) {
     case "proceed":
       return;
     case "reexec": {
-      const r = (0, import_node_child_process4.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
+      const r = (0, import_node_child_process5.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
       if (r.error === void 0 && r.status !== null) {
         process.exit(r.status);
       }
@@ -4032,8 +4365,16 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs21.existsSync, import_node_fs21.readdirSync, isExecutable);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs23.existsSync, import_node_fs23.readdirSync, isExecutable);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
-var table = { kernel: runKernel, journal: runJournal, telemetry: runTelemetry, hook: runHook, init: runInit };
+var table = {
+  kernel: runKernel,
+  journal: runJournal,
+  telemetry: runTelemetry,
+  hook: runHook,
+  init: runInit,
+  "settings-merge": runSettingsMerge,
+  bypass: runBypass
+};
 process.exit(dispatch(table, argv, io));
