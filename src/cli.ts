@@ -10,6 +10,8 @@ import { runJournal } from './journal/cli';
 import { runTelemetry } from './journal/telemetry-cli';
 import { runHook } from './hooks/cli';
 import { runInit } from './init/cli';
+import { runSettingsMerge } from './install/cli';
+import { runBypass } from './bypass/cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -56,5 +58,13 @@ if (currentMajor() < MIN_NODE_MAJOR) {
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 
-const table: CommandTable = { kernel: runKernel, journal: runJournal, telemetry: runTelemetry, hook: runHook, init: runInit };
+const table: CommandTable = {
+  kernel: runKernel,
+  journal: runJournal,
+  telemetry: runTelemetry,
+  hook: runHook,
+  init: runInit,
+  'settings-merge': runSettingsMerge,
+  bypass: runBypass,
+};
 process.exit(dispatch(table, argv, io));

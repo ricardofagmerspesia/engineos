@@ -319,3 +319,48 @@ surface: `hook_slug` / `hook_path_slug` are `hookSlug` / `hookPathSlug` in
 lifecycle (`withSpan`, `openSpan`, `closeSpan`) and `event` in
 `src/hooks/telemetry.ts`. A consumer grepping a hook file for either is reading
 a detail the shim removed.
+
+## 1.7.0 additions
+
+### 1.7.0: hooks.json registers node directly; installers drop jq and bash.exe
+
+`1.7.0` is a **MINOR** release. Nothing in the public surface is removed and
+nothing is renamed; two deprecation windows open and one runtime requirement
+becomes explicit.
+
+| Surface | 1.7.0 change | Kind |
+|---|---|---|
+| `hooks/hooks.json` command form | `"${CLAUDE_PLUGIN_ROOT}"/hooks/<name>.sh` -> `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>` | value change, backward compatible |
+| `hooks/<name>.sh` shims | deprecated in 1.7.0, removed in 2.0 | deprecated |
+| `engineos settings-merge` | new subcommand of the runtime entry point | added |
+| `engineos bypass` | new subcommand of the runtime entry point | added |
+| `install.sh` / `install.ps1` dependency | `jq` -> `node >= 18` | requirement change |
+| Windows hook path | `bash.exe` no longer resolved or registered | requirement removed |
+
+**Why the command-form change is MINOR.** A consumer who copied the old `.sh`
+entries into their own `settings.json` keeps a working install: the
+`hooks/*.sh` shims stay on disk and still `exec` the same implementation. On the
+next `install.sh` / `install.ps1` run those entries are scrubbed and replaced by
+the node form — `settings-merge` recognises a prior EngineOS entry by its
+command referencing `<plugin-root>/hooks/` **or** containing
+`dist/engineos.cjs`, so both forms are removed before the current list is
+appended and no hook ends up registered twice. Removing the shims is MAJOR and
+lands in 2.0.
+
+**`node >= 18` is now required to install, not only to run hooks.** `install.sh`
+and `install.ps1` check for it and, when it is missing, register nothing and
+print the by-hand fallback pointing at `hooks/hooks.json`. This replaces the old
+`jq` gate.
+
+**`jq` is no longer needed by the installers or the hooks.** The settings.json
+merge — scrub, append, `permissions.allow` set union — moved into
+`engineos settings-merge`, and the hooks have parsed tool input natively since
+the 1.6.x port. `jq` remains a *development* dependency of this repo:
+`scripts/validate-engineos.sh` (check C1 says so) and
+`scripts/gen-agent-registry.sh` still require it. Adopting EngineOS does not.
+
+**Git Bash is off the hook path on Windows.** Hook commands are `node ...`, so
+Windows spawns node directly instead of resolving a `.sh` path through the file
+association that Git for Windows points at `git-bash.exe`. `install.ps1` no
+longer locates `bash.exe` and no longer wraps hook commands with it. Git Bash is
+still required on Windows for `scripts/kernel.sh`, which stays bash until 2.0.

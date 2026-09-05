@@ -260,201 +260,70 @@ foreach ($dir in @($skillsDest, $agentsDest, $commandsDest)) {
 }
 
 # ---------- 5. Merge hooks into settings.json ----------
-# Hook scripts are bash. On Windows they MUST be invoked through Git Bash's
-# bash.exe: a bare `...\foo.sh` command is resolved by the .sh file association,
-# which Git for Windows points at git-bash.exe -- a mintty *terminal launcher*.
-# That pops a visible console window on every single hook fire (every prompt,
-# every edit, every stop). bash.exe is a plain console binary and stays invisible.
+# The hooks are node now. hooks/hooks.json registers
+# `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>`, so Claude Code
+# spawns node directly and no shell sits between it and the hook. That is why
+# this section no longer resolves bash.exe: the old form was a bare `...\foo.sh`
+# command, resolved by the .sh file association, which Git for Windows points at
+# git-bash.exe -- a mintty *terminal launcher* that popped a visible console
+# window on every hook fire (every prompt, every edit, every stop). A `node ...`
+# command never touches that association, so bash.exe leaves the hook path.
+#
+# The hooks/*.sh shims stay on disk -- deprecated in 1.7.0, removed in 2.0 --
+# because a consumer may have copied the old `.sh` entries into their own
+# settings.json. Those keep firing; a reinstall scrubs and replaces them.
+# Mirrors install.sh.
 if (-not (Test-Path $Settings)) { '{}' | Set-Content $Settings -Encoding UTF8 }
+# write-once backup: never clobber the last known-good with an already-bad file
 if (-not (Test-Path "$Settings.engineos.bak")) {
     Copy-Item $Settings "$Settings.engineos.bak"
 }
 
-$hooksDir = Join-Path $RepoDir 'hooks'
-
 # Use forward-slash paths so Claude Code (cross-platform) handles them uniformly
 function ToUnixPath($p) { $p -replace '\\', '/' }
 
-# Locate Git Bash's bash.exe. Never fall back to a bare `bash`: on Windows that
-# resolves to C:\Windows\System32\bash.exe (WSL), which cannot read C:/... paths.
-function Resolve-GitBash {
-    $candidates = @()
+# node is both the hook runtime and this installer's JSON tool: `engineos
+# settings-merge` reads hooks/hooks.json (the same file plugin mode loads),
+# substitutes the ${CLAUDE_PLUGIN_ROOT} placeholder with this checkout, scrubs
+# every prior EngineOS entry -- the old .sh form included -- from every event,
+# appends the current list, and merges templates/permissions.template.json into
+# permissions.allow. Symlink mode and plugin mode cannot drift, and adding a
+# hook means editing hooks.json and nothing else.
+$nodeMajor = 0
+if (Get-Command node -ErrorAction SilentlyContinue) {
     try {
-        # git.exe lives at <root>\cmd\git.exe -> bash.exe at <root>\bin\bash.exe
-        $gitRoot = Split-Path -Parent (Split-Path -Parent (Get-Command git -ErrorAction Stop).Source)
-        $candidates += (Join-Path $gitRoot 'bin\bash.exe')
-        $candidates += (Join-Path $gitRoot 'usr\bin\bash.exe')
-    } catch {}
-    $candidates += (Join-Path $env:ProgramFiles 'Git\bin\bash.exe')
-    if (${env:ProgramFiles(x86)}) {
-        $candidates += (Join-Path ${env:ProgramFiles(x86)} 'Git\bin\bash.exe')
-    }
-    $candidates += (Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe')
-
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path $candidate -PathType Leaf)) { return (ToUnixPath $candidate) }
-    }
-    return $null
-}
-
-$BashExe = Resolve-GitBash
-
-# A hook command: quoted interpreter + quoted script, or the bare script when no
-# Git Bash was found (broken either way at that point, but no silent path change).
-function New-HookCommand([string]$ScriptPath) {
-    if ($BashExe) { return '"{0}" "{1}"' -f $BashExe, $ScriptPath }
-    return $ScriptPath
-}
-
-# The hook list IS hooks/hooks.json -- the same file plugin mode loads. Every
-# event/matcher/command is read from there and the leading
-# "${CLAUDE_PLUGIN_ROOT}" placeholder replaced by this checkout, so symlink mode
-# and plugin mode cannot drift. Adding a hook means editing hooks.json, and
-# nothing else. Mirrors install.sh.
-$hooksJsonPath = Join-Path $hooksDir 'hooks.json'
-if (-not (Test-Path $hooksJsonPath -PathType Leaf)) {
-    Write-Red "ABORT: $hooksJsonPath not found -- cannot derive the hook list."
-    exit 1
-}
-$hooksJson = Get-Content $hooksJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
-
-$derivedHooks = @()
-foreach ($eventProp in $hooksJson.hooks.PSObject.Properties) {
-    foreach ($entry in @($eventProp.Value)) {
-        $matcher = if ($entry.matcher) { [string]$entry.matcher } else { '' }
-        foreach ($inner in @($entry.hooks)) {
-            $scriptName = $inner.command -replace '^"\$\{CLAUDE_PLUGIN_ROOT\}"/hooks/', ''
-            # The rewrite leaves a bare script name. Anything else is a command
-            # form this installer cannot place -- fail loudly rather than
-            # register a path that silently never fires.
-            if (($scriptName -eq '') -or ($scriptName -match '[/\\ ]')) {
-                Write-Red "ABORT: unrecognized hook command in ${hooksJsonPath}: $($inner.command)"
-                Write-Red 'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh'
-                exit 1
-            }
-            $derivedHooks += [PSCustomObject]@{
-                Event   = $eventProp.Name
-                Matcher = $matcher
-                Command = (New-HookCommand (ToUnixPath (Join-Path $hooksDir $scriptName)))
-            }
-        }
+        $nodeVersion = (& node -p 'process.versions.node.split(".")[0]') | Select-Object -First 1
+        if ("$nodeVersion" -match '^\d+$') { $nodeMajor = [int]"$nodeVersion" }
+    } catch {
+        $nodeMajor = 0
     }
 }
 
-$settingsObj = Get-Content $Settings -Raw -Encoding UTF8 | ConvertFrom-Json
-
-if (-not (Get-Member -InputObject $settingsObj -Name 'hooks' -MemberType NoteProperty)) {
-    $settingsObj | Add-Member -NotePropertyName 'hooks' -NotePropertyValue ([PSCustomObject]@{})
-}
-
-function Add-HookEntry {
-    param($SettingsObj, [string]$Event, [string]$Matcher, [string]$Cmd)
-
-    if (-not (Get-Member -InputObject $SettingsObj.hooks -Name $Event -MemberType NoteProperty)) {
-        $SettingsObj.hooks | Add-Member -NotePropertyName $Event -NotePropertyValue @()
+if ($nodeMajor -ge 18) {
+    $pluginRoot = ToUnixPath $RepoDir
+    & node "$pluginRoot/dist/engineos.cjs" settings-merge --settings $Settings --plugin-root $pluginRoot
+    if ($LASTEXITCODE -ne 0) {
+        Write-Red "ABORT: settings merge failed"
+        exit 1
     }
-
-    $existing = @($SettingsObj.hooks.$Event)
-    $alreadyPresent = $existing | ForEach-Object {
-        if ($_.hooks) {
-            @($_.hooks) | Where-Object { $_.command -eq $Cmd }
-        }
-    } | Where-Object { $_ -ne $null }
-
-    if (-not $alreadyPresent) {
-        $entry = [PSCustomObject]@{
-            matcher = $Matcher
-            hooks   = @([PSCustomObject]@{ type = 'command'; command = $Cmd })
-        }
-        $SettingsObj.hooks.$Event = @($existing) + @($entry)
-    }
-}
-
-# Drop every previously installed EngineOS hook entry, under every event, before
-# re-adding: an earlier install's bare-`.sh` command (the terminal-window
-# spawner) is replaced rather than left firing alongside the wrapped one, and a
-# hook since retired -- the per-edit gate (post-edit-check.sh) and the three
-# legacy prompt advisors that prompt-advisor.sh replaced -- is dropped for good.
-function Remove-EngineOSHooks {
-    param($SettingsObj, [string]$HooksDirUnix)
-
-    foreach ($event in @($SettingsObj.hooks.PSObject.Properties.Name)) {
-        $kept = @()
-        foreach ($entry in @($SettingsObj.hooks.$event)) {
-            # Compare slash-normalized so both C:/... and C:\... forms are caught.
-            $inner = @($entry.hooks) | Where-Object {
-                -not ($_.command -and ($_.command -replace '\\', '/').Contains("$HooksDirUnix/"))
-            }
-            if ($inner.Count -gt 0) {
-                $entry.hooks = @($inner)
-                $kept += $entry
-            }
-        }
-        $SettingsObj.hooks.$event = @($kept)
-    }
-}
-
-Remove-EngineOSHooks $settingsObj (ToUnixPath $hooksDir)
-
-foreach ($derived in $derivedHooks) {
-    Add-HookEntry $settingsObj $derived.Event $derived.Matcher $derived.Command
-}
-
-$settingsObj | ConvertTo-Json -Depth 20 | Set-Content $Settings -Encoding UTF8
-Write-Green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
-if ($BashExe) {
-    Write-Host "  hooks run through: $BashExe (no terminal windows)"
+    Write-Green "Hooks merged into settings.json (backup: settings.json.engineos.bak); shared read-only allowlist merged into permissions."
 } else {
-    Write-Warn "  Git Bash not found -- hooks registered as bare .sh paths. Windows will"
-    Write-Warn "  hand those to git-bash.exe and pop a terminal window on every hook fire."
-    Write-Warn "  Install Git for Windows, then re-run this script: https://git-scm.com/download/win"
+    # No node means no hooks.json parsing either, so there is no list to print
+    # here without hand-copying one. Point at the source of truth instead.
+    Write-Warn "node >= 18 not found — hooks NOT registered. Install node and re-run:"
+    Write-Warn "  https://nodejs.org/en/download"
+    Write-Warn "Or add every entry of $RepoDir\hooks\hooks.json to $Settings by hand,"
+    Write-Warn 'replacing the "${CLAUDE_PLUGIN_ROOT}" placeholder with the repo path.'
 }
 
-# ---------- 5b. Shared permission allowlist ----------
-$permsTemplate = Join-Path $RepoDir 'templates\permissions.template.json'
-if (Test-Path $permsTemplate) {
-    $perms = Get-Content $permsTemplate -Raw -Encoding UTF8 | ConvertFrom-Json
-    $shared = if ($perms.allow) { @($perms.allow) } else { @() }
-
-    if (-not (Get-Member -InputObject $settingsObj -Name 'permissions' -MemberType NoteProperty)) {
-        $settingsObj | Add-Member -NotePropertyName 'permissions' -NotePropertyValue ([PSCustomObject]@{})
-    }
-    if (-not (Get-Member -InputObject $settingsObj.permissions -Name 'allow' -MemberType NoteProperty)) {
-        $settingsObj.permissions | Add-Member -NotePropertyName 'allow' -NotePropertyValue @()
-    }
-
-    $combined = (@($settingsObj.permissions.allow) + $shared) | Sort-Object -Unique
-    $settingsObj.permissions.allow = $combined
-
-    $settingsObj | ConvertTo-Json -Depth 20 | Set-Content $Settings -Encoding UTF8
-    Write-Green "Shared read-only allowlist merged into permissions."
-} else {
-    Write-Warn "permissions template missing ($permsTemplate) — skipped allowlist merge."
-}
-
-# ---------- 6. Hook prerequisites for Windows ----------
+# ---------- 6. Hook prerequisites ----------
 Write-Host ""
-Write-Warn "NOTE (Windows): hook scripts are bash and run through Git Bash's bash.exe."
-Write-Warn "  - Git for Windows (provides bash.exe): https://git-scm.com/download/win"
-Write-Warn "  - WSL is NOT a substitute here: the hook commands carry C:/... paths, which"
-Write-Warn "    WSL's bash cannot resolve."
-
-# jq is the hard dependency of every hook that parses tool input. Without it they
-# all `exit 0` silently -- routing guidance and the Stop gate just never fire.
-$jqFound = $false
-if ($BashExe) {
-    & $BashExe -lc 'command -v jq >/dev/null 2>&1' 2>$null
-    $jqFound = ($LASTEXITCODE -eq 0)
-} elseif (Get-Command jq -ErrorAction SilentlyContinue) {
-    $jqFound = $true
-}
-if ($jqFound) {
-    Write-Green "jq found -- hooks will parse tool input."
-} else {
-    Write-Warn "jq NOT found on the hook PATH. Every hook that parses tool input exits 0"
-    Write-Warn "silently: no [router] guidance, no change-record Stop gate. Install it:"
-    Write-Warn "  winget install jqlang.jq    (then restart Claude Code)"
-}
+Write-Warn "NOTE (Windows): hooks need node >= 18 on the PATH Claude Code uses."
+Write-Warn "  - Node.js: https://nodejs.org/en/download"
+Write-Warn "  - Git Bash is no longer on the hook path. It is still required for"
+Write-Warn "    scripts/kernel.sh until 2.0: https://git-scm.com/download/win"
+Write-Warn "  - jq is no longer needed by this installer or by the hooks; only"
+Write-Warn "    scripts/validate-engineos.sh and scripts/gen-agent-registry.sh use it."
 
 # ---------- 7. MCP reminder ----------
 Write-Host ""
