@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import type { Io } from '../io';
 import type { HookContext } from './output';
 import { isRecord } from '../lib/json';
-import { repoRoot } from '../lib/git';
+import { resolveRoot } from '../registry/paths';
 
 export interface HookEnvelope {
   cwd: string;
@@ -56,17 +56,19 @@ export function readEnvelope(io: Io): HookEnvelope | null {
   };
 }
 
-// `root` is the repo containing the payload's cwd, falling back to that cwd when
-// the directory is not inside a git repo. lib-common has no single `root`
-// variable: each hook called `repo_root "$HOOK_CWD"` and carried on with
-// `$HOOK_CWD` when it came back empty. That per-hook idiom is the derivation.
+// `root` is the EngineOS checkout the registries are read from — the one fact a
+// hook cannot derive from its envelope. The PROJECT root is `repoRoot(env.cwd)`,
+// re-derived by the hooks that need it, the way each bash hook called
+// `repo_root "$HOOK_CWD"` itself. lib-common had no single root variable; this
+// is the one that has to travel.
 //
 // `spawn` is injectable so a test can build a context without a git subprocess;
 // production callers pass nothing.
 export function hookContext(env: HookEnvelope, io: Io, spawn: typeof spawnSync = spawnSync): HookContext {
+  void env;
   return {
     io,
-    root: repoRoot(env.cwd, spawn) ?? env.cwd,
+    root: resolveRoot(io.env),
     now: Date.now,
     spawn,
   };

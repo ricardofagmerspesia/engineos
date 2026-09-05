@@ -65,9 +65,11 @@ export function render(decision: HookDecision, io: Io): number {
   }
 }
 
-// What a hook body gets besides its envelope: where to write, which repo it is
-// acting on, the clock, and the process spawner. Built by `hookContext` in
-// ./envelope, which is where `root` is derived.
+// What a hook body gets besides its envelope: where to write, the EngineOS
+// checkout its registries come from, the clock, and the process spawner. Built
+// by `hookContext` in ./envelope. The project root is not here on purpose: it
+// derives from the envelope's cwd, and a second copy would be one more thing
+// that can disagree.
 export interface HookContext {
   io: Io;
   root: string;

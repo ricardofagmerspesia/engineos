@@ -1,15 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { memoryIo } from '../io';
-import { fixtureRepo, tempRoot } from '../testing/harness';
+import { tempRoot } from '../testing/harness';
 import { hookContext, readEnvelope } from './envelope';
-
-function hasGit(): boolean {
-  return spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0;
-}
+import { resolveRoot } from '../registry/paths';
 
 const FULL = JSON.stringify({
   cwd: '/tmp/work',
@@ -81,32 +75,21 @@ test('a non-string field is treated as absent', () => {
   assert.equal(env?.stopHookActive, false);
 });
 
-test('hookContext falls back to the payload cwd outside a git repo', (t) => {
-  if (!hasGit()) {
-    t.skip('git is not installed');
-    return;
-  }
+test('hookContext carries the EngineOS checkout as root, whatever the payload cwd says', (t) => {
   const outside = tempRoot(t);
   const env = readEnvelope(memoryIo({ stdin: JSON.stringify({ cwd: outside }) }));
   assert.notEqual(env, null);
   if (env === null) return;
   const io = memoryIo();
   const ctx = hookContext(env, io);
-  assert.equal(ctx.root, outside);
+  assert.equal(ctx.root, resolveRoot({}, __dirname));
   assert.equal(ctx.io, io);
   assert.equal(typeof ctx.now(), 'number');
 });
 
-test('hookContext resolves root to the repo top level, not the payload cwd', (t) => {
-  if (!hasGit()) {
-    t.skip('git is not installed');
-    return;
-  }
-  const repo = fixtureRepo(tempRoot(t));
-  const nested = join(repo, 'packages', 'api');
-  mkdirSync(nested, { recursive: true });
-  const env = readEnvelope(memoryIo({ stdin: JSON.stringify({ cwd: nested }) }));
+test('hookContext honours ENGINEOS_ROOT so a relocated copy answers from its own registries', () => {
+  const env = readEnvelope(memoryIo({ stdin: JSON.stringify({ cwd: '/anywhere' }) }));
   assert.notEqual(env, null);
   if (env === null) return;
-  assert.equal(hookContext(env, memoryIo()).root, repo);
+  assert.equal(hookContext(env, memoryIo({ env: { ENGINEOS_ROOT: '/relocated' } })).root, '/relocated');
 });
