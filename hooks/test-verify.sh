@@ -188,11 +188,15 @@ rm -rf "$T" "$TSCRIPT"
 [ -z "$DEC" ] && ok || no "case9 mixed-read-edit-line: expected empty decision (Read's failing package excluded), got '$DEC'"
 
 # ---------- Case 10: no-jq PATH — stop_hook_active=true must not block ----------
-# Regression: the pre-fix no-jq extraction used a GNU-only sed BRE alternation
-# (\(true\|false\)) that yields empty on macOS/BSD sed, so ACTIVE was always
-# empty and the loop guard never fired — the hook could then run (and block on)
-# a failing-test package even when stop_hook_active was true. The fix uses
-# grep -E, which is portable. Build a jq-free PATH to exercise that fallback.
+# Historically this covered the hook's own jq-free fallback: the pre-fix
+# extraction used a GNU-only sed BRE alternation (\(true\|false\)) that yields
+# empty on macOS/BSD sed, so the loop guard never fired without jq. The runtime is
+# node now and there is no jq path left to get wrong, so what the case proves is
+# the other half, and it is the half that can still regress: jq is no longer a
+# DEPENDENCY of the Stop gate, and the loop guard still fires with jq genuinely
+# off PATH. Dropping jq's directory is not enough on a machine with jq installed
+# twice (e.g. /usr/bin AND a conda env), so build an isolated PATH carrying only
+# what the shim and the gate need — node and dirname among them, never jq.
 NOJQ_BIN=$(mktemp -d)
 for _t in grep sed head bash cat dirname git node npm; do
   _p=$(command -v "$_t" 2>/dev/null)
@@ -227,7 +231,15 @@ else
 fi
 rm -rf "$NOJQ_BIN"
 
-# ---------- Case 11: failing test with jq present — block reason states the repair bound (P5) ----------
+# ---------- Case 11: a red check — the block reason carries the kernel's repair ladder (P5) ----------
+# The bash hook pasted the bound into the reason itself, so this case grepped for
+# the words it pasted. The node runtime asks the kernel instead
+# (src/hooks/stop-verify.ts -> src/kernel/repair, the one reader of
+# policy.json .repair), so the assertion follows the wiring rather than the old
+# wording: the reason must carry, verbatim, what the kernel answers for the FIRST
+# red of that check. A hook that kept a private copy of the ladder fails here, and
+# so does one that stopped consulting the kernel at all.
+LADDER=$(bash "$DIR/../scripts/kernel.sh" repair --check lint --attempt 1 2>/dev/null | jq -r '.reason // empty')
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
 # red via lint, not test: tests are opt-in (rules/verification.md), so a failing
@@ -240,10 +252,14 @@ make_transcript "$TSCRIPT" "$T/src/x.ts"
 REASON_OUT=$(printf '{"cwd":"%s","transcript_path":"%s","stop_hook_active":false}' "$T" "$TSCRIPT" \
   | bash "$DIR/stop-verify.sh" 2>/dev/null | jq -r '.reason // empty' 2>/dev/null)
 rm -rf "$T" "$TSCRIPT"
-case "$REASON_OUT" in
-  *"fix attempts per check"*"kernel.sh repair"*) ok ;;
-  *) no "case11 repair-bound-in-reason: expected 'fix attempts per check' and 'kernel.sh repair' in reason, got: $REASON_OUT" ;;
-esac
+if [ -z "$LADDER" ]; then
+  no "case11 repair-ladder-in-reason: kernel.sh repair --check lint --attempt 1 answered no reason"
+else
+  case "$REASON_OUT" in
+    "EngineOS gate: verification failed. $LADDER "*) ok ;;
+    *) no "case11 repair-ladder-in-reason: expected the kernel's own reason [$LADDER] after the gate prefix, got: $REASON_OUT" ;;
+  esac
+fi
 
 # ---------- Case 12: P7 telemetry — red run writes a verify event ----------
 T=$(mktemp -d)
@@ -316,6 +332,12 @@ rm -rf "$T" "$TSCRIPT"
 # ---------- Case 16: ancient node with no nvm rescue — infra skip, no block ----------
 # The hook inherits the launcher's PATH; a v16-first PATH must skip verification
 # (structuredClone missing — tooling cannot start) instead of blocking on it.
+# Read what this case does and does not prove now that node IS the runtime: the
+# stand-in below cannot execute dist/engineos.cjs, so it exercises the shim's
+# refusal to produce a decision under an unusable node, not the gate's own
+# node-too-old rung. That rung is covered where it can be driven honestly —
+# src/hooks/stop-verify.test.ts passes the node version in, and src/node-guard.ts
+# owns the skip message the CLI prints for a real node below 18.
 T=$(mktemp -d)
 ( cd "$T" && git init -q && git commit -q --allow-empty -m init )
 printf '{"scripts":{"test":"exit 1"}}\n' > "$T/package.json"
@@ -353,13 +375,17 @@ rm -rf "$T" "$TSCRIPT"
 # budgets and had already drifted apart. Asserted at the source, because proving
 # it through behaviour would need a fake runner adapter — rejected by the owner
 # (docs/specs/2026-09-02-deepen-runtime-modules-design.md), tests stay on real npm.
-T90=$(grep -c 'TIMEOUT=90' "$DIR/stop-verify.sh")
-T180=$(grep -c 'TIMEOUT=180' "$DIR/stop-verify.sh")
-ADAPTER_T=$(grep -cE 'TIMEOUT=|\b(90|180)\b' "$DIR/lib-runner.sh")
+# Re-pointed to the TypeScript modules with the shim swap: the caller
+# (src/hooks/stop-verify.ts) states each budget exactly once and the adapter
+# (src/hooks/runner.ts) states none — it takes the budget as a parameter.
+SV_TS="$DIR/../src/hooks/stop-verify.ts"
+T90=$(grep -oE '\b90\b' "$SV_TS" | wc -l | tr -d ' ')
+T180=$(grep -oE '\b180\b' "$SV_TS" | wc -l | tr -d ' ')
+ADAPTER_T=$(grep -cE '\b(90|180)\b' "$DIR/../src/hooks/runner.ts")
 if [ "$T90" = "1" ] && [ "$T180" = "1" ] && [ "$ADAPTER_T" = "0" ]; then
   ok
 else
-  no "case18 one-timeout-table: expected 1x TIMEOUT=90 and 1x TIMEOUT=180 in stop-verify.sh and no budget literal in lib-runner.sh, got 90=$T90 180=$T180 adapter=$ADAPTER_T"
+  no "case18 one-timeout-table: expected one 90 and one 180 in src/hooks/stop-verify.ts and no budget literal in src/hooks/runner.ts, got 90=$T90 180=$T180 adapter=$ADAPTER_T"
 fi
 
 # ---------- Case 19: the Stop gate writes a verification SPAN ----------

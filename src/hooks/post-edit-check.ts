@@ -1,0 +1,126 @@
+// EngineOS per-edit typecheck + lint — NOT wired by default.
+// Verification runs ONCE at task finalization via the Stop gate (./stop-verify);
+// a blocking check after every Edit/Write stalled the build loop, so this hook
+// was unwired from hooks/hooks.json (see the .engineos change record
+// 2026-08-08-verify-at-end-distribute-always + rules/verification.md "The final
+// gate"). Teams that want per-edit gating back can re-add it under
+// PostToolUse(Edit|Write) in hooks/hooks.json.
+//
+// Tool-aware: biome or eslint for lint, nx or a package script for typecheck,
+// pnpm/yarn/npm for the runner. Scoped to the changed package, never the repo.
+// Failure goes to stderr with exit 2 (the `fail` decision) so Claude sees it and
+// fixes it — and ONLY for a `red` verdict: the infra-vs-red judgment is
+// ./classify-failure.ts's, exactly as it is for the Stop gate.
+//
+// Port of hooks/post-edit-check.sh.
+import { dirname } from 'node:path';
+import type { HookEnvelope } from './envelope';
+import { fail, silent, type HookContext, type HookDecision } from './output';
+import { bypassActive } from './bypass';
+import { classify } from './classify-failure';
+import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
+import { PACKAGE_MARKERS, PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, execRun, failureBlock, findUpAny, firstLines, hasVerifyExtension, isFile, verifyEnvironment } from './verify-targets';
+
+const TYPECHECK_TARGET = 'typecheck';
+
+// bash `find_up "$START" nx.json pnpm-workspace.yaml .git` — the workspace a
+// scoped run is issued from, falling back to the package dir itself.
+const WORKSPACE_MARKERS: readonly string[] = ['nx.json', 'pnpm-workspace.yaml', '.git'];
+
+// One linter per config family, probed in bash's order: biome wins where both
+// are configured.
+const LINTERS: readonly { target: string; configs: readonly string[] }[] = [
+  { target: 'biome', configs: ['biome.json', 'biome.jsonc'] },
+  { target: 'eslint', configs: ['.eslintrc', '.eslintrc.js', '.eslintrc.cjs', '.eslintrc.json', 'eslint.config.js', 'eslint.config.mjs'] },
+];
+
+// bash's two budgets: a package's typecheck script, and a single-file lint.
+const TYPECHECK_TIMEOUT_SECONDS = 90;
+const LINT_TIMEOUT_SECONDS = 45;
+
+interface Failure {
+  target: string;
+  subject: string;
+  output: string;
+}
+
+export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
+  return verify(env, ctx, ctx.spawn);
+}
+
+// `spawn` is a parameter so a unit test drives the ladder without a package
+// manager or a linter installed.
+export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike): HookDecision {
+  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
+  if (env.file === '') return silent;
+  if (!hasVerifyExtension(env.file)) return silent;
+  if (!isFile(env.file)) return silent;
+
+  const start = dirname(env.file);
+  const packageDir = findUpAny(start, PACKAGE_MARKERS);
+  if (packageDir === null) return silent;
+  const root = findUpAny(start, WORKSPACE_MARKERS) ?? packageDir;
+
+  const environment = verifyEnvironment(ctx.io.env);
+  const selection = runnerSelect(root);
+  const failures: Failure[] = [
+    ...typecheck(selection, packageDir, root, environment.env, spawn),
+    ...lint(selection, env.file, start, root, environment.env, spawn),
+  ];
+  if (failures.length === 0) return silent;
+  // bash accumulated each block behind a newline and printed the lot with
+  // `printf '%b' | head -80`, so the report opens on a blank line.
+  return fail(firstLines(`\n${failures.map((f) => failureBlock(f.target, f.subject, f.output)).join('\n')}`, SUMMARY_LINES));
+}
+
+// ------------------------------------------------------------------ internals
+
+// Nx addresses the project by name and runs from the workspace root; a package
+// manager runs the package's own script from its directory. Both arms are the
+// same ladder — handle, hasTarget, run, classify — which is what makes the Nx arm
+// stop firing a run for a target the project does not declare, as bash did.
+function typecheck(
+  selection: RunnerSelection,
+  packageDir: string,
+  root: string,
+  env: NodeJS.ProcessEnv,
+  spawn: SpawnSyncLike,
+): Failure[] {
+  const handle = runnerHandle(selection, packageDir);
+  if (handle === null) return [];
+  if (!runnerHasTarget(selection, handle, TYPECHECK_TARGET, undefined, spawn, root)) return [];
+  const result = runnerRun(selection, handle, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, env, spawn, root);
+  return redOf(selection, TYPECHECK_TARGET, handle, result);
+}
+
+// Probe the binary before running it: a config file existing while the linter is
+// not installed is a tooling gap, not a code defect, and must not block the edit.
+function lint(
+  selection: RunnerSelection,
+  file: string,
+  start: string,
+  root: string,
+  env: NodeJS.ProcessEnv,
+  spawn: SpawnSyncLike,
+): Failure[] {
+  for (const linter of LINTERS) {
+    if (findUpAny(start, linter.configs) === null) continue;
+    const exec = selection.exec.split(' ').filter((part) => part !== '');
+    const command = exec[0] ?? '';
+    if (command === '') return [];
+    const rest = exec.slice(1);
+    if (execRun(spawn, command, [...rest, linter.target, '--version'], root, env, PROBE_TIMEOUT_SECONDS).code !== 0) return [];
+    const args = linter.target === 'biome' ? [...rest, linter.target, 'check', file] : [...rest, linter.target, file];
+    const result = execRun(spawn, command, args, root, env, LINT_TIMEOUT_SECONDS);
+    return redOf(selection, linter.target, file, result);
+  }
+  return [];
+}
+
+// The only failure this hook reports. `infra` — a timeout, a stale target probe,
+// a runtime too old — is not the edit's fault and never becomes exit 2.
+function redOf(selection: RunnerSelection, target: string, subject: string, result: RunResult): Failure[] {
+  const verdict = classify({ kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+  if (verdict === null || verdict.situation !== 'red') return [];
+  return [{ target, subject, output: result.output }];
+}
