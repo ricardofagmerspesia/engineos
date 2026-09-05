@@ -19,7 +19,7 @@ import { event, telemetrySink, withSpan, type EventData, type SpanFacts, type Sp
 
 // The only thing a bypassed session is told, and the only reason this hook still
 // speaks when EngineOS is off: a silent bypass is the failure mode
-// (hooks/test-bypass.sh "the prompt hook is the one that must SPEAK").
+// (src/bypass/bypass.e2e.test.ts: the prompt advisor announces the active bypass).
 const BYPASS_NOTICE =
   '[engineos] BYPASS ACTIVE — routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness\'s own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run `/engineos:bypass off` to restore EngineOS.';
 
