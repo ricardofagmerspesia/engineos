@@ -44,7 +44,7 @@ done)
 CORPUS=$( { echo CLAUDE.md; find rules agents commands skills templates -type f -name '*.md' | sort; } )
 # Reference scan adds the executable layer: a hook or generator naming an agent
 # or skill makes it reachable just as a doc does.
-REFSCAN=$( { printf '%s\n' "$CORPUS"; ls hooks/*.sh scripts/*.sh scripts/checks/*.sh registries/*.json 2>/dev/null; } )
+REFSCAN=$( { printf '%s\n' "$CORPUS"; ls hooks/*.sh scripts/*.sh registries/*.json 2>/dev/null; } )
 
 # ------------------------------------------- family 1: referential integrity
 echo "--- family 1: referential integrity"

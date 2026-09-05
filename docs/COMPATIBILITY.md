@@ -340,7 +340,9 @@ and, since the runtime ports, the two `scripts/gen-agent-*.sh` entry points plus
 | `engineos evals` | new subcommand of the runtime entry point | added |
 | `engineos bench` | new subcommand of the runtime entry point | added |
 | `engineos usage-report` | new subcommand of the runtime entry point | added |
-| `engineos validate` | new subcommand of the runtime entry point; an empty check registry until the check families port (Wave 5(b)) — `scripts/validate-engineos.sh` stays the bash validator until then | added |
+| `engineos validate` | new subcommand of the runtime entry point; all 62 checks registered in `src/checks/index.ts` — `scripts/validate-engineos.sh` is now a shim over it | added |
+| `scripts/validate-engineos.sh` | shim over `engineos validate`; `scripts/checks/*.sh` deleted, `scripts/test-validate-engineos.sh` shrunk to the harness surface (the planted-breakage cases moved to `src/checks/*.test.ts`) | deprecated, removed in 2.0 |
+| Check C1 | reads `node >= 18 present`, not `jq present` — `jq` is no longer a validator dependency; same id, same exit semantics | changed message |
 | `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `scripts/run-evals.sh`, `scripts/bench-runtime.sh`, `scripts/usage-report.sh` | bash implementation -> shim over `engineos evals` / `engineos bench` / `engineos usage-report`; all three shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `install.sh` / `install.ps1` dependency | `jq` -> `node >= 18` | requirement change |
@@ -366,9 +368,10 @@ merge — scrub, append, `permissions.allow` set union — moved into
 `engineos settings-merge`, and the hooks have parsed tool input natively since
 the 1.6.x port. The two agent generators dropped it with the shim swap below,
 and so did the eval runner and the usage report.
-`jq` remains a *development* dependency of this repo: the registry checks in
-`scripts/validate-engineos.sh` (check C1 says so) still require it. Adopting
-EngineOS does not.
+`jq` is no longer a dependency of the validator either: the check families now
+run in-process under `engineos validate`, and check C1 asks for `node >= 18` in
+its place. The remaining `jq` callers are the bash hook self-tests, which Wave 6
+retires.
 
 **The two agent generators are shims now.** `scripts/gen-agent-commands.sh` and
 `scripts/gen-agent-registry.sh` `exec` `engineos gen agent-commands` and
@@ -398,16 +401,21 @@ the swap: `jq` for the eval runner and the usage report, `python3` for the bench
 All three need `node >= 18` in their place — the same trade the hooks made in
 1.6.x — and like the other shims they are deprecated in 1.7.0 and removed in 2.0.
 
-**The validator harness ships ahead of its checks.** `engineos validate` carries
-the `--only` / `--list` surface, the `== EngineOS integrity ==` header, the
-`ok   ` / `FAIL ` / `skip ` prefixes, `passed N, failed N` and the 0/1/2 exit codes
-of `scripts/validate-engineos.sh`, over an explicit check registry
-(`src/checks/index.ts`) that is empty in this release — it exits 2 with
-`no Checks registered` until the seven check families port in Wave 5(b), and
-`scripts/validate-engineos.sh` stays the bash validator CI runs until the last
-family lands. What changes for good is the tail of a `FAIL` line: it is rendered
-from the check's findings as `[<code>]` / `[<code>:<subject>]`, and that prose is
-not versioned surface (design deviation 8).
+**The validator is `engineos validate`.** It carries the `--only` / `--list`
+surface, the `== EngineOS integrity ==` header, the `ok   ` / `FAIL ` / `skip `
+prefixes, `passed N, failed N` and the 0/1/2 exit codes of
+`scripts/validate-engineos.sh`, over an explicit check registry
+(`src/checks/index.ts`) holding all 62 checks, one module per family under
+`src/checks/`. `scripts/validate-engineos.sh` is a shim that execs it (deprecated
+in 1.7.0, removed in 2.0); `scripts/checks/*.sh` are gone, and
+`scripts/test-validate-engineos.sh` now exercises only the harness surface — the
+planted-breakage cases live beside each family as `src/checks/<family>.test.ts`
+and assert on finding codes. Check ids and the ok/FAIL/skip verdicts are
+unchanged; C1's title now reads `node >= 18 present` instead of `jq present`,
+because `jq` is no longer a dependency of anything the validator runs. What
+changes for good is the tail of a `FAIL` line: it is rendered from the check's
+findings as `[<code>]` / `[<code>:<subject>]`, and that prose is not versioned
+surface (design deviation 8).
 
 **`usage-report` says more than the bash did, in three places.**
 `./scripts/usage-report.sh abc` now prints `usage: engineos usage-report [days]`

@@ -183,13 +183,16 @@ Before merging any change to `rules/`, `agents/`, `skills/`, `commands/`,
 scripts/validate-engineos.sh   # 62 self-integrity Checks
 scripts/run-evals.sh           # golden set for router + agent behaviour
 ```
-`validate-engineos.sh` is a harness; the Checks themselves are `check_<id>()`
-functions in `scripts/checks/<family>.sh`, discovered by name. `--list` prints
+`validate-engineos.sh` is a shim over `engineos validate`; the Checks are the
+explicit registry in `src/checks/index.ts`, one module per family under
+`src/checks/`, each reporting findings that the harness renders. `--list` prints
 the ids, `--only C17,C21c` runs a subset (a parent id also selects its
 letter-suffixed sub-checks).
 
-CI runs both, plus `scripts/test-validate-engineos.sh` — planted-breakage cases,
-one per Check, proving the validator actually catches what it claims to.
+CI runs both, plus `scripts/test-validate-engineos.sh` — the validator's own
+surface (`--list`, `--only`, exit codes, a planted failure). The planted-breakage
+cases live beside each family as `src/checks/<family>.test.ts`, asserting on
+finding codes rather than on rendered lines.
 
 `.github/workflows/live-evals.yml` runs the eval set's live tier weekly (manual
 dispatch also works) — real model calls, so it is cost-gated off the PR path

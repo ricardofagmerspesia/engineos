@@ -7,6 +7,14 @@
 import type { CheckResult } from './findings';
 import type { CheckId } from './ids';
 import type { CheckContext } from './lib';
+import { AGENTS_SKILLS_CHECKS } from './agents-skills';
+import { CONTRACTS_CHECKS } from './contracts';
+import { DECISION_REGISTRIES_CHECKS } from './decision-registries';
+import { KERNEL_CHECKS } from './kernel';
+import { REGISTRIES_CHECKS } from './registries';
+import { RULES_CHECKS } from './rules';
+import { RUNTIME_GOVERNANCE_CHECKS } from './runtime-governance';
+import { RUNTIME_SURFACE_CHECKS } from './runtime-surface';
 
 export interface Check<C extends CheckId = CheckId> {
   readonly id: C;
@@ -17,10 +25,19 @@ export interface Check<C extends CheckId = CheckId> {
   run(ctx: CheckContext): CheckResult[];
 }
 
-// Empty by design: the families append here one PR at a time (plan Tasks 34-41),
-// and the harness ships now with an empty registry. Registration order is
-// irrelevant — orderIds sorts what the harness runs and lists.
-export const CHECKS: readonly Check[] = [];
+// One entry per family, in the bash source-file order. Registration order is
+// irrelevant to the harness — orderIds sorts what it runs and lists — and
+// index.test.ts asserts the 62 ids appear exactly once.
+export const CHECKS: readonly Check[] = [
+  ...RULES_CHECKS,
+  ...REGISTRIES_CHECKS,
+  ...AGENTS_SKILLS_CHECKS,
+  ...DECISION_REGISTRIES_CHECKS,
+  ...KERNEL_CHECKS,
+  ...CONTRACTS_CHECKS,
+  ...RUNTIME_GOVERNANCE_CHECKS,
+  ...RUNTIME_SURFACE_CHECKS,
+];
 
 // Natural id order: the numeric part numerically, then the letter suffix
 // lexicographically ('' before 'b'). C2 sorts before C10, which byte order would

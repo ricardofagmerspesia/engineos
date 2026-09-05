@@ -41,7 +41,7 @@ jobs:
           test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
 
       - name: Shellcheck hooks + scripts (errors only)
-        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh
+        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh
 
       - name: Validate JSON
         run: |
