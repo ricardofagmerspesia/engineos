@@ -1,6 +1,6 @@
 {
   "name": "engineos",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "EngineOS runtime CLI: kernel, hooks, journal, checks",
   "license": "MIT",
