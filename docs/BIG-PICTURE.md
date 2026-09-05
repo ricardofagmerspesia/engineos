@@ -431,8 +431,8 @@ stateDiagram-v2
 | Check | Runs | Fails when |
 |---|---|---|
 | `scripts/validate-engineos.sh` | CI + manual | CLAUDE.md router table ≠ `routing.json`; `rules/models.md` ≠ `models.json`; a row's load list is not closed; a registry points at a missing agent/tier |
-| `hooks/test-docs.sh` + `docs-ledger.sh` | CI + manual | dangling rule/agent/skill pointer; orphaned agent; `commands/agents/` drift; single-source-of-truth budget exceeded |
-| `hooks/test-*.sh`, `scripts/test-*.sh` | CI + manual | a hook or kernel contract regresses |
+| `src/docs/prose-layer.e2e.test.ts` + `registries/docs-ledger.json` | `npm test` (CI + manual) | dangling rule/agent/skill pointer; orphaned agent; `commands/agents/` drift; single-source-of-truth budget exceeded |
+| `src/**/*.e2e.test.ts` | `npm test` (CI + manual) | a hook, CLI or kernel contract regresses |
 | `evals/` + `scripts/run-evals.sh` | manual / CI | routing or advisor output drifts from the golden set |
 | `scripts/exec-journal.sh validate` | manual | a telemetry span breaks the line format or slug class |
 

@@ -49,8 +49,7 @@ Duplication drifts.
 
 ## Verification (required before "done")
 
-- `npm test` — unit and e2e suites (`src/**/*.test.ts`, `*.e2e.test.ts`), including the routing hook, kernel, prompt advisor, bypass and Stop-gate suites.
-- `hooks/test-governance.sh` — change-governance marker flow.
+- `npm test` — unit and e2e suites (`src/**/*.test.ts`, `*.e2e.test.ts`): every hook, the kernel, the journal and telemetry CLIs, the generators, the installer and the validator. No bash test suite remains.
 - `shellcheck -S error hooks/*.sh install.sh scripts/*.sh`.
 - `jq empty` on every JSON file you touched.
 - CI (`.github/workflows/ci.yml`) runs all of the above on every PR; keep it green.

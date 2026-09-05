@@ -342,7 +342,9 @@ and, since the runtime ports, the two `scripts/gen-agent-*.sh` entry points plus
 | `engineos usage-report` | new subcommand of the runtime entry point | added |
 | `engineos validate` | new subcommand of the runtime entry point; all 62 checks registered in `src/checks/index.ts` — `scripts/validate-engineos.sh` is now a shim over it | added |
 | `scripts/validate-engineos.sh` | shim over `engineos validate`; `scripts/checks/*.sh` deleted, `scripts/test-validate-engineos.sh` deleted (harness cases in `src/validate/validate.e2e.test.ts`, planted-breakage cases in `src/checks/*.test.ts`) | deprecated, removed in 2.0 |
-| Bash test suites `hooks/test-*.sh`, `scripts/test-*.sh` | ported one by one to `*.e2e.test.ts` files beside the module they exercise and run by `npm test`; each port deletes the `.sh` suite and its CI step. Ported so far: `test-validate-engineos`, `test-kernel`, `test-route`, `test-prompt-advisor`, `test-bypass`, `test-verify` | removed |
+| Bash test suites `hooks/test-*.sh`, `scripts/test-*.sh` | ported one by one to `*.e2e.test.ts` files beside the module they exercise and run by `npm test`; each port deletes the `.sh` suite and its CI step. All fifteen are ported and deleted: `test-validate-engineos`, `test-kernel`, `test-route`, `test-prompt-advisor`, `test-bypass`, `test-verify`, `test-exec-journal`, `test-agent-announce`, `test-layout`, `test-docs`, `test-gen-agent-registry`, `test-install-hooks`, `test-telemetry`, `test-governance`, `test-post-edit`. Shim-only cases (a `.sh` under a jq-free or node-free PATH) stay inside the e2e files as `spawnSync('bash', ...)` | removed |
+| `hooks/lib-common.sh`, `hooks/lib-runner.sh`, `hooks/docs-ledger.sh` | deleted — sourced-only bash libraries whose last consumers were the ported suites; their logic lives in `src/hooks/*.ts`, `src/lib/*.ts` and `registries/docs-ledger.json`. `hooks/layout-manifest.sh` and `hooks/scaffold-layout.sh` stay: `engineos init` requires them as frozen bash siblings until 2.0 | removed |
+| `install.sh` `ENGINEOS_HOOK_LIBRARIES` | `"lib-common.sh lib-runner.sh layout-manifest.sh scaffold-layout.sh"` -> `"layout-manifest.sh scaffold-layout.sh"`; check C30 reads the list, so the validator and `install.sh` shrink together | value change |
 | Check C1 | reads `node >= 18 present`, not `jq present` — `jq` is no longer a validator dependency; same id, same exit semantics | changed message |
 | `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
 | `scripts/run-evals.sh`, `scripts/bench-runtime.sh`, `scripts/usage-report.sh` | bash implementation -> shim over `engineos evals` / `engineos bench` / `engineos usage-report`; all three shims deprecated in 1.7.0, removed in 2.0 | deprecated |
@@ -379,12 +381,11 @@ retires.
 `engineos gen agent-registry`; the implementations live in `src/gen/` and ship in
 `dist/engineos.cjs`. What a caller sees is unchanged and is what the shims exist
 to preserve — same stdout and stderr messages, byte-identical `commands/agents/`
-and `registries/agents.json`, same exit codes — so CI's two drift guards and
-`scripts/test-gen-agent-registry.sh` keep running against the `.sh` paths. The
-generators now need `node >= 18` where they used to need `jq`, which is the same
-trade the hooks made in 1.6.x. Like the `hooks/<name>.sh` shims, both are
-deprecated in 1.7.0 and removed in 2.0; call `engineos gen <target>` directly to
-get ahead of that.
+and `registries/agents.json`, same exit codes — so CI's two drift guards keep
+running against the `.sh` paths. The generators now need `node >= 18` where
+they used to need `jq`, which is the same trade the hooks made in 1.6.x. Like
+the `hooks/<name>.sh` shims, both are deprecated in 1.7.0 and removed in 2.0;
+call `engineos gen <target>` directly to get ahead of that.
 
 **The eval runner, the perf bench and the usage report are shims now.**
 `scripts/run-evals.sh`, `scripts/bench-runtime.sh` and `scripts/usage-report.sh`

@@ -436,14 +436,14 @@ footer{margin-top:56px;font-family:var(--mono);font-size:12px;color:var(--ink-2)
 </section>
 
 <section id="integrity">
-  <p class="owner">owner <b>scripts/validate-engineos.sh</b> · hooks/test-docs.sh · docs/COMPATIBILITY.md</p>
+  <p class="owner">owner <b>scripts/validate-engineos.sh</b> · src/docs/prose-layer.e2e.test.ts · docs/COMPATIBILITY.md</p>
   <div class="prose"><h2>How EngineOS checks itself</h2></div>
   <div class="table-wrap"><table>
     <thead><tr><th>Check</th><th>Runs</th><th>Fails when</th></tr></thead>
     <tbody>
     <tr><td><code>scripts/validate-engineos.sh</code></td><td>CI + manual</td><td>CLAUDE.md router table ≠ <code>routing.json</code>; <code>rules/models.md</code> ≠ <code>models.json</code>; a row's load list is not closed; a registry points at a missing agent or tier</td></tr>
-    <tr><td><code>hooks/test-docs.sh</code> + <code>docs-ledger.sh</code></td><td>CI + manual</td><td>dangling rule/agent/skill pointer; orphaned agent; <code>commands/agents/</code> drift; single-source-of-truth budget exceeded</td></tr>
-    <tr><td><code>hooks/test-*.sh</code>, <code>scripts/test-*.sh</code></td><td>CI + manual</td><td>a hook or kernel contract regresses</td></tr>
+    <tr><td><code>src/docs/prose-layer.e2e.test.ts</code> + <code>registries/docs-ledger.json</code></td><td><code>npm test</code> (CI + manual)</td><td>dangling rule/agent/skill pointer; orphaned agent; <code>commands/agents/</code> drift; single-source-of-truth budget exceeded</td></tr>
+    <tr><td><code>src/**/*.e2e.test.ts</code></td><td><code>npm test</code> (CI + manual)</td><td>a hook, CLI or kernel contract regresses</td></tr>
     <tr><td><code>evals/</code> + <code>scripts/run-evals.sh</code></td><td>manual / CI</td><td>routing or advisor output drifts from the golden set</td></tr>
     <tr><td><code>scripts/exec-journal.sh validate</code></td><td>manual</td><td>a telemetry span breaks the line format or slug class</td></tr>
     </tbody></table></div>

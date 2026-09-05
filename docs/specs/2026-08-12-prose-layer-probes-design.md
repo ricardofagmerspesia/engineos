@@ -48,6 +48,10 @@ than the checker that defends it.
 
 ### `hooks/test-docs.sh` — four assertion families
 
+> 2026-09-05: the probe now lives in `src/docs/prose-layer.e2e.test.ts` and reads
+> its lists from `registries/docs-ledger.json`; `hooks/test-docs.sh` and
+> `hooks/docs-ledger.sh` are deleted. The families below are unchanged.
+
 House format throughout: `FAIL: <desc> — <detail>`, `note: <detail>` for
 informational output, `pass=N fail=N` after a `---` line, exit 1 on any failure.
 Takes an optional repo root argument so the suite can be pointed at a copy — which
