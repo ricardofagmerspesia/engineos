@@ -3,7 +3,7 @@
 
 // src/cli.ts
 var import_node_child_process8 = require("node:child_process");
-var import_node_fs32 = require("node:fs");
+var import_node_fs39 = require("node:fs");
 
 // src/io.ts
 var import_node_fs = require("node:fs");
@@ -19,14 +19,38 @@ function processIo() {
         return "";
       }
     },
-    out(text2) {
-      process.stdout.write(text2);
+    out(text3) {
+      process.stdout.write(text3);
     },
-    err(text2) {
-      process.stderr.write(text2);
+    err(text3) {
+      process.stderr.write(text3);
     },
     env: process.env,
     cwd: () => process.cwd()
+  };
+}
+function memoryIo(opts = {}) {
+  let stdin = opts.stdin ?? "";
+  const stdout = [];
+  const stderr = [];
+  return {
+    stdout,
+    stderr,
+    readStdin() {
+      const s = stdin;
+      stdin = "";
+      return s;
+    },
+    out: (text3) => {
+      stdout.push(text3);
+    },
+    err: (text3) => {
+      stderr.push(text3);
+    },
+    env: opts.env ?? {},
+    // '/' is a deliberately non-existent-repo default so a test that forgets to pass
+    // cwd never resolves against the real checkout.
+    cwd: () => opts.cwd ?? "/"
   };
 }
 function writeJson(io2, value) {
@@ -59,28 +83,28 @@ function defaultIsExecutable(path) {
     return false;
   }
 }
-function findNewerNode(env, exists, listDir, isExecutable3 = defaultIsExecutable) {
+function findNewerNode(env, exists, listDir, isExecutable5 = defaultIsExecutable) {
   const nvmDir = env["NVM_DIR"] ?? (0, import_node_path.join)(env["HOME"] ?? "", ".nvm");
   const versionsDir = (0, import_node_path.join)(nvmDir, "versions", "node");
   if (exists(versionsDir)) {
-    let names;
+    let names2;
     try {
-      names = listDir(versionsDir);
+      names2 = listDir(versionsDir);
     } catch {
-      names = [];
+      names2 = [];
     }
-    const candidates = names.filter((v) => parseVersion(v)[0] >= MIN_NODE_MAJOR).sort((a, b) => {
+    const candidates = names2.filter((v) => parseVersion(v)[0] >= MIN_NODE_MAJOR).sort((a, b) => {
       const av = parseVersion(a);
       const bv = parseVersion(b);
       return bv[0] - av[0] || bv[1] - av[1] || bv[2] - av[2];
     });
     for (const v of candidates) {
       const bin = (0, import_node_path.join)(versionsDir, v, "bin", "node");
-      if (exists(bin) && isExecutable3(bin)) return bin;
+      if (exists(bin) && isExecutable5(bin)) return bin;
     }
   }
   for (const bin of ["/opt/homebrew/bin/node", "/usr/local/bin/node"]) {
-    if (exists(bin) && isExecutable3(bin)) return bin;
+    if (exists(bin) && isExecutable5(bin)) return bin;
   }
   return null;
 }
@@ -114,14 +138,14 @@ function dispatch(table2, argv2, io2) {
 
 // src/hooks/output.ts
 var silent = { kind: "silent" };
-function context(event2, text2) {
-  return { kind: "context", event: event2, text: text2 };
+function context(event2, text3) {
+  return { kind: "context", event: event2, text: text3 };
 }
 function block(reason2) {
   return { kind: "block", reason: reason2 };
 }
-function message(text2) {
-  return { kind: "message", text: text2 };
+function message(text3) {
+  return { kind: "message", text: text3 };
 }
 function fail(stderr) {
   return { kind: "fail", stderr };
@@ -155,14 +179,14 @@ var KernelError = class extends Error {
   kind = "kernel";
 };
 function readJsonFile(path) {
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs3.readFileSync)(path, "utf8");
+    text3 = (0, import_node_fs3.readFileSync)(path, "utf8");
   } catch {
     throw new KernelError(`cannot read ${path}`);
   }
   try {
-    return JSON.parse(text2);
+    return JSON.parse(text3);
   } catch {
     throw new KernelError(`invalid JSON in ${path}`);
   }
@@ -287,9 +311,9 @@ function isRiskTier(value) {
 function loadIntents(root) {
   const raw = loadRegistry(root, "intents.json");
   const r = isRecord(raw) ? raw : {};
-  const rows = Array.isArray(r["intents"]) ? r["intents"] : [];
+  const rows3 = Array.isArray(r["intents"]) ? r["intents"] : [];
   return {
-    intents: rows.filter(isRecord).map((i) => ({
+    intents: rows3.filter(isRecord).map((i) => ({
       id: typeof i["id"] === "string" ? i["id"] : "",
       title: typeof i["title"] === "string" ? i["title"] : "",
       signals: stringArray(i["signals"]),
@@ -346,8 +370,8 @@ function optionalString2(value, field) {
   return value;
 }
 function requireRows2(value, field) {
-  const rows = Array.isArray(value) ? value : fail2(field, "an array");
-  return rows.map((row, index) => isRecord(row) ? row : fail2(`${field}[${index}]`, "an object"));
+  const rows3 = Array.isArray(value) ? value : fail2(field, "an array");
+  return rows3.map((row, index) => isRecord(row) ? row : fail2(`${field}[${index}]`, "an object"));
 }
 function requireStringArray(value, field) {
   const items = Array.isArray(value) ? value : fail2(field, "an array");
@@ -684,8 +708,8 @@ function fromHalfOpen(facts) {
 
 // src/kernel/scale.ts
 function scaleSection(facts, regs) {
-  const signals = regs.policy.parallelism.prompt_signals;
-  const compiled = compiledSignals(signals);
+  const signals2 = regs.policy.parallelism.prompt_signals;
+  const compiled = compiledSignals(signals2);
   const lower = asciiDowncase(facts.prompt);
   const action = compiled.action.test(lower);
   return {
@@ -705,18 +729,18 @@ function compilePromptRegex(source, describe) {
   }
 }
 var cache = /* @__PURE__ */ new WeakMap();
-function compiledSignals(signals) {
-  const cached = cache.get(signals);
+function compiledSignals(signals2) {
+  const cached = cache.get(signals2);
   if (cached !== void 0) return cached;
   const at = "registries/policy.json: .parallelism.prompt_signals";
   const compiled = {
-    action: compilePromptRegex(signals.action, `${at}.action`),
-    scale: compilePromptRegex(signals.scale, `${at}.scale`),
-    spec: compilePromptRegex(signals.spec, `${at}.spec`),
-    designStrong: compilePromptRegex(signals.design_strong, `${at}.design_strong`),
-    designWeak: compilePromptRegex(signals.design_weak, `${at}.design_weak`)
+    action: compilePromptRegex(signals2.action, `${at}.action`),
+    scale: compilePromptRegex(signals2.scale, `${at}.scale`),
+    spec: compilePromptRegex(signals2.spec, `${at}.spec`),
+    designStrong: compilePromptRegex(signals2.design_strong, `${at}.design_strong`),
+    designWeak: compilePromptRegex(signals2.design_weak, `${at}.design_weak`)
   };
-  cache.set(signals, compiled);
+  cache.set(signals2, compiled);
   return compiled;
 }
 
@@ -772,8 +796,8 @@ function hitlSection(facts, regs) {
   }
   const external = asBoolean(facts.externalEffect, "hitl --external-effect must be true|false");
   const conflict = asBoolean(facts.conflict, "hitl --conflict must be true|false");
-  const recordHome = policy.hitl.record_home;
-  if (recordHome === "") {
+  const recordHome2 = policy.hitl.record_home;
+  if (recordHome2 === "") {
     throw new KernelError(
       "policy.json has no hitl.record_home \u2014 hitl will not require a human decision without naming where it is recorded"
     );
@@ -818,7 +842,7 @@ function hitlSection(facts, regs) {
       levels,
       highWithThinEvidence: policy.autonomy.high_with_thin_evidence
     }),
-    record_home: recordHome
+    record_home: recordHome2
   };
 }
 function triggeredReasons(inputs) {
@@ -962,13 +986,13 @@ function riskSection(facts, regs) {
   if (facts.riskTier !== void 0) return forTier(facts.riskTier, regs);
   throw new KernelError("risk section requires signals or a classified risk tier");
 }
-function classify(signals, regs) {
+function classify(signals2, regs) {
   const policy = regs.policy;
-  if (!isRecord(signals)) {
+  if (!isRecord(signals2)) {
     throw new KernelError("risk --signals must be a JSON object with inputs{} and/or floors[]");
   }
-  const inputs = optionalRecord(signals["inputs"], "risk --signals .inputs must be an object of input-id to tier");
-  const floors = optionalArray(signals["floors"], "risk --signals .floors must be an array of floor ids");
+  const inputs = optionalRecord(signals2["inputs"], "risk --signals .inputs must be an object of input-id to tier");
+  const floors = optionalArray(signals2["floors"], "risk --signals .floors must be an array of floor ids");
   const entries = Object.entries(inputs);
   if (entries.length === 0 && floors.length === 0) {
     throw new KernelError(
@@ -1101,8 +1125,8 @@ function routeByPath(file, regs, root) {
   }
   return { domain: null, excluded: false };
 }
-function routeByIntent(text2, regs) {
-  const lower = asciiDowncase2(text2);
+function routeByIntent(text3, regs) {
+  const lower = asciiDowncase2(text3);
   const matches = [];
   for (const intent of regs.intents.intents) {
     if (!intent.signals.some((signal) => boundedContains(lower, asciiDowncase2(signal)))) continue;
@@ -1122,10 +1146,10 @@ function routeByIntent(text2, regs) {
   return { matches, ambiguous: matches.length === 0 };
 }
 var RISK_ORDER = ["low", "medium", "high"];
-function routeEscalate(text2, regs) {
+function routeEscalate(text3, regs) {
   const router = regs.policy.router;
-  const raw = routeByIntent(text2, regs);
-  const scale = scaleSection({ prompt: text2 }, regs);
+  const raw = routeByIntent(text3, regs);
+  const scale = scaleSection({ prompt: text3 }, regs);
   const rawIds = new Set(raw.matches.map((m) => m.id));
   const matched = regs.intents.intents.filter((i) => rawIds.has(i.id));
   const hasNonSuppressible = matched.some((i) => !i.suppressible);
@@ -1192,8 +1216,8 @@ function highest(values, order) {
   }
   return best;
 }
-function asciiDowncase2(text2) {
-  return text2.replace(/[A-Z]/g, (c) => c.toLowerCase());
+function asciiDowncase2(text3) {
+  return text3.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 function boundedContains(haystack, needle) {
   if (needle === "") return false;
@@ -1229,8 +1253,8 @@ function wavesSection(facts, regs) {
 }
 function parseUnits(value) {
   if (!Array.isArray(value)) throw new KernelError("waves --units must be a JSON array");
-  const rows = value;
-  return rows.map((raw, i) => {
+  const rows3 = value;
+  return rows3.map((raw, i) => {
     const malformed = `waves --units[${i}] must be an object with a non-empty string id`;
     if (!isRecord(raw)) throw new KernelError(malformed);
     const id = raw["id"];
@@ -1359,11 +1383,11 @@ function resolve(facts, ctx) {
     const decisions = decisionsSection({ prompt }, ctx.registries);
     answer.decision_rules = decisions;
     const floor = decisions.any_high ? "high" : route.risk_floor;
-    const ceiling = floor === null ? null : ceilingAt(floor, ctx.registries);
-    if (decisions.any_high && ceiling !== null) {
-      answer.hitl = hitlSection({ riskTier: "high", autonomy: ceiling }, ctx.registries);
+    const ceiling2 = floor === null ? null : ceilingAt(floor, ctx.registries);
+    if (decisions.any_high && ceiling2 !== null) {
+      answer.hitl = hitlSection({ riskTier: "high", autonomy: ceiling2 }, ctx.registries);
     }
-    answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
+    answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling: ceiling2 }, ctx.registries);
   }
   return answer;
 }
@@ -1408,13 +1432,13 @@ function taskContract(inputs, regs) {
   };
 }
 function ceilingAt(floor, regs) {
-  const ceiling = regs.policy.autonomy.ceiling_by_risk[floor];
-  if (ceiling === "") {
+  const ceiling2 = regs.policy.autonomy.ceiling_by_risk[floor];
+  if (ceiling2 === "") {
     throw new KernelError(
       `policy.json has no autonomy.ceiling_by_risk[${floor}] \u2014 resolve-task cannot resolve the ceiling hitl needs`
     );
   }
-  return ceiling;
+  return ceiling2;
 }
 function substantiveAction(prompt, regs) {
   const source = regs.policy.parallelism.prompt_signals.substantive_action;
@@ -1488,24 +1512,24 @@ function routePathSection(ctx, file) {
   if (section === void 0) throw new KernelError("route-path: the kernel answered no route section");
   return section;
 }
-function routeIntentSection(ctx, text2) {
-  const section = resolve({ prompt: text2 }, ctx).route;
+function routeIntentSection(ctx, text3) {
+  const section = resolve({ prompt: text3 }, ctx).route;
   if (section === void 0) throw new KernelError("route-intent: the kernel answered no route section");
   return section;
 }
 function modelProjection(ctx, args) {
-  const flags = parseFlags("model", args, ["--work"]);
-  const work = flags.get("--work");
+  const flags2 = parseFlags("model", args, ["--work"]);
+  const work = flags2.get("--work");
   if (work === void 0 || work === "") throw new KernelError("model requires --work <type>");
   const section = resolve({ workType: work }, ctx).model;
   if (section === void 0) throw new KernelError("model: the kernel answered no model section");
   return section;
 }
 function riskProjection(ctx, args) {
-  const flags = parseFlags("risk", args, ["--signals"]);
-  const signals = flags.get("--signals");
-  if (signals === void 0 || signals === "") throw new KernelError("risk requires --signals <json>");
-  const section = resolve({ signals: parseSignals(signals) }, ctx).risk;
+  const flags2 = parseFlags("risk", args, ["--signals"]);
+  const signals2 = flags2.get("--signals");
+  if (signals2 === void 0 || signals2 === "") throw new KernelError("risk requires --signals <json>");
+  const section = resolve({ signals: parseSignals(signals2) }, ctx).risk;
   if (section === void 0 || !("floors_applied" in section)) {
     throw new KernelError("risk: the kernel answered no classified risk section");
   }
@@ -1517,8 +1541,8 @@ function riskProjection(ctx, args) {
   };
 }
 function gatesProjection(ctx, args) {
-  const flags = parseFlags("gates", args, ["--risk"]);
-  const tier = flags.get("--risk");
+  const flags2 = parseFlags("gates", args, ["--risk"]);
+  const tier = flags2.get("--risk");
   if (tier === void 0 || !isRiskTier(tier)) throw new KernelError("gates requires --risk low|medium|high");
   const section = resolve({ riskTier: tier }, ctx).risk;
   if (section === void 0 || !("spec_threshold" in section)) {
@@ -1527,69 +1551,69 @@ function gatesProjection(ctx, args) {
   return { risk: section.risk, gates: section.gates, spec_threshold: section.spec_threshold };
 }
 function repairProjection(ctx, args) {
-  const flags = parseFlags("repair", args, ["--check", "--attempt", "--situation"]);
-  const check = flags.get("--check");
+  const flags2 = parseFlags("repair", args, ["--check", "--attempt", "--situation"]);
+  const check = flags2.get("--check");
   if (check === void 0 || check === "") throw new KernelError("repair requires --check");
   const repair = { check };
-  const attempt2 = flags.get("--attempt");
+  const attempt2 = flags2.get("--attempt");
   if (attempt2 !== void 0) repair.attempt = parseCount(attempt2);
-  const situation = flags.get("--situation");
+  const situation = flags2.get("--situation");
   if (situation !== void 0 && situation !== "") repair.situation = situation;
   const section = resolve({ repair }, ctx).repair;
   if (section === void 0) throw new KernelError("repair: the kernel answered no repair section");
   return section;
 }
 function admitProjection(ctx, args) {
-  const flags = parseFlags("admit", args, ["--inflight", "--queued"]);
+  const flags2 = parseFlags("admit", args, ["--inflight", "--queued"]);
   const admit = {
-    inflight: parseCount(flags.get("--inflight")),
-    queued: parseCount(flags.get("--queued"))
+    inflight: parseCount(flags2.get("--inflight")),
+    queued: parseCount(flags2.get("--queued"))
   };
   const section = resolve({ admit }, ctx).admit;
   if (section === void 0) throw new KernelError("admit: the kernel answered no admit section");
   return section;
 }
 function breakerProjection(ctx, args) {
-  const flags = parseFlags("breaker", args, ["--state", "--failures", "--cooldown-elapsed", "--probe-result"]);
-  const breaker = { state: flags.get("--state") ?? "" };
-  const failures = flags.get("--failures");
+  const flags2 = parseFlags("breaker", args, ["--state", "--failures", "--cooldown-elapsed", "--probe-result"]);
+  const breaker = { state: flags2.get("--state") ?? "" };
+  const failures = flags2.get("--failures");
   if (failures !== void 0) breaker.failures = parseCount(failures);
-  const cooldown = flags.get("--cooldown-elapsed");
+  const cooldown = flags2.get("--cooldown-elapsed");
   if (cooldown === "true" || cooldown === "false") breaker.cooldownElapsed = cooldown === "true";
-  const probe = flags.get("--probe-result");
+  const probe = flags2.get("--probe-result");
   if (probe !== void 0) breaker.probeResult = probe;
   const section = resolve({ breaker }, ctx).breaker;
   if (section === void 0) throw new KernelError("breaker: the kernel answered no breaker section");
   return section;
 }
 function hitlProjection(ctx, args) {
-  const flags = parseFlags("hitl", args, ["--risk", "--autonomy", "--evidence", "--external-effect", "--conflict", "--situation"]);
-  const tier = flags.get("--risk");
+  const flags2 = parseFlags("hitl", args, ["--risk", "--autonomy", "--evidence", "--external-effect", "--conflict", "--situation"]);
+  const tier = flags2.get("--risk");
   if (tier === void 0 || !isRiskTier(tier)) throw new KernelError("hitl requires --risk low|medium|high");
-  const hitl = { riskTier: tier, autonomy: flags.get("--autonomy") ?? "" };
-  const evidence = flags.get("--evidence");
+  const hitl = { riskTier: tier, autonomy: flags2.get("--autonomy") ?? "" };
+  const evidence = flags2.get("--evidence");
   if (evidence !== void 0) hitl.evidence = evidence;
-  const external = flags.get("--external-effect");
+  const external = flags2.get("--external-effect");
   if (external !== void 0) hitl.externalEffect = external;
-  const conflict = flags.get("--conflict");
+  const conflict = flags2.get("--conflict");
   if (conflict !== void 0) hitl.conflict = conflict;
-  const situation = flags.get("--situation");
+  const situation = flags2.get("--situation");
   if (situation !== void 0) hitl.situation = situation;
   const section = resolve({ hitl }, ctx).hitl;
   if (section === void 0) throw new KernelError("hitl: the kernel answered no hitl section");
   return section;
 }
 function wavesProjection(ctx, args) {
-  const flags = parseFlags("waves", args, ["--units"]);
-  const units = flags.get("--units");
+  const flags2 = parseFlags("waves", args, ["--units"]);
+  const units = flags2.get("--units");
   if (units === void 0 || units === "") throw new KernelError("waves requires --units <json array>");
   const section = resolve({ waves: { units: parseUnitsJson(units) } }, ctx).waves;
   if (section === void 0) throw new KernelError("waves: the kernel answered no waves section");
   return section;
 }
 function promptOf(cmd, args) {
-  const flags = parseFlags(cmd, args, ["--prompt"]);
-  const prompt = flags.get("--prompt");
+  const flags2 = parseFlags(cmd, args, ["--prompt"]);
+  const prompt = flags2.get("--prompt");
   if (prompt === void 0 || prompt === "") throw new KernelError(`${cmd} requires --prompt <text>`);
   return prompt;
 }
@@ -1631,8 +1655,8 @@ function resolveTaskProjection(ctx, args) {
   };
 }
 function resolveProjection(ctx, args) {
-  const flags = parseFlags("resolve", args, ["--facts"]);
-  const facts = flags.get("--facts");
+  const flags2 = parseFlags("resolve", args, ["--facts"]);
+  const facts = flags2.get("--facts");
   if (facts === void 0 || facts === "") throw new KernelError("resolve requires --facts <json>");
   return resolve(parseFacts(facts), ctx);
 }
@@ -1891,9 +1915,9 @@ function appendLine(root, file, argv2, now, regs) {
   requireModelsRegistry(root);
   const { fields } = parseAppendArgs(argv2);
   const maxLength = regs.execJournal.max_value_length;
-  for (const { spec, text: text2 } of setInArgvOrder(fields)) {
-    if (text2.length > maxLength) {
-      throw new JournalError(`${spec.flag} must be at most ${maxLength} characters, got ${text2.length}`);
+  for (const { spec, text: text3 } of setInArgvOrder(fields)) {
+    if (text3.length > maxLength) {
+      throw new JournalError(`${spec.flag} must be at most ${maxLength} characters, got ${text3.length}`);
     }
   }
   if (unset(fields[DEFAULTED_FIELD])) fields[DEFAULTED_FIELD] = now();
@@ -1910,13 +1934,13 @@ function appendLine(root, file, argv2, now, regs) {
 function validateFile(root, file, regs) {
   if (!(0, import_node_fs6.existsSync)(file)) throw new JournalError(`no such file: ${file}`);
   requireModelsRegistry(root);
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs6.readFileSync)(file, "utf8");
+    text3 = (0, import_node_fs6.readFileSync)(file, "utf8");
   } catch {
     throw new JournalError(`no such file: ${file}`);
   }
-  const lines = text2.split("\n");
+  const lines = text3.split("\n");
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   const bad = [];
   lines.forEach((line, index) => {
@@ -1926,11 +1950,11 @@ function validateFile(root, file, regs) {
   return { lines: lines.length, bad };
 }
 function usage(argv0) {
-  const flags = EXEC_JOURNAL_FIELDS.map((spec) => {
+  const flags2 = EXEC_JOURNAL_FIELDS.map((spec) => {
     const term = `${spec.flag} ${placeholder(spec)}`;
     return spec.presence === "required" ? term : `[${term}]`;
   }).join(" ");
-  return `usage: ${argv0} append <file> ${flags}
+  return `usage: ${argv0} append <file> ${flags2}
        ${argv0} validate <file>
 `;
 }
@@ -1938,12 +1962,12 @@ function unset(value) {
   return value === void 0 || value === "";
 }
 function setInArgvOrder(fields) {
-  const rows = [];
+  const rows3 = [];
   for (const [name, value] of Object.entries(fields)) {
     const spec = BY_NAME.get(name);
-    if (spec !== void 0 && value !== void 0) rows.push({ spec, text: String(value) });
+    if (spec !== void 0 && value !== void 0) rows3.push({ spec, text: String(value) });
   }
-  return rows;
+  return rows3;
 }
 function placeholder(spec) {
   if (spec.json === "boolean") return "true|false";
@@ -1994,8 +2018,8 @@ function emit(fields) {
       if (spec.presence === "always") row[spec.name] = null;
       continue;
     }
-    const text2 = String(value);
-    row[spec.name] = spec.json === "number" ? Number.parseInt(text2, 10) : spec.json === "boolean" ? text2 === "true" : text2;
+    const text3 = String(value);
+    row[spec.name] = spec.json === "number" ? Number.parseInt(text3, 10) : spec.json === "boolean" ? text3 === "true" : text3;
   }
   return row;
 }
@@ -2254,14 +2278,14 @@ function isFile(path) {
   }
 }
 function readLines(file) {
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs7.readFileSync)(file, "utf8");
+    text3 = (0, import_node_fs7.readFileSync)(file, "utf8");
   } catch {
     throw new TelemetryError(`no such file: ${file}`);
   }
-  if (text2 === "") return [];
-  const parts = text2.split("\n");
+  if (text3 === "") return [];
+  const parts = text3.split("\n");
   if (parts[parts.length - 1] === "") parts.pop();
   return parts;
 }
@@ -2342,8 +2366,8 @@ function text(value) {
   return typeof value === "string" ? value : "";
 }
 function nested(payload, outer, inner) {
-  const child = payload[outer];
-  return isRecord(child) ? child[inner] : void 0;
+  const child2 = payload[outer];
+  return isRecord(child2) ? child2[inner] : void 0;
 }
 function readEnvelope(io2) {
   let parsed;
@@ -2817,8 +2841,8 @@ function readDecision(path) {
   }
   if (!isRecord(parsed)) return null;
   if (parsed["kind"] !== "context" || parsed["event"] !== "PreToolUse") return null;
-  const text2 = parsed["text"];
-  return typeof text2 === "string" ? context("PreToolUse", text2) : null;
+  const text3 = parsed["text"];
+  return typeof text3 === "string" ? context("PreToolUse", text3) : null;
 }
 function changeRecordNote(file, repo) {
   if (repo === "") return "";
@@ -2981,8 +3005,8 @@ function plausibleMs(value) {
   if (!/^[0-9]+$/.test(value)) return false;
   return value.length >= MS_DIGITS_MIN;
 }
-function parseMs(text2) {
-  const trimmed = text2.trim();
+function parseMs(text3) {
+  const trimmed = text3.trim();
   if (!plausibleMs(trimmed)) return null;
   const parsed = Number.parseInt(trimmed, 10);
   return Number.isSafeInteger(parsed) ? parsed : null;
@@ -3021,10 +3045,10 @@ function fileSpanWriter(opts) {
     closeMarker(id) {
       const marker = markerPath(markers, id);
       if (marker === null) return null;
-      const text2 = readMarker(marker);
-      if (text2 === null) return null;
+      const text3 = readMarker(marker);
+      if (text3 === null) return null;
       (0, import_node_fs15.rmSync)(marker, { force: true });
-      return parseMs(text2);
+      return parseMs(text3);
     }
   };
 }
@@ -3278,10 +3302,10 @@ function loadAgents(root) {
   } catch {
     return [];
   }
-  const rows = isRecord(document) ? document["agents"] : void 0;
-  if (!Array.isArray(rows)) return [];
+  const rows3 = isRecord(document) ? document["agents"] : void 0;
+  if (!Array.isArray(rows3)) return [];
   const agents = [];
-  for (const row of rows) {
+  for (const row of rows3) {
     if (!isRecord(row)) continue;
     const name = row["name"];
     if (typeof name !== "string" || name === "") continue;
@@ -3458,16 +3482,16 @@ function errorCodeOf(error) {
   const code = candidate["code"];
   return typeof code === "string" ? code : null;
 }
-function readName(text2) {
-  const doc = parseJson(text2);
+function readName(text3) {
+  const doc = parseJson(text3);
   if (!isRecord(doc)) return null;
   const name = doc["name"];
   return typeof name === "string" && name !== "" ? name : null;
 }
-function parseJson(text2) {
-  if (text2 === null || text2 === void 0 || text2 === "") return null;
+function parseJson(text3) {
+  if (text3 === null || text3 === void 0 || text3 === "") return null;
   try {
-    return JSON.parse(text2);
+    return JSON.parse(text3);
   } catch {
     return null;
   }
@@ -3507,11 +3531,11 @@ var PROBE_TIMEOUT_SECONDS = 15;
 function hasVerifyExtension(file) {
   return VERIFY_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
 }
-function findUpAny(start, names) {
+function findUpAny(start, names2) {
   let dir = start;
   let previous = "";
   while (dir !== "/" && dir !== previous && dir !== "") {
-    for (const name of names) {
+    for (const name of names2) {
       if ((0, import_node_fs18.existsSync)(`${dir}/${name}`)) return dir;
     }
     previous = dir;
@@ -3562,8 +3586,8 @@ function failureBlock(target, subject, output) {
   return `--- ${target} failed (${subject}) ---
 ${output.replace(/\n+$/, "")}`;
 }
-function firstLines(text2, limit) {
-  return text2.split("\n").slice(0, limit).join("\n");
+function firstLines(text3, limit) {
+  return text3.split("\n").slice(0, limit).join("\n");
 }
 function parentOf2(dir) {
   const cut = dir.lastIndexOf("/");
@@ -3628,14 +3652,14 @@ function targetsFor(env) {
   return env["ENGINEOS_VERIFY_TESTS"] === "1" ? [...DEFAULT_TARGETS, TEST_TARGET] : DEFAULT_TARGETS;
 }
 function changedFiles(path) {
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs19.readFileSync)(path, "utf8");
+    text3 = (0, import_node_fs19.readFileSync)(path, "utf8");
   } catch {
     return [];
   }
   const files = /* @__PURE__ */ new Set();
-  for (const line of text2.split("\n")) {
+  for (const line of text3.split("\n")) {
     if (line === "") continue;
     let parsed;
     try {
@@ -3954,13 +3978,13 @@ function isEngineosCheckout(project, root) {
   return marked || project === root || physical(project) === physical(root);
 }
 function hasMachineInstall(claudeMd) {
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs20.readFileSync)(claudeMd, "utf8");
+    text3 = (0, import_node_fs20.readFileSync)(claudeMd, "utf8");
   } catch {
     return false;
   }
-  return text2.split("\n").some((line) => IMPORT_LINE.test(line));
+  return text3.split("\n").some((line) => IMPORT_LINE.test(line));
 }
 function physical(path) {
   try {
@@ -4229,15 +4253,15 @@ function readJson(path) {
 }
 function readSettings(path) {
   if (!(0, import_node_fs21.existsSync)(path)) return { ok: true, value: {} };
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs21.readFileSync)(path, "utf8");
+    text3 = (0, import_node_fs21.readFileSync)(path, "utf8");
   } catch {
     return { ok: false, message: `cannot read ${path}` };
   }
-  if (text2.trim() === "") return { ok: true, value: {} };
+  if (text3.trim() === "") return { ok: true, value: {} };
   try {
-    return { ok: true, value: JSON.parse(text2) };
+    return { ok: true, value: JSON.parse(text3) };
   } catch {
     return { ok: false, message: SETTINGS_NOT_OBJECT };
   }
@@ -4336,24 +4360,24 @@ var import_node_path17 = require("node:path");
 
 // src/gen/frontmatter.ts
 var LINE_SPACE = /^[ \t\r\v\f]*/;
-function frontmatterValue(text2, field) {
+function frontmatterValue(text3, field) {
   const prefix = `${field}:`;
-  for (const line of text2.split("\n")) {
+  for (const line of text3.split("\n")) {
     if (!line.startsWith(prefix)) continue;
     return line.slice(prefix.length).replace(LINE_SPACE, "");
   }
   return "";
 }
 var ALIAS = /Alias: [a-z0-9-]+/i;
-function frontmatterAlias(text2) {
-  const match = ALIAS.exec(dashRanges(text2));
+function frontmatterAlias(text3) {
+  const match = ALIAS.exec(dashRanges(text3));
   if (match === null) return "";
   return match[0].replace(/[Aa]lias: /, "");
 }
-function dashRanges(text2) {
+function dashRanges(text3) {
   const kept = [];
   let inRange = false;
-  for (const line of text2.split("\n")) {
+  for (const line of text3.split("\n")) {
     if (!inRange) {
       if (line !== "---") continue;
       inRange = true;
@@ -4384,14 +4408,14 @@ function generateAgentCommands(root, io2) {
   (0, import_node_fs23.mkdirSync)(outDir, { recursive: true });
   const run10 = { outDir, expected: /* @__PURE__ */ new Set(), counts: { generated: 0, preserved: 0, removed: 0, keptOrphan: 0 }, io: io2 };
   for (const file of agentFiles(agentsDir)) {
-    const text2 = readOrEmpty(file);
-    const name = frontmatterValue(text2, "name");
+    const text3 = readOrEmpty(file);
+    const name = frontmatterValue(text3, "name");
     if (name === "") {
       io2.err(`skip (no name): ${file}
 `);
       continue;
     }
-    const alias = frontmatterAlias(text2);
+    const alias = frontmatterAlias(text3);
     const desc = `Invoke the ${name} agent${alias === "" ? "" : ` (alias ${alias})`}.`;
     emit2(run10, { invoke: name, agent: name, alias, desc });
     if (alias !== "" && alias !== name) emit2(run10, { invoke: alias, agent: name, alias, desc });
@@ -4458,18 +4482,18 @@ function isGenerated(path) {
   }
 }
 function agentFiles(agentsDir) {
-  const names = markdownNames(agentsDir);
-  if (names.length === 0) return [(0, import_node_path17.join)(agentsDir, "*.md")];
-  return names.map((name) => (0, import_node_path17.join)(agentsDir, name));
+  const names2 = markdownNames(agentsDir);
+  if (names2.length === 0) return [(0, import_node_path17.join)(agentsDir, "*.md")];
+  return names2.map((name) => (0, import_node_path17.join)(agentsDir, name));
 }
 function markdownNames(dir) {
-  let names;
+  let names2;
   try {
-    names = (0, import_node_fs23.readdirSync)(dir);
+    names2 = (0, import_node_fs23.readdirSync)(dir);
   } catch {
     return [];
   }
-  return names.filter((name) => !name.startsWith(".") && name.endsWith(".md")).sort(byCodeUnit);
+  return names2.filter((name) => !name.startsWith(".") && name.endsWith(".md")).sort(byCodeUnit);
 }
 function byCodeUnit(a, b) {
   if (a < b) return -1;
@@ -4644,13 +4668,13 @@ var TASK_CONTRACT_RULES = ["gates", "models", "parallelism", "risk-autonomy", "v
 var IMPORT_LINE2 = /^@rules\/([a-z-]*)\.md/;
 var MD = ".md";
 function alwaysOnRules(claudeMdText) {
-  const names = /* @__PURE__ */ new Set();
+  const names2 = /* @__PURE__ */ new Set();
   for (const line of claudeMdText.split("\n")) {
     const matched = IMPORT_LINE2.exec(line);
     const name = matched === null ? void 0 : matched[1];
-    if (name !== void 0) names.add(name);
+    if (name !== void 0) names2.add(name);
   }
-  return [...names].sort();
+  return [...names2].sort();
 }
 function ruleNames(root) {
   let entries;
@@ -4662,9 +4686,9 @@ function ruleNames(root) {
   return entries.filter((name) => name.endsWith(MD)).map((name) => name.slice(0, name.length - MD.length)).sort();
 }
 function deferralsOf(root, rule, alwaysOn) {
-  let text2;
+  let text3;
   try {
-    text2 = (0, import_node_fs25.readFileSync)((0, import_node_path19.join)(root, "rules", `${rule}.md`), "utf8");
+    text3 = (0, import_node_fs25.readFileSync)((0, import_node_path19.join)(root, "rules", `${rule}.md`), "utf8");
   } catch {
     return [];
   }
@@ -4673,12 +4697,12 @@ function deferralsOf(root, rule, alwaysOn) {
     if (name === rule) continue;
     if (alwaysOn.includes(name)) continue;
     if (TASK_CONTRACT_RULES.includes(name)) continue;
-    if (mentions(text2, name)) deferrals.push(name);
+    if (mentions(text3, name)) deferrals.push(name);
   }
   return deferrals;
 }
-function mentions(text2, name) {
-  return text2.includes(`${name}${MD}`);
+function mentions(text3, name) {
+  return text3.includes(`${name}${MD}`);
 }
 
 // src/evals/deterministic.ts
@@ -4688,7 +4712,7 @@ var COVERAGE_FLOOR = 25;
 var RISK_RANKS = { low: 1, medium: 2, high: 3 };
 function grader(io2) {
   let pass = 0;
-  let fail5 = 0;
+  let fail6 = 0;
   return {
     ok(message2) {
       pass += 1;
@@ -4696,12 +4720,12 @@ function grader(io2) {
 `);
     },
     bad(message2) {
-      fail5 += 1;
+      fail6 += 1;
       io2.out(`FAIL ${message2}
 `);
     },
     counts() {
-      return { pass, fail: fail5 };
+      return { pass, fail: fail6 };
     }
   };
 }
@@ -4808,8 +4832,8 @@ function riskFloors(root) {
   } catch {
     return floors;
   }
-  const record = isRecord(raw) ? raw : {};
-  const domains = Array.isArray(record["domains"]) ? record["domains"] : [];
+  const record2 = isRecord(raw) ? raw : {};
+  const domains = Array.isArray(record2["domains"]) ? record2["domains"] : [];
   for (const domain of domains.filter(isRecord)) {
     const id = domain["id"];
     if (typeof id !== "string" || floors.has(id)) continue;
@@ -4917,11 +4941,11 @@ var runEvals = (_argv, io2) => {
   const deterministic = runDeterministicTier(root, io2);
   const live = runLiveTier(root, io2, deterministic.intentCount, liveDeps(io2.env));
   const pass = deterministic.pass + live.pass;
-  const fail5 = deterministic.fail + live.fail;
+  const fail6 = deterministic.fail + live.fail;
   io2.out(`
-passed ${pass}, failed ${fail5}, skipped ${live.skipped}
+passed ${pass}, failed ${fail6}, skipped ${live.skipped}
 `);
-  return fail5 > 0 ? EXIT_FAILURE5 : EXIT_OK6;
+  return fail6 > 0 ? EXIT_FAILURE5 : EXIT_OK6;
 };
 function liveDeps(env) {
   return {
@@ -4967,9 +4991,9 @@ var import_node_path22 = require("node:path");
 var NUMERIC = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
 function parseMultiplier(raw) {
   if (raw === void 0 || raw === "") return 1;
-  const text2 = raw.trim();
-  if (!NUMERIC.test(text2)) throw new KernelError("ENGINEOS_PERF_MULTIPLIER must be numeric");
-  const value = Number.parseFloat(text2);
+  const text3 = raw.trim();
+  if (!NUMERIC.test(text3)) throw new KernelError("ENGINEOS_PERF_MULTIPLIER must be numeric");
+  const value = Number.parseFloat(text3);
   if (value <= 0) throw new KernelError("ENGINEOS_PERF_MULTIPLIER must be greater than zero");
   return value;
 }
@@ -5017,12 +5041,12 @@ function formatMeasurement(m, multiplier) {
   return { line: `${head}${body}`, failed };
 }
 function median(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  const upper = sorted[mid];
+  const sorted2 = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted2.length / 2);
+  const upper = sorted2[mid];
   if (upper === void 0) throw new KernelError("bench: cannot take the median of zero samples");
-  if (sorted.length % 2 === 1) return upper;
-  const lower = sorted[mid - 1];
+  if (sorted2.length % 2 === 1) return upper;
+  const lower = sorted2[mid - 1];
   return lower === void 0 ? upper : (lower + upper) / 2;
 }
 
@@ -5222,19 +5246,19 @@ function readTranscripts(files) {
     gateBlocks: 0
   };
   for (const file of files) {
-    const text2 = readText(file);
-    if (text2 === null) continue;
-    for (const match of text2.matchAll(ROUTER_INTENT)) {
+    const text3 = readText(file);
+    if (text3 === null) continue;
+    for (const match of text3.matchAll(ROUTER_INTENT)) {
       const intent = match[1];
       if (intent !== void 0) bump(stats.intents, intent);
     }
     for (const [skill, pattern] of SKILL_PATTERNS) {
-      if (pattern.test(text2)) bump(stats.skillFiles, skill);
+      if (pattern.test(text3)) bump(stats.skillFiles, skill);
     }
     for (const agent of REPORTED_AGENTS) {
-      if (text2.includes(agent)) bump(stats.agentFiles, agent);
+      if (text3.includes(agent)) bump(stats.agentFiles, agent);
     }
-    for (const line of text2.split("\n")) {
+    for (const line of text3.split("\n")) {
       if (line.includes("EngineOS gate")) stats.gateBlocks += 1;
     }
   }
@@ -5249,8 +5273,8 @@ function writeIntents(stats, io2) {
     io2.out("(none found \u2014 router not announcing?)\n");
     return;
   }
-  const rows = [...stats.intents.entries()].sort((a, b) => b[1] - a[1] || compareDesc(a[0], b[0]));
-  for (const [intent, count] of rows) {
+  const rows3 = [...stats.intents.entries()].sort((a, b) => b[1] - a[1] || compareDesc(a[0], b[0]));
+  for (const [intent, count] of rows3) {
     io2.out(`${String(count).padStart(7)} ${intent}
 `);
   }
@@ -5300,9 +5324,9 @@ function writeTelemetry(days, deps, io2) {
 function readEvents(files) {
   const events = [];
   for (const file of files) {
-    const text2 = readText(file);
-    if (text2 === null) continue;
-    for (const line of text2.split("\n")) {
+    const text3 = readText(file);
+    if (text3 === null) continue;
+    for (const line of text3.split("\n")) {
       if (line.trim() === "") continue;
       let parsed;
       try {
@@ -5342,43 +5366,9 @@ function compareDesc(a, b) {
   return a < b ? 1 : -1;
 }
 
-// src/checks/index.ts
-var CHECKS = [];
-function orderIds(ids) {
-  return [...ids].sort((a, b) => {
-    const left = idKey(a);
-    const right = idKey(b);
-    if (left.numeric !== right.numeric) return left.numeric - right.numeric;
-    return byteOrder(left.suffix, right.suffix);
-  });
-}
-function selectIds(ids, only) {
-  if (only === ALL) return { selected: [...ids], unknown: [] };
-  const wants = only.split(/[\s,]+/).filter((want) => want !== "");
-  const known = /* @__PURE__ */ new Set();
-  for (const id of ids) {
-    known.add(id);
-    known.add(parentOf3(id));
-  }
-  const unknown = wants.filter((want) => !known.has(want));
-  const wanted = new Set(wants);
-  const selected = ids.filter((id) => wanted.has(id) || wanted.has(parentOf3(id)));
-  return { selected: [...new Set(selected)], unknown };
-}
-var ALL = "all";
-function parentOf3(id) {
-  const cut = id.search(/[a-z]/);
-  return cut === -1 ? id : id.slice(0, cut);
-}
-function idKey(id) {
-  const matched = /^[^0-9]*([0-9]+)([a-z]*)$/.exec(id);
-  const digits = matched == null ? void 0 : matched[1];
-  if (digits === void 0) return { numeric: 0, suffix: id };
-  return { numeric: Number.parseInt(digits, 10), suffix: (matched == null ? void 0 : matched[2]) ?? "" };
-}
-function byteOrder(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
+// src/checks/agents-skills.ts
+var import_node_fs32 = require("node:fs");
+var import_node_path26 = require("node:path");
 
 // src/checks/findings.ts
 var HARNESS_FINDINGS = ["precondition-missing", "artifact-pending"];
@@ -5428,14 +5418,3927 @@ function makeContext(root, io2) {
     },
     list(relDir) {
       try {
-        return (0, import_node_fs31.readdirSync)((0, import_node_path25.join)(root, relDir)).sort(byteOrder2);
+        return (0, import_node_fs31.readdirSync)((0, import_node_path25.join)(root, relDir)).sort(byteOrder);
       } catch {
         return [];
       }
     }
   };
 }
+function skipOnce(ctx, check, title, token) {
+  if (!claim(ctx, `once:${token}`)) return [];
+  return [result(check, title, [finding(check, "precondition-missing", token)])];
+}
+function skipPending(ctx, check, title, path) {
+  if (!claim(ctx, `pending:${path}`)) return [];
+  return [result(check, title, [finding(check, "artifact-pending", path)], { pending: true })];
+}
+function deferralsOf2(ctx, rule) {
+  return deferralsOf(ctx.root, rule, alwaysOnRules(ctx.readText("CLAUDE.md") ?? ""));
+}
+function claim(ctx, key) {
+  if (ctx.skipped.has(key)) return false;
+  ctx.skipped.add(key);
+  return true;
+}
+function byteOrder(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/checks/agents-skills.ts
+var C9_FINDINGS = ["name-drifts-from-filename", "description-missing", "tools-missing"];
+var C10_FINDINGS = ["return-format-section-missing", "status-enum-missing"];
+var C11_FINDINGS = ["command-missing", "alias-command-missing"];
+var C12_FINDINGS = ["skill-md-missing", "name-drifts-from-directory", "description-missing"];
+var C13_FINDINGS = ["empty-document"];
+var C31_FINDINGS = ["unknown-tier", "tier-model-mismatch"];
+var AGENTS_SKILLS_CHECKS = [
+  { id: "C9", codes: C9_FINDINGS, run: checkC9 },
+  { id: "C10", codes: C10_FINDINGS, run: checkC10 },
+  { id: "C11", codes: C11_FINDINGS, run: checkC11 },
+  { id: "C12", codes: C12_FINDINGS, run: checkC12 },
+  { id: "C13", codes: C13_FINDINGS, run: checkC13 },
+  { id: "C31", codes: C31_FINDINGS, run: checkC31 }
+];
+var C9_TITLE = "agent frontmatter complete and name matches filename";
+var C10_TITLE = "every agent declares the canonical Return format envelope";
+var C11_TITLE = "every agent and alias has a slash command";
+var C12_TITLE = "every skill has SKILL.md with matching name and a description";
+var C13_TITLE = "no empty rule/agent/skill documents";
+var C31_TITLE = "every agent's tier binds the model it declares";
+var RETURN_FORMAT_HEADING = "## Return format";
+var STATUS_ENUM_LINE = "status: OK | DEGRADED | CRITICAL | BLOCKED | FAILED";
+function scanAgentContracts(ctx) {
+  const frontmatter = [];
+  const returnFormat = [];
+  const commands = [];
+  for (const base of agentBaseNames(ctx)) {
+    const text3 = ctx.readText(`agents/${base}.md`) ?? "";
+    const name = frontmatterValue(text3, "name");
+    const description = frontmatterValue(text3, "description");
+    if (name !== base) {
+      frontmatter.push(finding("C9", "name-drifts-from-filename", `${base}:${orNone(name)}`));
+    }
+    if (description === "") frontmatter.push(finding("C9", "description-missing", base));
+    if (frontmatterValue(text3, "tools") === "") frontmatter.push(finding("C9", "tools-missing", base));
+    const lines = text3.split("\n");
+    if (!lines.some((line) => line.startsWith(RETURN_FORMAT_HEADING))) {
+      returnFormat.push(finding("C10", "return-format-section-missing", base));
+    }
+    if (!lines.includes(STATUS_ENUM_LINE)) returnFormat.push(finding("C10", "status-enum-missing", base));
+    if (!ctx.exists(`commands/agents/${base}.md`)) commands.push(finding("C11", "command-missing", base));
+    for (const alias of aliasesOf(description)) {
+      if (ctx.exists(`commands/agents/${alias}.md`)) continue;
+      commands.push(finding("C11", "alias-command-missing", `${base}:${alias}`));
+    }
+  }
+  return { frontmatter, returnFormat, commands };
+}
+var ALIAS_DECLARATION = /Alias(?:es)?: ([a-z-]+)/g;
+function aliasesOf(description) {
+  return [...description.matchAll(ALIAS_DECLARATION)].map((match) => match[1]).filter((alias) => alias !== void 0);
+}
+function checkC9(ctx) {
+  return [result("C9", C9_TITLE, scanAgentContracts(ctx).frontmatter)];
+}
+function checkC10(ctx) {
+  return [result("C10", C10_TITLE, scanAgentContracts(ctx).returnFormat)];
+}
+function checkC11(ctx) {
+  return [result("C11", C11_TITLE, scanAgentContracts(ctx).commands)];
+}
+function checkC12(ctx) {
+  const found = [];
+  for (const skill of skillDirectories(ctx)) {
+    const text3 = ctx.readText(`skills/${skill}/SKILL.md`);
+    if (text3 === void 0) {
+      found.push(finding("C12", "skill-md-missing", skill));
+      continue;
+    }
+    const name = frontmatterValue(text3, "name");
+    if (name !== skill) found.push(finding("C12", "name-drifts-from-directory", `${skill}:${orNone(name)}`));
+    if (frontmatterValue(text3, "description") === "") found.push(finding("C12", "description-missing", skill));
+  }
+  return [result("C12", C12_TITLE, found)];
+}
+var DOCUMENT_GROUPS = [
+  { pattern: "rules/*.md", paths: (ctx) => markdownIn(ctx, "rules") },
+  { pattern: "agents/*.md", paths: (ctx) => markdownIn(ctx, "agents") },
+  {
+    // The glob matches only the SKILL.md files that exist; a skill directory
+    // without one contributes nothing here, and C12 owns that absence.
+    pattern: "skills/*/SKILL.md",
+    paths: (ctx) => skillDirectories(ctx).map((skill) => `skills/${skill}/SKILL.md`).filter((path) => isFile6(ctx.root, path))
+  }
+];
+function checkC13(ctx) {
+  const found = [];
+  for (const group of DOCUMENT_GROUPS) {
+    const paths = group.paths(ctx);
+    if (paths.length === 0) {
+      found.push(finding("C13", "empty-document", group.pattern));
+      continue;
+    }
+    for (const path of paths) {
+      if (sizeOf(ctx.root, path) === 0) found.push(finding("C13", "empty-document", path));
+    }
+  }
+  return [result("C13", C13_TITLE, found)];
+}
+var MODELS_REGISTRY = "registries/models.json";
+function checkC31(ctx) {
+  var _a;
+  if (!ctx.exists(MODELS_REGISTRY)) return skipOnce(ctx, "C31", C31_TITLE, "models");
+  const tiers = modelTiers2(ctx);
+  const found = [];
+  for (const base of agentBaseNames(ctx)) {
+    const text3 = ctx.readText(`agents/${base}.md`) ?? "";
+    const tier = frontmatterValue(text3, "tier");
+    const model = frontmatterValue(text3, "model");
+    if (tier === "" || model === "") continue;
+    const bound = ((_a = tiers.find((row) => row.id === tier)) == null ? void 0 : _a.model) ?? "";
+    if (bound === "") found.push(finding("C31", "unknown-tier", `${base}:${tier}`));
+    else if (bound !== model) found.push(finding("C31", "tier-model-mismatch", `${base}:${bound}!=${model}`));
+  }
+  return [result("C31", C31_TITLE, found)];
+}
+function modelTiers2(ctx) {
+  try {
+    return ctx.registries.models.tiers;
+  } catch (error) {
+    if (error instanceof KernelError) return [];
+    throw error;
+  }
+}
+function agentBaseNames(ctx) {
+  return markdownIn(ctx, "agents").map((path) => path.slice("agents/".length, -".md".length));
+}
+function markdownIn(ctx, directory) {
+  return ctx.list(directory).filter((entry) => entry.endsWith(".md")).map((entry) => `${directory}/${entry}`);
+}
+function skillDirectories(ctx) {
+  return ctx.list("skills").filter((entry) => isDirectory8(ctx.root, `skills/${entry}`));
+}
+function isDirectory8(root, relativePath) {
+  try {
+    return (0, import_node_fs32.statSync)((0, import_node_path26.join)(root, relativePath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isFile6(root, relativePath) {
+  try {
+    return (0, import_node_fs32.statSync)((0, import_node_path26.join)(root, relativePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+function sizeOf(root, relativePath) {
+  try {
+    return (0, import_node_fs32.statSync)((0, import_node_path26.join)(root, relativePath)).size;
+  } catch {
+    return 0;
+  }
+}
+function orNone(value) {
+  return value === "" ? "<none>" : value;
+}
+
+// src/checks/contracts-archive.ts
+var import_node_fs33 = require("node:fs");
+var import_node_path28 = require("node:path");
+
+// src/checks/contracts-intents.ts
+var import_node_path27 = require("node:path");
+var INTENTS_PATH = "registries/intents.json";
+function intentRow(ctx, id) {
+  let document;
+  try {
+    document = readJsonFile((0, import_node_path27.join)(ctx.root, INTENTS_PATH));
+  } catch {
+    return void 0;
+  }
+  if (!isRecord(document)) return void 0;
+  const declared4 = document["intents"];
+  if (!Array.isArray(declared4)) return void 0;
+  const rows3 = declared4;
+  for (const row of rows3) {
+    if (isRecord(row) && row["id"] === id) return row;
+  }
+  return void 0;
+}
+function stringsAt(source, key) {
+  if (source === void 0) return [];
+  const value = source[key];
+  if (!Array.isArray(value)) return [];
+  const items = value;
+  return items.filter((item) => typeof item === "string");
+}
+function recordAt(source, key) {
+  if (source === void 0) return void 0;
+  const value = source[key];
+  return isRecord(value) ? value : void 0;
+}
+function stringAt(source, key) {
+  if (source === void 0) return "";
+  const value = source[key];
+  return typeof value === "string" ? value : "";
+}
+var ISO_DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+function firstField(text3, key) {
+  const prefix = `${key}: `;
+  for (const line of text3.split("\n")) {
+    if (line.startsWith(prefix)) return line.slice(prefix.length);
+  }
+  return "";
+}
+function headingsOf(text3) {
+  const headings = [];
+  for (const line of text3.split("\n")) {
+    if (line.startsWith("## ")) headings.push(line.slice(3));
+  }
+  return headings;
+}
+function hasHeading(text3, section) {
+  const wanted = `## ${section}`;
+  return text3.split("\n").some((line) => line === wanted);
+}
+
+// src/checks/contracts-archive.ts
+var ARCHIVE_DIR = ".engineos/archived";
+function archiveContract(ctx) {
+  const contract = recordAt(intentRow(ctx, "record-change"), "archive_contract");
+  const since = recordAt(contract, "instance_sections_since");
+  return {
+    grandfatheredBefore: stringAt(contract, "grandfathered_before"),
+    instanceSectionsSince: stringAt(since, "date"),
+    specPathPrefix: stringAt(contract, "spec_path_prefix"),
+    specExemptPattern: compilePattern2(stringAt(contract, "spec_exempt_pattern")),
+    domains: new Set(stringsAt(contract, "domains")),
+    instanceSections: stringsAt(contract, "instance_sections"),
+    sinceSections: stringsAt(since, "sections")
+  };
+}
+function compilePattern2(source) {
+  if (source === "") return void 0;
+  try {
+    return new RegExp(source);
+  } catch {
+    return void 0;
+  }
+}
+function auditArchive(ctx, contract) {
+  const wellFormed = [];
+  const specLinks = [];
+  for (const record2 of archivedRecords(ctx.root)) {
+    const text3 = ctx.readText(record2) ?? "";
+    const completed = firstField(text3, "completed");
+    const name = firstField(text3, "name");
+    const gate = completed !== "" ? completed : name.slice(0, DATE_LENGTH);
+    if (gate < contract.grandfatheredBefore) continue;
+    const base = (0, import_node_path28.basename)(record2, ".md");
+    auditRecord({ record: record2, base, text: text3, completed, name, contract }, wellFormed);
+    auditSpecLink({ ctx, base, text: text3, contract }, specLinks);
+  }
+  return { wellFormed, specLinks };
+}
+var DATE_LENGTH = 10;
+function auditRecord(subject, into) {
+  const { record: record2, base, text: text3, completed, name, contract } = subject;
+  const status = firstField(text3, "status");
+  const domain = firstField(text3, "domain");
+  if (status !== "done") into.push(finding("C21c", "status-not-done", `${base}:${status}`));
+  if (!ISO_DATE.test(completed)) into.push(finding("C21c", "completed-missing-or-malformed", base));
+  if (name !== base) into.push(finding("C21c", "name-drifts-from-filename", base));
+  if (!contract.domains.has(domain)) into.push(finding("C21c", "domain-not-in-enum", `${base}:${domain}`));
+  const want = `${ARCHIVE_DIR}/${completed.slice(0, 4)}/${completed.slice(5, 7)}/${domain}/${base}.md`;
+  if (record2 !== want) into.push(finding("C21c", "filed-at-wrong-path", base));
+  if (hasOpenChecklistItem(text3)) into.push(finding("C21c", "unresolved-checklist-item", base));
+  for (const section of contract.instanceSections) {
+    if (!hasHeading(text3, section)) into.push(finding("C21c", "missing-section", `${base}:${section}`));
+  }
+  if (!(completed < contract.instanceSectionsSince)) {
+    for (const section of contract.sinceSections) {
+      if (!hasHeading(text3, section)) into.push(finding("C21c", "missing-section", `${base}:${section}`));
+    }
+  }
+}
+function auditSpecLink(subject, into) {
+  var _a;
+  const { ctx, base, text: text3, contract } = subject;
+  const spec = firstField(text3, "spec");
+  if (spec === "") {
+    into.push(finding("C21c", "spec-field-missing-or-empty", base));
+    return;
+  }
+  if (((_a = contract.specExemptPattern) == null ? void 0 : _a.test(spec)) === true) return;
+  if (!spec.startsWith(contract.specPathPrefix)) {
+    into.push(finding("C21c", "spec-not-under-prefix", `${base}:${spec}`));
+    return;
+  }
+  if (!isNonEmptyFile((0, import_node_path28.join)(ctx.root, spec))) {
+    into.push(finding("C21c", "spec-file-missing-or-empty", `${base}:${spec}`));
+  }
+}
+function archivedRecords(root) {
+  const found = [];
+  walk2((0, import_node_path28.join)(root, ARCHIVE_DIR), ARCHIVE_DIR, found);
+  return found.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+}
+function walk2(absolute, relative, into) {
+  let names2;
+  try {
+    names2 = (0, import_node_fs33.readdirSync)(absolute);
+  } catch {
+    return;
+  }
+  for (const name of names2) {
+    const child2 = (0, import_node_path28.join)(absolute, name);
+    if (isDirectory9(child2)) walk2(child2, `${relative}/${name}`, into);
+    else if (name.endsWith(".md") && name !== "README.md") into.push(`${relative}/${name}`);
+  }
+}
+function isDirectory9(path) {
+  try {
+    return (0, import_node_fs33.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function isNonEmptyFile(path) {
+  try {
+    return (0, import_node_fs33.statSync)(path).size > 0;
+  } catch {
+    return false;
+  }
+}
+function hasOpenChecklistItem(text3) {
+  return text3.split("\n").some((line) => line.startsWith("- [ ]"));
+}
+
+// src/checks/mirror.ts
+var CAPTURE = "([A-Za-z0-9@_./:-]+)";
+var REGISTRY_FILE_BY_NAME = {
+  routing: "routing.json",
+  intents: "intents.json",
+  models: "models.json",
+  policy: "policy.json",
+  decisionRules: "decision-rules.json",
+  capabilities: "capabilities.json",
+  agents: "agents.json"
+};
+var REGISTRY_FILES = new Map(Object.entries(REGISTRY_FILE_BY_NAME));
+var SEGMENT = /^([A-Za-z_][A-Za-z0-9_]*)(?:\[\]|\[id=([^\]]+)\])?$/;
+function resolveRegistryPath(root, path) {
+  const dot = path.indexOf(".");
+  if (dot <= 0) throw new KernelError(`registry path '${path}' names no registry`);
+  const name = path.slice(0, dot);
+  const file = REGISTRY_FILES.get(name);
+  if (file === void 0) throw new KernelError(`registry path '${path}' names an unknown registry '${name}'`);
+  let cursor = [readJsonFile(registryPath(root, file))];
+  for (const segment of path.slice(dot + 1).split(".")) {
+    cursor = step(cursor, segment, path);
+  }
+  const values = [];
+  for (const value of cursor) {
+    if (Array.isArray(value)) for (const element of value) values.push(scalar(element, path));
+    else values.push(scalar(value, path));
+  }
+  return values;
+}
+function sliceSection(text3, anchor) {
+  const lines = text3.split("\n");
+  let start = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line !== void 0 && line.trimEnd() === anchor) {
+      start = index + 1;
+      break;
+    }
+  }
+  if (start === -1) return void 0;
+  const body = [];
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === void 0 || line.startsWith("## ")) break;
+    body.push(line);
+  }
+  return body.join("\n");
+}
+function runMirrors(rows3, ctx) {
+  const findings = [];
+  for (const row of rows3) findings.push(...runRow(row, ctx));
+  return findings;
+}
+function runRow(row, ctx) {
+  assertPlaceholder(row);
+  const text3 = ctx.readText(row.doc);
+  if (text3 === void 0) return [fail5(row, `doc-missing:${row.doc}`)];
+  const haystack = sliceHaystack(row, text3);
+  if (typeof haystack !== "string") return [fail5(row, haystack.subject)];
+  let values;
+  try {
+    values = resolveRegistryPath(ctx.root, row.registry);
+  } catch {
+    return [fail5(row, `registry-empty:${row.registry}`)];
+  }
+  if (values.length === 0) return [fail5(row, `registry-empty:${row.registry}`)];
+  return row.kind === "names" ? names(row, haystack, values) : quotes(row, haystack, values);
+}
+function sliceHaystack(row, text3) {
+  if (row.scope === "file") return text3;
+  const anchor = row.anchor;
+  if (anchor === void 0) throw new KernelError(`mirror row '${row.id}' has no anchor and is not scope: 'file'`);
+  const section = sliceSection(text3, anchor);
+  if (section === void 0) return { subject: `section-missing:${anchor}` };
+  if (section.trim() === "") return { subject: `section-empty:${anchor}` };
+  return section;
+}
+function names(row, haystack, values) {
+  const findings = [];
+  if (row.direction !== "registry-names-doc") {
+    for (const value of values) {
+      const pattern = new RegExp(fill(row.element, "{x}", escapeRegExp2(value)), flags(row, "m"));
+      if (!pattern.test(haystack)) findings.push(fail5(row, value));
+    }
+  }
+  if (row.direction !== "doc-names-registry") {
+    const declared4 = new Set(values.map((value) => normalize(row, value)));
+    const pattern = new RegExp(fill(row.element, "{x}", CAPTURE), flags(row, "gm"));
+    for (const match of haystack.matchAll(pattern)) {
+      const captured = match[1];
+      if (captured !== void 0 && !declared4.has(normalize(row, captured))) {
+        findings.push(fail5(row, `undeclared:${captured}`));
+      }
+    }
+  }
+  return findings;
+}
+function quotes(row, haystack, values) {
+  if (values.length > 1) return [fail5(row, `registry-ambiguous:${row.registry}`)];
+  const expected = values[0];
+  if (expected === void 0) return [fail5(row, `registry-empty:${row.registry}`)];
+  const pattern = new RegExp(fill(row.pattern, "{n}", "(\\d+)"), flags(row, "gm"));
+  const captured = [...haystack.matchAll(pattern)].map((match) => match[1]).filter((n) => n !== void 0);
+  if (captured.length === 0) return [fail5(row, "pattern-missing")];
+  if (captured.length > 1) return [fail5(row, "pattern-ambiguous")];
+  const found = captured[0];
+  if (found === void 0 || found === expected) return [];
+  return [fail5(row, `${found}!=${expected}`)];
+}
+function assertPlaceholder(row) {
+  const source = row.kind === "names" ? row.element : row.pattern;
+  const placeholder2 = row.kind === "names" ? "{x}" : "{n}";
+  if (!source.includes(placeholder2)) {
+    throw new KernelError(`mirror row '${row.id}' has no ${placeholder2} placeholder, so it would match vacuously`);
+  }
+}
+function step(cursor, segment, path) {
+  const parsed = SEGMENT.exec(segment);
+  const key = parsed == null ? void 0 : parsed[1];
+  if (parsed === null || key === void 0) throw new KernelError(`registry path '${path}' has an unreadable segment '${segment}'`);
+  const wanted = parsed[2];
+  const mapped = segment.endsWith("[]");
+  const next = [];
+  for (const value of cursor) {
+    if (!isRecord(value)) throw new KernelError(`registry path '${path}': '${key}' has no object to read from`);
+    const child2 = value[key];
+    if (child2 === void 0 || child2 === null) throw new KernelError(`registry path '${path}' has no segment '${key}'`);
+    if (wanted !== void 0) next.push(selectById(child2, wanted, key, path));
+    else if (mapped) next.push(...asArray2(child2, key, path));
+    else next.push(child2);
+  }
+  return next;
+}
+function asArray2(child2, key, path) {
+  if (!Array.isArray(child2)) throw new KernelError(`registry path '${path}': '${key}' is not an array`);
+  return child2;
+}
+function selectById(child2, wanted, key, path) {
+  for (const element of asArray2(child2, key, path)) {
+    if (isRecord(element) && element["id"] === wanted) return element;
+  }
+  throw new KernelError(`registry path '${path}': '${key}' has no element with id '${wanted}'`);
+}
+function scalar(value, path) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  throw new KernelError(`registry path '${path}' does not end on a scalar`);
+}
+function fail5(row, subject) {
+  return { code: row.id, subject };
+}
+function fill(source, placeholder2, replacement) {
+  return source.replace(placeholder2, () => replacement);
+}
+function flags(row, base) {
+  return row.ignoreCase === true ? `${base}i` : base;
+}
+function normalize(row, value) {
+  return row.ignoreCase === true ? value.toLowerCase() : value;
+}
+function escapeRegExp2(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// src/checks/mirrors.ts
+var ROWS = [
+  // --------------------------------------------------------------- C16
+  // Stays code in 40-decision-registries.sh: the ADR and code-review rows of
+  // rules/models.md (they join work_types[].tier to tiers[].model, and a path
+  // resolves one field, never a join); the spelled-out retry bound ("Two
+  // attempts per unit, one escalation" carries no numeral to capture); the
+  // shared-binding documentation grep; the CLAUDE.md router-row count; and
+  // every registry-to-registry assertion in the check.
+  {
+    id: "model-missing-from-prose",
+    check: "C16",
+    registry: "models.tiers[].model",
+    doc: "rules/models.md",
+    // scope: file — the bash greps the whole document, and a tier's model is
+    // named in the escalation prose as well as in the table.
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "`{x}`"
+  },
+  {
+    id: "gate-ladder-missing-from-prose",
+    check: "C16",
+    registry: "policy.gates.ladder",
+    doc: "rules/gates.md",
+    anchor: "## The ladder",
+    // Deviation 5: the bash compared policy.json against a literal string and
+    // never opened rules/gates.md. This row reads the ladder table for real.
+    direction: "doc-names-registry",
+    ignoreCase: true,
+    kind: "names",
+    element: "^\\| {x} \\|"
+  },
+  {
+    id: "wave-cap-drift",
+    check: "C16",
+    registry: "policy.parallelism.wave_concurrency_cap",
+    doc: "rules/parallelism.md",
+    // scope: file — the bash greps the sentence wherever it sits in the file.
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "Cap concurrency at ~{n}"
+  },
+  {
+    id: "spec-threshold-drift",
+    check: "C16",
+    registry: "policy.gates.spec_threshold.files_greater_than",
+    doc: "CLAUDE.md",
+    // scope: file — non-negotiable #1 is prose, not a section of its own.
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "touching >{n} files"
+  },
+  {
+    id: "fanout-threshold-drift",
+    check: "C16",
+    registry: "policy.parallelism.fanout_signals.files_greater_than",
+    doc: "rules/parallelism.md",
+    // scope: file — as above; the threshold sits in the opening paragraph.
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "\\*\\*>{n} files\\*\\*"
+  },
+  // --------------------------------------------------------------- C19b
+  // Stays code: the reverse assertion (every `## ` heading in the template is
+  // declared). Section names are multi-word, and the reverse capture class
+  // stops at a space, so reversing here would match nothing and pass.
+  {
+    id: "template-missing-section",
+    check: "C19b",
+    registry: "intents.intents[id=handoff].required_sections",
+    doc: "templates/handoff.md",
+    // scope: file — the whole template is the mirrored surface.
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "^## {x}$"
+  },
+  {
+    id: "template-missing-field",
+    check: "C19b",
+    registry: "intents.intents[id=handoff].required_fields",
+    doc: "templates/handoff.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "^{x}:"
+  },
+  // --------------------------------------------------------------- C19c
+  // The element pins the match to the router row itself rather than to the
+  // document, which is what the bash did by extracting the row first.
+  {
+    id: "claude-row-missing-section",
+    check: "C19c",
+    registry: "intents.intents[id=handoff].required_sections",
+    doc: "CLAUDE.md",
+    // scope: file — the row is found by its own load target, not by a heading.
+    scope: "file",
+    direction: "doc-names-registry",
+    ignoreCase: true,
+    kind: "names",
+    element: "^\\|.*templates/handoff\\.md.*{x}"
+  },
+  {
+    id: "claude-row-missing-field",
+    check: "C19c",
+    registry: "intents.intents[id=handoff].required_fields",
+    doc: "CLAUDE.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    ignoreCase: true,
+    kind: "names",
+    element: "^\\|.*templates/handoff\\.md.*{x}"
+  },
+  // --------------------------------------------------------------- C20c
+  // Stays code: the two "until clean" canaries and the verify-done note
+  // pointer — literal strings, with no registry side to mirror.
+  {
+    id: "fix-attempt-bound-drift",
+    check: "C20c",
+    registry: "policy.repair.max_fix_attempts_per_check",
+    doc: "CLAUDE.md",
+    // scope: file — the bash greps table rows, and the element carries the row
+    // shape (`^|` … `kernel.sh repair`) so the file scope stays non-vacuous.
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "^\\|.*{n} fix attempts per check.*kernel\\.sh repair"
+  },
+  // --------------------------------------------------------------- C21b
+  // Stays code: the reverse assertion, for C19b's reason.
+  {
+    id: "template-missing-section",
+    check: "C21b",
+    registry: "intents.intents[id=record-change].required_sections",
+    doc: ".engineos/changes/_template.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "^## {x}$"
+  },
+  {
+    id: "template-missing-field",
+    check: "C21b",
+    registry: "intents.intents[id=record-change].required_fields",
+    doc: ".engineos/changes/_template.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "^{x}:"
+  },
+  // --------------------------------------------------------------- C21e
+  // Three homes, one registry list, one row each: a finding must say WHICH
+  // home lost the domain. Stays code: the changes/README.md canary that keeps
+  // the killed inline schema copy dead.
+  {
+    id: "skill-missing-domain",
+    check: "C21e",
+    registry: "intents.intents[id=record-change].archive_contract.domains",
+    doc: "skills/record-change/SKILL.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "{x}"
+  },
+  {
+    id: "archive-readme-missing-domain",
+    check: "C21e",
+    registry: "intents.intents[id=record-change].archive_contract.domains",
+    doc: ".engineos/archived/README.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "{x}"
+  },
+  {
+    id: "template-missing-domain",
+    check: "C21e",
+    registry: "intents.intents[id=record-change].archive_contract.domains",
+    doc: ".engineos/changes/_template.md",
+    scope: "file",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "{x}"
+  },
+  // --------------------------------------------------------------- C23
+  // Stays code: the ORDER of the precedence chain (the bash compares the whole
+  // rendered sentence, and a per-element row cannot express order), and C23b's
+  // CLAUDE.md-to-COMPATIBILITY.md always-on list, which has no registry side.
+  {
+    id: "precedence-domain-missing",
+    check: "C23",
+    registry: "routing.precedence",
+    doc: "CLAUDE.md",
+    anchor: "## Router \u2014 classify before acting",
+    // The chain wraps across two lines, so the separator is matched with \s
+    // rather than a literal space; 'chain:' carries the first domain.
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "(?:chain:|\u2192)\\s*{x}"
+  },
+  // --------------------------------------------------------------- C24c
+  // Stays code: the 'kernel.sh admit' literal. Anchored to the section the
+  // claim is about, where the bash grepped the whole file.
+  {
+    id: "action-row-missing",
+    check: "C24c",
+    registry: "policy.parallelism.backpressure.actions",
+    doc: "rules/parallelism.md",
+    anchor: "## Backpressure",
+    // both: actions is a closed answer set, so a table row the kernel never
+    // answers is drift in the direction the bash could not see.
+    direction: "both",
+    kind: "names",
+    element: "^\\| `{x}`"
+  },
+  {
+    id: "queue-bound-drift",
+    check: "C24c",
+    registry: "policy.parallelism.backpressure.max_queued_units",
+    doc: "rules/parallelism.md",
+    anchor: "## Backpressure",
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "max_queued_units[^0-9]*{n}\\b"
+  },
+  {
+    id: "overload-row-missing",
+    check: "C24c",
+    registry: "policy.parallelism.backpressure.overload_action",
+    doc: "rules/parallelism.md",
+    anchor: "## Backpressure",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "^\\| `{x}`.*max_queued_units"
+  },
+  // --------------------------------------------------------------- C25c
+  // Stays code: the 'kernel.sh breaker' literal. The scope row is anchored on
+  // the vocabulary SENTENCE, not the section: `provider` and `tool` also occur
+  // in the exec-journal paragraph inside this section, so a section-wide
+  // element would pass with the vocabulary deleted.
+  {
+    id: "state-row-missing",
+    check: "C25c",
+    registry: "policy.breaker.states",
+    doc: "rules/parallelism.md",
+    anchor: "## Circuit breaker",
+    direction: "both",
+    kind: "names",
+    element: "^\\| `{x}`"
+  },
+  {
+    id: "failure-threshold-drift",
+    check: "C25c",
+    registry: "policy.breaker.failure_threshold",
+    doc: "rules/parallelism.md",
+    anchor: "## Circuit breaker",
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "failure_threshold[^0-9]*{n}\\b"
+  },
+  {
+    id: "scope-vocabulary-missing",
+    check: "C25c",
+    registry: "policy.breaker.scopes",
+    doc: "rules/parallelism.md",
+    anchor: "## Circuit breaker",
+    // [^.] spans the line wrap and stops at the sentence's period, which is the
+    // bash's "flatten, split on '.', keep the fragment saying 'scopes over'".
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "scopes over[^.]*`{x}`"
+  },
+  // --------------------------------------------------------------- C26c
+  // Stays code: the 'kernel.sh hitl' literal and the three record_home
+  // mirrors, which derive a heading from the value's URL fragment rather than
+  // naming the value itself.
+  {
+    id: "reason-row-missing",
+    check: "C26c",
+    registry: "policy.hitl.reasons",
+    doc: "rules/risk-autonomy.md",
+    anchor: "## Human-in-the-loop",
+    // both: the registry calls reasons a CLOSED vocabulary, so a reason the
+    // prose invents is the failure this row exists to catch.
+    direction: "both",
+    kind: "names",
+    element: "^\\| `{x}`"
+  },
+  // --------------------------------------------------------------- C27d
+  // Stays code: every literal caveat the section must keep (the 0-is-not-free
+  // and status-is-a-FLOOR warnings, the all-but-note slug claim, trace_id /
+  // span_kind / cost_micros / tokens_in), the span-kind alternation asserted
+  // as one ordered string, and the parallelism.md back-reference.
+  {
+    id: "span-kind-missing",
+    check: "C27d",
+    registry: "policy.telemetry.exec_journal.span_kinds",
+    doc: "rules/observability.md",
+    anchor: "## Agent traces",
+    // Pinned to the alternation sentence rather than the section: every kind
+    // is a substring of some other bullet, which is the vacuity the bash
+    // patched by asserting the whole line separately.
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "is one of[^.]*{x}"
+  },
+  {
+    id: "journal-home-missing",
+    check: "C27d",
+    registry: "policy.telemetry.exec_journal.home",
+    doc: "rules/observability.md",
+    anchor: "## Agent traces",
+    direction: "doc-names-registry",
+    kind: "names",
+    element: "{x}"
+  },
+  {
+    id: "value-length-drift",
+    check: "C27d",
+    registry: "policy.telemetry.exec_journal.max_value_length",
+    doc: "rules/observability.md",
+    anchor: "## Agent traces",
+    // The bash asserted only that the field NAME is stated; the number beside
+    // it is the same claim, checked.
+    direction: "doc-names-registry",
+    kind: "quotes",
+    pattern: "max_value_length[^0-9]*{n}\\b"
+  }
+];
+var MIRRORS = ROWS;
+function rowsOf(check) {
+  return MIRRORS.filter((row) => row.check === check);
+}
+
+// src/checks/contracts.ts
+var C19_FINDINGS = [
+  "required-sections-missing-or-empty",
+  "required-fields-missing-or-empty",
+  "note-carries-the-section-list"
+];
+var C19b_FINDINGS = [
+  "template-missing-section",
+  "template-missing-field",
+  "template-section-not-declared"
+];
+var C19c_FINDINGS = [
+  "router-row-missing",
+  "claude-row-missing-section",
+  "claude-row-missing-field"
+];
+var C21_FINDINGS = [
+  "required-sections-missing-or-empty",
+  "required-fields-missing-or-empty",
+  "domains-missing-or-empty",
+  "domains-has-duplicates",
+  "date-field-not-a-date",
+  "spec-exempt-pattern-missing-or-invalid",
+  "instance-section-not-required"
+];
+var C21b_FINDINGS = [
+  "template-missing-section",
+  "template-missing-field",
+  "template-section-not-declared"
+];
+var C21c_FINDINGS = [
+  "status-not-done",
+  "completed-missing-or-malformed",
+  "name-drifts-from-filename",
+  "domain-not-in-enum",
+  "filed-at-wrong-path",
+  "unresolved-checklist-item",
+  "missing-section",
+  "spec-field-missing-or-empty",
+  "spec-file-missing-or-empty",
+  "spec-not-under-prefix"
+];
+var C21e_FINDINGS = [
+  "skill-missing-domain",
+  "archive-readme-missing-domain",
+  "template-missing-domain",
+  "changes-readme-regrew-inline-schema-copy"
+];
+var HANDOFF_TEMPLATE = "templates/handoff.md";
+var CHANGE_TEMPLATE = ".engineos/changes/_template.md";
+var CHANGES_README = ".engineos/changes/README.md";
+function checkC19(ctx) {
+  const title = "handoff intent carries required_sections/required_fields as data";
+  if (!hasHandoffInputs(ctx)) return skipOnce(ctx, "C19", title, "handoff");
+  const row = intentRow(ctx, "handoff");
+  const found = [];
+  if (stringsAt(row, "required_sections").length === 0) found.push(finding("C19", "required-sections-missing-or-empty"));
+  if (stringsAt(row, "required_fields").length === 0) found.push(finding("C19", "required-fields-missing-or-empty"));
+  if (/required sections:/i.test(stringAt(row, "note"))) found.push(finding("C19", "note-carries-the-section-list"));
+  return [result("C19", title, found)];
+}
+function checkC19b(ctx) {
+  const sectionTitle = "handoff template carries every registry-required section";
+  const fieldTitle = "handoff template carries every registry-required field line";
+  const reverseTitle = "every handoff template section is declared in the registry";
+  if (!hasHandoffInputs(ctx)) return skipOnce(ctx, "C19b", sectionTitle, "handoff");
+  const groups = groupByCode(runMirrors(rowsOf("C19b"), ctx));
+  const sections = take(groups, "template-missing-section");
+  const fields = take(groups, "template-missing-field");
+  return [
+    result("C19b", sectionTitle, [...sections, ...drain(groups)]),
+    result("C19b", fieldTitle, fields),
+    result("C19b", reverseTitle, undeclaredHeadings("C19b", ctx, HANDOFF_TEMPLATE, "handoff"))
+  ];
+}
+function checkC19c(ctx) {
+  const title = "CLAUDE.md handoff row mirrors every required section and field";
+  if (!hasHandoffInputs(ctx)) return skipOnce(ctx, "C19c", title, "handoff");
+  if (!hasRouterRow(ctx.readText("CLAUDE.md") ?? "", HANDOFF_TEMPLATE)) {
+    return [result("C19c", title, [finding("C19c", "router-row-missing", "CLAUDE.md")])];
+  }
+  return [result("C19c", title, runMirrors(rowsOf("C19c"), ctx))];
+}
+function checkC21(ctx) {
+  const title = "record-change intent carries the change-record contract as data";
+  if (!hasChangeRecordInputs(ctx)) return skipOnce(ctx, "C21", title, "change-record");
+  const row = intentRow(ctx, "record-change");
+  const contract = recordAt(row, "archive_contract");
+  const since = recordAt(contract, "instance_sections_since");
+  const sections = stringsAt(row, "required_sections");
+  const domains = stringsAt(contract, "domains");
+  const found = [];
+  if (sections.length === 0) found.push(finding("C21", "required-sections-missing-or-empty"));
+  if (stringsAt(row, "required_fields").length === 0) found.push(finding("C21", "required-fields-missing-or-empty"));
+  if (domains.length === 0) found.push(finding("C21", "domains-missing-or-empty"));
+  if (new Set(domains).size !== domains.length) found.push(finding("C21", "domains-has-duplicates"));
+  const dated = [
+    ["grandfathered_before", stringAt(contract, "grandfathered_before")],
+    ["instance_sections_since.date", stringAt(since, "date")]
+  ];
+  for (const [field, value] of dated) {
+    if (!ISO_DATE.test(value)) found.push(finding("C21", "date-field-not-a-date", field));
+  }
+  if (compilePattern2(stringAt(contract, "spec_exempt_pattern")) === void 0) {
+    found.push(finding("C21", "spec-exempt-pattern-missing-or-invalid"));
+  }
+  const declared4 = new Set(sections);
+  for (const section of [...stringsAt(contract, "instance_sections"), ...stringsAt(since, "sections")]) {
+    if (!declared4.has(section)) found.push(finding("C21", "instance-section-not-required", section));
+  }
+  return [result("C21", title, found)];
+}
+function checkC21b(ctx) {
+  const sectionTitle = "change template carries every registry-required section";
+  const fieldTitle = "change template carries every registry-required field line";
+  const reverseTitle = "every change template section is declared in the registry";
+  if (!hasChangeRecordInputs(ctx)) return skipOnce(ctx, "C21b", sectionTitle, "change-record");
+  const groups = groupByCode(runMirrors(rowsOf("C21b"), ctx));
+  const sections = take(groups, "template-missing-section");
+  const fields = take(groups, "template-missing-field");
+  return [
+    result("C21b", sectionTitle, [...sections, ...drain(groups)]),
+    result("C21b", fieldTitle, fields),
+    result("C21b", reverseTitle, undeclaredHeadings("C21b", ctx, CHANGE_TEMPLATE, "record-change"))
+  ];
+}
+function checkC21c(ctx) {
+  const wellFormedTitle = "every checked-era archived change record is a well-formed done claim";
+  const specTitle = "every checked-era archived record's spec link resolves (or is an explicit n/a exemption)";
+  if (!hasChangeRecordInputs(ctx)) return skipOnce(ctx, "C21c", wellFormedTitle, "change-record");
+  const audit = auditArchive(ctx, archiveContract(ctx));
+  return [
+    result("C21c", wellFormedTitle, audit.wellFormed),
+    result("C21c", specTitle, audit.specLinks)
+  ];
+}
+function checkC21e(ctx) {
+  const title = "change-record prose mirrors agree with the registry";
+  if (!hasChangeRecordInputs(ctx)) return skipOnce(ctx, "C21e", title, "change-record");
+  const found = [...runMirrors(rowsOf("C21e"), ctx)];
+  const readme = (ctx.readText(CHANGES_README) ?? "").split("\n");
+  if (readme.some((line) => line === "status: active")) {
+    found.push(finding("C21e", "changes-readme-regrew-inline-schema-copy", CHANGES_README));
+  }
+  return [result("C21e", title, found)];
+}
+function hasHandoffInputs(ctx) {
+  return ctx.exists(INTENTS_PATH) && ctx.exists(HANDOFF_TEMPLATE);
+}
+function hasChangeRecordInputs(ctx) {
+  return ctx.exists(INTENTS_PATH) && ctx.exists(CHANGE_TEMPLATE);
+}
+function hasRouterRow(text3, target) {
+  return text3.split("\n").some((line) => line.startsWith("|") && line.includes(target));
+}
+function undeclaredHeadings(check, ctx, template, intent) {
+  const declared4 = new Set(stringsAt(intentRow(ctx, intent), "required_sections"));
+  return headingsOf(ctx.readText(template) ?? "").filter((heading) => !declared4.has(heading)).map((heading) => finding(check, "template-section-not-declared", heading));
+}
+function groupByCode(findings) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const entry of findings) {
+    const bucket = groups.get(entry.code);
+    if (bucket === void 0) groups.set(entry.code, [entry]);
+    else bucket.push(entry);
+  }
+  return groups;
+}
+function take(groups, code) {
+  const bucket = groups.get(code) ?? [];
+  groups.delete(code);
+  return bucket;
+}
+function drain(groups) {
+  return [...groups.values()].flat();
+}
+var CONTRACTS_CHECKS = [
+  { id: "C19", codes: C19_FINDINGS, run: checkC19 },
+  { id: "C19b", codes: C19b_FINDINGS, run: checkC19b },
+  { id: "C19c", codes: C19c_FINDINGS, run: checkC19c },
+  { id: "C21", codes: C21_FINDINGS, run: checkC21 },
+  { id: "C21b", codes: C21b_FINDINGS, run: checkC21b },
+  { id: "C21c", codes: C21c_FINDINGS, run: checkC21c },
+  { id: "C21e", codes: C21e_FINDINGS, run: checkC21e }
+];
+
+// src/checks/decision-registries-data.ts
+function readRegistry(root, name) {
+  const raw = readJsonFile(registryPath(root, name));
+  return isRecord(raw) ? raw : {};
+}
+function readModels(root) {
+  const raw = readRegistry(root, "models.json");
+  return {
+    tiers: rows(raw["tiers"]).map((tier) => ({
+      id: text2(tier["id"]),
+      model: text2(tier["model"]),
+      escalatesTo: optional(tier["escalates_to"])
+    })),
+    escalationOrder: stringArray(raw["escalation_order"]),
+    workTypes: rows(raw["work_types"]).map((work) => ({ id: text2(work["id"]), tier: text2(work["tier"]) }))
+  };
+}
+function readIntents(root) {
+  return rows(readRegistry(root, "intents.json")["intents"]).map((intent) => ({
+    id: text2(intent["id"]),
+    rules: stringArray(intent["rules"]),
+    skills: stringArray(intent["skills"]),
+    agents: stringArray(intent["agents"]),
+    signals: stringArray(intent["signals"]),
+    note: text2(intent["note"]),
+    // `has("domain") and .domain != null` — an absent key and an explicit null
+    // are one answer here, which is what the hook_mirrored assertion compares.
+    domain: optional(intent["domain"]),
+    hookMirrored: intent["hook_mirrored"] === true,
+    modelTier: optional(intent["model_tier"]),
+    riskFloor: intent["risk_floor"]
+  }));
+}
+function readRoutingDomains(root) {
+  let raw;
+  try {
+    raw = readRegistry(root, "routing.json");
+  } catch {
+    return [];
+  }
+  return rows(raw["domains"]).map((domain) => ({ id: text2(domain["id"]), rules: stringArray(domain["rules"]) }));
+}
+function readPolicy(root) {
+  const raw = readRegistry(root, "policy.json");
+  const risk = record(raw["risk"]);
+  const autonomy = record(raw["autonomy"]);
+  const gates = record(raw["gates"]);
+  const retry = record(raw["retry"]);
+  const neverRetry2 = retry["never_retry"];
+  const byRisk = {};
+  for (const [tier, value] of Object.entries(record(gates["by_risk"]))) {
+    byRisk[tier] = Object.keys(record(value));
+  }
+  return {
+    riskAggregation: text2(risk["aggregation"]),
+    riskInputs: rows(risk["inputs"]).map((input) => text2(input["id"])),
+    autonomyLevels: rows(autonomy["levels"]).map((level) => text2(level["id"])),
+    ceilingByRisk: record(autonomy["ceiling_by_risk"]),
+    gateLadder: stringArray(gates["ladder"]),
+    gatesByRisk: byRisk,
+    neverRetryCount: Array.isArray(neverRetry2) ? neverRetry2.length : 0,
+    retryMaxAttempts: retry["max_attempts_per_unit"] ?? null,
+    retryEscalations: retry["escalations"] ?? null
+  };
+}
+function rows(value) {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+function record(value) {
+  return isRecord(value) ? value : {};
+}
+function text2(value) {
+  return typeof value === "string" ? value : "";
+}
+function optional(value) {
+  return typeof value === "string" ? value : null;
+}
+function duplicates(values) {
+  const seen = /* @__PURE__ */ new Set();
+  const repeated = /* @__PURE__ */ new Set();
+  for (const value of values) {
+    if (seen.has(value)) repeated.add(value);
+    seen.add(value);
+  }
+  return [...repeated].sort();
+}
+function sortedUnique(values) {
+  return [...new Set(values)].sort();
+}
+function subjectText(value) {
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value !== "string") return "absent";
+  const collapsed = value.trim().replace(/\s+/g, "-");
+  return collapsed === "" ? "empty" : collapsed;
+}
+function unreadableRegistry(path) {
+  return result("C16", `${path} is readable`, [finding("C16", "registry-unreadable", path)]);
+}
+
+// src/checks/decision-registries-intents.ts
+var METASYNTAX = /\b[XYN]\b|>|≥/;
+var RISK_TIER = /^(low|medium|high)$/;
+var ROUTER_TABLE_HEADER = "| Intent (signals) | Load |";
+function intentsResults(ctx) {
+  let intents;
+  try {
+    intents = readIntents(ctx.root);
+  } catch {
+    return [unreadableRegistry("registries/intents.json")];
+  }
+  const domains = readRoutingDomains(ctx.root);
+  return [
+    result(
+      "C16",
+      "intent ids are unique",
+      duplicates(intents.map((intent) => intent.id)).map((id) => finding("C16", "duplicate-intent-id", id))
+    ),
+    result("C16", "intents.json rules, skills and agents all resolve", dangling(ctx, intents)),
+    result("C16", "no intents.json signal carries placeholder metasyntax", signals(intents)),
+    result("C16", "hook_mirrored and domain agree on every intent", mirroredFlag(intents)),
+    result("C16", "every hook-mirrored intent matches its routing.json domain (rules)", foreignKeys(intents, domains)),
+    result("C16", "every routing.json domain is claimed by exactly one intent", claims(intents, domains)),
+    result("C16", "every intent model_tier resolves in models.json", modelTiers3(ctx, intents)),
+    result("C16", "every intent risk_floor is a valid tier", riskFloors2(intents)),
+    result("C16", "intent count matches the CLAUDE.md router table", drift(ctx, intents))
+  ];
+}
+function dangling(ctx, intents) {
+  const findings = [];
+  for (const rule of sortedUnique(intents.flatMap((intent) => [...intent.rules]))) {
+    if (!ctx.exists(`rules/${rule}.md`)) findings.push(finding("C16", "dangling-reference", `rule:${rule}`));
+  }
+  for (const agent of sortedUnique(intents.flatMap((intent) => [...intent.agents]))) {
+    if (!ctx.exists(`agents/${agent}.md`)) findings.push(finding("C16", "dangling-reference", `agent:${agent}`));
+  }
+  for (const intent of intents) {
+    const external = intent.note.toLowerCase().includes("external");
+    for (const skill of intent.skills) {
+      if (skill.includes(":")) continue;
+      if (ctx.exists(`skills/${skill}/SKILL.md`)) continue;
+      if (external) continue;
+      findings.push(finding("C16", "dangling-reference", `skill:${skill}`));
+    }
+  }
+  return findings;
+}
+function signals(intents) {
+  const findings = [];
+  for (const intent of intents) {
+    for (const signal of intent.signals) {
+      if (!METASYNTAX.test(signal)) continue;
+      findings.push(finding("C16", "unmatchable-signal", `${intent.id}:${subjectText(signal)}`));
+    }
+  }
+  return findings;
+}
+function mirroredFlag(intents) {
+  return intents.filter((intent) => intent.hookMirrored !== (intent.domain !== null)).map((intent) => finding("C16", "hook-mirrored-domain-mismatch", intent.id));
+}
+function foreignKeys(intents, domains) {
+  const findings = [];
+  for (const intent of intents) {
+    if (!intent.hookMirrored) continue;
+    const domain = intent.domain === null ? void 0 : domains.find((row) => row.id === intent.domain);
+    if (domain === void 0) {
+      findings.push(finding("C16", "intent-routing-mismatch", `${intent.id}->${intent.domain ?? "null"}`));
+      continue;
+    }
+    const wanted = domain.rules.join(",");
+    const declared4 = intent.rules.join(",");
+    if (declared4 !== wanted) {
+      findings.push(finding("C16", "intent-routing-mismatch", `${intent.id}(rules:${declared4}!=${wanted})`));
+    }
+  }
+  return findings;
+}
+function claims(intents, domains) {
+  const findings = [];
+  for (const domain of domains) {
+    const claimed = intents.filter((intent) => intent.domain === domain.id).length;
+    if (claimed !== 1) findings.push(finding("C16", "routing-domain-not-claimed-once", `${domain.id}(x${claimed})`));
+  }
+  return findings;
+}
+function modelTiers3(ctx, intents) {
+  let tierIds;
+  try {
+    tierIds = readModels(ctx.root).tiers.map((tier) => tier.id);
+  } catch {
+    return [];
+  }
+  return intents.filter((intent) => intent.modelTier !== null && !tierIds.includes(intent.modelTier)).map((intent) => finding("C16", "intent-unknown-model-tier", intent.id));
+}
+function riskFloors2(intents) {
+  return intents.filter((intent) => intent.riskFloor !== null && intent.riskFloor !== void 0).filter((intent) => typeof intent.riskFloor !== "string" || !RISK_TIER.test(intent.riskFloor)).map((intent) => finding("C16", "intent-invalid-risk-floor", intent.id));
+}
+function drift(ctx, intents) {
+  const rows3 = routerTableRows(ctx.readText("CLAUDE.md") ?? "");
+  if (intents.length === rows3 + 1) return [];
+  return [finding("C16", "intent-count-drift", `registry=${intents.length},claude=${rows3}`)];
+}
+function routerTableRows(text3) {
+  const lines = text3.split("\n");
+  const start = lines.findIndex((line) => line.startsWith(ROUTER_TABLE_HEADER));
+  if (start === -1) return -2;
+  let counted = 0;
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (index > start && line.startsWith("## ")) break;
+    if (line.startsWith("|")) counted += 1;
+  }
+  return counted - 2;
+}
+
+// src/checks/decision-registries-policy.ts
+var RISK_INPUTS = ["blast-radius", "contract-surface", "data-sensitivity", "reversibility", "spend"];
+var AUTONOMY_LEVELS = "A0 A1 A2 A3 A4";
+var RISK_TIER2 = /^(low|medium|high)$/;
+var NEVER_RETRY_MINIMUM = 4;
+function policyResults(ctx, mirror) {
+  let policy;
+  try {
+    policy = readPolicy(ctx.root);
+  } catch {
+    return [unreadableRegistry("registries/policy.json")];
+  }
+  return [
+    result("C16", "policy.json risk aggregation is max (risk never averages)", aggregation(policy)),
+    result("C16", "policy.json carries the five risk inputs", riskInputs(policy)),
+    result("C16", "policy.json autonomy levels are A0..A4 in order", autonomyLevels(policy)),
+    result("C16", "policy.json autonomy ceiling covers low/medium/high with valid levels", ceiling(policy)),
+    // Deviation 5: the bash compared the ladder against a literal string and
+    // never opened rules/gates.md. The row reads the `## The ladder` table.
+    result("C16", "policy.json gate ladder matches rules/gates.md", mirror("gate-ladder-missing-from-prose")),
+    result("C16", "policy.json gates.by_risk covers every ladder gate for every tier", gateCoverage(policy)),
+    result("C16", "policy.json never_retry list intact", neverRetry(policy)),
+    result("C16", "wave cap agrees between policy.json and rules/parallelism.md", mirror("wave-cap-drift")),
+    result("C16", "retry bound agrees: 2 attempts + 1 escalation in prose and policy.json", retryBound(ctx, policy)),
+    result("C16", "spec threshold agrees between CLAUDE.md and policy.json", mirror("spec-threshold-drift")),
+    result("C16", "fan-out threshold agrees between rules/parallelism.md and policy.json", mirror("fanout-threshold-drift"))
+  ];
+}
+function aggregation(policy) {
+  if (policy.riskAggregation === "max") return [];
+  return [finding("C16", "risk-aggregation-not-max", subjectText(policy.riskAggregation))];
+}
+function riskInputs(policy) {
+  const findings = [];
+  const declared4 = policy.riskInputs;
+  for (const id of RISK_INPUTS) {
+    if (!declared4.includes(id)) findings.push(finding("C16", "risk-inputs-drift", `missing:${id}`));
+  }
+  for (const id of declared4) {
+    if (!RISK_INPUTS.includes(id)) findings.push(finding("C16", "risk-inputs-drift", `unexpected:${subjectText(id)}`));
+  }
+  for (const id of duplicates(declared4)) findings.push(finding("C16", "risk-inputs-drift", `duplicate:${id}`));
+  return findings;
+}
+function autonomyLevels(policy) {
+  if (policy.autonomyLevels.join(" ") === AUTONOMY_LEVELS) return [];
+  return [finding("C16", "autonomy-levels-drift", subjectText(policy.autonomyLevels.join(",")))];
+}
+function ceiling(policy) {
+  const levels = new Set(policy.autonomyLevels);
+  const findings = [];
+  for (const [tier, level] of Object.entries(policy.ceilingByRisk)) {
+    if (RISK_TIER2.test(tier) && typeof level === "string" && levels.has(level)) continue;
+    findings.push(finding("C16", "ceiling-by-risk-invalid", subjectText(tier)));
+  }
+  const entries = Object.keys(policy.ceilingByRisk).length;
+  if (entries !== 3) findings.push(finding("C16", "ceiling-by-risk-invalid", `entries:${entries}`));
+  return findings;
+}
+function gateCoverage(policy) {
+  const ladder = [...policy.gateLadder].sort().join(",");
+  const findings = [];
+  for (const [tier, gates] of Object.entries(policy.gatesByRisk)) {
+    if ([...gates].sort().join(",") !== ladder) findings.push(finding("C16", "gates-by-risk-incomplete", subjectText(tier)));
+  }
+  return findings;
+}
+function neverRetry(policy) {
+  if (policy.neverRetryCount >= NEVER_RETRY_MINIMUM) return [];
+  return [finding("C16", "never-retry-shrunk", String(policy.neverRetryCount))];
+}
+function retryBound(ctx, policy) {
+  const findings = [];
+  const prose = ctx.readText("rules/parallelism.md") ?? "";
+  if (!/two attempts per unit, one escalation/i.test(prose)) findings.push(finding("C16", "retry-bound-drift", "prose"));
+  if (String(policy.retryMaxAttempts) !== "2") {
+    findings.push(finding("C16", "retry-bound-drift", `max_attempts_per_unit:${subjectText(policy.retryMaxAttempts)}`));
+  }
+  if (String(policy.retryEscalations) !== "1") {
+    findings.push(finding("C16", "retry-bound-drift", `escalations:${subjectText(policy.retryEscalations)}`));
+  }
+  return findings;
+}
+
+// src/checks/decision-registries.ts
+var C16_FINDINGS = [
+  "registry-unreadable",
+  "escalation-order-not-a-permutation",
+  "escalates-to-breaks-order",
+  "work-type-unknown-tier",
+  "duplicate-tier-id",
+  "shared-binding-undocumented",
+  "model-missing-from-prose",
+  "adr-row-model-mismatch",
+  "code-review-row-model-mismatch",
+  "agent-model-unbound",
+  "duplicate-intent-id",
+  "dangling-reference",
+  "unmatchable-signal",
+  "hook-mirrored-domain-mismatch",
+  "intent-routing-mismatch",
+  "routing-domain-not-claimed-once",
+  "intent-unknown-model-tier",
+  "intent-invalid-risk-floor",
+  "intent-count-drift",
+  "risk-aggregation-not-max",
+  "risk-inputs-drift",
+  "autonomy-levels-drift",
+  "ceiling-by-risk-invalid",
+  "gate-ladder-missing-from-prose",
+  "gates-by-risk-incomplete",
+  "never-retry-shrunk",
+  "wave-cap-drift",
+  "retry-bound-drift",
+  "spec-threshold-drift",
+  "fanout-threshold-drift"
+];
+var DECISION_REGISTRIES_CHECKS = [
+  { id: "C16", codes: C16_FINDINGS, run: checkC16 }
+];
+function checkC16(ctx) {
+  let cached;
+  const mirror = (rowId) => {
+    if (cached === void 0) cached = runMirrors(rowsOf("C16"), ctx);
+    return cached.filter((entry) => entry.code === rowId);
+  };
+  return [...modelsResults(ctx, mirror), ...intentsResults(ctx), ...policyResults(ctx, mirror)];
+}
+function modelsResults(ctx, mirror) {
+  let models;
+  try {
+    models = readModels(ctx.root);
+  } catch {
+    return [unreadableRegistry("registries/models.json")];
+  }
+  const tierIds = models.tiers.map((tier) => tier.id);
+  const order = models.escalationOrder;
+  const prose = ctx.readText("rules/models.md") ?? "";
+  return [
+    result("C16", "models.json escalation_order covers every tier exactly once", permutation(tierIds, order)),
+    result("C16", "models.json escalates_to chain follows escalation_order", chain(models)),
+    result(
+      "C16",
+      "models.json work_type tiers all resolve",
+      models.workTypes.filter((work) => !tierIds.includes(work.tier)).map((work) => finding("C16", "work-type-unknown-tier", work.id))
+    ),
+    result(
+      "C16",
+      "models.json tier ids are unique",
+      duplicates(tierIds).map((id) => finding("C16", "duplicate-tier-id", id))
+    ),
+    result("C16", "models.json model bindings are unique or documented as shared", sharedBinding(models, prose)),
+    result("C16", "every models.json model appears in rules/models.md", mirror("model-missing-from-prose")),
+    result(
+      "C16",
+      "rules/models.md ADR row binds the registry's tier model",
+      tableRow(models, prose, "adr", "adr-row-model-mismatch")
+    ),
+    result(
+      "C16",
+      "rules/models.md code-review row binds the registry's tier model",
+      tableRow(models, prose, "code-review", "code-review-row-model-mismatch")
+    ),
+    result("C16", "every agent frontmatter model is bound in models.json", agentModels(ctx, models))
+  ];
+}
+function permutation(tierIds, order) {
+  const findings = [];
+  for (const id of tierIds) {
+    if (!order.includes(id)) findings.push(finding("C16", "escalation-order-not-a-permutation", `missing:${id}`));
+  }
+  for (const entry of order) {
+    if (!tierIds.includes(entry)) findings.push(finding("C16", "escalation-order-not-a-permutation", `unknown:${entry}`));
+  }
+  for (const entry of duplicates(order)) {
+    findings.push(finding("C16", "escalation-order-not-a-permutation", `duplicate:${entry}`));
+  }
+  return findings;
+}
+function chain(models) {
+  const order = models.escalationOrder;
+  const findings = [];
+  for (const tier of models.tiers) {
+    const index = order.indexOf(tier.id);
+    if (index === -1) continue;
+    const want = index === order.length - 1 ? null : order[index + 1] ?? null;
+    if (tier.escalatesTo !== want) findings.push(finding("C16", "escalates-to-breaks-order", tier.id));
+  }
+  return findings;
+}
+function sharedBinding(models, prose) {
+  const shared = duplicates(models.tiers.map((tier) => tier.model));
+  if (shared.length === 0 || prose.includes("bound to the same model")) return [];
+  return shared.map((model) => finding("C16", "shared-binding-undocumented", model));
+}
+function tableRow(models, prose, workTypeId, code) {
+  var _a;
+  const work = models.workTypes.find((row) => row.id === workTypeId);
+  const model = ((_a = models.tiers.find((tier) => tier.id === (work == null ? void 0 : work.tier))) == null ? void 0 : _a.model) ?? "";
+  const needle = workTypeId.replace("-", " ");
+  const rows3 = prose.split("\n").filter((line) => line.startsWith("|") && line.toLowerCase().includes(needle));
+  if (rows3.some((line) => line.includes(`\`${model}\``))) return [];
+  return [finding("C16", code, model === "" ? "unresolved" : model)];
+}
+function agentModels(ctx, models) {
+  const known = new Set(models.tiers.map((tier) => tier.model));
+  const findings = [];
+  for (const name of ctx.list("agents")) {
+    if (!name.endsWith(".md")) continue;
+    const text3 = ctx.readText(`agents/${name}`);
+    if (text3 === void 0) continue;
+    const model = frontmatterValue(text3, "model");
+    if (model === "" || known.has(model)) continue;
+    findings.push(finding("C16", "agent-model-unbound", `${name.replace(/\.md$/, "")}(${model})`));
+  }
+  return findings;
+}
+
+// src/checks/kernel-lib.ts
+var import_node_fs34 = require("node:fs");
+var import_node_path29 = require("node:path");
+var KERNEL_INPUTS = ["registries/routing.json"];
+var ROUTER_INPUTS = [
+  "registries/intents.json",
+  "registries/capabilities.json",
+  "registries/policy.json",
+  "registries/models.json"
+];
+var KERNEL_TOKEN = "kernel";
+var ROUTER_TOKEN = "router";
+var ROUTER_AGENT_TOKEN = "router-agent";
+var ROUTER_MD = "agents/router.md";
+function missingInputs(ctx, paths) {
+  return paths.some((path) => !ctx.exists(path));
+}
+function preconditionResult(check, title, path) {
+  return result(check, title, [finding(check, "precondition-missing", path)]);
+}
+function loadedOr(read) {
+  try {
+    return read();
+  } catch (e) {
+    if (e instanceof KernelError) return void 0;
+    throw e;
+  }
+}
+function rawJson(ctx, relativePath) {
+  const parsed = loadedOr(() => readJsonFile((0, import_node_path29.join)(ctx.root, relativePath)));
+  return isRecord(parsed) ? parsed : void 0;
+}
+function subRecord(row, key) {
+  const value = row == null ? void 0 : row[key];
+  return isRecord(value) ? value : void 0;
+}
+function rows2(row, key) {
+  const value = row == null ? void 0 : row[key];
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+function kernelAnswer(ctx, argv2) {
+  const io2 = memoryIo({ env: { ENGINEOS_ROOT: ctx.root }, cwd: ctx.root });
+  let code;
+  try {
+    code = runKernel([...argv2], io2);
+  } catch {
+    return void 0;
+  }
+  if (code !== 0) return void 0;
+  const parsed = parseOr(io2.stdout.join(""));
+  return isRecord(parsed) ? parsed : void 0;
+}
+function stringsOf(value) {
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+function sameList(left, right) {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+function isExecutable2(ctx, relativePath) {
+  try {
+    return ((0, import_node_fs34.statSync)((0, import_node_path29.join)(ctx.root, relativePath)).mode & 73) !== 0;
+  } catch {
+    return false;
+  }
+}
+function uniqueSorted(values) {
+  return [...new Set(values)].sort();
+}
+function sorted(values) {
+  return [...values].sort();
+}
+function parseOr(text3) {
+  try {
+    return JSON.parse(text3);
+  } catch {
+    return void 0;
+  }
+}
+
+// src/checks/kernel-suppression.ts
+var C18D_FINDINGS = [
+  "suppressed-by-unknown-intent",
+  "suppressed-by-self",
+  "suppression-cycle",
+  "all-intents-suppressible",
+  "no-dispatch-plan-intent",
+  "non-boolean-flag"
+];
+var INTENTS_JSON = "registries/intents.json";
+var C18D_TITLE = "intents.json suppression data is internally consistent";
+function checkC18d(ctx) {
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18d", C18D_TITLE, ROUTER_TOKEN);
+  const intents = intentRows(ctx);
+  const ids = new Set(intents.map((intent) => intent.id));
+  const unknownTargets = [];
+  const selfReferences = [];
+  const nonBoolean = [];
+  for (const intent of intents) {
+    for (const target of intent.suppressedBy) {
+      if (!ids.has(target)) unknownTargets.push(target);
+      if (target === intent.id) selfReferences.push(intent.id);
+    }
+    if (isDeclaredNonBoolean(intent.suppressible) || isDeclaredNonBoolean(intent.requiresDispatchPlan)) {
+      nonBoolean.push(intent.id);
+    }
+  }
+  const findings = [
+    ...uniqueSorted(unknownTargets).map((id) => finding("C18d", "suppressed-by-unknown-intent", id)),
+    ...uniqueSorted(selfReferences).map((id) => finding("C18d", "suppressed-by-self", id)),
+    ...uniqueSorted(twoCycles(intents)).map((id) => finding("C18d", "suppression-cycle", id))
+  ];
+  if (!intents.some((intent) => intent.suppressible !== true)) {
+    findings.push(finding("C18d", "all-intents-suppressible"));
+  }
+  if (!intents.some((intent) => intent.requiresDispatchPlan === true)) {
+    findings.push(finding("C18d", "no-dispatch-plan-intent"));
+  }
+  findings.push(...uniqueSorted(nonBoolean).map((id) => finding("C18d", "non-boolean-flag", id)));
+  return [result("C18d", C18D_TITLE, findings)];
+}
+function intentRows(ctx) {
+  return rows2(rawJson(ctx, INTENTS_JSON), "intents").map((row) => ({
+    id: typeof row["id"] === "string" ? row["id"] : "",
+    suppressedBy: stringsOf(row["suppressed_by"]),
+    suppressible: row["suppressible"],
+    requiresDispatchPlan: row["requires_dispatch_plan"]
+  }));
+}
+function isDeclaredNonBoolean(value) {
+  return value !== void 0 && value !== null && typeof value !== "boolean";
+}
+function twoCycles(intents) {
+  const found = [];
+  for (const one of intents) {
+    for (const other of intents) {
+      if (one.id === other.id) continue;
+      if (other.suppressedBy.includes(one.id) && one.suppressedBy.includes(other.id)) found.push(one.id);
+    }
+  }
+  return found;
+}
+var SUPPRESSION_CHECK = { id: "C18d", codes: C18D_FINDINGS, run: checkC18d };
+
+// src/checks/kernel-router.ts
+var C18_FINDINGS = ["capability-not-bound", "router-agent-missing", "tier-model-mismatch"];
+var C18B_FINDINGS = ["kernel-fact-missing"];
+var C18C_FINDINGS = ["bash-tool-missing", "forbidden-tool"];
+var C18E_FINDINGS = [
+  "fixture-escalate-mismatch",
+  "fixture-reasons-mismatch",
+  "fixture-intents-mismatch"
+];
+var C18F_FINDINGS = [
+  "adapter-not-executable",
+  "registration-not-single-adapter",
+  "resolve-task-call-missing"
+];
+var C18G_FINDINGS = ["policy-closure-drift", "pure-question-not-lean"];
+var POLICY_JSON = "registries/policy.json";
+var HOOKS_JSON = "hooks/hooks.json";
+var PROMPT_ADVISOR = "hooks/prompt-advisor.sh";
+var PROMPT_ADVISOR_TS = "src/hooks/prompt-advisor.ts";
+var C18_TITLE = "route capability is bound to the router agent at its declared design-tier model";
+var C18B_TITLE = "agents/router.md resolves the plan through one kernel call declaring every required fact";
+var C18C_TITLE = "router must not hold Edit/Write/Task";
+var C18E_TITLE = "every policy.json router fixture matches the kernel route-escalate answer";
+var C18F_TITLE = "hooks/prompt-advisor.sh is the single registered prompt adapter and src/hooks/prompt-advisor.ts calls resolve-task";
+var C18G_TITLE = "resolve-task supplies the closed substantive policy bundle and keeps pure questions lean";
+function checkC18(ctx) {
+  var _a;
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18", C18_TITLE, ROUTER_TOKEN);
+  const capabilities = loadedOr(() => loadCapabilities(ctx.root));
+  const route = capabilities == null ? void 0 : capabilities.capabilities.find((row) => row.id === "route");
+  if (route === void 0 || route.agent !== "router" || route.model_tier !== "design") {
+    return [
+      result("C18", C18_TITLE, [
+        finding("C18", "capability-not-bound", `${orNone2(route == null ? void 0 : route.agent)}/${orNone2(route == null ? void 0 : route.model_tier)}`)
+      ])
+    ];
+  }
+  const agentText = ctx.readText(ROUTER_MD);
+  if (agentText === void 0) {
+    return [result("C18", C18_TITLE, [finding("C18", "router-agent-missing", ROUTER_MD)])];
+  }
+  const models = loadedOr(() => ctx.registries.models);
+  const tierModel = ((_a = models == null ? void 0 : models.tiers.find((tier) => tier.id === route.model_tier)) == null ? void 0 : _a.model) ?? "";
+  const declared4 = frontmatterValue(agentText, "model");
+  if (tierModel === "" || tierModel !== declared4) {
+    return [
+      result("C18", C18_TITLE, [
+        finding("C18", "tier-model-mismatch", `${orNone2(tierModel)}!=${orNone2(declared4)}`)
+      ])
+    ];
+  }
+  return [result("C18", C18_TITLE, [])];
+}
+var REQUIRED_KERNEL_FACTS = [
+  { subject: "resolve-call", literal: "kernel.sh resolve --facts" },
+  { subject: "escalate", literal: '"escalate": true' },
+  { subject: "signals", literal: '"signals"' },
+  { subject: "workType", literal: '"workType"' },
+  { subject: "waves", literal: '"waves"' }
+];
+function checkC18b(ctx) {
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18b", C18B_TITLE, ROUTER_TOKEN);
+  const agentText = ctx.readText(ROUTER_MD);
+  if (agentText === void 0) return skipOnce(ctx, "C18b", C18B_TITLE, ROUTER_AGENT_TOKEN);
+  const findings = REQUIRED_KERNEL_FACTS.filter((fact) => !agentText.includes(fact.literal)).map(
+    (fact) => finding("C18b", "kernel-fact-missing", fact.subject)
+  );
+  return [result("C18b", C18B_TITLE, findings)];
+}
+var FORBIDDEN_TOOLS = ["Edit", "Write", "Task"];
+function checkC18c(ctx) {
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18c", C18C_TITLE, ROUTER_TOKEN);
+  const agentText = ctx.readText(ROUTER_MD);
+  if (agentText === void 0) return skipOnce(ctx, "C18c", C18C_TITLE, ROUTER_AGENT_TOKEN);
+  const tools = frontmatterValue(agentText, "tools");
+  const findings = [];
+  if (!tools.includes("Bash")) findings.push(finding("C18c", "bash-tool-missing", "Bash"));
+  for (const tool of FORBIDDEN_TOOLS) {
+    if (tools.includes(tool)) findings.push(finding("C18c", "forbidden-tool", tool));
+  }
+  return [result("C18c", C18C_TITLE, findings)];
+}
+function checkC18e(ctx) {
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18e", C18E_TITLE, ROUTER_TOKEN);
+  const policy = loadedOr(() => ctx.registries.policy);
+  if (policy === void 0) return [preconditionResult("C18e", C18E_TITLE, POLICY_JSON)];
+  const findings = [];
+  policy.router.fixtures.forEach((fixture, index) => {
+    const at = String(index);
+    const answer = kernelAnswer(ctx, ["route-escalate", "--prompt", fixture.prompt]);
+    if ((answer == null ? void 0 : answer["escalate"]) !== fixture.escalate) {
+      findings.push(finding("C18e", "fixture-escalate-mismatch", at));
+    }
+    if (!sameList(sorted(stringsOf(answer == null ? void 0 : answer["reasons"])), sorted(fixture.reasons))) {
+      findings.push(finding("C18e", "fixture-reasons-mismatch", at));
+    }
+    if (!sameList(sorted(stringsOf(answer == null ? void 0 : answer["intents"])), sorted(fixture.intents))) {
+      findings.push(finding("C18e", "fixture-intents-mismatch", at));
+    }
+  });
+  return [result("C18e", C18E_TITLE, findings)];
+}
+function checkC18f(ctx) {
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18f", C18F_TITLE, ROUTER_TOKEN);
+  const findings = [];
+  if (!isExecutable2(ctx, PROMPT_ADVISOR)) {
+    findings.push(finding("C18f", "adapter-not-executable", PROMPT_ADVISOR));
+  }
+  const commands = rows2(subRecord(rawJson(ctx, HOOKS_JSON), "hooks"), "UserPromptSubmit").flatMap((entry) => rows2(entry, "hooks")).map((hook) => hook["command"]).filter((command) => typeof command === "string");
+  if (commands.length !== 1 || !(commands[0] ?? "").includes("prompt-advisor")) {
+    findings.push(finding("C18f", "registration-not-single-adapter", HOOKS_JSON));
+  }
+  if (!(ctx.readText(PROMPT_ADVISOR_TS) ?? "").includes("resolve-task")) {
+    findings.push(finding("C18f", "resolve-task-call-missing", PROMPT_ADVISOR_TS));
+  }
+  return [result("C18f", C18F_TITLE, findings)];
+}
+var SUBSTANTIVE_PROBE = "update the prose in this document";
+var PURE_PROBE = "what is the weather";
+var AGENT_POLICY_RULE2 = "subagents";
+function checkC18g(ctx) {
+  if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18g", C18G_TITLE, ROUTER_TOKEN);
+  const got = policyRulesFor(ctx, SUBSTANTIVE_PROBE).filter((rule) => rule !== AGENT_POLICY_RULE2);
+  const want = uniqueSorted(TASK_CONTRACT_RULES);
+  const drift2 = [...want.filter((rule) => !got.includes(rule)), ...got.filter((rule) => !want.includes(rule))];
+  const findings = uniqueSorted(drift2).map((rule) => finding("C18g", "policy-closure-drift", rule));
+  const pure = policyRulesFor(ctx, PURE_PROBE);
+  if (pure.length !== 0) findings.push(finding("C18g", "pure-question-not-lean", String(pure.length)));
+  return [result("C18g", C18G_TITLE, findings)];
+}
+function policyRulesFor(ctx, prompt) {
+  var _a;
+  const answer = kernelAnswer(ctx, ["resolve-task", "--prompt", prompt]);
+  return uniqueSorted(stringsOf((_a = subRecord(answer, "task_contract")) == null ? void 0 : _a["policy_rules"]));
+}
+function orNone2(value) {
+  return value === void 0 || value === "" ? "none" : value;
+}
+var ROUTER_CHECKS = [
+  { id: "C18", codes: C18_FINDINGS, run: checkC18 },
+  { id: "C18b", codes: C18B_FINDINGS, run: checkC18b },
+  { id: "C18c", codes: C18C_FINDINGS, run: checkC18c },
+  SUPPRESSION_CHECK,
+  { id: "C18e", codes: C18E_FINDINGS, run: checkC18e },
+  { id: "C18f", codes: C18F_FINDINGS, run: checkC18f },
+  { id: "C18g", codes: C18G_FINDINGS, run: checkC18g }
+];
+
+// src/checks/kernel.ts
+var C17_FINDINGS = ["no-patterns", "no-sample"];
+var C17B_FINDINGS = ["sample-routes-elsewhere"];
+var C17C_FINDINGS = ["excluded-path-routed", "foreign-path-excluded"];
+var C17E_FINDINGS = ["signal-missing", "signal-invalid-regex"];
+var ROUTING_JSON = "registries/routing.json";
+var POLICY_JSON2 = "registries/policy.json";
+var C17_TITLE = "every routing domain declares match patterns and a sample_path";
+var C17B_TITLE = "every domain sample_path routes to its own domain via the kernel";
+var C17C_TITLE = "kernel route-path honors the excluded patterns and self_dirs";
+var C17E_TITLE = "policy.json prompt_signals present and valid EREs";
+function checkC17(ctx) {
+  if (missingInputs(ctx, KERNEL_INPUTS)) return skipOnce(ctx, "C17", C17_TITLE, KERNEL_TOKEN);
+  const routing = loadedOr(() => ctx.registries.routing);
+  if (routing === void 0) return [preconditionResult("C17", C17_TITLE, ROUTING_JSON)];
+  const findings = [];
+  for (const domain of routing.domains) {
+    if (domain.match.paths.length + domain.match.basenames.length === 0) {
+      findings.push(finding("C17", "no-patterns", domain.id));
+    }
+    if (domain.sample_path === null || domain.sample_path === "") {
+      findings.push(finding("C17", "no-sample", domain.id));
+    }
+  }
+  return [result("C17", C17_TITLE, findings)];
+}
+function checkC17b(ctx) {
+  if (missingInputs(ctx, KERNEL_INPUTS)) return skipOnce(ctx, "C17b", C17B_TITLE, KERNEL_TOKEN);
+  const routing = loadedOr(() => ctx.registries.routing);
+  if (routing === void 0) return [preconditionResult("C17b", C17B_TITLE, ROUTING_JSON)];
+  const findings = [];
+  for (const domain of routing.domains) {
+    const answer = kernelAnswer(ctx, ["route-path", domain.sample_path ?? ""]);
+    const got = answer == null ? void 0 : answer["domain"];
+    const routed = typeof got === "string" ? got : "null";
+    if (routed !== domain.id) {
+      findings.push(finding("C17b", "sample-routes-elsewhere", `${domain.id}->${routed}`));
+    }
+  }
+  return [result("C17b", C17B_TITLE, findings)];
+}
+function checkC17c(ctx) {
+  if (missingInputs(ctx, KERNEL_INPUTS)) return skipOnce(ctx, "C17c", C17C_TITLE, KERNEL_TOKEN);
+  const excluded = [
+    { subject: "engineos-dir", path: "/tmp/some-repo/.engineos/changes/x.ts" },
+    { subject: "markdown", path: "/tmp/some-repo/README.md" },
+    { subject: "self-hooks", path: `${ctx.root}/hooks/x.sh` }
+  ];
+  const findings = [];
+  for (const probe of excluded) {
+    if (excludedFor(ctx, probe.path) !== true) {
+      findings.push(finding("C17c", "excluded-path-routed", probe.subject));
+    }
+  }
+  const foreign = { subject: "foreign-hooks", path: "/tmp/some-repo/hooks/x.ts" };
+  if (excludedFor(ctx, foreign.path) !== false) {
+    findings.push(finding("C17c", "foreign-path-excluded", foreign.subject));
+  }
+  return [result("C17c", C17C_TITLE, findings)];
+}
+var PROMPT_SIGNAL_KEYS = [
+  "action",
+  "substantive_action",
+  "scale",
+  "spec",
+  "design_strong",
+  "design_weak"
+];
+function checkC17e(ctx) {
+  if (missingInputs(ctx, KERNEL_INPUTS)) return skipOnce(ctx, "C17e", C17E_TITLE, KERNEL_TOKEN);
+  const signals2 = subRecord(subRecord(rawJson(ctx, POLICY_JSON2), "parallelism"), "prompt_signals");
+  const findings = [];
+  for (const key of PROMPT_SIGNAL_KEYS) {
+    const source = signals2 == null ? void 0 : signals2[key];
+    if (typeof source !== "string" || source === "") {
+      findings.push(finding("C17e", "signal-missing", key));
+      continue;
+    }
+    try {
+      compilePromptRegex(source, key);
+    } catch (e) {
+      if (!(e instanceof KernelError)) throw e;
+      findings.push(finding("C17e", "signal-invalid-regex", key));
+    }
+  }
+  return [result("C17e", C17E_TITLE, findings)];
+}
+function excludedFor(ctx, path) {
+  var _a;
+  const value = (_a = kernelAnswer(ctx, ["route-path", path])) == null ? void 0 : _a["excluded"];
+  return typeof value === "boolean" ? value : void 0;
+}
+var KERNEL_CHECKS = [
+  { id: "C17", codes: C17_FINDINGS, run: checkC17 },
+  { id: "C17b", codes: C17B_FINDINGS, run: checkC17b },
+  { id: "C17c", codes: C17C_FINDINGS, run: checkC17c },
+  { id: "C17e", codes: C17E_FINDINGS, run: checkC17e },
+  ...ROUTER_CHECKS
+];
+
+// src/checks/registries-coherence.ts
+var import_node_path30 = require("node:path");
+var ROUTING = "registries/routing.json";
+var DECISION_RULES = "registries/decision-rules.json";
+var CAPABILITIES = "registries/capabilities.json";
+var AGENTS2 = "registries/agents.json";
+function readable(load) {
+  try {
+    return load();
+  } catch (error) {
+    if (error instanceof KernelError) return null;
+    throw error;
+  }
+}
+function agentRows(ctx) {
+  const document = readable(() => readJsonFile((0, import_node_path30.join)(ctx.root, AGENTS2)));
+  if (document === null) return null;
+  const rows3 = isRecord(document) ? document["agents"] : void 0;
+  if (!Array.isArray(rows3)) return [];
+  const agents = [];
+  for (const row of rows3) {
+    if (!isRecord(row)) continue;
+    const name = row["name"];
+    if (typeof name !== "string" || name === "") continue;
+    const tier = row["model_tier"];
+    agents.push({ name, tier: typeof tier === "string" ? tier : null });
+  }
+  return agents;
+}
+function sortedUnique2(values) {
+  return [...new Set(values)].sort(byteOrder2);
+}
 function byteOrder2(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function checkC14(ctx) {
+  return [jsonValidity(ctx), ...routingCoherence(ctx), ...decisionRuleCoherence(ctx)];
+}
+function jsonValidity(ctx) {
+  const broken = [];
+  for (const name of ctx.list("registries")) {
+    if (!name.endsWith(".json")) continue;
+    const relative = `registries/${name}`;
+    if (!parsesAsJson((0, import_node_path30.join)(ctx.root, relative))) broken.push(finding("C14", "malformed-json", relative));
+  }
+  return result("C14", "registries are valid JSON", broken);
+}
+function parsesAsJson(absolutePath) {
+  try {
+    readJsonFile(absolutePath);
+    return true;
+  } catch (error) {
+    if (error instanceof KernelError) return false;
+    throw error;
+  }
+}
+function routingCoherence(ctx) {
+  if (!ctx.exists(ROUTING)) {
+    return [result("C14", "registries/routing.json is present", [finding("C14", "missing", ROUTING)])];
+  }
+  const routing = readable(() => ctx.registries.routing);
+  if (routing === null) return [];
+  const domainOrder = routing.domains.map((domain) => domain.id);
+  const drift2 = firstDifference(routing.precedence, domainOrder);
+  const targets = [];
+  for (const agent of sortedUnique2(routing.domains.map((d) => d.agent).filter(isPresent))) {
+    if (!ctx.exists(`agents/${agent}.md`)) targets.push(finding("C14", "missing-agent", agent));
+  }
+  for (const skill of sortedUnique2(routing.domains.flatMap((d) => d.skills))) {
+    if (!ctx.exists(`skills/${skill}/SKILL.md`)) targets.push(finding("C14", "missing-skill", skill));
+  }
+  for (const rule of sortedUnique2(routing.domains.flatMap((d) => d.rules))) {
+    if (!ctx.exists(`rules/${rule}.md`)) targets.push(finding("C14", "missing-rule", rule));
+  }
+  return [
+    result(
+      "C14",
+      "registry precedence covers every domain in map order",
+      drift2 === null ? [] : [finding("C14", "precedence-order-drift", drift2)]
+    ),
+    result("C14", "registry agents, skills and rules all exist", targets)
+  ];
+}
+function firstDifference(precedence, domainOrder) {
+  const length = Math.max(precedence.length, domainOrder.length);
+  for (let index = 0; index < length; index += 1) {
+    const listed = precedence[index];
+    const declared4 = domainOrder[index];
+    if (listed === declared4) continue;
+    return listed ?? declared4 ?? null;
+  }
+  return null;
+}
+function decisionRuleCoherence(ctx) {
+  if (!ctx.exists(DECISION_RULES)) {
+    return [result("C14", "registries/decision-rules.json is present", [finding("C14", "missing", DECISION_RULES)])];
+  }
+  const document = readable(() => readJsonFile((0, import_node_path30.join)(ctx.root, DECISION_RULES)));
+  if (document === null) return [];
+  const rows3 = isRecord(document) ? document["rules"] : void 0;
+  const rules = Array.isArray(rows3) ? rows3.filter(isRecord) : [];
+  return [
+    result("C14", "decision rule ids are unique", duplicateIds(rules)),
+    result("C14", "every decision rule requires or prefers something", emptyOutcomes(rules)),
+    result("C14", "every decision rule signal is a valid regex", invalidSignals(rules)),
+    result("C14", "verification policy agrees across registry, verification rule and gate", verificationDrift(ctx, rules))
+  ];
+}
+function duplicateIds(rules) {
+  const seen = /* @__PURE__ */ new Set();
+  const duplicated = /* @__PURE__ */ new Set();
+  for (const rule of rules) {
+    const id = rule["id"];
+    if (typeof id !== "string") continue;
+    if (seen.has(id)) duplicated.add(id);
+    seen.add(id);
+  }
+  return [...duplicated].sort(byteOrder2).map((id) => finding("C14", "duplicate-rule-id", id));
+}
+function emptyOutcomes(rules) {
+  const empty = [];
+  rules.forEach((rule, index) => {
+    const outcome = isRecord(rule["then"]) ? rule["then"] : {};
+    const prefer = outcome["prefer"];
+    if (stringArray(outcome["require"]).length > 0) return;
+    if (typeof prefer === "string" && prefer !== "") return;
+    empty.push(finding("C14", "empty-then", ruleName(rule, index)));
+  });
+  return empty;
+}
+function invalidSignals(rules) {
+  const broken = /* @__PURE__ */ new Set();
+  rules.forEach((rule, index) => {
+    for (const signal of stringArray(rule["signals"])) {
+      try {
+        new RegExp(signal);
+      } catch {
+        broken.add(ruleName(rule, index));
+      }
+    }
+  });
+  return [...broken].sort(byteOrder2).map((name) => finding("C14", "invalid-signal", name));
+}
+var VERIFICATION_SOURCE = "rules/verification.md";
+var VERIFICATION_REQUIRE = "lint output-shown tests-when-in-scope typecheck";
+var VERIFICATION_RULE_SENTENCE = "Tests join the gate ONLY when tests were ON";
+var VERIFICATION_GATE_SENTENCE = "`rules/verification.md` owns which checks are in";
+function verificationDrift(ctx, rules) {
+  const rule = rules.find((candidate) => candidate["id"] === "rule-verification");
+  const declaredSource = rule == null ? void 0 : rule["source"];
+  const source = typeof declaredSource === "string" ? declaredSource : "";
+  const outcome = rule !== void 0 && isRecord(rule["then"]) ? rule["then"] : {};
+  const required = stringArray(outcome["require"]).slice().sort(byteOrder2);
+  const drift2 = [];
+  if (source !== VERIFICATION_SOURCE) {
+    drift2.push(finding("C14", "verification-source-drift", source === "" ? "absent" : source));
+  }
+  if (required.join(" ") !== VERIFICATION_REQUIRE) {
+    drift2.push(finding("C14", "verification-require-drift", required.length === 0 ? "absent" : required.join(",")));
+  }
+  if (!(ctx.readText("rules/verification.md") ?? "").includes(VERIFICATION_RULE_SENTENCE)) {
+    drift2.push(finding("C14", "verification-rule-prose-missing", "rules/verification.md"));
+  }
+  if (!(ctx.readText("rules/gates.md") ?? "").includes(VERIFICATION_GATE_SENTENCE)) {
+    drift2.push(finding("C14", "verification-gate-prose-missing", "rules/gates.md"));
+  }
+  return drift2;
+}
+function ruleName(rule, index) {
+  const id = rule["id"];
+  return typeof id === "string" && id !== "" ? id : `rules-${index}`;
+}
+function isPresent(value) {
+  return value !== null && value !== "";
+}
+
+// src/checks/registries.ts
+var C6_FINDINGS = ["missing-agent"];
+var C7_FINDINGS = ["missing-skill"];
+var C8_FINDINGS = ["missing-rule"];
+var C14_FINDINGS = [
+  "malformed-json",
+  "missing",
+  "precedence-order-drift",
+  "missing-agent",
+  "missing-skill",
+  "missing-rule",
+  "duplicate-rule-id",
+  "empty-then",
+  "invalid-signal",
+  "verification-source-drift",
+  "verification-require-drift",
+  "verification-rule-prose-missing",
+  "verification-gate-prose-missing"
+];
+var C15_FINDINGS = [
+  "missing",
+  "capability-missing-agent",
+  "capability-invalid-tier",
+  "agent-invalid-tier",
+  "agent-file-missing"
+];
+var C15b_FINDINGS = ["tier-mismatch"];
+var REGISTRIES_CHECKS = [
+  { id: "C6", codes: C6_FINDINGS, run: checkC6 },
+  { id: "C7", codes: C7_FINDINGS, run: checkC7 },
+  { id: "C8", codes: C8_FINDINGS, run: checkC8 },
+  { id: "C14", codes: C14_FINDINGS, run: checkC14 },
+  { id: "C15", codes: C15_FINDINGS, run: checkC15 },
+  { id: "C15b", codes: C15b_FINDINGS, run: checkC15b }
+];
+function checkC6(ctx) {
+  const routing = routingDomains(ctx);
+  if (routing === null) return [];
+  const missing = sortedUnique2(routing.map((domain) => domain.agent).filter(isNamed)).filter((agent) => !ctx.exists(`agents/${agent}.md`)).map((agent) => finding("C6", "missing-agent", agent));
+  return [result("C6", "guidance agents all exist", missing)];
+}
+function checkC7(ctx) {
+  const routing = routingDomains(ctx);
+  if (routing === null) return [];
+  const missing = sortedUnique2(routing.flatMap((domain) => domain.skills)).filter((skill) => !ctx.exists(`skills/${skill}/SKILL.md`)).map((skill) => finding("C7", "missing-skill", skill));
+  return [result("C7", "guidance skills all exist", missing)];
+}
+function checkC8(ctx) {
+  const routing = routingDomains(ctx);
+  if (routing === null) return [];
+  const missing = sortedUnique2(routing.flatMap((domain) => domain.rules)).filter((rule) => !ctx.exists(`rules/${rule}.md`)).map((rule) => finding("C8", "missing-rule", rule));
+  return [result("C8", "guidance rules all exist", missing)];
+}
+function checkC15(ctx) {
+  return [...capabilityBindings(ctx), ...agentRegistry(ctx)];
+}
+function capabilityBindings(ctx) {
+  if (!ctx.exists(CAPABILITIES)) {
+    return [result("C15", "registries/capabilities.json is present", [finding("C15", "missing", CAPABILITIES)])];
+  }
+  const registry = readable(() => loadCapabilities(ctx.root));
+  if (registry === null) return [];
+  const missing = sortedUnique2(registry.capabilities.map((capability) => capability.agent).filter(isNamed)).filter((agent) => !ctx.exists(`agents/${agent}.md`)).map((agent) => finding("C15", "capability-missing-agent", agent));
+  const tiers = registry.capabilities.filter((capability) => !isModelTier(capability.model_tier)).map((capability) => finding("C15", "capability-invalid-tier", capability.id));
+  return [
+    result("C15", "every capabilities.json agent binding resolves", missing),
+    result("C15", "every capabilities.json entry declares a valid model tier", tiers)
+  ];
+}
+function agentRegistry(ctx) {
+  if (!ctx.exists(AGENTS2)) {
+    return [result("C15", "registries/agents.json is present", [finding("C15", "missing", AGENTS2)])];
+  }
+  const rows3 = agentRows(ctx);
+  if (rows3 === null) return [];
+  const tiers = [];
+  const files = [];
+  for (const row of rows3) {
+    if (row.tier === null || !isModelTier(row.tier)) tiers.push(finding("C15", "agent-invalid-tier", row.name));
+    if (!ctx.exists(`agents/${row.name}.md`)) files.push(finding("C15", "agent-file-missing", row.name));
+  }
+  return [
+    result("C15", "every agents.json entry declares a valid model tier", tiers),
+    result("C15", "every agents.json entry resolves to a file under agents/", files)
+  ];
+}
+function checkC15b(ctx) {
+  if (!ctx.exists(CAPABILITIES) || !ctx.exists(AGENTS2)) return [];
+  const registry = readable(() => loadCapabilities(ctx.root));
+  const rows3 = agentRows(ctx);
+  if (registry === null || rows3 === null) return [];
+  const declared4 = tierByAgent(rows3);
+  const mismatched = registry.capabilities.filter((capability) => {
+    const tier = declared4.get(capability.agent);
+    return tier !== void 0 && tier !== capability.model_tier;
+  }).map((capability) => finding("C15b", "tier-mismatch", capability.id));
+  return [result("C15b", "every capability model_tier agrees with its agent's tier", mismatched)];
+}
+function isModelTier(value) {
+  return MODEL_TIER_IDS.some((tier) => tier === value);
+}
+function tierByAgent(rows3) {
+  const tiers = /* @__PURE__ */ new Map();
+  for (const row of rows3) {
+    if (row.tier !== null && !tiers.has(row.name)) tiers.set(row.name, row.tier);
+  }
+  return tiers;
+}
+function routingDomains(ctx) {
+  const routing = readable(() => ctx.registries.routing);
+  return routing === null ? null : routing.domains;
+}
+function isNamed(value) {
+  return value !== null && value !== "";
+}
+
+// src/checks/rules.ts
+var C1_FINDINGS = ["node-too-old"];
+var C2_FINDINGS = ["no-always-on-imports", "rule-missing"];
+var C3_FINDINGS = ["dangling-reference"];
+var C5_FINDINGS = ["row-not-closed"];
+var C5b_FINDINGS = ["route-loaded-reference"];
+var C1_TITLE = `node >= ${MIN_NODE_MAJOR} present (the runtime every entry point, hook and this validator runs on)`;
+var C2_TITLE = "always-on imports resolve";
+var C3_TITLE = "all rules/*.md cross-references resolve";
+var C5_TITLE = "router load lists are closed";
+var C5B_TITLE = "always-on rules reference only always-on rules";
+var CLAUDE_MD = "CLAUDE.md";
+function checkC1(nodeVersion = process.versions.node) {
+  const major = currentMajor(nodeVersion);
+  const findings = major >= MIN_NODE_MAJOR ? [] : [finding("C1", "node-too-old", String(major))];
+  return [result("C1", C1_TITLE, findings)];
+}
+function checkC2(ctx) {
+  const alwaysOn = alwaysOnRules(ctx.readText(CLAUDE_MD) ?? "");
+  if (alwaysOn.length === 0) {
+    return [result("C2", C2_TITLE, [finding("C2", "no-always-on-imports")])];
+  }
+  const findings = alwaysOn.filter((rule) => !ctx.exists(`rules/${rule}.md`)).map((rule) => finding("C2", "rule-missing", rule));
+  return [result("C2", C2_TITLE, findings)];
+}
+function checkC3(ctx) {
+  const findings = [];
+  for (const file of proseSurfaces(ctx)) {
+    const text3 = ctx.readText(file);
+    if (text3 === void 0) continue;
+    for (const reference of ruleReferencesIn(text3)) {
+      if (ctx.exists(reference)) continue;
+      findings.push(finding("C3", "dangling-reference", `${file}->${reference}`));
+    }
+  }
+  return [result("C3", C3_TITLE, findings)];
+}
+function checkC5(ctx) {
+  const text3 = ctx.readText(CLAUDE_MD) ?? "";
+  const alwaysOn = alwaysOnRules(text3);
+  const cached = /* @__PURE__ */ new Map();
+  const deferrals = (rule) => {
+    const known = cached.get(rule);
+    if (known !== void 0) return known;
+    const computed = deferralsOf2(ctx, rule);
+    cached.set(rule, computed);
+    return computed;
+  };
+  const findings = [];
+  let row = 0;
+  for (const line of text3.split("\n")) {
+    if (!isTableRow(line)) continue;
+    if (line.includes("---")) continue;
+    if (line.includes("| Load |") || line.includes("Intent (signals)")) continue;
+    const loaded = ruleNamesIn(line);
+    if (loaded.length === 0) continue;
+    row += 1;
+    for (const rule of loaded) {
+      if (alwaysOn.includes(rule)) continue;
+      if (TASK_CONTRACT_RULES.includes(rule)) continue;
+      for (const deferral of deferrals(rule)) {
+        if (loaded.includes(deferral)) continue;
+        findings.push(finding("C5", "row-not-closed", `row${row}:${rule}->${deferral}`));
+      }
+    }
+  }
+  return [result("C5", C5_TITLE, findings)];
+}
+function checkC5b(ctx) {
+  const alwaysOn = alwaysOnRules(ctx.readText(CLAUDE_MD) ?? "");
+  const corpus = ruleNames(ctx.root);
+  const findings = [];
+  for (const host of alwaysOn) {
+    const text3 = ctx.readText(`rules/${host}.md`);
+    if (text3 === void 0) continue;
+    for (const named of corpus) {
+      if (named === host) continue;
+      if (alwaysOn.includes(named)) continue;
+      if (!text3.includes(`${named}.md`)) continue;
+      findings.push(finding("C5b", "route-loaded-reference", `${host}->${named}`));
+    }
+  }
+  return [result("C5b", C5B_TITLE, findings)];
+}
+var RULES_CHECKS = [
+  { id: "C1", codes: C1_FINDINGS, run: () => checkC1() },
+  { id: "C2", codes: C2_FINDINGS, run: checkC2 },
+  { id: "C3", codes: C3_FINDINGS, run: checkC3 },
+  { id: "C5", codes: C5_FINDINGS, run: checkC5 },
+  { id: "C5b", codes: C5b_FINDINGS, run: checkC5b }
+];
+var RULE_REFERENCE = /rules\/[a-z0-9-]+\.md/g;
+var MD2 = ".md";
+function proseSurfaces(ctx) {
+  const skills = visibleEntries(ctx, "skills");
+  return [
+    CLAUDE_MD,
+    ...markdownIn2(ctx, "rules"),
+    ...markdownIn2(ctx, "agents"),
+    ...skills.map((skill) => `skills/${skill}/SKILL.md`),
+    ...skills.flatMap((skill) => markdownIn2(ctx, `skills/${skill}/references`)),
+    ...markdownIn2(ctx, "commands")
+  ].filter((path) => ctx.exists(path));
+}
+function visibleEntries(ctx, dir) {
+  return ctx.list(dir).filter((name) => !name.startsWith("."));
+}
+function markdownIn2(ctx, dir) {
+  return visibleEntries(ctx, dir).filter((name) => name.endsWith(MD2)).map((name) => `${dir}/${name}`);
+}
+function ruleReferencesIn(text3) {
+  return unique3(text3.match(RULE_REFERENCE) ?? []);
+}
+function ruleNamesIn(line) {
+  return unique3(
+    (line.match(RULE_REFERENCE) ?? []).map(
+      (reference) => reference.slice("rules/".length, reference.length - MD2.length)
+    )
+  );
+}
+function unique3(values) {
+  return [...new Set(values)].sort(byteOrder3);
+}
+function isTableRow(line) {
+  return line.startsWith("|") && line.indexOf("|", 1) !== -1;
+}
+function byteOrder3(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/checks/runtime-governance-shared.ts
+var import_node_fs35 = require("node:fs");
+var import_node_os3 = require("node:os");
+var import_node_path31 = require("node:path");
+var POLICY_JSON3 = "registries/policy.json";
+var ROUTING_JSON2 = "registries/routing.json";
+function requirePolicy(ctx, check, title, token) {
+  if (ctx.exists(POLICY_JSON3)) return void 0;
+  return skipOnce(ctx, check, title, token);
+}
+function requireRouting(ctx, check, title, token) {
+  if (ctx.exists(ROUTING_JSON2)) return void 0;
+  return skipOnce(ctx, check, title, token);
+}
+function policyDocument(ctx) {
+  const parsed = parseJson2(ctx.readText(POLICY_JSON3) ?? "");
+  return isRecord(parsed) ? parsed : {};
+}
+function child(record2, key) {
+  const value = record2 == null ? void 0 : record2[key];
+  return isRecord(value) ? value : void 0;
+}
+function arrayOf(record2, key) {
+  const value = record2 == null ? void 0 : record2[key];
+  return Array.isArray(value) ? value : void 0;
+}
+function stringsOf2(record2, key) {
+  return (arrayOf(record2, key) ?? []).filter((item) => typeof item === "string");
+}
+function jqText2(value) {
+  if (value === void 0 || value === null) return "null";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+var DIGITS = /^[0-9]+$/;
+function wholeNumber(value) {
+  const text3 = jqText2(value);
+  return DIGITS.test(text3) ? Number.parseInt(text3, 10) : void 0;
+}
+function usableBound(value, minimum) {
+  const parsed = wholeNumber(value);
+  if (parsed === void 0 || parsed < minimum) return void 0;
+  return parsed;
+}
+function kernelAnswer2(ctx, argv2) {
+  const io2 = memoryIo({ env: { ENGINEOS_ROOT: ctx.root }, cwd: ctx.root });
+  try {
+    runKernel([...argv2], io2);
+  } catch {
+    return {};
+  }
+  const parsed = parseJson2(io2.stdout.join(""));
+  return isRecord(parsed) ? parsed : {};
+}
+function answerText(answer, key) {
+  const value = answer[key];
+  return typeof value === "string" ? value : "";
+}
+function answerStrings(answer, key) {
+  const value = answer[key];
+  return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+function telemetryRun(ctx, argv2) {
+  const io2 = memoryIo({ env: { ENGINEOS_ROOT: ctx.root }, cwd: ctx.root });
+  try {
+    return runTelemetry([...argv2], io2) === 0;
+  } catch {
+    return false;
+  }
+}
+function withTempDir(run10) {
+  const dir = (0, import_node_fs35.mkdtempSync)((0, import_node_path31.join)((0, import_node_os3.tmpdir)(), "engineos-check-"));
+  try {
+    return run10(dir);
+  } finally {
+    (0, import_node_fs35.rmSync)(dir, { recursive: true, force: true });
+  }
+}
+function fileHas(ctx, path, needle) {
+  return (ctx.readText(path) ?? "").includes(needle);
+}
+function fileMatches(ctx, path, pattern) {
+  return pattern.test(ctx.readText(path) ?? "");
+}
+function linesWith(ctx, path, needle) {
+  return (ctx.readText(path) ?? "").split("\n").filter((line) => line.includes(needle));
+}
+function parseJson2(text3) {
+  try {
+    return JSON.parse(text3);
+  } catch {
+    return void 0;
+  }
+}
+function stringOrEmpty(value) {
+  return typeof value === "string" ? value : "";
+}
+
+// src/checks/runtime-governance-repair.ts
+var C20_FINDINGS = [
+  "checks-missing-or-empty",
+  "checks-has-duplicates",
+  "not-a-whole-number",
+  "below-1",
+  "by-situation-mismatch",
+  "by-situation-empty-response",
+  "never-repair-missing-or-empty"
+];
+var C20B_FINDINGS = [
+  "breakpoint-uncomputable",
+  "ladder-did-not-stop",
+  "never-repair-did-not-win"
+];
+var C20C_FINDINGS = [
+  "until-clean-present",
+  "verify-done-note-lost-the-pointer",
+  // Mirror row id (src/checks/mirrors.ts): CLAUDE.md's verify-done row quotes
+  // .repair.max_fix_attempts_per_check.
+  "fix-attempt-bound-drift"
+];
+var C20D_FINDINGS = [
+  "missing",
+  "does-not-import-kernel-repair",
+  "does-not-call-repair-section",
+  "hardcoded-number-literal"
+];
+var TOKEN = "repair";
+var C20_TITLE = "policy.json.repair is well-formed";
+var C20B_TITLE = "kernel.sh repair's ladder matches policy.json.repair's bound";
+var C20C_TITLE = "the until-clean prose mirrors agree with policy.json.repair";
+var C20D_TITLE = "src/hooks/stop-verify.ts asks the kernel's repair section for the bound, keeping no private copy";
+var STOP_VERIFY = "src/hooks/stop-verify.ts";
+var BY_SITUATION = "flaky,infra,red";
+function checkC20(ctx) {
+  const skipped = requirePolicy(ctx, "C20", C20_TITLE, TOKEN);
+  if (skipped !== void 0) return skipped;
+  const repair = child(policyDocument(ctx), "repair");
+  const findings = [];
+  const checks = stringsOf2(repair, "checks");
+  if (checks.length < 1) findings.push(finding("C20", "checks-missing-or-empty"));
+  const declaredChecks = arrayOf(repair, "checks");
+  if (declaredChecks !== void 0 && new Set(declaredChecks.map(jqText2)).size !== declaredChecks.length) {
+    findings.push(finding("C20", "checks-has-duplicates"));
+  }
+  const maxFix = wholeNumber(repair == null ? void 0 : repair["max_fix_attempts_per_check"]);
+  if (maxFix === void 0) findings.push(finding("C20", "not-a-whole-number", "max_fix_attempts_per_check"));
+  else if (maxFix < 1) findings.push(finding("C20", "below-1", "max_fix_attempts_per_check"));
+  if (wholeNumber(repair == null ? void 0 : repair["escalations"]) === void 0) {
+    findings.push(finding("C20", "not-a-whole-number", "escalations"));
+  }
+  const situations = (arrayOf(repair, "by_situation") ?? []).map((row) => typeof row === "object" && row !== null && "situation" in row ? jqText2(row["situation"]) : "").filter((id) => id !== "");
+  const sorted2 = [...situations].sort().join(",");
+  if (sorted2 !== BY_SITUATION) findings.push(finding("C20", "by-situation-mismatch", sorted2 === "" ? "none" : sorted2));
+  const emptyResponses = (arrayOf(repair, "by_situation") ?? []).filter((row) => {
+    if (typeof row !== "object" || row === null) return true;
+    const response = row["response"];
+    return response === void 0 || response === null || response === "";
+  });
+  if (emptyResponses.length > 0) findings.push(finding("C20", "by-situation-empty-response"));
+  if (stringsOf2(repair, "never_repair").length < 1) {
+    findings.push(finding("C20", "never-repair-missing-or-empty"));
+  }
+  return [result("C20", C20_TITLE, findings)];
+}
+function checkC20b(ctx) {
+  const skipped = requirePolicy(ctx, "C20b", C20B_TITLE, TOKEN);
+  if (skipped !== void 0) return skipped;
+  const repair = child(policyDocument(ctx), "repair");
+  const findings = [];
+  const maxFix = usableBound(repair == null ? void 0 : repair["max_fix_attempts_per_check"], 0);
+  const escalations = usableBound(repair == null ? void 0 : repair["escalations"], 0);
+  if (maxFix === void 0 || escalations === void 0) {
+    findings.push(finding("C20b", "breakpoint-uncomputable"));
+  } else {
+    const stopAttempt = maxFix + escalations + 1;
+    const action = answerText(
+      kernelAnswer2(ctx, ["repair", "--check", "lint", "--attempt", String(stopAttempt)]),
+      "action"
+    );
+    if (action !== "stop-report-red") {
+      findings.push(finding("C20b", "ladder-did-not-stop", `attempt-${stopAttempt}:${action === "" ? "none" : action}`));
+    }
+  }
+  const never = answerText(
+    kernelAnswer2(ctx, ["repair", "--check", "lint", "--attempt", "1", "--situation", "weaken-the-check"]),
+    "action"
+  );
+  if (never !== "never-repair") {
+    findings.push(finding("C20b", "never-repair-did-not-win", never === "" ? "none" : never));
+  }
+  return [result("C20b", C20B_TITLE, findings)];
+}
+function checkC20c(ctx) {
+  const skipped = requirePolicy(ctx, "C20c", C20C_TITLE, TOKEN);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  for (const home of ["CLAUDE.md", "registries/intents.json"]) {
+    if (fileMatches(ctx, home, /until clean/i)) findings.push(finding("C20c", "until-clean-present", home));
+  }
+  if (!verifyDoneNoteNamesRepair(ctx)) findings.push(finding("C20c", "verify-done-note-lost-the-pointer"));
+  findings.push(...runMirrors(rowsOf("C20c"), ctx));
+  return [result("C20c", C20C_TITLE, findings)];
+}
+function checkC20d(ctx) {
+  const skipped = requirePolicy(ctx, "C20d", C20D_TITLE, TOKEN);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  if (ctx.readText(STOP_VERIFY) === void 0) {
+    findings.push(finding("C20d", "missing", STOP_VERIFY));
+    return [result("C20d", C20D_TITLE, findings)];
+  }
+  if (!fileHas(ctx, STOP_VERIFY, "from '../kernel/repair'")) {
+    findings.push(finding("C20d", "does-not-import-kernel-repair", STOP_VERIFY));
+  }
+  if (!fileHas(ctx, STOP_VERIFY, "repairSection(")) {
+    findings.push(finding("C20d", "does-not-call-repair-section", STOP_VERIFY));
+  }
+  if (fileMatches(ctx, STOP_VERIFY, /[0-9]+ fix attempts/)) {
+    findings.push(finding("C20d", "hardcoded-number-literal", STOP_VERIFY));
+  }
+  return [result("C20d", C20D_TITLE, findings)];
+}
+function verifyDoneNoteNamesRepair(ctx) {
+  try {
+    const row = ctx.registries.intents.intents.find((intent) => intent.id === "verify-done");
+    return ((row == null ? void 0 : row.note) ?? "").includes("kernel.sh repair");
+  } catch {
+    return false;
+  }
+}
+
+// src/checks/runtime-governance-telemetry.ts
+var import_node_path32 = require("node:path");
+var import_node_fs36 = require("node:fs");
+var C22_FINDINGS = [
+  "retention-days-not-a-whole-number",
+  "retention-days-below-1",
+  "value-pattern-missing-or-invalid",
+  "events-missing-or-empty",
+  "event-ids-have-duplicates",
+  "keys-missing-or-empty",
+  "written-by-not-an-array",
+  "written-by-has-a-non-string-entry",
+  "written-by-names-a-missing-file",
+  "sample-keys-not-a-subset"
+];
+var C22B_FINDINGS = [
+  "sample-did-not-round-trip",
+  "unknown-event-was-not-rejected",
+  "whitespace-value-was-not-rejected"
+];
+var C22C_FINDINGS = [
+  "does-not-emit-event",
+  "event-call-references-prompt-text",
+  "emits-but-is-not-declared",
+  "sink-references-prompt-text",
+  "does-not-read-the-registry-field",
+  "hardcoded-retention-literal",
+  "lost-the-telemetry-source"
+];
+var TOKEN2 = "telemetry";
+var C22_TITLE = "policy.json.telemetry is well-formed";
+var C22B_TITLE = "scripts/telemetry.sh round-trips every registry sample and rejects malformed data";
+var C22C_TITLE = "telemetry wiring is complete in both directions (every declared writer emits its event, every emitting module is declared), private-copy-free and prompt-text-free";
+var HOOKS_DIR = "src/hooks";
+var SINK = "src/hooks/telemetry.ts";
+var SCAFFOLDER = "src/hooks/ensure-project-layout.ts";
+var NOT_A_WRITER = /* @__PURE__ */ new Set([SINK, "src/hooks/span-writer.ts"]);
+var TELEMETRY_SOURCE = "engineos-telemetry";
+function checkC22(ctx) {
+  const skipped = requirePolicy(ctx, "C22", C22_TITLE, TOKEN2);
+  if (skipped !== void 0) return skipped;
+  const telemetry = child(policyDocument(ctx), "telemetry");
+  const findings = [];
+  const retention = wholeNumber(telemetry == null ? void 0 : telemetry["retention_days"]);
+  if (retention === void 0) findings.push(finding("C22", "retention-days-not-a-whole-number"));
+  else if (retention < 1) findings.push(finding("C22", "retention-days-below-1"));
+  const valuePattern = telemetry == null ? void 0 : telemetry["value_pattern"];
+  if (typeof valuePattern !== "string" || valuePattern === "" || !compiles(valuePattern)) {
+    findings.push(finding("C22", "value-pattern-missing-or-invalid"));
+  }
+  const events = eventRows(telemetry);
+  if (events.length < 1) findings.push(finding("C22", "events-missing-or-empty"));
+  if (new Set(events.map((event2) => event2.id)).size !== events.length) {
+    findings.push(finding("C22", "event-ids-have-duplicates"));
+  }
+  for (const event2 of events) findings.push(...eventFindings(ctx, event2));
+  return [result("C22", C22_TITLE, findings)];
+}
+function checkC22b(ctx) {
+  const skipped = requirePolicy(ctx, "C22b", C22B_TITLE, TOKEN2);
+  if (skipped !== void 0) return skipped;
+  const events = eventRows(child(policyDocument(ctx), "telemetry"));
+  const findings = [];
+  withTempDir((dir) => {
+    events.forEach((event2, index) => {
+      const file = (0, import_node_path32.join)(dir, `sample-${index}.jsonl`);
+      const sample = JSON.stringify(event2.row["sample"] ?? null);
+      const appended = telemetryRun(ctx, ["append", file, "--session", "canary", "--event", event2.id, "--data", sample, "--ts", "2026-08-06T00:00:00Z"]) && nonEmptyFile(file) && telemetryRun(ctx, ["validate", file]);
+      if (!appended) findings.push(finding("C22b", "sample-did-not-round-trip", event2.id));
+    });
+    const negatives = (0, import_node_path32.join)(dir, "negatives.jsonl");
+    if (telemetryRun(ctx, ["append", negatives, "--session", "canary", "--event", "bogus-event", "--data", "{}"])) {
+      findings.push(finding("C22b", "unknown-event-was-not-rejected"));
+    }
+    if (telemetryRun(ctx, ["append", negatives, "--session", "canary", "--event", "route", "--data", '{"intents":["two words"]}'])) {
+      findings.push(finding("C22b", "whitespace-value-was-not-rejected"));
+    }
+  });
+  return [result("C22b", C22B_TITLE, findings)];
+}
+function checkC22c(ctx) {
+  const skipped = requirePolicy(ctx, "C22c", C22C_TITLE, TOKEN2);
+  if (skipped !== void 0) return skipped;
+  const events = eventRows(child(policyDocument(ctx), "telemetry"));
+  const findings = [];
+  for (const event2 of events) {
+    for (const writer of stringsOf2(event2.row, "written_by")) {
+      const call = eventCall(event2.id);
+      if (!fileHas(ctx, writer, call)) {
+        findings.push(finding("C22c", "does-not-emit-event", `${writer}:${event2.id}`));
+      }
+      if (linesWith(ctx, writer, call).some((line) => /env\.prompt|env\.raw/.test(line))) {
+        findings.push(finding("C22c", "event-call-references-prompt-text", writer));
+      }
+    }
+  }
+  const modules = ctx.list(HOOKS_DIR).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts")).map((name) => `${HOOKS_DIR}/${name}`).filter((path) => !NOT_A_WRITER.has(path));
+  for (const event2 of events) {
+    for (const module2 of modules) {
+      if (!fileHas(ctx, module2, eventCall(event2.id))) continue;
+      if (!stringsOf2(event2.row, "written_by").includes(module2)) {
+        findings.push(finding("C22c", "emits-but-is-not-declared", `${module2}:${event2.id}`));
+      }
+    }
+  }
+  if (fileMatches(ctx, SINK, /env\.prompt/)) findings.push(finding("C22c", "sink-references-prompt-text", SINK));
+  if (!fileHas(ctx, SCAFFOLDER, "loadTelemetryPolicy(")) {
+    findings.push(finding("C22c", "does-not-read-the-registry-field", SCAFFOLDER));
+  }
+  if (fileMatches(ctx, SCAFFOLDER, /(reapIfStale|reapFilesBelow)\(.*, *[0-9]+, *now\)/)) {
+    findings.push(finding("C22c", "hardcoded-retention-literal", SCAFFOLDER));
+  }
+  for (const reader3 of ["skills/retro/SKILL.md", "scripts/usage-report.sh"]) {
+    if (!fileHas(ctx, reader3, TELEMETRY_SOURCE)) {
+      findings.push(finding("C22c", "lost-the-telemetry-source", reader3));
+    }
+  }
+  return [result("C22c", C22C_TITLE, findings)];
+}
+function eventCall(id) {
+  return `event(sink, '${id}'`;
+}
+function eventRows(telemetry) {
+  const rows3 = [];
+  for (const entry of arrayOf(telemetry, "events") ?? []) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const row = entry;
+    rows3.push({ id: jqText2(row["id"]), row });
+  }
+  return rows3;
+}
+function eventFindings(ctx, event2) {
+  const findings = [];
+  const keys = arrayOf(event2.row, "keys");
+  if ((keys ?? []).length < 1) findings.push(finding("C22", "keys-missing-or-empty", event2.id));
+  const writtenBy = arrayOf(event2.row, "written_by");
+  if (writtenBy === void 0 || writtenBy.length < 1) {
+    findings.push(finding("C22", "written-by-not-an-array", event2.id));
+  } else {
+    const writers = writtenBy.filter((item) => typeof item === "string");
+    if (writers.length !== writtenBy.length) {
+      findings.push(finding("C22", "written-by-has-a-non-string-entry", event2.id));
+    }
+    for (const writer of writers) {
+      if (!ctx.exists(writer)) {
+        findings.push(finding("C22", "written-by-names-a-missing-file", `${event2.id}:${writer}`));
+      }
+    }
+  }
+  const sample = event2.row["sample"];
+  if (keys !== void 0 && typeof sample === "object" && sample !== null && !Array.isArray(sample)) {
+    const declared4 = new Set(keys.map(jqText2));
+    const extra = Object.keys(sample).filter((key) => !declared4.has(key));
+    if (extra.length > 0) findings.push(finding("C22", "sample-keys-not-a-subset", event2.id));
+  }
+  return findings;
+}
+function compiles(pattern) {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function nonEmptyFile(path) {
+  try {
+    return (0, import_node_fs36.existsSync)(path) && (0, import_node_fs36.statSync)(path).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+// src/checks/runtime-governance-constitution.ts
+var import_node_path33 = require("node:path");
+var C23_FINDINGS = [
+  "precedence-sentence-disagrees",
+  "missing-from-compatibility",
+  // Mirror row id (src/checks/mirrors.ts): every routing.json precedence domain
+  // is named in the chain sentence. The ORDER stays code below — a per-element
+  // row cannot express it.
+  "precedence-domain-missing"
+];
+var C23C_FINDINGS = ["authority-claim-reintroduced"];
+var TOKEN3 = "constitution";
+var C23_TITLE = "CLAUDE.md's precedence sentence and always-on mirror agree with the registry";
+var C23C_TITLE = "CLAUDE.md does not reintroduce the retired routing-map.sh authority claim";
+var CLAUDE_MD2 = "CLAUDE.md";
+var COMPATIBILITY = "docs/COMPATIBILITY.md";
+var CHAIN_SEPARATOR = " \u2192 ";
+var RETIRED_CLAIM = /authoritative for file-pattern routing/i;
+function checkC23(ctx) {
+  const skipped = requireRouting(ctx, "C23", C23_TITLE, TOKEN3);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  const declared4 = precedenceOf(ctx).join(CHAIN_SEPARATOR);
+  const stated = precedenceSentence(ctx.readText(CLAUDE_MD2) ?? "");
+  if (stated === "" || stated !== declared4) findings.push(finding("C23", "precedence-sentence-disagrees"));
+  const compatibility = ctx.readText(COMPATIBILITY) ?? "";
+  for (const rule of alwaysOnImports(ctx.readText(CLAUDE_MD2) ?? "")) {
+    const name = (0, import_node_path33.basename)(rule);
+    if (!compatibility.includes(`${name}\``)) findings.push(finding("C23", "missing-from-compatibility", name));
+  }
+  findings.push(...runMirrors(rowsOf("C23"), ctx));
+  return [result("C23", C23_TITLE, findings)];
+}
+function checkC23c(ctx) {
+  const skipped = requireRouting(ctx, "C23c", C23C_TITLE, TOKEN3);
+  if (skipped !== void 0) return skipped;
+  const findings = fileMatches(ctx, CLAUDE_MD2, RETIRED_CLAIM) ? [finding("C23c", "authority-claim-reintroduced", CLAUDE_MD2)] : [];
+  return [result("C23c", C23C_TITLE, findings)];
+}
+function precedenceOf(ctx) {
+  try {
+    return ctx.registries.routing.precedence;
+  } catch {
+    return [];
+  }
+}
+function precedenceSentence(text3) {
+  var _a;
+  const lines = text3.split("\n");
+  const window = [];
+  lines.forEach((line, index) => {
+    if (!line.includes("in this precedence chain:")) return;
+    window.push(line, lines[index + 1] ?? "");
+  });
+  const flat = window.join(" ").replace(/\s+/g, " ");
+  return ((_a = /precedence chain: (.*)\. When you route/.exec(flat)) == null ? void 0 : _a[1]) ?? "";
+}
+function alwaysOnImports(text3) {
+  return text3.split("\n").flatMap((line) => {
+    var _a;
+    return ((_a = /^@(rules\/[a-z-]+\.md)/.exec(line)) == null ? void 0 : _a.slice(1, 2)) ?? [];
+  });
+}
+
+// src/checks/runtime-governance-backpressure.ts
+var C24_FINDINGS = [
+  "not-a-whole-number",
+  "below-1",
+  "overload-action-not-in-actions",
+  "max-inflight-copy-of-wave-cap"
+];
+var C24B_FINDINGS = ["expected-reject-at-cap-with-full-queue", "expected-dispatch-when-idle"];
+var C24C_FINDINGS = [
+  "does-not-name-kernel-sh-admit",
+  // Mirror row ids (src/checks/mirrors.ts): one table row per declared action,
+  // the quoted queue bound, and the overload row that explains that bound.
+  "action-row-missing",
+  "queue-bound-drift",
+  "overload-row-missing"
+];
+var TOKEN4 = "backpressure";
+var C24_TITLE = "policy.json.parallelism.backpressure is well-formed";
+var C24B_TITLE = "kernel.sh admit dispatches when idle and rejects at cap with a full queue";
+var C24C_TITLE = "rules/parallelism.md mirrors backpressure: names kernel.sh admit, quotes the queue bound, one row per declared action";
+var PARALLELISM_MD = "rules/parallelism.md";
+var ADMIT_CALL = "kernel.sh admit";
+var MAX_QUEUED_UNITS = "max_queued_units";
+function checkC24(ctx) {
+  const skipped = requirePolicy(ctx, "C24", C24_TITLE, TOKEN4);
+  if (skipped !== void 0) return skipped;
+  const backpressure = backpressureBlock(ctx);
+  const findings = [];
+  const maxQueued = wholeNumber(backpressure == null ? void 0 : backpressure[MAX_QUEUED_UNITS]);
+  if (maxQueued === void 0) findings.push(finding("C24", "not-a-whole-number", MAX_QUEUED_UNITS));
+  else if (maxQueued < 1) findings.push(finding("C24", "below-1", MAX_QUEUED_UNITS));
+  const overload = overloadAction(backpressure);
+  if (!stringsOf2(backpressure, "actions").includes(overload)) {
+    findings.push(finding("C24", "overload-action-not-in-actions", overload === "" ? "none" : overload));
+  }
+  for (const key of Object.keys(backpressure ?? {})) {
+    if (key.includes("max_inflight")) findings.push(finding("C24", "max-inflight-copy-of-wave-cap", key));
+  }
+  return [result("C24", C24_TITLE, findings)];
+}
+function checkC24b(ctx) {
+  var _a;
+  const skipped = requirePolicy(ctx, "C24b", C24B_TITLE, TOKEN4);
+  if (skipped !== void 0) return skipped;
+  const parallelism = child(policyDocument(ctx), "parallelism");
+  const findings = [];
+  const cap = jqText2(parallelism == null ? void 0 : parallelism["wave_concurrency_cap"]);
+  const maxQueued = usableBound((_a = child(parallelism, "backpressure")) == null ? void 0 : _a[MAX_QUEUED_UNITS], 1);
+  const full = answerText(kernelAnswer2(ctx, ["admit", "--inflight", cap, "--queued", String(maxQueued ?? 0)]), "action");
+  if (full !== "reject") {
+    findings.push(finding("C24b", "expected-reject-at-cap-with-full-queue", full === "" ? "none" : full));
+  }
+  const idle = answerText(kernelAnswer2(ctx, ["admit", "--inflight", "0", "--queued", "0"]), "action");
+  if (idle !== "dispatch") {
+    findings.push(finding("C24b", "expected-dispatch-when-idle", idle === "" ? "none" : idle));
+  }
+  return [result("C24b", C24B_TITLE, findings)];
+}
+function checkC24c(ctx) {
+  const skipped = requirePolicy(ctx, "C24c", C24C_TITLE, TOKEN4);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  if (!fileHas(ctx, PARALLELISM_MD, ADMIT_CALL)) {
+    findings.push(finding("C24c", "does-not-name-kernel-sh-admit", PARALLELISM_MD));
+  }
+  findings.push(...runMirrors(rowsOf("C24c"), ctx));
+  return [result("C24c", C24C_TITLE, findings)];
+}
+function backpressureBlock(ctx) {
+  return child(child(policyDocument(ctx), "parallelism"), "backpressure");
+}
+function overloadAction(backpressure) {
+  const value = backpressure == null ? void 0 : backpressure["overload_action"];
+  return typeof value === "string" ? value : "";
+}
+
+// src/checks/runtime-governance-breaker.ts
+var C25_FINDINGS = [
+  "not-a-whole-number",
+  "below-1",
+  "states-mismatch",
+  "scopes-missing-or-empty"
+];
+var C25B_FINDINGS = ["failure-threshold-unusable", "transition-mismatch"];
+var C25C_FINDINGS = [
+  "no-circuit-breaker-section",
+  "does-not-name-kernel-sh-breaker",
+  // Mirror row ids (src/checks/mirrors.ts): one table row per declared state,
+  // the quoted failure threshold, and the scope-vocabulary sentence.
+  "state-row-missing",
+  "failure-threshold-drift",
+  "scope-vocabulary-missing"
+];
+var TOKEN5 = "breaker";
+var C25_TITLE = "policy.json.breaker is well-formed: failure_threshold, cooldown_waves and half_open_probes each read as a whole number >= 1, states are exactly closed/half-open/open, scopes is a non-empty array";
+var C25B_TITLE = "kernel.sh breaker answers the expected state and allow for all six transitions across the three state arms";
+var C25C_TITLE = "rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state, and a scope-vocabulary sentence naming every declared scope";
+var PARALLELISM_MD2 = "rules/parallelism.md";
+var BREAKER_CALL = "kernel.sh breaker";
+var BREAKER_SECTION = /^## Circuit breaker$/m;
+var STATES = "closed,half-open,open";
+var NUMERIC_FIELDS = ["failure_threshold", "cooldown_waves", "half_open_probes"];
+function checkC25(ctx) {
+  const skipped = requirePolicy(ctx, "C25", C25_TITLE, TOKEN5);
+  if (skipped !== void 0) return skipped;
+  const breaker = breakerBlock(ctx);
+  const findings = [];
+  for (const field of NUMERIC_FIELDS) {
+    const value = wholeNumber(breaker == null ? void 0 : breaker[field]);
+    if (value === void 0) findings.push(finding("C25", "not-a-whole-number", field));
+    else if (value < 1) findings.push(finding("C25", "below-1", field));
+  }
+  const states = (arrayOf(breaker, "states") ?? []).map(jqText2).sort().join(",");
+  if (states !== STATES) findings.push(finding("C25", "states-mismatch", states === "" ? "none" : states));
+  const scopes = arrayOf(breaker, "scopes");
+  if (scopes === void 0 || scopes.length === 0) findings.push(finding("C25", "scopes-missing-or-empty"));
+  return [result("C25", C25_TITLE, findings)];
+}
+function checkC25b(ctx) {
+  var _a;
+  const skipped = requirePolicy(ctx, "C25b", C25B_TITLE, TOKEN5);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  const threshold = usableBound((_a = breakerBlock(ctx)) == null ? void 0 : _a["failure_threshold"], 1);
+  if (threshold === void 0) findings.push(finding("C25b", "failure-threshold-unusable"));
+  else {
+    expect(ctx, findings, "at-threshold", ["--state", "closed", "--failures", String(threshold)], "open/false");
+    expect(ctx, findings, "one-below-threshold", ["--state", "closed", "--failures", String(threshold - 1)], "closed/true");
+  }
+  expect(ctx, findings, "cooldown-elapsed", ["--state", "open", "--cooldown-elapsed", "true"], "half-open/true");
+  expect(ctx, findings, "cooldown-pending", ["--state", "open", "--cooldown-elapsed", "false"], "open/false");
+  expect(ctx, findings, "successful-probe", ["--state", "half-open", "--probe-result", "ok"], "closed/true");
+  expect(ctx, findings, "failed-probe", ["--state", "half-open", "--probe-result", "failed"], "open/false");
+  return [result("C25b", C25B_TITLE, findings)];
+}
+function checkC25c(ctx) {
+  const skipped = requirePolicy(ctx, "C25c", C25C_TITLE, TOKEN5);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  if (!fileMatches(ctx, PARALLELISM_MD2, BREAKER_SECTION)) {
+    findings.push(finding("C25c", "no-circuit-breaker-section", PARALLELISM_MD2));
+  }
+  if (!fileHas(ctx, PARALLELISM_MD2, BREAKER_CALL)) {
+    findings.push(finding("C25c", "does-not-name-kernel-sh-breaker", PARALLELISM_MD2));
+  }
+  findings.push(...runMirrors(rowsOf("C25c"), ctx));
+  return [result("C25c", C25C_TITLE, findings)];
+}
+function breakerBlock(ctx) {
+  return child(policyDocument(ctx), "breaker");
+}
+function expect(ctx, findings, transition, args, wanted) {
+  const got = breakerAnswer(ctx, args);
+  if (got !== wanted) findings.push(finding("C25b", "transition-mismatch", `${transition}:${got}`));
+}
+function breakerAnswer(ctx, args) {
+  const answer = kernelAnswer2(ctx, ["breaker", ...args]);
+  const state = typeof answer["state"] === "string" ? answer["state"] : "none";
+  const allow = typeof answer["allow"] === "boolean" ? String(answer["allow"]) : "null";
+  return `${state}/${allow}`;
+}
+
+// src/checks/runtime-governance-hitl.ts
+var C26_FINDINGS = [
+  "reasons-below-minimum",
+  "reasons-have-duplicates",
+  "situations-missing-or-empty",
+  "record-home-missing-or-empty",
+  "situations-overlap-never-retry"
+];
+var C26C_FINDINGS = [
+  "no-hitl-section",
+  "does-not-name-kernel-sh-hitl",
+  "record-home-unusable",
+  "does-not-name-the-record-home",
+  "release-checklist-does-not-name",
+  "change-template-has-no-section",
+  // Mirror row id (src/checks/mirrors.ts): one table row per declared reason,
+  // both directions, because the vocabulary is closed.
+  "reason-row-missing"
+];
+var C26D_FINDINGS = [
+  "not-declared-in-both-reasons-and-situations",
+  "admit-reject-message-does-not-cite",
+  "situation-reject-answered"
+];
+var TOKEN6 = "hitl";
+var HITL_REASONS_MIN = 8;
+var C26_TITLE = `policy.json.hitl is well-formed: reasons is ${HITL_REASONS_MIN}+ unique non-empty strings, situations is a non-empty array disjoint from retry.never_retry, record_home is set`;
+var C26C_TITLE = "rules/risk-autonomy.md mirrors hitl: a Human-in-the-loop section naming kernel.sh hitl, a row per declared reason and the record home, which the rules/gates.md release checklist and the change-record template also carry";
+var C26D_TITLE = "the backpressure/hitl coupling holds: policy.json.hitl declares budget-exhausted in both reasons and situations, kernel.sh admit's reject message cites 'hitl: budget-exhausted', and kernel.sh hitl --situation reject answers with exactly that id";
+var RISK_AUTONOMY_MD = "rules/risk-autonomy.md";
+var GATES_MD = "rules/gates.md";
+var CHANGE_TEMPLATE2 = ".engineos/changes/_template.md";
+var ADMIT_TS = "src/kernel/admit.ts";
+var HITL_ANCHOR = "## Human-in-the-loop";
+var RELEASE_ANCHOR = "## Release gate \u2014 exit criteria";
+var HITL_CALL = "kernel.sh hitl";
+var BUDGET_EXHAUSTED = "budget-exhausted";
+function checkC26(ctx) {
+  const skipped = requirePolicy(ctx, "C26", C26_TITLE, TOKEN6);
+  if (skipped !== void 0) return skipped;
+  const document = policyDocument(ctx);
+  const hitl = child(document, "hitl");
+  const findings = [];
+  const reasons = stringsOf2(hitl, "reasons").filter((reason2) => reason2 !== "");
+  if (reasons.length < HITL_REASONS_MIN) {
+    findings.push(finding("C26", "reasons-below-minimum", String(reasons.length)));
+  }
+  if (new Set(reasons).size !== reasons.length) findings.push(finding("C26", "reasons-have-duplicates"));
+  const situations = arrayOf(hitl, "situations");
+  if (situations === void 0 || situations.length === 0) {
+    findings.push(finding("C26", "situations-missing-or-empty"));
+  }
+  if (recordHome(hitl) === "") findings.push(finding("C26", "record-home-missing-or-empty"));
+  const neverRetry2 = new Set(stringsOf2(child(document, "retry"), "never_retry"));
+  const overlap = stringsOf2(hitl, "situations").filter((id) => neverRetry2.has(id));
+  if (overlap.length > 0) findings.push(finding("C26", "situations-overlap-never-retry", overlap.join(",")));
+  return [result("C26", C26_TITLE, findings)];
+}
+function checkC26c(ctx) {
+  const skipped = requirePolicy(ctx, "C26c", C26C_TITLE, TOKEN6);
+  if (skipped !== void 0) return skipped;
+  const findings = [];
+  const section = sliceSection(ctx.readText(RISK_AUTONOMY_MD) ?? "", HITL_ANCHOR);
+  if (section === void 0 || section.trim() === "") {
+    findings.push(finding("C26c", "no-hitl-section", RISK_AUTONOMY_MD));
+  } else {
+    if (!section.includes(HITL_CALL)) findings.push(finding("C26c", "does-not-name-kernel-sh-hitl", RISK_AUTONOMY_MD));
+    findings.push(...recordHomeMirrors(ctx, section));
+  }
+  findings.push(...runMirrors(rowsOf("C26c"), ctx));
+  return [result("C26c", C26C_TITLE, findings)];
+}
+function checkC26d(ctx) {
+  var _a;
+  const skipped = requirePolicy(ctx, "C26d", C26D_TITLE, TOKEN6);
+  if (skipped !== void 0) return skipped;
+  const document = policyDocument(ctx);
+  const hitl = child(document, "hitl");
+  const findings = [];
+  if (!stringsOf2(hitl, "reasons").includes(BUDGET_EXHAUSTED) || !stringsOf2(hitl, "situations").includes(BUDGET_EXHAUSTED)) {
+    findings.push(finding("C26d", "not-declared-in-both-reasons-and-situations", BUDGET_EXHAUSTED));
+    return [result("C26d", C26D_TITLE, findings)];
+  }
+  const code = (ctx.readText(ADMIT_TS) ?? "").split("\n").filter((line) => !/^[ \t]*\/\//.test(line));
+  if (!code.some((line) => line.includes(`hitl: ${BUDGET_EXHAUSTED}`))) {
+    findings.push(finding("C26d", "admit-reject-message-does-not-cite", ADMIT_TS));
+  }
+  const low = stringOrEmpty((_a = child(child(document, "autonomy"), "ceiling_by_risk")) == null ? void 0 : _a["low"]);
+  const cited = answerStrings(kernelAnswer2(ctx, ["hitl", "--risk", "low", "--autonomy", low, "--situation", "reject"]), "reasons").join(",");
+  if (cited !== BUDGET_EXHAUSTED) {
+    findings.push(finding("C26d", "situation-reject-answered", cited === "" ? "none" : cited));
+  }
+  return [result("C26d", C26D_TITLE, findings)];
+}
+function recordHomeMirrors(ctx, section) {
+  const anchor = recordHomeAnchor(ctx);
+  if (anchor === "") return [finding("C26c", "record-home-unusable")];
+  const heading = anchor.replace(/-/g, " ");
+  const findings = [];
+  if (!containsIgnoringCase(section, heading)) {
+    findings.push(finding("C26c", "does-not-name-the-record-home", anchor));
+  }
+  const release = sliceSection(ctx.readText(GATES_MD) ?? "", RELEASE_ANCHOR);
+  if (release === void 0 || !containsIgnoringCase(release, heading)) {
+    findings.push(finding("C26c", "release-checklist-does-not-name", anchor));
+  }
+  const template = (ctx.readText(CHANGE_TEMPLATE2) ?? "").split("\n");
+  if (!template.some((line) => line.toLowerCase() === `## ${heading.toLowerCase()}`)) {
+    findings.push(finding("C26c", "change-template-has-no-section", anchor));
+  }
+  return findings;
+}
+function recordHomeAnchor(ctx) {
+  const home = recordHome(child(policyDocument(ctx), "hitl"));
+  const parts = home.split("#");
+  return parts[parts.length - 1] ?? "";
+}
+function recordHome(hitl) {
+  return stringOrEmpty(hitl == null ? void 0 : hitl["record_home"]);
+}
+function containsIgnoringCase(haystack, needle) {
+  return haystack.toLowerCase().includes(needle.toLowerCase());
+}
+
+// src/checks/runtime-governance-hitl-canary.ts
+var C26B_FINDINGS = [
+  "autonomy-ceilings-unusable",
+  "answer-mismatch",
+  "thin-target-unusable",
+  "thin-target-is-a4",
+  "situation-not-required",
+  "situation-cites-undeclared-reason",
+  "unknown-situation-not-rejected",
+  "resolve-task-does-not-carry-hitl",
+  "security-files-floor-not-high",
+  "resolve-task-folds-hitl-off-a-bare-floor"
+];
+var C26B_TITLE = "kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, drops autonomy exactly one level on thin evidence at low and medium and to autonomy.high_with_thin_evidence at high without ever raising it, cites both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer for a classified tier while claiming none off a bare risk floor";
+var TOKEN7 = "hitl";
+var UNKNOWN_SITUATION = "engineos-no-such-situation";
+var THIN_DROPS = [
+  ["low", "A2", "A1"],
+  ["medium", "A2", "A1"],
+  ["medium", "A3", "A2"],
+  ["low", "A4", "A3"],
+  ["medium", "A1", "A1"],
+  ["low", "A0", "A0"],
+  ["high", "A0", "A0"]
+];
+function checkC26b(ctx) {
+  const skipped = requirePolicy(ctx, "C26b", C26B_TITLE, TOKEN7);
+  if (skipped !== void 0) return skipped;
+  const document = policyDocument(ctx);
+  const findings = [];
+  const autonomy = child(document, "autonomy");
+  const byRisk = child(autonomy, "ceiling_by_risk");
+  const ceilings = {
+    low: stringOrEmpty(byRisk == null ? void 0 : byRisk["low"]),
+    medium: stringOrEmpty(byRisk == null ? void 0 : byRisk["medium"]),
+    high: stringOrEmpty(byRisk == null ? void 0 : byRisk["high"])
+  };
+  if (ceilings.low === "" || ceilings.medium === "" || ceilings.high === "") {
+    findings.push(finding("C26b", "autonomy-ceilings-unusable"));
+  } else {
+    tierCases(ctx, findings, ceilings);
+    thinEvidence(ctx, findings, stringOrEmpty(autonomy == null ? void 0 : autonomy["high_with_thin_evidence"]));
+    situationCases(ctx, findings, document, ceilings.low);
+  }
+  resolveTaskFold(ctx, findings);
+  return [result("C26b", C26B_TITLE, findings)];
+}
+function hitlAnswer(ctx, args) {
+  const answer = kernelAnswer2(ctx, ["hitl", ...args]);
+  const required = typeof answer["required"] === "boolean" ? String(answer["required"]) : "none";
+  const after = stringOrEmpty(answer["autonomy_after"]);
+  return `${required}/${after === "" ? "none" : after}`;
+}
+function expectAnswer(ctx, findings, label, args, wanted) {
+  const got = hitlAnswer(ctx, args);
+  if (got !== wanted) findings.push(finding("C26b", "answer-mismatch", `${label}:${got}`));
+}
+function tierCases(ctx, findings, ceilings) {
+  expectAnswer(ctx, findings, "low-risk", ["--risk", "low", "--autonomy", ceilings.low], `false/${ceilings.low}`);
+  expectAnswer(ctx, findings, "high-risk", ["--risk", "high", "--autonomy", ceilings.high], `true/${ceilings.high}`);
+  expectAnswer(
+    ctx,
+    findings,
+    "external-effect-at-ceiling",
+    ["--risk", "medium", "--autonomy", ceilings.medium, "--external-effect", "true"],
+    `true/${ceilings.medium}`
+  );
+  if (ceilings.low !== "A3" && ceilings.low !== "A4") {
+    expectAnswer(
+      ctx,
+      findings,
+      "external-effect-below-a3",
+      ["--risk", "medium", "--autonomy", ceilings.low, "--external-effect", "true"],
+      `false/${ceilings.low}`
+    );
+  }
+  expectAnswer(
+    ctx,
+    findings,
+    "policy-conflict",
+    ["--risk", "low", "--autonomy", ceilings.low, "--conflict", "true"],
+    `true/${ceilings.low}`
+  );
+}
+function thinEvidence(ctx, findings, target) {
+  for (const [tier, given, wanted] of THIN_DROPS) {
+    expectAnswer(
+      ctx,
+      findings,
+      `thin-${tier}-${given}`,
+      ["--risk", tier, "--autonomy", given, "--evidence", "thin"],
+      `true/${wanted}`
+    );
+  }
+  if (target === "") findings.push(finding("C26b", "thin-target-unusable"));
+  else if (target === "A4") findings.push(finding("C26b", "thin-target-is-a4"));
+  else expectAnswer(ctx, findings, "thin-high-A4", ["--risk", "high", "--autonomy", "A4", "--evidence", "thin"], `true/${target}`);
+}
+function situationCases(ctx, findings, document, low) {
+  const hitl = child(document, "hitl");
+  const declaredReasons = new Set(stringsOf2(hitl, "reasons"));
+  const declared4 = [...stringsOf2(child(document, "retry"), "never_retry"), ...stringsOf2(hitl, "situations")];
+  for (const situation of declared4) {
+    const answer = kernelAnswer2(ctx, ["hitl", "--risk", "low", "--autonomy", low, "--situation", situation]);
+    if (answer["required"] !== true) {
+      const got = answer["required"] === false ? "false" : "none";
+      findings.push(finding("C26b", "situation-not-required", `${situation}:${got}`));
+    }
+    const undeclared = answerStrings(answer, "reasons").filter((reason2) => !declaredReasons.has(reason2));
+    if (undeclared.length > 0) {
+      findings.push(finding("C26b", "situation-cites-undeclared-reason", `${situation}:${undeclared.join(",")}`));
+    }
+  }
+  const unknown = kernelAnswer2(ctx, ["hitl", "--risk", "low", "--autonomy", low, "--situation", UNKNOWN_SITUATION]);
+  if (unknown["required"] !== void 0) findings.push(finding("C26b", "unknown-situation-not-rejected", UNKNOWN_SITUATION));
+}
+function resolveTaskFold(ctx, findings) {
+  var _a, _b;
+  const classified = kernelAnswer2(ctx, ["resolve-task", "--prompt", "drop the users table in production"]);
+  const carried = (_a = child(classified, "hitl")) == null ? void 0 : _a["required"];
+  if (carried !== true) {
+    findings.push(finding("C26b", "resolve-task-does-not-carry-hitl", carried === false ? "false" : "none"));
+  }
+  const floor = securityFilesFloor(ctx);
+  if (floor !== "high") {
+    findings.push(finding("C26b", "security-files-floor-not-high", floor === "" ? "none" : floor));
+    return;
+  }
+  const bare = kernelAnswer2(ctx, ["resolve-task", "--prompt", "fix the auth guard bug"]);
+  const section = bare["hitl"] === null || bare["hitl"] === void 0 ? "null" : "present";
+  const stated = stringOrEmpty((_b = child(bare, "task_contract")) == null ? void 0 : _b["risk_floor"]);
+  const got = `${section}/${stated === "" ? "none" : stated}`;
+  if (got !== `null/${floor}`) findings.push(finding("C26b", "resolve-task-folds-hitl-off-a-bare-floor", got));
+}
+function securityFilesFloor(ctx) {
+  var _a;
+  try {
+    return ((_a = ctx.registries.intents.intents.find((intent) => intent.id === "security-files")) == null ? void 0 : _a.risk_floor) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// src/checks/runtime-governance.ts
+var RUNTIME_GOVERNANCE_CHECKS = [
+  { id: "C20", codes: C20_FINDINGS, run: checkC20 },
+  { id: "C20b", codes: C20B_FINDINGS, run: checkC20b },
+  { id: "C20c", codes: C20C_FINDINGS, run: checkC20c },
+  { id: "C20d", codes: C20D_FINDINGS, run: checkC20d },
+  { id: "C22", codes: C22_FINDINGS, run: checkC22 },
+  { id: "C22b", codes: C22B_FINDINGS, run: checkC22b },
+  { id: "C22c", codes: C22C_FINDINGS, run: checkC22c },
+  { id: "C23", codes: C23_FINDINGS, run: checkC23 },
+  { id: "C23c", codes: C23C_FINDINGS, run: checkC23c },
+  { id: "C24", codes: C24_FINDINGS, run: checkC24 },
+  { id: "C24b", codes: C24B_FINDINGS, run: checkC24b },
+  { id: "C24c", codes: C24C_FINDINGS, run: checkC24c },
+  { id: "C25", codes: C25_FINDINGS, run: checkC25 },
+  { id: "C25b", codes: C25B_FINDINGS, run: checkC25b },
+  { id: "C25c", codes: C25C_FINDINGS, run: checkC25c },
+  { id: "C26", codes: C26_FINDINGS, run: checkC26 },
+  { id: "C26b", codes: C26B_FINDINGS, run: checkC26b },
+  { id: "C26c", codes: C26C_FINDINGS, run: checkC26c },
+  { id: "C26d", codes: C26D_FINDINGS, run: checkC26d }
+];
+
+// src/checks/runtime-surface-canary.ts
+var import_node_fs38 = require("node:fs");
+var import_node_os4 = require("node:os");
+var import_node_path36 = require("node:path");
+
+// src/checks/runtime-surface-journal.ts
+var import_node_path35 = require("node:path");
+
+// src/checks/runtime-surface-fs.ts
+var import_node_fs37 = require("node:fs");
+var import_node_path34 = require("node:path");
+function isExecutable3(root, relativePath) {
+  try {
+    return ((0, import_node_fs37.statSync)((0, import_node_path34.join)(root, relativePath)).mode & 73) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+// src/checks/runtime-surface-journal.ts
+var C27_FINDINGS = [
+  "block-missing",
+  "home-missing",
+  "home-does-not-end-in-exec-jsonl",
+  "schema-missing",
+  "schema-not-executable",
+  "enumeration-empty",
+  "written-by-empty",
+  "written-by-names-a-missing-file",
+  "written-by-helper-missing",
+  "written-by-helper-names-a-missing-file",
+  "max-value-length-not-a-positive-integer",
+  "fallback-unreadable",
+  "max-value-length-fallback-drift"
+];
+var C27d_FINDINGS = [
+  "section-missing",
+  "section-empty",
+  "field-not-named",
+  "span-kind-alternation-missing",
+  "zero-is-not-free-caveat-missing",
+  "status-floor-caveat-missing",
+  "slug-claim-not-scoped-to-note",
+  "classifies-content-reclaimed",
+  "parallelism-reference-missing",
+  // The mirror rows of rowsOf('C27d'); a row id is its finding code.
+  "span-kind-missing",
+  "journal-home-missing",
+  "value-length-drift"
+];
+var C27_TITLE = "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses are non-empty, max_value_length agrees with the port's standalone fallback, and every writer exists";
+var C27d_TITLE = "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-0 and status-is-a-floor caveats, and the all-but-note slug claim with its length bound";
+var POLICY = "registries/policy.json";
+var EJ_POLICY_TS = "src/registry/policy-exec-journal.ts";
+var FALLBACK_PATTERN = /^export const MAX_VALUE_LENGTH_FALLBACK = ([0-9]+);$/m;
+var OBSERVABILITY = "rules/observability.md";
+var AGENT_TRACES = "## Agent traces";
+var PARALLELISM = "rules/parallelism.md";
+var NAMED_FIELDS = ["trace_id", "span_kind", "cost_micros", "tokens_in"];
+function haveExecJournalInputs(ctx, check, title) {
+  if (ctx.exists(POLICY)) return void 0;
+  return skipOnce(ctx, check, title, "exec-journal");
+}
+function execJournalBlock(ctx) {
+  let raw;
+  try {
+    raw = readJsonFile((0, import_node_path35.join)(ctx.root, POLICY));
+  } catch {
+    return void 0;
+  }
+  const telemetry = isRecord(raw) ? raw["telemetry"] : void 0;
+  const block2 = isRecord(telemetry) ? telemetry["exec_journal"] : void 0;
+  return isRecord(block2) ? block2 : void 0;
+}
+function checkC27(ctx) {
+  const skipped = haveExecJournalInputs(ctx, "C27", C27_TITLE);
+  if (skipped !== void 0) return skipped;
+  const block2 = execJournalBlock(ctx);
+  if (block2 === void 0) return [result("C27", C27_TITLE, [finding("C27", "block-missing", POLICY)])];
+  const findings = [
+    ...homeFindings(block2["home"]),
+    ...schemaFindings(ctx, block2["schema"]),
+    ...enumerationFindings(block2),
+    ...writerFindings(ctx, block2),
+    ...boundFindings(ctx, block2["max_value_length"])
+  ];
+  return [result("C27", C27_TITLE, findings)];
+}
+function checkC27d(ctx) {
+  const skipped = haveExecJournalInputs(ctx, "C27d", C27d_TITLE);
+  if (skipped !== void 0) return skipped;
+  const findings = [...sectionFindings(ctx), ...runMirrors(rowsOf("C27d"), ctx)];
+  if (!(ctx.readText(PARALLELISM) ?? "").includes("Agent traces")) {
+    findings.push(finding("C27d", "parallelism-reference-missing", PARALLELISM));
+  }
+  return [result("C27d", C27d_TITLE, findings)];
+}
+function homeFindings(home) {
+  if (typeof home !== "string" || home === "") return [finding("C27", "home-missing")];
+  if (!home.endsWith(".exec.jsonl")) return [finding("C27", "home-does-not-end-in-exec-jsonl", home)];
+  return [];
+}
+function schemaFindings(ctx, schema) {
+  if (typeof schema !== "string" || schema === "") return [finding("C27", "schema-missing")];
+  if (!isExecutable3(ctx.root, schema)) return [finding("C27", "schema-not-executable", schema)];
+  return [];
+}
+function enumerationFindings(block2) {
+  const findings = [];
+  for (const field of ["span_kinds", "statuses"]) {
+    if (stringArray(block2[field]).length < 1) findings.push(finding("C27", "enumeration-empty", field));
+  }
+  return findings;
+}
+function writerFindings(ctx, block2) {
+  const findings = [];
+  const writers = stringArray(block2["written_by"]);
+  if (writers.length < 1) findings.push(finding("C27", "written-by-empty"));
+  for (const writer of writers) {
+    if (!ctx.exists(writer)) findings.push(finding("C27", "written-by-names-a-missing-file", writer));
+  }
+  const helper = block2["written_by_helper"];
+  if (typeof helper !== "string" || helper === "") findings.push(finding("C27", "written-by-helper-missing"));
+  else if (!ctx.exists(helper)) findings.push(finding("C27", "written-by-helper-names-a-missing-file", helper));
+  return findings;
+}
+function boundFindings(ctx, bound) {
+  var _a;
+  if (typeof bound !== "number" || !Number.isInteger(bound) || bound <= 0) {
+    return [finding("C27", "max-value-length-not-a-positive-integer", bound === void 0 ? "missing" : String(bound))];
+  }
+  const source = ctx.readText(EJ_POLICY_TS);
+  const declared4 = source === void 0 ? null : ((_a = FALLBACK_PATTERN.exec(source)) == null ? void 0 : _a[1]) ?? null;
+  if (declared4 === null) return [finding("C27", "fallback-unreadable", EJ_POLICY_TS)];
+  if (declared4 !== String(bound)) {
+    return [finding("C27", "max-value-length-fallback-drift", `registry:${bound}-source:${declared4}`)];
+  }
+  return [];
+}
+function sectionFindings(ctx) {
+  const text3 = ctx.readText(OBSERVABILITY);
+  const section = text3 === void 0 ? void 0 : sliceSection(text3, AGENT_TRACES);
+  if (section === void 0) return [finding("C27d", "section-missing", AGENT_TRACES)];
+  if (section.trim() === "") return [finding("C27d", "section-empty", AGENT_TRACES)];
+  const findings = [];
+  for (const term of NAMED_FIELDS) {
+    if (!section.includes(term)) findings.push(finding("C27d", "field-not-named", term));
+  }
+  findings.push(...alternationFindings(ctx, section));
+  findings.push(...caveatFindings(section));
+  return findings;
+}
+function alternationFindings(ctx, section) {
+  var _a;
+  const kinds = stringArray((_a = execJournalBlock(ctx)) == null ? void 0 : _a["span_kinds"]);
+  if (kinds.length === 0) return [];
+  const alternation = `\`${kinds.join(" | ")}\``;
+  if (section.includes(alternation)) return [];
+  return [finding("C27d", "span-kind-alternation-missing", kinds.join("-"))];
+}
+function caveatFindings(section) {
+  const findings = [];
+  if (!section.includes("0 as free")) findings.push(finding("C27d", "zero-is-not-free-caveat-missing"));
+  if (!section.includes("FLOOR")) findings.push(finding("C27d", "status-floor-caveat-missing"));
+  if (!section.includes("every field EXCEPT `note`")) findings.push(finding("C27d", "slug-claim-not-scoped-to-note"));
+  if (!section.includes("does not classify the content")) findings.push(finding("C27d", "classifies-content-reclaimed"));
+  return findings;
+}
+
+// src/checks/runtime-surface-canary.ts
+var C27b_FINDINGS = ["append-contract-broken", "validate-contract-broken"];
+var C27b_TITLE = "scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, refuses whitespace in every field but note (run_id and agent included), refuses an over-long value, refuses a status or model_tier outside its enumeration on validate as well as on append, and still accepts a free-text note";
+var BASE = [
+  "--run-id",
+  "canary",
+  "--capability-id",
+  "route",
+  "--model-tier",
+  "build",
+  "--status",
+  "OK",
+  "--tokens-in",
+  "0",
+  "--tokens-out",
+  "0",
+  "--duration-ms",
+  "1"
+];
+var FALLBACK_MAX_VALUE_LENGTH = 256;
+var REJECTED_LINES = [
+  {
+    subject: "validate-accepted-a-whitespace-span-field",
+    line: '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null,"trace_id":"bad id","route":"good"}'
+  },
+  {
+    subject: "validate-accepted-a-whitespace-run_id",
+    line: '{"timestamp":"t","run_id":"sess 1","capability_id":"c","agent":null,"model_tier":"build","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}'
+  },
+  // The ENUMERATED v1 fields: append gates them through the member list and
+  // validate used to check the type only, so prose in status and a newline in
+  // model_tier validated clean on a journal this CLI did not write.
+  {
+    subject: "validate-accepted-free-text-in-status",
+    line: '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"it went fine, mostly","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}'
+  },
+  {
+    subject: "validate-accepted-a-newline-in-model_tier",
+    line: '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build\\nSECRET=leaked","status":"OK","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}'
+  }
+];
+function checkC27b(ctx) {
+  const skipped = haveExecJournalInputs(ctx, "C27b", C27b_TITLE);
+  if (skipped !== void 0) return skipped;
+  const workspace = (0, import_node_fs38.mkdtempSync)((0, import_node_path36.join)((0, import_node_os4.tmpdir)(), "engineos-c27b-"));
+  try {
+    const findings = [...appendFindings(ctx, workspace), ...validateFindings(ctx, workspace)];
+    return [result("C27b", C27b_TITLE, findings)];
+  } finally {
+    (0, import_node_fs38.rmSync)(workspace, { recursive: true, force: true });
+  }
+}
+function appendFindings(ctx, workspace) {
+  const findings = [];
+  const spans = (0, import_node_path36.join)(workspace, "spans.exec.jsonl");
+  findings.push(...fullSpanFindings(ctx, spans));
+  for (const kind of declaredList(ctx, "span_kinds")) {
+    if (!append2(ctx, spans, ["--span-kind", kind])) {
+      findings.push(broke("append", `declared-span-kind-rejected:${kind}`));
+    }
+  }
+  findings.push(...v1ShapeFindings(ctx, (0, import_node_path36.join)(workspace, "v1.exec.jsonl")));
+  findings.push(...refusalFindings(ctx, spans));
+  return findings;
+}
+function fullSpanFindings(ctx, spans) {
+  const accepted = append2(ctx, spans, [
+    "--status",
+    "FAILED",
+    "--duration-ms",
+    "900",
+    "--trace-id",
+    "canary-session",
+    "--span-id",
+    "tu-1",
+    "--parent-span-id",
+    "tu-0",
+    "--span-kind",
+    "tool",
+    "--tool",
+    "mcp.postgres",
+    "--provider",
+    "anthropic",
+    "--model",
+    "claude-opus-5",
+    "--cost-micros",
+    "1200",
+    "--retry-attempt",
+    "1",
+    "--cache-hit",
+    "false",
+    "--route",
+    "dba",
+    "--risk",
+    "medium"
+  ]);
+  if (!accepted) return [broke("append", "full-v2-line-was-rejected")];
+  const findings = [];
+  if (!validate2(ctx, spans)) findings.push(broke("append", "full-v2-line-did-not-validate"));
+  const written = lastRecord(spans);
+  const expected = {
+    trace_id: "canary-session",
+    span_id: "tu-1",
+    parent_span_id: "tu-0",
+    span_kind: "tool",
+    tool: "mcp.postgres",
+    provider: "anthropic",
+    model: "claude-opus-5",
+    cost_micros: 1200,
+    retry_attempt: 1,
+    cache_hit: false,
+    route: "dba",
+    risk: "medium",
+    status: "FAILED"
+  };
+  if (!roundTrips(written, expected)) findings.push(broke("append", "full-v2-line-did-not-round-trip"));
+  return findings;
+}
+function roundTrips(written, expected) {
+  if (written === void 0) return false;
+  for (const [key, value] of Object.entries(expected)) {
+    if (written[key] !== value) return false;
+  }
+  return true;
+}
+function v1ShapeFindings(ctx, file) {
+  if (!append2(ctx, file, [])) return [broke("append", "v1-line-was-rejected")];
+  const written = lastRecord(file);
+  const v2Keys = ["span_kind", "trace_id", "cost_micros"];
+  if (written !== void 0 && v2Keys.some((key) => key in written)) {
+    return [broke("append", "a-v1-line-now-carries-v2-keys")];
+  }
+  return [];
+}
+function refusalFindings(ctx, spans) {
+  const findings = [];
+  const bound = declaredBound(ctx);
+  const long = "a".repeat(bound + 1);
+  const mustRefuse = [
+    { subject: "whitespace-trace_id-was-not-rejected", args: ["--trace-id", "has space"] },
+    { subject: "newline-trace_id-was-not-rejected", args: ["--trace-id", "clean\nthen arbitrary text"] },
+    { subject: "unknown-span_kind-was-not-rejected", args: ["--span-kind", "bogus-kind"] },
+    { subject: "unknown-risk-was-not-rejected", args: ["--risk", "critical"] },
+    { subject: "fractional-cost_micros-was-not-rejected", args: ["--cost-micros", "1.5"] },
+    { subject: "non-boolean-cache_hit-was-not-rejected", args: ["--cache-hit", "yes"] },
+    { subject: "whitespace-run_id-was-not-rejected", args: ["--run-id", "has space"] },
+    { subject: "whitespace-capability_id-was-not-rejected", args: ["--capability-id", "has space"] },
+    { subject: "newline-agent-was-not-rejected", args: ["--agent", "agent\nSECRET=leaked prompt text"] },
+    { subject: "over-long-trace_id-was-not-rejected", args: ["--trace-id", long] },
+    { subject: "over-long-note-was-not-rejected", args: ["--note", long] }
+  ];
+  for (const { subject, args } of mustRefuse) {
+    if (append2(ctx, spans, args)) findings.push(broke("append", subject));
+  }
+  if (!append2(ctx, spans, ["--note", "a human annotation, with spaces"])) {
+    findings.push(broke("append", "free-text-note-was-rejected"));
+  }
+  return findings;
+}
+function validateFindings(ctx, workspace) {
+  const findings = [];
+  const file = (0, import_node_path36.join)(workspace, "foreign.exec.jsonl");
+  for (const { subject, line } of REJECTED_LINES) {
+    (0, import_node_fs38.writeFileSync)(file, `${line}
+`);
+    if (validate2(ctx, file)) findings.push(broke("validate", subject));
+  }
+  for (const status of declaredList(ctx, "statuses")) {
+    (0, import_node_fs38.writeFileSync)(file, `${v1Line(JSON.stringify(status), "null")}
+`);
+    if (!validate2(ctx, file)) findings.push(broke("validate", `validate-rejected-a-declared-status:${status}`));
+  }
+  (0, import_node_fs38.writeFileSync)(file, `${v1Line('"OK"', '"a human annotation, with spaces"')}
+`);
+  if (!validate2(ctx, file)) findings.push(broke("validate", "validate-rejected-a-free-text-note"));
+  return findings;
+}
+function v1Line(status, note) {
+  return `{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":${status},"tokens_in":0,"tokens_out":0,"duration_ms":1,"note":${note}}`;
+}
+function append2(ctx, file, extra) {
+  return runCli(ctx, ["append", file, ...BASE, ...extra]);
+}
+function validate2(ctx, file) {
+  return runCli(ctx, ["validate", file]);
+}
+function runCli(ctx, argv2) {
+  const io2 = memoryIo({ env: { ENGINEOS_ROOT: ctx.root }, cwd: ctx.root });
+  return runJournal(argv2, io2) === 0;
+}
+function lastRecord(file) {
+  let text3;
+  try {
+    text3 = (0, import_node_fs38.readFileSync)(file, "utf8");
+  } catch {
+    return void 0;
+  }
+  const lines = text3.split("\n").filter((line) => line !== "");
+  const last = lines[lines.length - 1];
+  if (last === void 0) return void 0;
+  try {
+    const parsed = JSON.parse(last);
+    return isRecord(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function declaredList(ctx, field) {
+  var _a;
+  return stringArray((_a = execJournalBlock(ctx)) == null ? void 0 : _a[field]);
+}
+function declaredBound(ctx) {
+  var _a;
+  const declared4 = (_a = execJournalBlock(ctx)) == null ? void 0 : _a["max_value_length"];
+  if (typeof declared4 !== "number" || !Number.isInteger(declared4) || declared4 <= 0) return FALLBACK_MAX_VALUE_LENGTH;
+  return declared4;
+}
+function broke(boundary, subject) {
+  return boundary === "append" ? finding("C27b", "append-contract-broken", subject) : finding("C27b", "validate-contract-broken", subject);
+}
+
+// src/checks/runtime-surface-adoption.ts
+var C28_FINDINGS = [
+  "reference-missing",
+  "reference-does-not-define",
+  "skill-missing",
+  "skill-does-not-link-the-reference",
+  "rule-missing",
+  "rag-section-missing",
+  "rag-section-does-not-name"
+];
+var C29_FINDINGS = [
+  "init-script-not-executable",
+  "command-missing",
+  "command-does-not-name-the-script",
+  "scaffolder-missing",
+  "hook-does-not-import-the-scaffolder",
+  "init-does-not-import-the-scaffolder",
+  "adoption-doc-missing",
+  "adoption-doc-does-not-name-the-command"
+];
+var C28_TITLE = "the retrieval-metrics pair holds: skills/eval-harness/references/retrieval-metrics.md defines Recall@K/Precision@K/MRR, skills/eval-harness/SKILL.md links it, and the RAG section of rules/llm-apps.md names all three";
+var C29_TITLE = "the adoption entrypoints are wired: scripts/init-project.sh is executable, commands/init.md invokes it, both the SessionStart hook and engineos init import src/hooks/scaffold.ts, and docs/ADOPTION.md names /engineos:init";
+var RETRIEVAL_METRICS = ["Recall@K", "Precision@K", "MRR"];
+var REFERENCE_DIR = "skills/eval-harness/references";
+var REFERENCE = `${REFERENCE_DIR}/retrieval-metrics.md`;
+var EVAL_SKILL = "skills/eval-harness/SKILL.md";
+var LLM_RULES = "rules/llm-apps.md";
+var RAG_ANCHOR = "## RAG";
+var INIT_SCRIPT = "scripts/init-project.sh";
+var INIT_COMMAND = "commands/init.md";
+var SCAFFOLDER2 = "src/hooks/scaffold.ts";
+var LAYOUT_HOOK = "src/hooks/ensure-project-layout.ts";
+var INIT_MODULE = "src/init/project.ts";
+var ADOPTION_DOC = "docs/ADOPTION.md";
+function checkC28(ctx) {
+  if (!ctx.exists(REFERENCE_DIR)) return skipPending(ctx, "C28", C28_TITLE, REFERENCE_DIR);
+  const findings = [
+    ...referenceFindings(ctx),
+    ...skillFindings(ctx),
+    ...ragFindings(ctx)
+  ];
+  return [result("C28", C28_TITLE, findings)];
+}
+function checkC29(ctx) {
+  if (!ctx.exists(INIT_SCRIPT)) return skipPending(ctx, "C29", C29_TITLE, INIT_SCRIPT);
+  const findings = [];
+  if (!isExecutable3(ctx.root, INIT_SCRIPT)) findings.push(finding("C29", "init-script-not-executable", INIT_SCRIPT));
+  findings.push(...commandFindings(ctx));
+  findings.push(...scaffolderFindings(ctx));
+  findings.push(...adoptionDocFindings(ctx));
+  return [result("C29", C29_TITLE, findings)];
+}
+function referenceFindings(ctx) {
+  const text3 = ctx.readText(REFERENCE);
+  if (text3 === void 0) return [finding("C28", "reference-missing", REFERENCE)];
+  const findings = [];
+  for (const metric of RETRIEVAL_METRICS) {
+    if (!text3.includes(metric)) findings.push(finding("C28", "reference-does-not-define", metric));
+  }
+  return findings;
+}
+function skillFindings(ctx) {
+  const text3 = ctx.readText(EVAL_SKILL);
+  if (text3 === void 0) return [finding("C28", "skill-missing", EVAL_SKILL)];
+  if (text3.includes("references/retrieval-metrics.md")) return [];
+  return [finding("C28", "skill-does-not-link-the-reference", EVAL_SKILL)];
+}
+function ragFindings(ctx) {
+  const text3 = ctx.readText(LLM_RULES);
+  if (text3 === void 0) return [finding("C28", "rule-missing", LLM_RULES)];
+  const section = sliceSection(text3, RAG_ANCHOR);
+  if (section === void 0 || section.trim() === "") return [finding("C28", "rag-section-missing", RAG_ANCHOR)];
+  const findings = [];
+  for (const metric of RETRIEVAL_METRICS) {
+    if (!section.includes(metric)) findings.push(finding("C28", "rag-section-does-not-name", metric));
+  }
+  return findings;
+}
+function commandFindings(ctx) {
+  const text3 = ctx.readText(INIT_COMMAND);
+  if (text3 === void 0) return [finding("C29", "command-missing", INIT_COMMAND)];
+  if (text3.includes(INIT_SCRIPT)) return [];
+  return [finding("C29", "command-does-not-name-the-script", INIT_COMMAND)];
+}
+function scaffolderFindings(ctx) {
+  if (!ctx.exists(SCAFFOLDER2)) return [finding("C29", "scaffolder-missing", SCAFFOLDER2)];
+  const findings = [];
+  if (!(ctx.readText(LAYOUT_HOOK) ?? "").includes("from './scaffold'")) {
+    findings.push(finding("C29", "hook-does-not-import-the-scaffolder", LAYOUT_HOOK));
+  }
+  if (!(ctx.readText(INIT_MODULE) ?? "").includes("from '../hooks/scaffold'")) {
+    findings.push(finding("C29", "init-does-not-import-the-scaffolder", INIT_MODULE));
+  }
+  return findings;
+}
+function adoptionDocFindings(ctx) {
+  const text3 = ctx.readText(ADOPTION_DOC);
+  if (text3 === void 0) return [finding("C29", "adoption-doc-missing", ADOPTION_DOC)];
+  if (text3.includes("/engineos:init")) return [];
+  return [finding("C29", "adoption-doc-does-not-name-the-command", ADOPTION_DOC)];
+}
+
+// src/checks/runtime-surface-modes.ts
+var C30_FINDINGS = [
+  "library-list-unreadable",
+  "listed-library-does-not-exist",
+  "listed-library-does-not-introduce-itself-as-one",
+  "library-carries-the-executable-bit",
+  "hook-entry-point-is-not-executable",
+  "introduces-itself-as-a-library-but-is-not-listed",
+  "install-decides-executability-from-file-text"
+];
+var C30_TITLE = "hook modes are the honest signal install.sh treats them as: every hooks/*.sh outside install.sh's library list is executable, every library in it exists, says so in its header and is not executable, and the list \u2014 not the files' own text \u2014 is what the installer reads";
+var INSTALLER = "install.sh";
+var HOOKS_DIR2 = "hooks";
+var LIB_MARKER = "Sourced only";
+var HEADER_LINES = 8;
+var LIST_PATTERN = /^ENGINEOS_HOOK_LIBRARIES="(.*)"$/m;
+function checkC30(ctx) {
+  var _a;
+  const installer = ctx.readText(INSTALLER);
+  if (installer === void 0 || !ctx.exists(HOOKS_DIR2)) {
+    return skipOnce(ctx, "C30", C30_TITLE, "hook-modes");
+  }
+  const declared4 = (_a = LIST_PATTERN.exec(installer)) == null ? void 0 : _a[1];
+  if (declared4 === void 0 || declared4.trim() === "") {
+    return [result("C30", C30_TITLE, [finding("C30", "library-list-unreadable", INSTALLER)])];
+  }
+  const libraries = declared4.split(/\s+/).filter((name) => name !== "");
+  const findings = [
+    ...libraryFindings(ctx, libraries),
+    ...entryPointFindings(ctx, new Set(libraries)),
+    ...installerFindings(installer)
+  ];
+  return [result("C30", C30_TITLE, findings)];
+}
+function libraryFindings(ctx, libraries) {
+  const findings = [];
+  for (const name of libraries) {
+    const text3 = ctx.readText(`${HOOKS_DIR2}/${name}`);
+    if (text3 === void 0) {
+      findings.push(finding("C30", "listed-library-does-not-exist", name));
+      continue;
+    }
+    if (!header(text3).includes(LIB_MARKER)) {
+      findings.push(finding("C30", "listed-library-does-not-introduce-itself-as-one", name));
+    }
+    if (isExecutable3(ctx.root, `${HOOKS_DIR2}/${name}`)) {
+      findings.push(finding("C30", "library-carries-the-executable-bit", name));
+    }
+  }
+  return findings;
+}
+function entryPointFindings(ctx, libraries) {
+  const findings = [];
+  for (const name of ctx.list(HOOKS_DIR2)) {
+    if (!name.endsWith(".sh") || libraries.has(name)) continue;
+    const text3 = ctx.readText(`${HOOKS_DIR2}/${name}`);
+    if (text3 === void 0) continue;
+    if (!isExecutable3(ctx.root, `${HOOKS_DIR2}/${name}`)) {
+      findings.push(finding("C30", "hook-entry-point-is-not-executable", name));
+    }
+    if (header(text3).includes(LIB_MARKER)) {
+      findings.push(finding("C30", "introduces-itself-as-a-library-but-is-not-listed", name));
+    }
+  }
+  return findings;
+}
+function installerFindings(installer) {
+  const live = installer.split("\n").some((line) => line.includes(LIB_MARKER) && !/^\s*#/.test(line));
+  return live ? [finding("C30", "install-decides-executability-from-file-text", INSTALLER)] : [];
+}
+function header(text3) {
+  return text3.split("\n").slice(0, HEADER_LINES).join("\n");
+}
+
+// src/checks/runtime-surface-wiring.ts
+var C27c_FINDINGS = [
+  "span-kinds-empty",
+  "declared-writer-writes-no-span",
+  "dispatch-hook-opens-no-span",
+  "return-hook-closes-no-span",
+  "undeclared-span-writer",
+  "span-sink-references-prompt-text",
+  "reaper-ignores-exec-jsonl",
+  "reaper-ignores-span-markers"
+];
+var C27c_TITLE = "exec-journal span wiring is complete in both directions (every declared writer writes a span, every span-writing hook is declared), prompt-text-free at the sink, and reaped by src/hooks/ensure-project-layout.ts";
+var HOOKS_DIR3 = "src/hooks";
+var DISPATCH_HOOK = "src/hooks/announce-agent-dispatch.ts";
+var RETURN_HOOK = "src/hooks/announce-agent-return.ts";
+var LAYOUT_HOOK2 = "src/hooks/ensure-project-layout.ts";
+var NOT_WRITERS = /* @__PURE__ */ new Set(["src/hooks/telemetry.ts", "src/hooks/span-writer.ts"]);
+var LIFECYCLE = /openSpan\(|closeSpan\(|withSpan\(/;
+function checkC27c(ctx) {
+  const skipped = haveExecJournalInputs(ctx, "C27c", C27c_TITLE);
+  if (skipped !== void 0) return skipped;
+  const block2 = execJournalBlock(ctx);
+  const kinds = stringArray(block2 == null ? void 0 : block2["span_kinds"]);
+  const writers = stringArray(block2 == null ? void 0 : block2["written_by"]);
+  const findings = [];
+  if (kinds.length === 0) {
+    findings.push(finding("C27c", "span-kinds-empty"));
+  } else {
+    findings.push(...forwardFindings(ctx, writers));
+    findings.push(...pairFindings(ctx));
+    findings.push(...reverseFindings(ctx, kinds, writers));
+  }
+  findings.push(...sinkFindings(ctx, block2 == null ? void 0 : block2["written_by_helper"]));
+  findings.push(...reaperFindings(ctx));
+  return [result("C27c", C27c_TITLE, findings)];
+}
+function forwardFindings(ctx, writers) {
+  const findings = [];
+  for (const writer of writers) {
+    const text3 = ctx.readText(writer);
+    if (text3 === void 0) continue;
+    if (!LIFECYCLE.test(text3)) findings.push(finding("C27c", "declared-writer-writes-no-span", writer));
+  }
+  return findings;
+}
+function pairFindings(ctx) {
+  const findings = [];
+  if (!(ctx.readText(DISPATCH_HOOK) ?? "").includes("openSpan(")) {
+    findings.push(finding("C27c", "dispatch-hook-opens-no-span", DISPATCH_HOOK));
+  }
+  if (!(ctx.readText(RETURN_HOOK) ?? "").includes("closeSpan(")) {
+    findings.push(finding("C27c", "return-hook-closes-no-span", RETURN_HOOK));
+  }
+  return findings;
+}
+function reverseFindings(ctx, kinds, writers) {
+  const declared4 = new Set(writers);
+  const emitsKind = new RegExp(`kind: '(${kinds.map(escapeRegExp3).join("|")})'`);
+  const findings = [];
+  for (const name of ctx.list(HOOKS_DIR3)) {
+    if (!name.endsWith(".ts") || name.endsWith(".test.ts")) continue;
+    const path = `${HOOKS_DIR3}/${name}`;
+    if (NOT_WRITERS.has(path)) continue;
+    const text3 = ctx.readText(path);
+    if (text3 === void 0 || !emitsKind.test(text3)) continue;
+    if (!declared4.has(path)) findings.push(finding("C27c", "undeclared-span-writer", path));
+  }
+  return findings;
+}
+function sinkFindings(ctx, helper) {
+  if (typeof helper !== "string" || helper === "") return [];
+  const text3 = ctx.readText(helper);
+  if (text3 === void 0 || !text3.includes("env.prompt")) return [];
+  return [finding("C27c", "span-sink-references-prompt-text", helper)];
+}
+function reaperFindings(ctx) {
+  const text3 = ctx.readText(LAYOUT_HOOK2) ?? "";
+  const findings = [];
+  if (!text3.includes("endsWith('.jsonl')")) findings.push(finding("C27c", "reaper-ignores-exec-jsonl", LAYOUT_HOOK2));
+  if (!text3.includes("reapFilesBelow(spans")) findings.push(finding("C27c", "reaper-ignores-span-markers", LAYOUT_HOOK2));
+  return findings;
+}
+function escapeRegExp3(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// src/checks/runtime-surface.ts
+var RUNTIME_SURFACE_CHECKS = [
+  { id: "C27", codes: C27_FINDINGS, run: checkC27 },
+  { id: "C27b", codes: C27b_FINDINGS, run: checkC27b },
+  { id: "C27c", codes: C27c_FINDINGS, run: checkC27c },
+  { id: "C27d", codes: C27d_FINDINGS, run: checkC27d },
+  { id: "C28", codes: C28_FINDINGS, run: checkC28 },
+  { id: "C29", codes: C29_FINDINGS, run: checkC29 },
+  { id: "C30", codes: C30_FINDINGS, run: checkC30 }
+];
+
+// src/checks/index.ts
+var CHECKS = [
+  ...RULES_CHECKS,
+  ...REGISTRIES_CHECKS,
+  ...AGENTS_SKILLS_CHECKS,
+  ...DECISION_REGISTRIES_CHECKS,
+  ...KERNEL_CHECKS,
+  ...CONTRACTS_CHECKS,
+  ...RUNTIME_GOVERNANCE_CHECKS,
+  ...RUNTIME_SURFACE_CHECKS
+];
+function orderIds(ids) {
+  return [...ids].sort((a, b) => {
+    const left = idKey(a);
+    const right = idKey(b);
+    if (left.numeric !== right.numeric) return left.numeric - right.numeric;
+    return byteOrder4(left.suffix, right.suffix);
+  });
+}
+function selectIds(ids, only) {
+  if (only === ALL) return { selected: [...ids], unknown: [] };
+  const wants = only.split(/[\s,]+/).filter((want) => want !== "");
+  const known = /* @__PURE__ */ new Set();
+  for (const id of ids) {
+    known.add(id);
+    known.add(parentOf3(id));
+  }
+  const unknown = wants.filter((want) => !known.has(want));
+  const wanted = new Set(wants);
+  const selected = ids.filter((id) => wanted.has(id) || wanted.has(parentOf3(id)));
+  return { selected: [...new Set(selected)], unknown };
+}
+var ALL = "all";
+function parentOf3(id) {
+  const cut = id.search(/[a-z]/);
+  return cut === -1 ? id : id.slice(0, cut);
+}
+function idKey(id) {
+  const matched = /^[^0-9]*([0-9]+)([a-z]*)$/.exec(id);
+  const digits = matched == null ? void 0 : matched[1];
+  if (digits === void 0) return { numeric: 0, suffix: id };
+  return { numeric: Number.parseInt(digits, 10), suffix: (matched == null ? void 0 : matched[2]) ?? "" };
+}
+function byteOrder4(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -5524,9 +9427,9 @@ function messageOf(error) {
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
-function isExecutable2(path) {
+function isExecutable4(path) {
   try {
-    (0, import_node_fs32.accessSync)(path, import_node_fs32.constants.X_OK);
+    (0, import_node_fs39.accessSync)(path, import_node_fs39.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -5556,7 +9459,7 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs32.existsSync, import_node_fs32.readdirSync, isExecutable2);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs39.existsSync, import_node_fs39.readdirSync, isExecutable4);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 var table = {
