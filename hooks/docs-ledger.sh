@@ -58,3 +58,52 @@ ENGINEOS_EXTERNAL_SKILLS="claude-api code-review"
 # router row that dispatches them, never by a short name; router is reached through
 # /engineos:route, never called by a person's name.
 ENGINEOS_ALIAS_EXEMPT="ios-builder android-builder router"
+
+# ---------------------------------------------------------------------------
+# The DATA above now lives in registries/docs-ledger.json. This file is the
+# sourced-library face of it and keeps the six variable names hooks/test-docs.sh
+# already reads; the prose behind each list stays here, where a reader looking at
+# the ledger finds it. The literals above are the degraded copy, used when jq is
+# absent or the registry cannot be read — the JSON is the source of truth, and the
+# two must produce byte-identical values.
+#
+# Loaded as a unit: a partial read would silently narrow a budget list or an
+# exemption list, which turns hooks/test-docs.sh red for a reason that has nothing
+# to do with the docs. Any failure leaves every literal in place.
+# ---------------------------------------------------------------------------
+_engineos_docs_ledger_load() {
+  local json always contract exceptions budgets skills exempt
+  json="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/registries/docs-ledger.json"
+  command -v jq >/dev/null 2>&1 || return 1
+  [ -f "$json" ] || return 1
+  always=$(jq -r '.always_on | join(" ")' "$json" 2>/dev/null) || return 1
+  contract=$(jq -r '.task_contract_rules | join(" ")' "$json" 2>/dev/null) || return 1
+  exceptions=$(jq -r '.closure_exceptions[] | "\(.from)|\(.to)|\(.reason)"' "$json" 2>/dev/null) || return 1
+  budgets=$(jq -r '.marker_budgets[] | "\(.phrase)|\(.max_files)|\(.owner)"' "$json" 2>/dev/null) || return 1
+  skills=$(jq -r '.external_skills | join(" ")' "$json" 2>/dev/null) || return 1
+  exempt=$(jq -r '.alias_exempt | join(" ")' "$json" 2>/dev/null) || return 1
+  # An empty list here is a real state (no accepted gap); an empty one anywhere
+  # else means the read failed, so refuse rather than publish a shorter ledger.
+  [ -n "$always" ] && [ -n "$contract" ] && [ -n "$budgets" ] \
+    && [ -n "$skills" ] && [ -n "$exempt" ] || return 1
+
+  ENGINEOS_ALWAYS_ON="$always"
+  ENGINEOS_TASK_CONTRACT_RULES="$contract"
+  ENGINEOS_EXTERNAL_SKILLS="$skills"
+  ENGINEOS_ALIAS_EXEMPT="$exempt"
+  # Both multi-line lists are newline-delimited records read line by line; the
+  # empty form is the empty string, not a blank line, so that a `grep -q '^a|b|'`
+  # over an empty ledger matches nothing.
+  if [ -n "$exceptions" ]; then
+    ENGINEOS_CLOSURE_EXCEPTIONS="
+$exceptions
+"
+  else
+    ENGINEOS_CLOSURE_EXCEPTIONS=''
+  fi
+  ENGINEOS_MARKER_BUDGETS="
+$budgets
+"
+}
+_engineos_docs_ledger_load || true
+unset -f _engineos_docs_ledger_load

@@ -1,0 +1,25 @@
+{
+  "note": "Declarations for hooks/test-docs.sh. No logic — six lists the probe suite reads. Every entry is a promise: the gap is known, the reason is written down, and one more instance of it turns the suite red. hooks/docs-ledger.sh reads this file with jq and keeps a literal copy as its jq-free fallback; the prose behind each list lives in that file's comments.",
+  "always_on": ["base", "security", "git", "context"],
+  "task_contract_rules": ["gates", "models", "parallelism", "risk-autonomy", "verification"],
+  "closure_exceptions": [],
+  "marker_budgets": [
+    { "phrase": "lint + typecheck", "max_files": 1, "owner": "rules/verification.md" },
+    { "phrase": "Tests are opt-in", "max_files": 6, "owner": "rules/verification.md" },
+    { "phrase": "MODE: AUDIT", "max_files": 3, "owner": "rules/subagents.md" },
+    {
+      "phrase": "Do not spawn subagents",
+      "max_files": 0,
+      "owner": "-",
+      "note": "retired phrasing: rules/parallelism.md states the flat graph orchestrator-side, and coordinators are granted no Task tool, so the ban was a no-op there"
+    },
+    {
+      "phrase": "Project `CLAUDE.md` overrides EngineOS",
+      "max_files": 0,
+      "owner": "-",
+      "note": "retired phrasing: CLAUDE.md non-negotiable #4, plus rules/subagents.md for dispatched agents"
+    }
+  ],
+  "external_skills": ["claude-api", "code-review"],
+  "alias_exempt": ["ios-builder", "android-builder", "router"]
+}
