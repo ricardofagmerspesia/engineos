@@ -252,7 +252,7 @@
     ]
   },
   "router": {
-    "note": "Escalation policy for the P3 router agent: when the deterministic kernel answer is not enough and a model must produce a dispatch plan. Read by scripts/kernel.sh route-escalate; the fixtures are asserted by validate-engineos.sh C18e and scripts/test-kernel.sh.",
+    "note": "Escalation policy for the P3 router agent: when the deterministic kernel answer is not enough and a model must produce a dispatch plan. Read by scripts/kernel.sh route-escalate; the fixtures are asserted by validate-engineos.sh C18e and src/kernel/kernel-route-escalate.e2e.test.ts.",
     "agent": "router",
     "capability": "route",
     "reasons": ["multi-agent-dispatch", "unrouted-scale", "requires-dispatch-plan"],
