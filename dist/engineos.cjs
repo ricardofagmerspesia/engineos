@@ -2,8 +2,8 @@
 "use strict";
 
 // src/cli.ts
-var import_node_child_process5 = require("node:child_process");
-var import_node_fs25 = require("node:fs");
+var import_node_child_process8 = require("node:child_process");
+var import_node_fs31 = require("node:fs");
 
 // src/io.ts
 var import_node_fs = require("node:fs");
@@ -59,7 +59,7 @@ function defaultIsExecutable(path) {
     return false;
   }
 }
-function findNewerNode(env, exists, listDir, isExecutable2 = defaultIsExecutable) {
+function findNewerNode(env, exists, listDir, isExecutable3 = defaultIsExecutable) {
   const nvmDir = env["NVM_DIR"] ?? (0, import_node_path.join)(env["HOME"] ?? "", ".nvm");
   const versionsDir = (0, import_node_path.join)(nvmDir, "versions", "node");
   if (exists(versionsDir)) {
@@ -76,11 +76,11 @@ function findNewerNode(env, exists, listDir, isExecutable2 = defaultIsExecutable
     });
     for (const v of candidates) {
       const bin = (0, import_node_path.join)(versionsDir, v, "bin", "node");
-      if (exists(bin) && isExecutable2(bin)) return bin;
+      if (exists(bin) && isExecutable3(bin)) return bin;
     }
   }
   for (const bin of ["/opt/homebrew/bin/node", "/usr/local/bin/node"]) {
-    if (exists(bin) && isExecutable2(bin)) return bin;
+    if (exists(bin) && isExecutable3(bin)) return bin;
   }
   return null;
 }
@@ -3534,13 +3534,13 @@ function isFile4(path) {
   }
 }
 function verifyEnvironment(env, version = process.versions.node) {
-  const onPath = majorOf2(version);
-  const fixed = runnerEnv(env, onPath);
-  if (fixed === env) return { env, nodeMajor: onPath };
+  const onPath2 = majorOf2(version);
+  const fixed = runnerEnv(env, onPath2);
+  if (fixed === env) return { env, nodeMajor: onPath2 };
   const prepended = (fixed["PATH"] ?? "").split(import_node_path13.delimiter)[0] ?? "";
   const found = /\/v(\d+)[^/]*\/bin$/.exec(prepended);
   const rescued = found === null ? Number.NaN : Number.parseInt(found[1] ?? "", 10);
-  return { env: fixed, nodeMajor: Number.isNaN(rescued) ? onPath : rescued };
+  return { env: fixed, nodeMajor: Number.isNaN(rescued) ? onPath2 : rescued };
 }
 function runnerCommand(sel) {
   const command = (sel.kind === "nx" ? sel.exec : sel.run).split(" ").find((part) => part !== "");
@@ -4628,12 +4628,726 @@ var runGen = (argv2, io2) => {
   }
 };
 
+// src/evals/run.ts
+var import_node_child_process5 = require("node:child_process");
+var import_node_fs27 = require("node:fs");
+var import_node_path21 = require("node:path");
+
+// src/evals/deterministic.ts
+var import_node_fs26 = require("node:fs");
+var import_node_path20 = require("node:path");
+
+// src/lib/deferrals.ts
+var import_node_fs25 = require("node:fs");
+var import_node_path19 = require("node:path");
+var TASK_CONTRACT_RULES = ["gates", "models", "parallelism", "risk-autonomy", "verification"];
+var IMPORT_LINE2 = /^@rules\/([a-z-]*)\.md/;
+var MD = ".md";
+function alwaysOnRules(claudeMdText) {
+  const names = /* @__PURE__ */ new Set();
+  for (const line of claudeMdText.split("\n")) {
+    const matched = IMPORT_LINE2.exec(line);
+    const name = matched === null ? void 0 : matched[1];
+    if (name !== void 0) names.add(name);
+  }
+  return [...names].sort();
+}
+function ruleNames(root) {
+  let entries;
+  try {
+    entries = (0, import_node_fs25.readdirSync)((0, import_node_path19.join)(root, "rules"));
+  } catch {
+    return [];
+  }
+  return entries.filter((name) => name.endsWith(MD)).map((name) => name.slice(0, name.length - MD.length)).sort();
+}
+function deferralsOf(root, rule, alwaysOn) {
+  let text2;
+  try {
+    text2 = (0, import_node_fs25.readFileSync)((0, import_node_path19.join)(root, "rules", `${rule}.md`), "utf8");
+  } catch {
+    return [];
+  }
+  const deferrals = [];
+  for (const name of ruleNames(root)) {
+    if (name === rule) continue;
+    if (alwaysOn.includes(name)) continue;
+    if (TASK_CONTRACT_RULES.includes(name)) continue;
+    if (mentions(text2, name)) deferrals.push(name);
+  }
+  return deferrals;
+}
+function mentions(text2, name) {
+  return text2.includes(`${name}${MD}`);
+}
+
+// src/evals/deterministic.ts
+var INTENTS = "evals/intent-routing-cases.jsonl";
+var AGENTS = "evals/agent-cases.jsonl";
+var COVERAGE_FLOOR = 25;
+var RISK_RANKS = { low: 1, medium: 2, high: 3 };
+function grader(io2) {
+  let pass = 0;
+  let fail5 = 0;
+  return {
+    ok(message2) {
+      pass += 1;
+      io2.out(`ok   ${message2}
+`);
+    },
+    bad(message2) {
+      fail5 += 1;
+      io2.out(`FAIL ${message2}
+`);
+    },
+    counts() {
+      return { pass, fail: fail5 };
+    }
+  };
+}
+function runDeterministicTier(root, io2) {
+  const g = grader(io2);
+  io2.out("== deterministic tier ==\n");
+  for (const file of [INTENTS, AGENTS]) gradeJsonl(root, file, g);
+  const alwaysOn = alwaysOnRules(readTextOrEmpty((0, import_node_path20.join)(root, "CLAUDE.md")));
+  gradeIntentCases(root, alwaysOn, g);
+  gradeAgentCases(root, g);
+  const intentCount = nonEmptyLines(root, INTENTS).length;
+  if (intentCount >= COVERAGE_FLOOR) {
+    g.ok(`intent set size ${intentCount} (RUBRIC target 30-60; floor ${COVERAGE_FLOOR})`);
+  } else {
+    g.bad(`intent set has only ${intentCount} cases \u2014 below the floor of ${COVERAGE_FLOOR}, the set is decorative`);
+  }
+  return { ...g.counts(), intentCount };
+}
+function gradeJsonl(root, file, g) {
+  if (!(0, import_node_fs26.existsSync)((0, import_node_path20.join)(root, file))) {
+    g.bad(`${file} missing`);
+    return;
+  }
+  const lines = nonEmptyLines(root, file);
+  const malformed = [];
+  lines.forEach((line, index) => {
+    if (parseCase(line) === void 0) malformed.push(`line${index + 1}`);
+  });
+  if (malformed.length === 0) g.ok(`${file} is valid JSONL (${lines.length} cases)`);
+  else g.bad(`${file} has malformed lines: ${malformed.join(" ")}`);
+}
+function gradeIntentCases(root, alwaysOn, g) {
+  const badRisk = [];
+  const badFields = [];
+  const badRule = [];
+  const badBoth = [];
+  const badAlwaysOn = [];
+  const badClosed = [];
+  const floors = riskFloors(root);
+  for (const line of nonEmptyLines(root, INTENTS)) {
+    const parsed = parseCase(line);
+    const id = jqStringOr(parsed, "id", "");
+    const input = jqStringOr(parsed, "input", "");
+    const notes = jqStringOr(parsed, "notes", "");
+    if (id === "" || input === "" || notes === "") badFields.push(id === "" ? "<no-id>" : id);
+    const mustLoad = jqWords(parsed, "must_load");
+    const mustNotLoad = jqWords(parsed, "must_not_load");
+    for (const rule of [...mustLoad, ...mustNotLoad]) {
+      if (!(0, import_node_fs26.existsSync)((0, import_node_path20.join)(root, "rules", `${rule}.md`))) badRule.push(`${id}->${rule}`);
+    }
+    for (const rule of mustLoad) {
+      if (alwaysOn.includes(rule)) badAlwaysOn.push(`${id}->must_load:${rule}`);
+      if (mustNotLoad.includes(rule)) badBoth.push(`${id}->${rule}`);
+      for (const deferral of deferralsOf(root, rule, alwaysOn)) {
+        if (!mustLoad.includes(deferral)) badClosed.push(`${id}(${rule}-defers-to-${deferral})`);
+      }
+    }
+    for (const rule of mustNotLoad) {
+      if (alwaysOn.includes(rule)) badAlwaysOn.push(`${id}->must_not_load:${rule}`);
+    }
+    const expectRisk = jqStringOr(parsed, "expect_risk", "");
+    if (expectRisk === "") continue;
+    if (rankOf(expectRisk) === 0) badRisk.push(`${id}(tier='${expectRisk}')`);
+    for (const domain of jqWords(parsed, "expect_intents")) {
+      const floor = floors.get(domain) ?? "";
+      if (floor === "") continue;
+      if (rankOf(expectRisk) < rankOf(floor)) {
+        badRisk.push(`${id}(expects '${expectRisk}' but domain '${domain}' floors at '${floor}')`);
+      }
+    }
+  }
+  report(g, badRisk, "expect_risk values are valid and respect registry risk floors", "risk expectation problems");
+  report(g, badFields, "every intent case has id, input and notes", "cases missing required fields");
+  report(g, badRule, "every asserted rule exists in rules/", "cases naming nonexistent rules");
+  report(g, badBoth, "no rule is both required and forbidden in the same case", "contradictory expectations");
+  report(g, badAlwaysOn, "no case asserts on an always-on rule (they are implicit)", "always-on rules asserted");
+  report(g, badClosed, "every must_load set is closed under rule deferrals", "unclosed must_load sets");
+}
+function gradeAgentCases(root, g) {
+  const badAgent = [];
+  const badLists = [];
+  for (const line of nonEmptyLines(root, AGENTS)) {
+    const parsed = parseCase(line);
+    const id = jqStringOr(parsed, "id", "");
+    const agent = jqStringOr(parsed, "agent", "");
+    if (agent !== "any" && !(0, import_node_fs26.existsSync)((0, import_node_path20.join)(root, "agents", `${agent}.md`))) badAgent.push(`${id}->${agent}`);
+    if (jqLength(parsed, "must") === 0 || jqLength(parsed, "must_not") === 0) badLists.push(id);
+  }
+  report(g, badAgent, "every agent case names an existing agent", "cases naming nonexistent agents");
+  report(g, badLists, "every agent case has both must and must_not items", "cases with an empty must/must_not list");
+}
+function report(g, problems, okMessage, failPrefix) {
+  if (problems.length === 0) g.ok(okMessage);
+  else g.bad(`${failPrefix}: ${problems.join(" ")}`);
+}
+function rankOf(tier) {
+  return RISK_RANKS[tier] ?? 0;
+}
+function riskFloors(root) {
+  const floors = /* @__PURE__ */ new Map();
+  let raw;
+  try {
+    raw = readJsonFile((0, import_node_path20.join)(root, "registries", "routing.json"));
+  } catch {
+    return floors;
+  }
+  const record = isRecord(raw) ? raw : {};
+  const domains = Array.isArray(record["domains"]) ? record["domains"] : [];
+  for (const domain of domains.filter(isRecord)) {
+    const id = domain["id"];
+    if (typeof id !== "string" || floors.has(id)) continue;
+    floors.set(id, jqStringOr(domain, "risk_floor", ""));
+  }
+  return floors;
+}
+function nonEmptyLines(root, file) {
+  return readTextOrEmpty((0, import_node_path20.join)(root, file)).split("\n").filter((line) => line !== "");
+}
+function parseCase(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return void 0;
+  }
+}
+function jqStringOr(value, key, fallback) {
+  const field = fieldOf(value, key);
+  if (field === void 0 || field === null || field === false) return fallback;
+  return jqText(field);
+}
+function jqString2(value, key) {
+  return jqText(fieldOf(value, key));
+}
+function jqWords(value, key) {
+  const field = fieldOf(value, key);
+  if (!Array.isArray(field)) return [];
+  const elements = field;
+  return elements.flatMap((element) => jqText(element).split(/\s+/).filter((word) => word !== ""));
+}
+function jqLength(value, key) {
+  const field = fieldOf(value, key);
+  if (field === void 0 || field === null) return 0;
+  if (Array.isArray(field)) return field.length;
+  if (typeof field === "string") return field.length;
+  if (typeof field === "number") return Math.abs(field);
+  if (isRecord(field)) return Object.keys(field).length;
+  return 0;
+}
+function fieldOf(value, key) {
+  return isRecord(value) ? value[key] : void 0;
+}
+function jqText(value) {
+  if (typeof value === "string") return value;
+  if (value === void 0 || value === null) return "null";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value) ?? "null";
+}
+function readTextOrEmpty(path) {
+  try {
+    return (0, import_node_fs26.readFileSync)(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+// src/evals/live.ts
+var ROUTER_MARKER = "[router]";
+function runLiveTier(root, io2, intentCount, deps) {
+  const g = grader(io2);
+  io2.out("\n== live tier ==\n");
+  if (deps.env["ENGINEOS_EVAL_LIVE"] !== "1") {
+    io2.out(`SKIP ${intentCount} intent cases \u2014 set ENGINEOS_EVAL_LIVE=1 to grade against a live model
+`);
+    return { ...g.counts(), skipped: intentCount };
+  }
+  if (!deps.hasClaude()) {
+    io2.out(`SKIP ${intentCount} intent cases \u2014 ENGINEOS_EVAL_LIVE=1 but the 'claude' CLI is not on PATH
+`);
+    return { ...g.counts(), skipped: intentCount };
+  }
+  for (const line of nonEmptyLines(root, INTENTS)) {
+    const parsed = parseCase(line);
+    const id = jqString2(parsed, "id");
+    const mustLoad = jqWords(parsed, "must_load");
+    const mustNotLoad = jqWords(parsed, "must_not_load");
+    const router = routerLine(deps.runClaude(jqString2(parsed, "input")));
+    if (jqLength(parsed, "expect_intents") === 0) {
+      if (router === "") g.ok(`${id} (no routing expected)`);
+      else g.bad(`${id} over-routed a pure question: ${router}`);
+      continue;
+    }
+    if (router === "") {
+      g.bad(`${id} emitted no [router] line`);
+      continue;
+    }
+    const problems = [];
+    for (const rule of mustLoad) if (!router.includes(rule)) problems.push(`missing:${rule}`);
+    for (const rule of mustNotLoad) if (router.includes(rule)) problems.push(`forbidden:${rule}`);
+    if (problems.length === 0) g.ok(id);
+    else g.bad(`${id} \u2014 ${problems.join(" ")} | got: ${router}`);
+  }
+  return { ...g.counts(), skipped: 0 };
+}
+function routerLine(output) {
+  return output.split("\n").find((line) => line.includes(ROUTER_MARKER)) ?? "";
+}
+
+// src/evals/run.ts
+var EXIT_OK6 = 0;
+var EXIT_FAILURE5 = 1;
+var runEvals = (_argv, io2) => {
+  const root = resolveRoot(io2.env);
+  const deterministic = runDeterministicTier(root, io2);
+  const live = runLiveTier(root, io2, deterministic.intentCount, liveDeps(io2.env));
+  const pass = deterministic.pass + live.pass;
+  const fail5 = deterministic.fail + live.fail;
+  io2.out(`
+passed ${pass}, failed ${fail5}, skipped ${live.skipped}
+`);
+  return fail5 > 0 ? EXIT_FAILURE5 : EXIT_OK6;
+};
+function liveDeps(env) {
+  return {
+    env,
+    hasClaude: () => onPath("claude", env),
+    // stderr is discarded and a failed call answers with the empty string, as the
+    // bash `$(claude -p "$inp" 2>/dev/null)` did: a case whose model call died
+    // grades as a missing router line, never as a pass.
+    runClaude: (prompt) => {
+      const result = (0, import_node_child_process5.spawnSync)("claude", ["-p", prompt], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      return result.stdout ?? "";
+    }
+  };
+}
+function onPath(name, env) {
+  const path = env["PATH"];
+  if (path === void 0 || path === "") return false;
+  for (const directory of path.split(import_node_path21.delimiter)) {
+    if (directory === "") continue;
+    if (isExecutable((0, import_node_path21.join)(directory, name))) return true;
+  }
+  return false;
+}
+function isExecutable(path) {
+  try {
+    (0, import_node_fs27.accessSync)(path, import_node_fs27.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// src/bench/run.ts
+var import_node_child_process6 = require("node:child_process");
+var import_node_fs29 = require("node:fs");
+var import_node_os2 = require("node:os");
+var import_node_path23 = require("node:path");
+var import_node_perf_hooks = require("node:perf_hooks");
+
+// src/bench/measure.ts
+var import_node_fs28 = require("node:fs");
+var import_node_path22 = require("node:path");
+var NUMERIC = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
+function parseMultiplier(raw) {
+  if (raw === void 0 || raw === "") return 1;
+  const text2 = raw.trim();
+  if (!NUMERIC.test(text2)) throw new KernelError("ENGINEOS_PERF_MULTIPLIER must be numeric");
+  const value = Number.parseFloat(text2);
+  if (value <= 0) throw new KernelError("ENGINEOS_PERF_MULTIPLIER must be greater than zero");
+  return value;
+}
+function runOnce(cmd, deps) {
+  const bin = cmd.command[0];
+  if (bin === void 0) throw new KernelError("bench: cannot run an empty command");
+  const args = cmd.command.slice(1);
+  const options = {
+    input: cmd.stdin ?? "",
+    encoding: "utf8",
+    // python's stdout=DEVNULL, stderr=DEVNULL: the child's own output would
+    // interleave with the budget report and is not what is being measured.
+    stdio: ["pipe", "ignore", "ignore"],
+    env: cmd.env
+  };
+  const result = deps.spawn(bin, args, options);
+  const label = cmd.command.join(" ");
+  if (result.error !== void 0) throw new KernelError(`bench: ${label} exited ${result.error.message}`);
+  if (result.signal !== null) throw new KernelError(`bench: ${label} exited ${result.signal}`);
+  if (result.status !== 0) throw new KernelError(`bench: ${label} exited ${String(result.status)}`);
+}
+function medianMs(cmd, deps) {
+  const durations = [];
+  for (let sample = 0; sample < cmd.samples; sample += 1) {
+    const started = deps.now();
+    runOnce(cmd, deps);
+    durations.push(deps.now() - started);
+  }
+  return median(durations);
+}
+function alwaysOnBytes(root) {
+  const claudeMd = (0, import_node_path22.join)(root, "CLAUDE.md");
+  let total = (0, import_node_fs28.statSync)(claudeMd).size;
+  for (const line of (0, import_node_fs28.readFileSync)(claudeMd, "utf8").split(/\r?\n/)) {
+    if (!line.startsWith("@rules/")) continue;
+    total += (0, import_node_fs28.statSync)((0, import_node_path22.join)(root, line.slice(1))).size;
+  }
+  return total;
+}
+function formatMeasurement(m, multiplier) {
+  const effective = m.budget * multiplier;
+  const failed = !(m.actual < effective);
+  const head = `${(failed ? "FAIL" : "ok").padEnd(4)} ${m.name}: `;
+  const body = m.unit === "ms" ? `median=${m.actual.toFixed(1)}ms budget<${effective.toFixed(1)}ms` : `${Math.trunc(m.actual)} bytes budget<${Math.trunc(effective)} bytes`;
+  return { line: `${head}${body}`, failed };
+}
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const upper = sorted[mid];
+  if (upper === void 0) throw new KernelError("bench: cannot take the median of zero samples");
+  if (sorted.length % 2 === 1) return upper;
+  const lower = sorted[mid - 1];
+  return lower === void 0 ? upper : (lower + upper) / 2;
+}
+
+// src/bench/run.ts
+var PROMPT = "add a paginated orders endpoint and mirror the screen to mobile";
+var SESSION_ID = "performance-budget";
+var HEADER = "== EngineOS runtime budgets ==";
+var defaultSpawn2 = (command, args, options) => (0, import_node_child_process6.spawnSync)(command, args, options);
+var DEFAULT_DEPS2 = {
+  spawn: defaultSpawn2,
+  now: () => import_node_perf_hooks.performance.now(),
+  mkdtemp: () => (0, import_node_fs29.mkdtempSync)((0, import_node_path23.join)((0, import_node_os2.tmpdir)(), "engineos-bench-"))
+};
+function runBench(_argv, io2, deps = DEFAULT_DEPS2) {
+  try {
+    const multiplier = parseMultiplier(io2.env["ENGINEOS_PERF_MULTIPLIER"]);
+    const root = resolveRoot(io2.env);
+    const measurements = measureAll(root, io2.env, deps);
+    const lines = [HEADER];
+    let failed = false;
+    for (const measurement of measurements) {
+      const rendered = formatMeasurement(measurement, multiplier);
+      if (rendered.failed) failed = true;
+      lines.push(rendered.line);
+    }
+    io2.out(`${lines.join("\n")}
+`);
+    return failed ? 1 : 0;
+  } catch (e) {
+    if (e instanceof KernelError) {
+      io2.err(`${e.message}
+`);
+      return 1;
+    }
+    throw e;
+  }
+}
+function measureAll(root, env, deps) {
+  const kernel = (0, import_node_path23.join)(root, "scripts/kernel.sh");
+  const advisor = (0, import_node_path23.join)(root, "hooks/prompt-advisor.sh");
+  const routeIntent = medianMs({ command: [kernel, "route-intent", PROMPT], samples: 5 }, deps);
+  const resolveTask2 = medianMs({ command: [kernel, "resolve-task", "--prompt", PROMPT], samples: 5 }, deps);
+  const promptAdvisor = medianMs(
+    {
+      command: [advisor],
+      stdin: JSON.stringify({ prompt: PROMPT, cwd: "/tmp", session_id: SESSION_ID }),
+      env: hookEnv(env),
+      samples: 5
+    },
+    deps
+  );
+  const routeBeforeChange = routeBeforeChangeMedian(root, env, deps);
+  return [
+    { name: "route-intent", actual: routeIntent, budget: 250, unit: "ms" },
+    { name: "resolve-task", actual: resolveTask2, budget: 500, unit: "ms" },
+    { name: "prompt-advisor (end to end)", actual: promptAdvisor, budget: 600, unit: "ms" },
+    { name: "route-before-change (cache hit)", actual: routeBeforeChange, budget: 150, unit: "ms" },
+    { name: "always-on context", actual: alwaysOnBytes(root), budget: 32e3, unit: "bytes" }
+  ];
+}
+function routeBeforeChangeMedian(root, env, deps) {
+  const tmp = deps.mkdtemp();
+  try {
+    runOnce({ command: ["git", "init", "-q", tmp], samples: 1 }, deps);
+    const target = (0, import_node_path23.join)(tmp, "src", "Button.tsx");
+    (0, import_node_fs29.mkdirSync)((0, import_node_path23.join)(tmp, "src"), { recursive: true });
+    (0, import_node_fs29.writeFileSync)(target, "");
+    const cmd = {
+      command: [(0, import_node_path23.join)(root, "hooks/route-before-change.sh")],
+      stdin: JSON.stringify({ tool_input: { file_path: target }, cwd: tmp, session_id: SESSION_ID }),
+      env: hookEnv(env),
+      samples: 7
+    };
+    runOnce(cmd, deps);
+    return medianMs(cmd, deps);
+  } finally {
+    (0, import_node_fs29.rmSync)(tmp, { recursive: true, force: true });
+  }
+}
+function hookEnv(env) {
+  return { ...env, ENGINEOS_BYPASS_FLAG: "/nonexistent/engineos.bypass", ENGINEOS_TELEMETRY: "0" };
+}
+
+// src/report/usage.ts
+var import_node_child_process7 = require("node:child_process");
+var import_node_fs30 = require("node:fs");
+var import_node_path24 = require("node:path");
+var EXIT_OK7 = 0;
+var EXIT_FAILURE6 = 1;
+var USAGE5 = "usage: engineos usage-report [days]";
+var DEFAULT_DAYS = "30";
+var MS_PER_DAY = 864e5;
+var RULE = "=".repeat(33);
+var REPORTED_SKILLS = [
+  "nestjs-patterns",
+  "react-patterns",
+  "llm-engineering",
+  "adr",
+  "eval-harness",
+  "release-notes",
+  "record-change",
+  "strategy"
+];
+var REPORTED_AGENTS = ["security-reviewer", "test-writer"];
+var ROUTER_INTENT = /\[router\] intent=([a-zA-Z-]+)/g;
+var SKILL_PATTERNS = new Map(
+  REPORTED_SKILLS.map((skill) => [skill, new RegExp(`"skill"\\s*:\\s*"${skill}"`)])
+);
+function collectTranscripts(projectsDir, days, nowMs) {
+  const cutoff = nowMs - days * MS_PER_DAY;
+  const found = [];
+  walk(projectsDir, cutoff, found);
+  return found.sort();
+}
+function renderReport(days, deps, io2) {
+  const projectsDir = (0, import_node_path24.join)(deps.env["HOME"] ?? "", ".claude", "projects");
+  if (!isDirectory7(projectsDir)) {
+    io2.out(`No transcripts at ${projectsDir}
+`);
+    return EXIT_FAILURE6;
+  }
+  io2.out(`EngineOS usage \u2014 last ${days} days
+`);
+  io2.out(`${RULE}
+`);
+  const files = collectTranscripts(projectsDir, days, deps.now());
+  if (files.length === 0) {
+    io2.out("No transcripts in window.\n");
+    return EXIT_OK7;
+  }
+  const stats = readTranscripts(files);
+  writeIntents(stats, io2);
+  writeSkills(stats, io2);
+  writeAgents(stats, io2);
+  writeGateHits(stats, io2);
+  writeTelemetry(days, deps, io2);
+  io2.out("\nZero-hit items are prune candidates \u2014 but check the announce habit first.\n");
+  return EXIT_OK7;
+}
+var runUsageReport = (argv2, io2) => {
+  const days = parseDays(argv2[0] ?? DEFAULT_DAYS);
+  if (days === null) {
+    io2.err(`${USAGE5}
+`);
+    return EXIT_FAILURE6;
+  }
+  return renderReport(days, { env: io2.env, cwd: io2.cwd(), now: () => Date.now(), spawn: import_node_child_process7.spawnSync }, io2);
+};
+function parseDays(raw) {
+  if (!/^[0-9]+$/.test(raw)) return null;
+  const days = Number.parseInt(raw, 10);
+  return days > 0 ? days : null;
+}
+function readEntries(dir) {
+  try {
+    return (0, import_node_fs30.readdirSync)(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+function walk(dir, cutoff, found) {
+  for (const entry of readEntries(dir)) {
+    const path = (0, import_node_path24.join)(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(path, cutoff, found);
+    } else if (entry.isFile() && entry.name.endsWith(".jsonl") && newerThan(path, cutoff)) {
+      found.push(path);
+    }
+  }
+}
+function newerThan(path, cutoff) {
+  try {
+    return (0, import_node_fs30.statSync)(path).mtimeMs > cutoff;
+  } catch {
+    return false;
+  }
+}
+function isDirectory7(path) {
+  try {
+    return (0, import_node_fs30.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function readText(path) {
+  try {
+    return (0, import_node_fs30.readFileSync)(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+function readTranscripts(files) {
+  const stats = {
+    intents: /* @__PURE__ */ new Map(),
+    skillFiles: /* @__PURE__ */ new Map(),
+    agentFiles: /* @__PURE__ */ new Map(),
+    gateBlocks: 0
+  };
+  for (const file of files) {
+    const text2 = readText(file);
+    if (text2 === null) continue;
+    for (const match of text2.matchAll(ROUTER_INTENT)) {
+      const intent = match[1];
+      if (intent !== void 0) bump(stats.intents, intent);
+    }
+    for (const [skill, pattern] of SKILL_PATTERNS) {
+      if (pattern.test(text2)) bump(stats.skillFiles, skill);
+    }
+    for (const agent of REPORTED_AGENTS) {
+      if (text2.includes(agent)) bump(stats.agentFiles, agent);
+    }
+    for (const line of text2.split("\n")) {
+      if (line.includes("EngineOS gate")) stats.gateBlocks += 1;
+    }
+  }
+  return stats;
+}
+function bump(counts, key) {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+function writeIntents(stats, io2) {
+  io2.out("\n## Router intents ([router] announce lines)\n");
+  if (stats.intents.size === 0) {
+    io2.out("(none found \u2014 router not announcing?)\n");
+    return;
+  }
+  const rows = [...stats.intents.entries()].sort((a, b) => b[1] - a[1] || compareDesc(a[0], b[0]));
+  for (const [intent, count] of rows) {
+    io2.out(`${String(count).padStart(7)} ${intent}
+`);
+  }
+}
+function writeSkills(stats, io2) {
+  io2.out("\n## EngineOS skill invocations\n");
+  for (const skill of REPORTED_SKILLS) {
+    io2.out(`${column(stats.skillFiles.get(skill) ?? 0)}  ${skill}
+`);
+  }
+}
+function writeAgents(stats, io2) {
+  io2.out("\n## Subagent dispatches\n");
+  for (const agent of REPORTED_AGENTS) {
+    io2.out(`${column(stats.agentFiles.get(agent) ?? 0)}  ${agent} (sessions mentioning)
+`);
+  }
+}
+function writeGateHits(stats, io2) {
+  io2.out("\n## Hook gate hits (stop-verify blocks)\n");
+  io2.out(`${stats.gateBlocks} blocks
+`);
+}
+function writeTelemetry(days, deps, io2) {
+  io2.out("\n## Kernel telemetry (this repo, .git/engineos-telemetry)\n");
+  const dir = gitDir(deps.cwd, deps.spawn);
+  const telemetryDir = dir === null ? null : (0, import_node_path24.join)(dir, "engineos-telemetry");
+  if (telemetryDir === null || !isDirectory7(telemetryDir)) {
+    io2.out("(none \u2014 telemetry not adopted here)\n");
+    return;
+  }
+  const events = readEvents(collectTranscripts(telemetryDir, days, deps.now()));
+  const routes = events.filter((e) => e.event === "route");
+  const unrouted = routes.filter((e) => jqLength2(e.data["intents"]) === 0).length;
+  const escalated = routes.filter((e) => jqTruthy(e.data["escalate"])).length;
+  io2.out(`prompts routed: ${routes.length} (${unrouted} unrouted, ${escalated} escalated)
+`);
+  io2.out("intents fired:\n");
+  writeGrouped(routes.flatMap((e) => stringArray(e.data["intents"])), io2);
+  io2.out("decision rules fired:\n");
+  writeGrouped(events.filter((e) => e.event === "decision-rules").flatMap((e) => stringArray(e.data["rules"])), io2);
+  const verifies = events.filter((e) => e.event === "verify");
+  const red = verifies.filter((e) => jqTruthy(e.data["failed"])).length;
+  io2.out(`verify runs: ${verifies.length} (${red} red)
+`);
+}
+function readEvents(files) {
+  const events = [];
+  for (const file of files) {
+    const text2 = readText(file);
+    if (text2 === null) continue;
+    for (const line of text2.split("\n")) {
+      if (line.trim() === "") continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!isRecord(parsed)) continue;
+      const event2 = parsed["event"];
+      if (typeof event2 !== "string") continue;
+      const data = parsed["data"];
+      events.push({ event: event2, data: isRecord(data) ? data : {} });
+    }
+  }
+  return events;
+}
+function writeGrouped(values, io2) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const value of values) bump(counts, value);
+  const keys = [...counts.keys()].sort();
+  for (const key of keys) {
+    io2.out(`  ${counts.get(key) ?? 0}  ${key}
+`);
+  }
+}
+function jqTruthy(value) {
+  return value !== void 0 && value !== null && value !== false;
+}
+function jqLength2(value) {
+  return Array.isArray(value) ? value.length : 0;
+}
+function column(count) {
+  return String(count).padStart(6);
+}
+function compareDesc(a, b) {
+  if (a === b) return 0;
+  return a < b ? 1 : -1;
+}
+
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
-function isExecutable(path) {
+function isExecutable2(path) {
   try {
-    (0, import_node_fs25.accessSync)(path, import_node_fs25.constants.X_OK);
+    (0, import_node_fs31.accessSync)(path, import_node_fs31.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -4644,7 +5358,7 @@ function applyOutcome(outcome) {
     case "proceed":
       return;
     case "reexec": {
-      const r = (0, import_node_child_process5.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
+      const r = (0, import_node_child_process8.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
       if (r.error === void 0 && r.status !== null) {
         process.exit(r.status);
       }
@@ -4663,7 +5377,7 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs25.existsSync, import_node_fs25.readdirSync, isExecutable);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs31.existsSync, import_node_fs31.readdirSync, isExecutable2);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 var table = {
@@ -4674,6 +5388,9 @@ var table = {
   init: runInit,
   "settings-merge": runSettingsMerge,
   bypass: runBypass,
-  gen: runGen
+  gen: runGen,
+  evals: runEvals,
+  bench: runBench,
+  "usage-report": runUsageReport
 };
 process.exit(dispatch(table, argv, io));
