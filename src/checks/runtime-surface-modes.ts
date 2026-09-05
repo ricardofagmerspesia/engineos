@@ -1,8 +1,8 @@
 // C30: hook entry points are executable, libraries are not.
 //
 // hooks/hooks.json registers the node form now, but a settings.json that copied
-// the old entries still executes each hooks/*.sh shim BY PATH, and so does every
-// bash suite. An entry point that loses +x therefore does not degrade — it dies
+// the old entries still executes each hooks/*.sh shim BY PATH, and so do the
+// e2e shim cases. An entry point that loses +x therefore does not degrade — it dies
 // with "permission denied" on every fire and the guardrail is gone, silently and
 // permanently. The mode bit is load-bearing, and nothing else checks it.
 //

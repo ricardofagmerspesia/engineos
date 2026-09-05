@@ -230,7 +230,7 @@ done
 # here does not exist or does not introduce itself that way, or when either kind
 # carries the wrong mode bit. The mode is the honest signal only because that
 # check holds it to it.
-ENGINEOS_HOOK_LIBRARIES="lib-common.sh lib-runner.sh layout-manifest.sh scaffold-layout.sh"
+ENGINEOS_HOOK_LIBRARIES="layout-manifest.sh scaffold-layout.sh"
 for _hook in "$REPO_DIR"/hooks/*.sh; do
   [ -f "$_hook" ] || continue
   case " $ENGINEOS_HOOK_LIBRARIES " in *" ${_hook##*/} "*) continue ;; esac

@@ -5,9 +5,9 @@
 # ~/.claude/engineos.bypass, ENGINEOS_BYPASS=1) is src/hooks/bypass.ts, which
 # every hook reads in-process — no hook goes through this file any more.
 
-# hooks/lib-common.sh still carries a `. bypass.sh` line. An exec inside a sourced
-# file replaces the SOURCING shell with node, so the stale source line is answered
-# with a return before the exec is ever reached.
+# Guard against being sourced: an exec inside a sourced file replaces the
+# SOURCING shell with node. No shipped file sources this one any more (the last,
+# hooks/lib-common.sh, is gone), but a consumer's own script still might.
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

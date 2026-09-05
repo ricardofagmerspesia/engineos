@@ -151,13 +151,13 @@ test('a hook entry point losing its exec bit is caught', (t: TestContext) => {
 });
 
 test('a sourced-only library carrying the exec bit is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => chmodSync(join(copy, 'hooks/lib-common.sh'), 0o755));
-  assert.ok(hasFinding(run(root, 'C30'), 'library-carries-the-executable-bit', 'lib-common.sh'));
+  const root = checkoutCopy(t, (copy) => chmodSync(join(copy, 'hooks/layout-manifest.sh'), 0o755));
+  assert.ok(hasFinding(run(root, 'C30'), 'library-carries-the-executable-bit', 'layout-manifest.sh'));
 });
 
 test("a library dropped from install.sh's list is caught", (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => rewrite(copy, INSTALLER, ' lib-runner.sh', ''));
-  assert.ok(hasFinding(run(root, 'C30'), 'introduces-itself-as-a-library-but-is-not-listed', 'lib-runner.sh'));
+  const root = checkoutCopy(t, (copy) => rewrite(copy, INSTALLER, ' scaffold-layout.sh', ''));
+  assert.ok(hasFinding(run(root, 'C30'), 'introduces-itself-as-a-library-but-is-not-listed', 'scaffold-layout.sh'));
 });
 
 test("install.sh going back to deciding executability from a file's own header is caught", (t: TestContext) => {
@@ -179,13 +179,13 @@ test('the hook library list removed from install.sh is caught', (t: TestContext)
 });
 
 test('a listed library that does not exist is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => remove(copy, 'hooks/lib-runner.sh'));
-  assert.ok(hasFinding(run(root, 'C30'), 'listed-library-does-not-exist', 'lib-runner.sh'));
+  const root = checkoutCopy(t, (copy) => remove(copy, 'hooks/scaffold-layout.sh'));
+  assert.ok(hasFinding(run(root, 'C30'), 'listed-library-does-not-exist', 'scaffold-layout.sh'));
 });
 
 test('a listed library that no longer introduces itself as one is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => rewrite(copy, 'hooks/lib-common.sh', 'Sourced only', 'Loaded only'));
-  assert.ok(hasFinding(run(root, 'C30'), 'listed-library-does-not-introduce-itself-as-one', 'lib-common.sh'));
+  const root = checkoutCopy(t, (copy) => rewrite(copy, 'hooks/layout-manifest.sh', 'Sourced only', 'Loaded only'));
+  assert.ok(hasFinding(run(root, 'C30'), 'listed-library-does-not-introduce-itself-as-one', 'layout-manifest.sh'));
 });
 
 // ------------------------------------------------------------------- coverage
