@@ -19,6 +19,12 @@ export interface SkillRelations {
   dependsOnRules: string[];
 }
 
+export interface AgentRelations {
+  usesSkills: string[];
+  routedDomains: string[];
+  capabilityIds: string[];
+}
+
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 /** Body of a markdown file with its frontmatter block removed, or the whole file when it has none. */
@@ -47,6 +53,11 @@ interface GraphSources {
   /** domain/intent id -> { agents, skills } as declared in the registries. */
   bindings: Array<{ agents: string[]; skills: string[] }>;
   ruleIds: string[];
+  skillIds: string[];
+  /** routing domain id -> agents it dispatches to. */
+  domainAgents: Array<{ domain: string; agents: string[] }>;
+  /** capability id -> the single agent bound to it. */
+  capabilityAgents: Array<{ capability: string; agent: string }>;
 }
 
 function safeParseJson(raw: string | null): unknown {
@@ -105,6 +116,36 @@ function collectRuleIds(basePath: string): string[] {
     .sort();
 }
 
+function collectSkillIds(basePath: string): string[] {
+  const dir = path.join(basePath, 'skills');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(path.join(dir, entry.name, 'SKILL.md')))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+function collectDomainAgents(basePath: string): GraphSources['domainAgents'] {
+  const routing = safeParseJson(readIfPresent(path.join(basePath, 'registries', 'routing.json'))) as
+    | { domains?: Array<{ id?: string; agent?: string | null; agents?: string[] }> }
+    | null;
+  return (routing?.domains ?? [])
+    .filter((domain): domain is { id: string; agent?: string | null; agents?: string[] } => typeof domain.id === 'string')
+    .map((domain) => ({
+      domain: domain.id,
+      agents: [...(domain.agents ?? []), ...(domain.agent ? [domain.agent] : [])],
+    }));
+}
+
+function collectCapabilityAgents(basePath: string): GraphSources['capabilityAgents'] {
+  const caps = safeParseJson(readIfPresent(path.join(basePath, 'registries', 'capabilities.json'))) as
+    | { capabilities?: Array<{ id?: string; agent?: string }> }
+    | null;
+  return (caps?.capabilities ?? [])
+    .filter((cap): cap is { id: string; agent: string } => typeof cap.id === 'string' && typeof cap.agent === 'string')
+    .map((cap) => ({ capability: cap.id, agent: cap.agent }));
+}
+
 /**
  * Reads every source of skill relations once. Callers resolve many skills
  * against one graph instead of re-reading `agents/`, `rules/` and the
@@ -115,6 +156,9 @@ export function loadGraph(basePath: string): GraphSources {
     agentBodies: collectAgentBodies(basePath),
     bindings: collectBindings(basePath),
     ruleIds: collectRuleIds(basePath),
+    skillIds: collectSkillIds(basePath),
+    domainAgents: collectDomainAgents(basePath),
+    capabilityAgents: collectCapabilityAgents(basePath),
   };
 }
 
@@ -150,5 +194,41 @@ export function resolveSkillRelations(
   return {
     usedByAgents: [...agents].sort(),
     dependsOnRules,
+  };
+}
+
+/**
+ * The mirror of `resolveSkillRelations`, and deliberately the same two grounds
+ * in the same order: a registry binding, and the agent's own prose. Reading the
+ * edge from one side only is how the two pages end up disagreeing about whether
+ * an agent uses a skill.
+ */
+export function resolveAgentRelations(
+  graph: GraphSources,
+  agentId: string,
+  agentBody: string,
+): AgentRelations {
+  const skills = new Set<string>();
+
+  for (const binding of graph.bindings) {
+    if (!binding.agents.includes(agentId)) continue;
+    for (const skill of binding.skills) {
+      if (skill) skills.add(skill);
+    }
+  }
+  for (const skillId of graph.skillIds) {
+    if (mentions(agentBody, skillId)) skills.add(skillId);
+  }
+
+  return {
+    usesSkills: [...skills].sort(),
+    routedDomains: graph.domainAgents
+      .filter((row) => row.agents.includes(agentId))
+      .map((row) => row.domain)
+      .sort(),
+    capabilityIds: graph.capabilityAgents
+      .filter((row) => row.agent === agentId)
+      .map((row) => row.capability)
+      .sort(),
   };
 }

@@ -30,6 +30,49 @@ export interface SkillEntity extends BaseEntity {
   parseError?: string; // set + status:'error' when frontmatter is malformed
 }
 
+/**
+ * An agent as `agents/<id>.md` declares it. READ-ONLY on purpose.
+ *
+ * There is no `enabled` here, and adding one would be a mistake worth naming:
+ * `enabled` on skills sat in the UI for months with no reader outside the
+ * console, so disabling one changed a file and nothing else. A switch is added
+ * after the runtime honours it, never before — otherwise the console grows
+ * controls that only look like controls.
+ */
+export interface AgentEntity extends BaseEntity {
+  kind: 'agent';
+  description: string;
+  alias: string | null;
+  tools: string[];
+  model: string;
+  tier: string;
+  /** Skills this agent is bound to, by the same two grounds `relations.ts` uses. */
+  usesSkills: string[];
+  /** Routing domains that dispatch to this agent. */
+  routedDomains: string[];
+  /** Workflow capabilities bound to this agent in `registries/capabilities.json`. */
+  capabilityIds: string[];
+  parseError?: string;
+}
+
+/**
+ * A model tier as `registries/models.json` defines it. Read-only for the same
+ * reason, plus one of its own: the tier table is checked against
+ * `rules/models.md` by an integrity check, so editing it here without moving
+ * the prose would turn the check red rather than change behaviour.
+ */
+export interface ModelEntity extends BaseEntity {
+  kind: 'model';
+  /** The provider model this tier binds to. */
+  model: string;
+  /** Tier this one escalates to, or null at the top. */
+  escalatesTo: string | null;
+  /** Work types routed to this tier. */
+  workTypes: string[];
+  /** Agents whose declared tier is this one. */
+  usedByAgents: string[];
+}
+
 // Used by the validation layer (Unit C) and returned in 422s / publish failures.
 export interface ValidationIssue {
   entityId: string;

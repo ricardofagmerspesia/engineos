@@ -11,10 +11,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { parseMarkdownWithFrontmatter } from './frontmatter';
 import { loadGraph, resolveSkillRelations } from './relations';
 import type { SkillEntity } from './types';
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 export class SkillWriteError extends Error {
   constructor(message: string) {
@@ -82,56 +81,12 @@ export function detectBaseConflicts(basePath: string, entities: SkillEntity[]): 
   return conflicts;
 }
 
-interface ParsedFrontmatter {
-  block: string;
-  body: string;
-  data: Record<string, string | boolean>;
-}
-
-/** Splits raw SKILL.md content into its frontmatter block and body. Throws if no frontmatter block is found. */
-function splitFrontmatter(raw: string): { block: string; body: string } {
-  const match = FRONTMATTER_RE.exec(raw);
-  if (!match) {
-    throw new Error('no frontmatter block found (file must start with "---")');
-  }
-  return { block: match[1] ?? '', body: raw.slice(match[0].length) };
-}
-
-/** Reads one flat "key: value" line. Values may be a JSON string literal (quoted, escaped) or a bare token. */
-function parseFrontmatterLine(line: string, lineNumber: number): [string, string | boolean] | null {
-  if (line.trim() === '') return null;
-  const match = /^([A-Za-z0-9_-]+):[ \t]?(.*)$/.exec(line);
-  if (!match) {
-    throw new Error(`unsupported frontmatter syntax at line ${lineNumber}: ${JSON.stringify(line)}`);
-  }
-  const key = match[1] as string;
-  const rawValue = (match[2] ?? '').trim();
-  if (rawValue === 'true') return [key, true];
-  if (rawValue === 'false') return [key, false];
-  if (rawValue.startsWith('"')) {
-    try {
-      return [key, JSON.parse(rawValue) as string];
-    } catch (err) {
-      throw new Error(`malformed quoted value at line ${lineNumber}: ${(err as Error).message}`);
-    }
-  }
-  return [key, rawValue];
-}
-
-function parseFrontmatterBlock(block: string): Record<string, string | boolean> {
-  const data: Record<string, string | boolean> = {};
-  const lines = block.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const parsed = parseFrontmatterLine(lines[i] ?? '', i + 1);
-    if (parsed) data[parsed[0]] = parsed[1];
-  }
-  return data;
-}
-
-function parseSkillFile(raw: string): ParsedFrontmatter {
-  const { block, body } = splitFrontmatter(raw);
-  const data = parseFrontmatterBlock(block);
-  return { block, body, data };
+/**
+ * SKILL.md's frontmatter dialect is the shared one; the reader lives in
+ * `frontmatter.ts` so agents and skills cannot drift into two dialects.
+ */
+function parseSkillFile(raw: string) {
+  return parseMarkdownWithFrontmatter(raw);
 }
 
 function toRelativePath(basePath: string, absolute: string): string {
