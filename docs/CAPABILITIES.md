@@ -23,14 +23,14 @@ Esta matriz existe porque o PRD (`docs/PRD.md`, Draft v1 de 11/06/2026) descreve
 | Runtime TypeScript (CLI) | Parcial | `src/cli.ts`, `src/dispatch.ts`, `src/io.ts`, `src/node-guard.ts`, `dist/engineos.cjs` | typecheck limpo, 24/24 testes, guarda de drift `dist` vs `src` na CI | É dispatch de CLI, não um runner: não há estados de execução, orçamento, prazo, cancelamento ou aprovação persistida. E04 |
 | Console administrativo | Parcial | `console/` — entidades: apenas `skills.ts`; APIs: `skills`, `publish`, `diff`, `history`, `rollback` | typecheck do console | Faltam agentes, modelos, MCPs, routing e regras; sem autenticação/RBAC; efeito real de `enabled=false` não comprovado. E03 |
 | Distribuição reproduzível (pacote, manifesto, checksum) | Disponível | `scripts/package-release.sh`, job `package` em `.github/workflows/ci.yml` | Artefato `engineos-1.6.0-99b5eec.zip`: 344 arquivos, validate 108/0, `npm ci` por lockfile, typecheck, 24/24 testes | Matriz de plataforma cobre Linux e Windows/Git Bash na CI; macOS não declarado suportado. E02 |
-| Portabilidade de fim de linha e permissões | Disponível | `.gitattributes` (LF para todo texto, CRLF só `*.ps1`), verificação no empacotador | Job `package` falha se o checkout divergir do HEAD; verificação de CRLF e de bit de execução sobre os bytes finais | — |
+| Portabilidade de fim de linha e permissões | Disponível | `.gitattributes` (LF para todo texto, CRLF só `*.ps1`), verificação no empacotador, checks `C32`/`C33` | Job `package` falha se o checkout divergir do HEAD; `C33` audita 571 arquivos de texto POSIX; verificação de CRLF e de bit de execução sobre os bytes finais | Matriz de plataformas em `docs/COMPATIBILITY.md`; macOS fora |
 | Telemetria / exec journal | Parcial | `scripts/exec-journal.sh`, `scripts/telemetry.sh`, `rules/observability.md` | Checks de esquema de span, de wiring bidirecional e de guarda de campos | Sem consumidor: nenhuma exportação OpenTelemetry, dashboard, alerta ou SLO. Sem custo/latência agregados. E05 |
 | Evals | Parcial | `evals/intent-routing-cases.jsonl` (33 casos), `evals/agent-cases.jsonl` (16), `scripts/run-evals.sh`, `.github/workflows/live-evals.yml` | Checks determinísticos de integridade dos datasets | Sem execução live medida nesta baseline; sem métricas de seleção de tool, groundedness, vazamento ou custo. E06 |
 | Memória e promoção de aprendizado | Planejado | `rules/memory.md`, `docs/specs/2026-09-03-agent-memory-architecture-design.md`, `skills/retro/SKILL.md` | — | `promote-candidates` não existe no código; sem agrupamento, deduplicação, TTL ou revogação. E07 |
 | RAG | Planejado | `rules/llm-apps.md`, `skills/eval-harness/references/retrieval-metrics.md` | Check de que as três métricas estão definidas e referenciadas | Orientação escrita, sem corpus, ingestão, índice ou recuperação. E08 |
 | Filas, workers, recuperação distribuída | Planejado | — | — | Nada implementado; exigido apenas se o perfil distribuído entrar na release. E09 |
 | Registry de tools/MCPs e autorização | Planejado | `templates/mcp.template.json` | — | Configuração manual por template; sem catálogo, health-check, rate limit ou autorização no servidor. E10 |
-| Adaptadores de outras ferramentas (Cursor, Trae, Windsurf, `.agents`) | Parcial | `.cursor/`, `.trae/`, `.windsurf/`, `.agents/`, `templates/adapters/` | — | São espelhos versionados sem verificação de sincronismo; ficam fora do pacote por padrão (`--with-ide-mirrors`). E01 |
+| Adaptadores de outras ferramentas (Cursor, Trae, Windsurf, `.agents`) | Parcial | `.cursor/`, `.trae/`, `.windsurf/`, `.agents/`, `templates/adapters/` | Check `C32` — os três espelhos são byte a byte idênticos (47 arquivos × 2); matriz de enforcement honesta em `templates/adapters/README.md` | Fora do Claude Code, os gates de Stop degradam para convenção — está documentado, não resolvido. CI é a única camada portátil. Ficam fora do pacote por padrão (`--with-ide-mirrors`). E01 |
 
 ## Perfis de implantação
 
@@ -42,6 +42,21 @@ Esta matriz existe porque o PRD (`docs/PRD.md`, Draft v1 de 11/06/2026) descreve
 | **Distribuído** | Execução por filas e workers | Todos os anteriores + E09 (idempotência, lease, recuperação, carga) |
 
 Recurso incompleto permanece desabilitado e explicitamente **não suportado** no perfil liberado. Nenhum perfil foi liberado até esta data: SLO, RPO, RTO, retenção e orçamento ainda não têm valores definidos (ver seção 8 do plano de adequação).
+
+## Decisões registradas
+
+As decisões que sustentam esta matriz estão em ADR, cada uma com a alternativa rejeitada — decisão sem alternativa rejeitada é preferência, não decisão:
+
+| ADR | Status | O que fixa |
+|---|---|---|
+| [`2026-09-07-release-from-commit-with-allowlist`](adr/2026-09-07-release-from-commit-with-allowlist.md) | accepted | O artefato é função de um commit, por allowlist; o teste roda sobre os bytes finais |
+| [`2026-09-07-versioned-config-contract`](adr/2026-09-07-versioned-config-contract.md) | proposed | `config_version` imutável fixada por execução; publicação condicional à revisão base |
+| [`2026-09-07-approval-bound-to-effect`](adr/2026-09-07-approval-bound-to-effect.md) | proposed | Aprovação vale para (ação, argumentos, destino, `config_version`) — nunca por sessão |
+| [`2026-09-07-when-to-split-a-service`](adr/2026-09-07-when-to-split-a-service.md) | proposed | Cinco gatilhos observáveis para extrair um serviço; nenhum disparou até hoje |
+| [`2026-09-04-typescript-runtime-over-bash`](adr/2026-09-04-typescript-runtime-over-bash.md) | accepted | Linguagem do núcleo (fronteira método/runtime) |
+| [`2026-09-03-hitl-as-kernel-entity`](adr/2026-09-03-hitl-as-kernel-entity.md) | accepted | HITL como entidade consultável, com vocabulário fechado de razões |
+
+As três ADRs em `proposed` descrevem contratos de E03/E04/E09 ainda não implementados. Enquanto estiverem nesse estado, o comportamento correspondente **não** pode ser anunciado.
 
 ## Divergências conhecidas do PRD
 

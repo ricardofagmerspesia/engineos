@@ -7,3 +7,9 @@
 node_modules/
 build/
 dist-release/
+
+# Worktrees criadas por agentes e overrides locais do operador: estado de
+# maquina, nunca do repositorio (o PRD exige que settings.local.json nunca
+# seja sobrescrito).
+.claude/worktrees/
+.claude/settings.local.json

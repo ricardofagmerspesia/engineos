@@ -39,8 +39,10 @@ O plano de adequação apontava três problemas P0 que se confirmaram na inspeç
 - [x] Publicar matriz de capacidades com estado e evidência por capacidade
 - [x] Registrar divergências do PRD
 - [ ] Reescrever o escopo do PRD (decisão do responsável pelo produto)
-- [ ] Consolidar release notes e mapa de compatibilidade
-- [ ] Registrar ADRs de fronteira método/runtime, contrato de configuração e critérios de separação de serviços
+- [x] Mapa de compatibilidade: plataformas suportadas, pré-requisitos e os três pontos de aplicação da política de fim de linha
+- [x] Registrar ADRs de contrato de configuração, política de aprovação e critérios de separação de serviços
+- [x] Fechar a política de portabilidade com checks (`C32` paridade de espelhos, `C33` fim de linha)
+- [ ] Consolidar release notes
 - [ ] Fixar SLO, RPO, RTO, retenção e orçamento por perfil de implantação
 
 ## What was made
@@ -91,6 +93,20 @@ git log --oneline fed9a63..HEAD
 Pendente de commit nesta mudança: `docs/CAPABILITIES.md`, `docs/PRD.md`, este registro.
 
 Fora do escopo, deixado intocado no working tree: `skills-lock.json` (+222 linhas, única mudança semântica preexistente) e ~20 skills não rastreadas em `.agents/skills/`, `.trae/`, `.windsurf/` — decisão de escopo pendente.
+
+## Segunda unidade — fechamento de E01 (mesma sessão)
+
+`scripts/checks/80-portability.sh` acrescenta dois checks. `C32` afirma que `.agents/skills`, `.trae/skills` e `.windsurf/skills` são byte a byte idênticos — eram, mas nada garantia; agora um commit que edita um espelho e esquece os outros falha. `C33` audita 571 arquivos de texto POSIX rastreados e é a regressão que impede a política de fim de linha de voltar a se soltar. Ambos usam o índice do git como fonte quando há repositório e a árvore quando não há, para rodarem também sobre o pacote extraído.
+
+`C33` encontrou, no primeiro run, `.claude/worktrees/` — duas worktrees de agente `prunable`, 3,4 MB, dentro do repositório, não rastreadas e **não ignoradas**. É a evidência concreta do item 2 da análise ("ZIP inclui worktree e estado"). O `git archive` já as excluía por serem não rastreadas, então o artefato nunca esteve comprometido; `.gitignore` passou a cobrir `.claude/worktrees/` e `.claude/settings.local.json` para que também não sujem o `git status` nem sejam commitadas por descuido.
+
+`docs/COMPATIBILITY.md` ganhou a matriz de plataformas (Linux e Windows/Git Bash suportados; macOS não; `install.ps1` parcial), os pré-requisitos com o que acontece na ausência de cada um — em especial: **sem `jq`, os hooks não são registrados e a instalação tem regras, não gates** — e a tabela dos três pontos de aplicação da política de fim de linha.
+
+Quatro ADRs. `release-from-commit-with-allowlist` (accepted) registra a decisão de E02 com a denylist via `export-ignore` como alternativa rejeitada. `versioned-config-contract`, `approval-bound-to-effect` e `when-to-split-a-service` ficam em **proposed**: descrevem contratos de E03/E04/E09 ainda não implementados, e enquanto estiverem nesse estado o comportamento correspondente não pode ser anunciado.
+
+Uma escolha de projeto que vale registrar: `C32` audita o que está versionado, não a árvore inteira. Na primeira versão ele auditava o filesystem e reportou 200 divergências — as ~100 skills não rastreadas em `.agents/skills/`, que existem só ali. Isso é decisão de escopo pendente, não defeito de sincronismo; um check que fica vermelho por trabalho em andamento ensina a ignorar checks.
+
+Verificação desta unidade: `validate-engineos.sh` **109 passed, 1 failed** no working tree — a falha é o artefato de plataforma já descrito (bit de execução das quatro bibliotecas em filesystem Windows).
 
 ## Notes
 

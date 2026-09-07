@@ -94,6 +94,59 @@ unrelated work.
 - [ ] MAJOR version bumped in `.claude-plugin/plugin.json`.
 - [ ] Consumers who need to act are told what to change, not just what broke.
 
+## Supported platforms and prerequisites
+
+Distribuição local também é uso de produção: exige suporte declarado, atualização
+segura e recuperação. Esta é a matriz que a release cobre. Uma plataforma que não
+está aqui não está suportada — não é "provavelmente funciona".
+
+| Plataforma | Estado | Como é verificada |
+|---|---|---|
+| Linux (x86-64) | **Suportada** | Job `verify` + job `package` em `ubuntu-latest`: gera o artefato, extrai e roda `validate-engineos.sh`, `npm ci`, typecheck e testes sobre os bytes finais |
+| Windows + Git Bash | **Suportada** | Job `package` em `windows-latest`, mesma sequência, mais a guarda de que o checkout não diverge do HEAD |
+| macOS | **Não suportada** | Nunca executada em CI nem manualmente. Não declarar suporte antes de a matriz cobri-la |
+| PowerShell (`install.ps1`) | **Parcial** | Sintaxe e presença verificadas no artefato; a execução do instalador não roda em CI |
+
+### Pré-requisitos
+
+| Requisito | Versão | Onde é declarado | O que acontece sem ele |
+|---|---|---|---|
+| Node.js | `>= 18` | `package.json.engines`, `src/node-guard.ts` (`MIN_NODE_MAJOR`) | O guard recusa ou pula o hook com mensagem explícita — não falha em silêncio |
+| `bash` | POSIX bash | `.gitattributes` força LF em `*.sh` para que continuações de linha não quebrem | Hooks e kernel não executam |
+| `jq` | qualquer | `install.sh` (§5) | **Hooks não são registrados.** O instalador avisa e continua; todo hook que analisa entrada com `jq` fica silencioso. Uma instalação sem `jq` tem regras, não gates |
+
+### Fim de linha e modo de execução
+
+`.gitattributes` declara LF para todo texto, com `*.ps1` em CRLF como única exceção
+(host Windows, fora de qualquer parser POSIX). Isso não é preferência de estilo: sem
+essa política, um checkout em Windows reescreve ~509 arquivos e o diff do repositório
+deixa de ser legível — foi o estado medido em 07/09/2026, com 512 arquivos alterados
+e nenhuma mudança semântica.
+
+Três pontos de aplicação sustentam a promessa, e mudar um sem os outros é regressão:
+
+| Promessa | Onde é aplicada | Onde é testada |
+|---|---|---|
+| Todo texto em LF | `.gitattributes` | Check `C33`; job `package` falha se o checkout divergir do HEAD |
+| Script executável tem o bit; biblioteca `source` não | modos no índice do git | Check de modos de hook; verificação do `scripts/package-release.sh` sobre os bytes finais |
+| Espelhos de adaptador não divergem | `.agents/`, `.trae/`, `.windsurf/` | Check `C32` |
+
+O bit de execução **não** sobrevive a um checkout Windows com `core.fileMode=false`:
+o valor autoritativo é o do índice do git, não o do filesystem. Um `chmod +x` local
+que não vira `git update-index --chmod=+x` não chega ao pacote — e o empacotador
+recusa a release quando isso acontece.
+
+### Adaptadores de outras ferramentas
+
+A matriz de enforcement por ferramenta — o que é bloqueante, o que roda em CI e o que
+degrada para convenção — vive em [`templates/adapters/README.md`](../templates/adapters/README.md)
+e é a fonte para esse recorte. Regra que nada verifica é convenção; chamá-la de gate
+numa ferramenta que não pode aplicá-la é como uma equipe deixa de confiar no sistema
+inteiro.
+
+Os espelhos `.agents/`, `.trae/` e `.windsurf/` ficam **fora** do pacote por padrão;
+entram com `scripts/package-release.sh --with-ide-mirrors`.
+
 ## 1.6.0 additions
 
 `1.6.0` is a MINOR release. Everything below is added or tightened: **nothing in
