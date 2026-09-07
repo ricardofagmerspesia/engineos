@@ -150,6 +150,41 @@ jobs:
             echo "FAIL: install aborted on a clean repo"; exit 1
           fi
 
+  # E03 — o console nao era tocado pela CI: typecheck, lint, testes e build
+  # rodavam so na maquina de quem editasse. Um console que publica e reverte
+  # arquivos do repositorio e faz commit e' superficie de escrita, e superficie
+  # de escrita sem verificacao automatizada e' onde perda de trabalho nasce.
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes das guardas de publicacao (revisao base e lock de escrita)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
   # E02 — o artefato publicado e testado com os bytes finais da release,
   # em Linux e em Windows/Git Bash. Um pacote que instala so na maquina de
   # quem empacotou nao e distribuicao reproduzivel.

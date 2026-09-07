@@ -15,6 +15,16 @@ export interface SkillEntity extends BaseEntity {
   kind: 'skill';
   description: string;
   enabled: boolean;
+  /**
+   * Hash of the source file as it was when this draft's content was captured.
+   * Publish refuses when the file on disk no longer hashes to this — someone
+   * else changed it since, and writing the draft would discard their work
+   * without either operator ever seeing a conflict.
+   *
+   * Optional only for rows written before the guard existed; those are treated
+   * as an unknown base and refused, which is the fail-closed reading.
+   */
+  baseHash?: string;
   usedByAgents: string[]; // agent ids/aliases referencing this skill (empty until Agents ticket lands)
   dependsOnRules: string[]; // rule ids referenced by SKILL.md body (best-effort scan)
   parseError?: string; // set + status:'error' when frontmatter is malformed
