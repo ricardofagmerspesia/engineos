@@ -10,6 +10,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { loadGraph, resolveSkillRelations } from './relations';
 import type { SkillEntity } from './types';
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
@@ -78,7 +79,10 @@ function toRelativePath(basePath: string, absolute: string): string {
 }
 
 /**
- * Parses every `SKILL.md` under each immediate subdirectory of `<basePath>/skills`.
+ * Parses every `SKILL.md` under each immediate subdirectory of `<basePath>/skills`,
+ * resolving each one's real relations (`usedByAgents`, `dependsOnRules`) against
+ * the agents, rules and registries in the same tree — see `relations.ts` for why
+ * these must not be the fixed `[]` they used to be.
  * A malformed file yields a `status: 'error'` entity with `parseError` set rather
  * than throwing — one bad file must not stop the rest of the directory from parsing.
  */
@@ -91,6 +95,9 @@ export function parseSkills(basePath: string): SkillEntity[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const result: SkillEntity[] = [];
+  // Read the agent bodies, the registries and the rule list once for the whole
+  // directory, not once per skill.
+  const graph = loadGraph(basePath);
 
   for (const entry of entries) {
     const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
@@ -102,7 +109,8 @@ export function parseSkills(basePath: string): SkillEntity[] {
 
     try {
       const raw = readFileSync(skillFile, 'utf8');
-      const { data } = parseSkillFile(raw);
+      const { data, body } = parseSkillFile(raw);
+      const relations = resolveSkillRelations(graph, id, body);
 
       const name = typeof data.name === 'string' && data.name.trim() !== '' ? data.name : id;
       const description = typeof data.description === 'string' ? data.description : '';
@@ -117,8 +125,8 @@ export function parseSkills(basePath: string): SkillEntity[] {
         updatedAt,
         description,
         enabled,
-        usedByAgents: [],
-        dependsOnRules: [],
+        usedByAgents: relations.usedByAgents,
+        dependsOnRules: relations.dependsOnRules,
       });
     } catch (err) {
       result.push({

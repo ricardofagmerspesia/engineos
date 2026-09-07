@@ -24,7 +24,7 @@ Changing any of these is a **breaking change**:
 
 The kernel subcommands covered by that row are `route-path`, `route-intent`,
 `model`, `risk`, `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`,
-`decision-rules`, `scale`, `route-escalate` and `resolve-task`. Adding a subcommand or a field to an answer
+`decision-rules`, `scale`, `route-escalate`, `resolve-task` and `skill-state`. Adding a subcommand or a field to an answer
 is MINOR; removing or renaming either is MAJOR and gets the deprecation window
 below. Two arms that had no caller anywhere — `retry` and `capability` — were
 removed *before* this row was written, deliberately: they were the last
@@ -93,6 +93,50 @@ unrelated work.
 - [ ] `scripts/validate-engineos.sh` passes with both old and new surfaces present.
 - [ ] MAJOR version bumped in `.claude-plugin/plugin.json`.
 - [ ] Consumers who need to act are told what to change, not just what broke.
+
+## What `enabled: false` does and does not do
+
+`enabled: false` na frontmatter de `skills/<id>/SKILL.md` é o interruptor que o
+console mostra. Até 07/09/2026 **nada fora do console lia esse campo**: desabilitar
+uma skill mudava um arquivo e nada mais, e a interface apresentava como controle
+algo que não controlava nada. Esta seção é o contrato do que ele passou a valer —
+e do que ele continua não valendo, que é a parte que não pode ser omitida.
+
+**O que passa a ser verdade.** O kernel deixa de recomendar a skill, nos três
+lugares onde ele responde sobre skills:
+
+| Answer | Comportamento com a skill desabilitada |
+|---|---|
+| `kernel.sh route-path <file>` | Sai de `skills`; entra em `skills_suppressed` com `reason: "disabled"` |
+| `kernel.sh route-intent <text>` | Idem, por intent correspondida |
+| `kernel.sh resolve-task --prompt` | Idem, em `task_contract` |
+| `kernel.sh skill-state [--id <s>]` | Responde a resolução diretamente, para console, check e hook lerem a mesma coisa |
+
+A supressão é **visível**, nunca silenciosa. Uma lista curta e uma lista filtrada
+são indistinguíveis para o operador se o motivo não vier junto, e um controle cujo
+efeito não pode ser observado volta a ser decorativo por outro caminho.
+
+**O que continua não sendo verdade, e não pode ser anunciado.** EngineOS **não**
+impede alguém de invocar uma skill desabilitada pelo nome: a ferramenta Skill lê o
+diretório e não há hook entre as duas coisas. O que existe é recomendação e
+roteamento; remoção efetiva exige tirar o diretório da instalação. Isto é o que a
+matriz de adaptadores chama de degradar para convenção, dito no lugar certo:
+**quem quiser bloqueio real precisa desinstalar a skill, não desabilitá-la.**
+
+**Ausência do campo significa habilitada.** É o contrato do console
+(`console/src/lib/entities/skills.ts`) e a única leitura que mantém funcionando
+toda skill escrita antes de o campo existir. Só a **primeira** frontmatter é lida,
+e só quando o arquivo começa com ela: uma linha `enabled:` no corpo é documentação,
+não configuração, e nunca desliga uma skill.
+
+**Onde isso é testado.** `scripts/test-kernel.sh` planta uma skill desabilitada
+numa árvore de fixture e afirma que o roteamento a derruba, que diz por quê, que a
+ausência do campo significa habilitada e que uma menção no corpo não desliga nada.
+Os checks `C34` (todo answer que emite `skills` emite `skills_suppressed`) e `C35`
+(nenhum domínio de routing fica sem skill habilitada) guardam a fronteira.
+
+Adicionar `skills_suppressed` às respostas e `skill-state` à lista de subcomandos
+é **MINOR** — campo e subcomando novos, nada removido nem renomeado.
 
 ## Supported platforms and prerequisites
 
