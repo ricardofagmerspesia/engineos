@@ -83,8 +83,8 @@ function decode(stdin: string): HookEnvelope {
   return decoded;
 }
 
-// A repo that has adopted EngineOS (telemetry's own opt-in gate) whose root
-// package.json declares `scripts`.
+// A repo that has adopted EngineOS — the `.engineos/` marker the gate and the
+// telemetry sink both read — whose root package.json declares `scripts`.
 function repoWith(t: Parameters<typeof tempRoot>[0], scripts: Record<string, string>): string {
   return fixtureRepo(tempRoot(t), { pkg: { name: 'fixture', scripts }, files: { '.engineos/.keep': '' } });
 }
@@ -141,6 +141,20 @@ function skipWithoutGit(t: { skip: (reason: string) => void }): boolean {
 }
 
 // ------------------------------------------------------------------ silence
+
+// The gate would otherwise run this package.json's `typecheck` with no
+// tool-permission prompt in front of it.
+test('a project that has not adopted EngineOS has no script executed', (t) => {
+  if (skipWithoutGit(t)) return;
+  const repo = fixtureRepo(tempRoot(t), { pkg: { name: 'fixture', scripts: { typecheck: 'exit 1' } } });
+  const path = transcriptOf(repo, edits(repo, 'src/x.ts'));
+  const { spawn, calls } = runnerSpawn({ typecheck: { status: 1 } });
+
+  const decision = verify(stopOf(repo, 'S1', path), context(), spawn, MODERN);
+
+  assert.deepEqual(decision, silent);
+  assert.deepEqual(calls, []);
+});
 
 test('a missing transcript is nothing to verify', (t) => {
   if (skipWithoutGit(t)) return;
@@ -228,8 +242,9 @@ test('an undecodable transcript line is skipped, never fatal', (t) => {
 
 test('a file that belongs to no package is not verified', (t) => {
   if (skipWithoutGit(t)) return;
-  // No package.json anywhere: fixtureRepo without `pkg`.
-  const repo = fixtureRepo(tempRoot(t));
+  // No package.json anywhere: fixtureRepo without `pkg`. Adopted, so the case
+  // fails on the package lookup rather than on the opt-in guard above.
+  const repo = fixtureRepo(tempRoot(t), { files: { '.engineos/.keep': '' } });
   const path = transcriptOf(repo, edits(repo, 'src/x.ts'));
   const { spawn, calls } = runnerSpawn();
   assert.deepEqual(verify(stopOf(repo, 'S1', path), context(), spawn, MODERN), silent);
@@ -405,12 +420,16 @@ test('ENGINEOS_TELEMETRY=0 leaves no event, no span and no directory', (t) => {
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
 });
 
+// The decision here used to be `block`: the gate ran a non-adopted repo's
+// scripts and only the telemetry sink knew about adoption. The gate now returns
+// before either, so this case states the file-system half of that — the sink's
+// own guard is driven directly in src/hooks/telemetry.test.ts.
 test('a project that never adopted EngineOS gets no telemetry', (t) => {
   if (skipWithoutGit(t)) return;
   const repo = fixtureRepo(tempRoot(t), { pkg: { name: 'fixture', scripts: { lint: 'exit 1' } } });
   const path = transcriptOf(repo, edits(repo, 'src/x.ts'));
   const { spawn } = runnerSpawn({ lint: { status: 1 } });
-  assert.equal(verify(stopOf(repo, 'P1', path), context(), spawn, MODERN).kind, 'block');
+  assert.deepEqual(verify(stopOf(repo, 'P1', path), context(), spawn, MODERN), silent);
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
 });
 

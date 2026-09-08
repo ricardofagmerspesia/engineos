@@ -5,11 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # node >= 18 is the runtime; shellcheck covers install.sh and the bash shims
       # that stay until 2.0. jq and python3 are no longer needed anywhere.
@@ -19,7 +22,7 @@ jobs:
           bash --version | head -1
           node --version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
@@ -28,6 +31,9 @@ jobs:
         run: |
           npm ci
           npm run typecheck
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
 
       # Before the tests: the *.e2e.test.ts suites spawn the committed bundle, so a
       # stale dist must fail here with this message, not as an e2e assertion.

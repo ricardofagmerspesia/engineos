@@ -181,7 +181,7 @@ engineos/
 | PreToolUse | `Agent\|Task` | `announce-agent-dispatch.ts` | green banner instruction; opens a span |
 | PostToolUse | `Edit\|Write\|NotebookEdit` | `mark-unrecorded.ts` | silent; writes `<gitdir>/ENGINEOS_UNRECORDED.<session>` for code extensions |
 | PostToolUse | `Agent\|Task` | `announce-agent-return.ts` | return banner; closes span, status from structural fields only |
-| Stop (1) | `""` | `stop-verify.ts` | scoped lint + typecheck per touched package (tests only with `ENGINEOS_VERIFY_TESTS=1`); `block` on genuine red, `message` on infra |
+| Stop (1) | `""` | `stop-verify.ts` | scoped lint + typecheck per touched package (tests only with `ENGINEOS_VERIFY_TESTS=1`); no-op in projects without `.engineos/`; `block` on genuine red, `message` on infra |
 | Stop (2) | `""` | `record-verify.ts` | `block` while the unrecorded marker exists and no `.deferred` sibling |
 | unwired | | `post-edit-check.ts` | registered in `HOOKS`, deliberately absent from hooks.json since 2026-08-08 |
 
@@ -304,6 +304,8 @@ sequenceDiagram
     RV-->>CC: block with touch instruction, else silent
 ```
 
+The verification gate is a no-op in projects without `.engineos/` — the same opt-in signal telemetry and the scaffolder read.
+
 ### Build, generate, validate
 
 ```mermaid
@@ -330,6 +332,7 @@ graph LR
 
 ## Gotchas
 
+- `stop-verify` runs lint/typecheck only in projects that carry `.engineos/`; elsewhere the verification gate is a no-op, the same opt-in as telemetry and the scaffolder.
 - `hooks/hooks.json` never calls the `hooks/*.sh` shims; it runs `node dist/engineos.cjs hook <name>` directly. Reading a shim tells you nothing about behavior.
 - `block` is a JSON decision with exit 0, not exit 2. Only `fail` (unwired `post-edit-check`) uses exit 2. A throwing hook renders silent.
 - `SubagentStart`/`SubagentStop` exist in the type but are never used; agent lifecycle is simulated via `PreToolUse`/`PostToolUse` on `Agent|Task`.

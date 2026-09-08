@@ -52,6 +52,28 @@ test('agentType is the second name, general-purpose the last', () => {
   assert.equal(subagentType(envelopeOf({ tool_input: { subagent_type: 7 } })), UNNAMED_AGENT);
 });
 
+// The banner is re-injected as hook-supplied context, so a description written by
+// the dispatching model must not be able to break its shape or run past its
+// bound. 2 KB with a newline and a backtick is the shape that would.
+test('a long description is flattened to one line and bounded, and so is the type', () => {
+  const description = `scope src/orders\n\`rm -rf\` ${'x'.repeat(2000)}`;
+  const env = envelopeOf({ tool_input: { subagent_type: 'a'.repeat(200), description } });
+  const decision = run(env, contextFor());
+  assert.equal(decision.kind, 'context');
+  if (decision.kind !== 'context') return;
+  // 'scope src/orders rm -rf ' is 24 characters once the newline and the two
+  // backticks collapse, leaving 136 of the padding inside the 160-char bound.
+  const boundedDescription = `scope src/orders rm -rf ${'x'.repeat(136)}...`;
+  assert.equal(
+    decision.text,
+    `[subagent-announce] dispatching agent(type=${'a'.repeat(64)}..., desc="${boundedDescription}")${INSTRUCTION}`,
+  );
+  const descPart = /desc="([^"]*)"/.exec(decision.text)?.[1] ?? '';
+  assert.equal(descPart.includes('\n'), false);
+  assert.equal(descPart.includes('`'), false);
+  assert.equal(descPart.length, 163);
+});
+
 test('a payload that is not an object still announces a dispatch', () => {
   assert.deepEqual(run(envelopeOf('not an object'), contextFor()), {
     kind: 'context',

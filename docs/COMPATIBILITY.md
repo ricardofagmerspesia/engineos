@@ -446,3 +446,13 @@ Windows spawns node directly instead of resolving a `.sh` path through the file
 association that Git for Windows points at `git-bash.exe`. `install.ps1` no
 longer locates `bash.exe` and no longer wraps hook commands with it. Git Bash is
 still required on Windows for `scripts/kernel.sh`, which stays bash until 2.0.
+
+## Unreleased
+
+Both entries below narrow existing behaviour. Nothing in the public surface is
+renamed or removed, and no deprecation window is opened.
+
+| Surface | change | Kind |
+|---|---|---|
+| `hooks/stop-verify.sh` / `src/hooks/stop-verify.ts` | the verification gate runs only in projects carrying `.engineos/`; it previously ran in any git repo | tightened |
+| `templates/permissions.template.json` | five prefix entries removed (`find`, `rg`, `npm run typecheck`, `npm run lint`, `npx tsc --noEmit`); re-running the installer does not remove entries already merged into `~/.claude/settings.json`, so consumers prune those by hand | tightened |

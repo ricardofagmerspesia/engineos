@@ -13,6 +13,7 @@ import { block, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { UNRECORDED_MARKER_PREFIX } from './mark-unrecorded';
 import { gitDir } from '../lib/git';
+import { hookPathSlug } from '../lib/slug';
 
 // The suffix of the escape-hatch marker; `.deferred` is versioned surface the
 // blocked message tells the operator to create by hand.
@@ -34,7 +35,12 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (env.cwd === '') return silent;
   const dir = gitDir(env.cwd, ctx.spawn);
   if (dir === null) return silent;
-  const marker = `${dir}/${UNRECORDED_MARKER_PREFIX}${env.sessionId}`;
+  // Same derivation as ./mark-unrecorded, for the same reason: the id is
+  // harness-supplied and names a file. Writer and reader must agree byte for
+  // byte, or the gate silently stops finding the flag it is meant to enforce.
+  const sid = hookPathSlug(env.sessionId);
+  if (sid === null) return silent;
+  const marker = `${dir}/${UNRECORDED_MARKER_PREFIX}${sid}`;
   if (!existsSync(marker)) return silent;
   // Escape hatch: an explicit defer marker silences the gate for this session
   // without deleting the debt flag, so declining to record is a one-touch action

@@ -2677,6 +2677,31 @@ function isFile3(path) {
 
 // src/hooks/mark-unrecorded.ts
 var import_node_fs12 = require("node:fs");
+
+// src/lib/slug.ts
+var SLUG_EXTRA = "@_./:-";
+var PATH_EXTRA = "@_:-";
+function hookSlug(value) {
+  return mapBytes(value, SLUG_EXTRA);
+}
+function hookPathSlug(value) {
+  const narrowed = mapBytes(value, PATH_EXTRA);
+  return narrowed === "" ? null : narrowed;
+}
+function mapBytes(value, extra) {
+  const bytes = Buffer.from(value, "utf8");
+  let out = "";
+  for (const byte of bytes) out += inClass(byte, extra) ? String.fromCharCode(byte) : "-";
+  return out;
+}
+function inClass(byte, extra) {
+  if (byte >= 48 && byte <= 57) return true;
+  if (byte >= 65 && byte <= 90) return true;
+  if (byte >= 97 && byte <= 122) return true;
+  return extra.includes(String.fromCharCode(byte));
+}
+
+// src/hooks/mark-unrecorded.ts
 var RECORDED_EXTENSIONS = ["ts", "tsx", "js", "jsx", "py", "go", "rs", "sql"];
 var ENGINEOS_META = "*/.engineos/*";
 var UNRECORDED_MARKER_PREFIX = "ENGINEOS_UNRECORDED.";
@@ -2702,8 +2727,10 @@ function run2(env, ctx) {
   if (env.cwd === "") return silent;
   const dir = gitDir(env.cwd, ctx.spawn);
   if (dir === null) return silent;
+  const sid = hookPathSlug(env.sessionId);
+  if (sid === null) return silent;
   try {
-    (0, import_node_fs12.writeFileSync)(`${dir}/${UNRECORDED_MARKER_PREFIX}${env.sessionId}`, "");
+    (0, import_node_fs12.writeFileSync)(`${dir}/${UNRECORDED_MARKER_PREFIX}${sid}`, "");
   } catch {
   }
   return silent;
@@ -2721,7 +2748,9 @@ function run3(env, ctx) {
   if (env.cwd === "") return silent;
   const dir = gitDir(env.cwd, ctx.spawn);
   if (dir === null) return silent;
-  const marker = `${dir}/${UNRECORDED_MARKER_PREFIX}${env.sessionId}`;
+  const sid = hookPathSlug(env.sessionId);
+  if (sid === null) return silent;
+  const marker = `${dir}/${UNRECORDED_MARKER_PREFIX}${sid}`;
   if (!(0, import_node_fs13.existsSync)(marker)) return silent;
   const deferred = `${marker}${DEFERRED_SUFFIX}`;
   if ((0, import_node_fs13.existsSync)(deferred)) return silent;
@@ -2886,29 +2915,6 @@ function writeAtomic(path, contents) {
     (0, import_node_fs14.renameSync)(tmp, path);
   } catch {
   }
-}
-
-// src/lib/slug.ts
-var SLUG_EXTRA = "@_./:-";
-var PATH_EXTRA = "@_:-";
-function hookSlug(value) {
-  return mapBytes(value, SLUG_EXTRA);
-}
-function hookPathSlug(value) {
-  const narrowed = mapBytes(value, PATH_EXTRA);
-  return narrowed === "" ? null : narrowed;
-}
-function mapBytes(value, extra) {
-  const bytes = Buffer.from(value, "utf8");
-  let out = "";
-  for (const byte of bytes) out += inClass(byte, extra) ? String.fromCharCode(byte) : "-";
-  return out;
-}
-function inClass(byte, extra) {
-  if (byte >= 48 && byte <= 57) return true;
-  if (byte >= 65 && byte <= 90) return true;
-  if (byte >= 97 && byte <= 122) return true;
-  return extra.includes(String.fromCharCode(byte));
 }
 
 // src/hooks/prompt-advisor-guidance.ts
@@ -3257,6 +3263,9 @@ function writeEvents(sink, task) {
 
 // src/hooks/announce-agent-dispatch.ts
 var UNNAMED_AGENT = "general-purpose";
+var MAX_TYPE_CHARS = 64;
+var MAX_DESCRIPTION_CHARS = 160;
+var BANNER_UNSAFE = /[\u0000-\u001f\u007f`]/g;
 function subagentType(env) {
   const input = toolInput(env);
   return firstString(input["subagent_type"], input["agentType"]) ?? UNNAMED_AGENT;
@@ -3264,12 +3273,19 @@ function subagentType(env) {
 function run6(env, ctx) {
   const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
   if (bypassed) return silent;
-  const banner = dispatchBanner(subagentType(env), briefDescription(env));
+  const banner = dispatchBanner(
+    bannerField(subagentType(env), MAX_TYPE_CHARS),
+    bannerField(briefDescription(env), MAX_DESCRIPTION_CHARS)
+  );
   try {
     openSpan(telemetrySink(env, ctx, { bypassed }), spanIdFrom(env));
   } catch {
   }
   return context("PreToolUse", banner);
+}
+function bannerField(value, max) {
+  const flattened = value.replace(BANNER_UNSAFE, " ").replace(/\s+/g, " ").trim();
+  return flattened.length > max ? `${flattened.slice(0, max)}...` : flattened;
 }
 function dispatchBanner(type, description) {
   const descPart = description === "" ? "" : `, desc="${description}"`;
@@ -3623,6 +3639,7 @@ function verify(env, ctx, spawn, nodeVersion = process.versions.node) {
   if (env.cwd === "") return silent;
   const root = repoRoot(env.cwd, ctx.spawn);
   if (root === null) return silent;
+  if (!isDirectory4((0, import_node_path14.join)(root, ".engineos"))) return silent;
   const files = changedFiles(env.transcriptPath);
   if (files.length === 0) return silent;
   const environment = verifyEnvironment(ctx.io.env, nodeVersion);

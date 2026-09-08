@@ -33,7 +33,7 @@ Walk every item that the change can touch. Report each as a finding with an atta
 path, or list it under "Checked and clear" with the mitigation. Policy lives in
 `rules/security.md`; this list is the reviewer's pass order, not a second rule file.
 
-- API keys and secrets are never hardcoded; production reads them from the environment or a secret manager and crashes when one is missing
+- API keys and secrets are never hardcoded; production reads them from the environment or a secret manager and crashes when one is missing; for a locally installed tool the environment is an input, not a trust boundary — paths, interpreters and roots read from env vars are validated like any other input
 - No secret has ever landed in git history; if one did, rotation plus history scrub is in the diff or the finding
 - Database access from the client uses only a publishable key; service-role keys stay server-side
 - Row-level security is enabled on every table a client-facing key can reach, with policies that scope rows to the caller
@@ -52,6 +52,8 @@ path, or list it under "Checked and clear" with the mitigation. Policy lives in
 - Security headers are set: CSP, HSTS, `X-Content-Type-Options`, `X-Frame-Options` or `frame-ancestors`, `Referrer-Policy`, `Permissions-Policy`
 - HTTPS is forced in production: HTTP redirects, HSTS preload where applicable, secure cookies
 - Dependencies are scanned (`npm audit`, Dependabot or equivalent); criticals are patched, lockfile pinned, postinstall scripts of new packages reviewed
+- No code path executes workspace-controlled content (scripts, config, hooks, plugins) outside the host's consent or permission gate
+- The installer does not weaken the host's security settings (permission allowlists, trust prompts, sandbox flags) without showing the change and asking
 
 ## Output format
 
