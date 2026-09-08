@@ -109,3 +109,7 @@ approved in this wave: U5–U11.
 - Branch rebased onto origin/main (88ad7db) after PR #70 turned out merged; opened PR #78.
 - M scripts/package-release.sh — CRLF check spells the CR as `git grep -P '\r'`; a raw CR byte in
   argv did not survive MSYS -> git.exe on the Windows leg and matched every text file (4fa7dd2).
+- M .github/workflows/ci.yml — Windows leg skips the two validator runs inside the unzipped tree:
+  four checks assert POSIX exec bits NTFS cannot carry (C27, C29, C30, prompt adapter); the ubuntu
+  leg validates identical bytes and package-release.sh reads modes from the commit on both legs.
+  Follow-up: make the validator's exec-bit helpers platform-aware (tri-state) instead of skipping.
