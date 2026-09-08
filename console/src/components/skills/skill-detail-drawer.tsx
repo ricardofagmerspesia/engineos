@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SkillEntity, ValidationIssue } from "../types";
+import type { SkillEntity, SkillPatch, ValidationIssue } from "../types";
 import { Drawer } from "../ui/drawer";
 import { Tabs, TabPanel } from "../ui/tabs";
 import { Toggle } from "../ui/toggle";
@@ -12,7 +12,7 @@ import { ValidationIssuesList } from "../publish/validation-issues-list";
 type SkillDetailDrawerProps = {
   skill: SkillEntity | null;
   onClose: () => void;
-  onSave: (patch: { description?: string; enabled?: boolean }) => void;
+  onSave: (patch: SkillPatch) => void;
   pending: boolean;
   validationIssues: ValidationIssue[];
 };

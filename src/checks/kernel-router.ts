@@ -189,7 +189,9 @@ function checkC18e(ctx: CheckContext): CheckResult[] {
 function checkC18f(ctx: CheckContext): CheckResult[] {
   if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, 'C18f', C18F_TITLE, ROUTER_TOKEN);
   const findings: Finding[] = [];
-  if (!isExecutable(ctx, PROMPT_ADVISOR)) {
+  // `=== false`, not falsy: `null` means the filesystem cannot represent the
+  // mode, which is not evidence that the adapter is unexecutable.
+  if (isExecutable(ctx, PROMPT_ADVISOR) === false) {
     findings.push(finding('C18f', 'adapter-not-executable', PROMPT_ADVISOR));
   }
   const commands = rows(subRecord(rawJson(ctx, HOOKS_JSON), 'hooks'), 'UserPromptSubmit')

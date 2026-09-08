@@ -9,7 +9,7 @@
 import { finding, result, type CheckResult, type Finding } from './findings';
 import { skipPending, type CheckContext } from './lib';
 import { sliceSection } from './mirror';
-import { isExecutable } from './runtime-surface-fs';
+import { executableBit } from './runtime-surface-fs';
 
 export const C28_FINDINGS = [
   'reference-missing',
@@ -75,7 +75,11 @@ export function checkC29(ctx: CheckContext): CheckResult[] {
   // than duplicated below.
   if (!ctx.exists(INIT_SCRIPT)) return skipPending(ctx, 'C29', C29_TITLE, INIT_SCRIPT);
   const findings: Finding[] = [];
-  if (!isExecutable(ctx.root, INIT_SCRIPT)) findings.push(finding('C29', 'init-script-not-executable', INIT_SCRIPT));
+  // `=== false`, not falsy: `null` is "this filesystem carries no mode", which
+  // is not a finding about the script.
+  if (executableBit(ctx.root, INIT_SCRIPT) === false) {
+    findings.push(finding('C29', 'init-script-not-executable', INIT_SCRIPT));
+  }
   findings.push(...commandFindings(ctx));
   findings.push(...scaffolderFindings(ctx));
   findings.push(...adoptionDocFindings(ctx));

@@ -199,17 +199,7 @@ jobs:
           unzip -q "$ZIP" -d /tmp/release-smoke
           DIR="$(ls -d /tmp/release-smoke/*/)"
           cd "$DIR"
-          # The validator asserts POSIX exec bits (C27, C29, C30 and the prompt
-          # adapter check) that NTFS cannot carry, so inside an unzipped tree on
-          # Windows they fail regardless of the artifact. The ubuntu leg validates
-          # the same bytes, and package-release.sh already reads every mode from
-          # the commit on both legs. Windows keeps the checks a filesystem can
-          # answer: extraction, install, typecheck and the runtime below.
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            echo "skip: validator on Windows (exec bits not representable on NTFS; ubuntu leg validates the same bytes)"
-          else
-            bash scripts/validate-engineos.sh
-          fi
+          bash scripts/validate-engineos.sh
           npm ci --no-audit --no-fund
           npm run typecheck
 
@@ -225,12 +215,8 @@ jobs:
           fi
           echo "ok: bundle reports $ACTUAL"
 
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            echo "skip: bundle validate on Windows (same exec-bit checks as above)"
-          else
-            node dist/engineos.cjs validate
-            echo "ok: registries validate from inside the artifact"
-          fi
+          node dist/engineos.cjs validate
+          echo "ok: registries validate from inside the artifact"
 
           # One kernel answer end to end: the shim resolves the bundle, the bundle
           # reads the packaged registries, and the route comes back as JSON.

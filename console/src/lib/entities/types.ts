@@ -31,6 +31,14 @@ export interface SkillEntity extends BaseEntity {
 }
 
 /**
+ * The editable surface of a skill — the only fields `PUT /api/skills/:id`
+ * accepts. This is the single definition: the route parser and the browser
+ * client both import it, so the allowlist enforced at the boundary and the
+ * shape the UI sends can never drift apart.
+ */
+export type SkillPatch = Partial<Pick<SkillEntity, 'description' | 'enabled'>>;
+
+/**
  * An agent as `agents/<id>.md` declares it. READ-ONLY on purpose.
  *
  * There is no `enabled` here, and adding one would be a mistake worth naming:

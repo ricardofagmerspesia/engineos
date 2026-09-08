@@ -6,7 +6,6 @@
 // checks call the entry point directly: no subprocess, no jq, and a malformed
 // answer is a parse failure here rather than an empty shell variable three
 // pipes downstream.
-import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { runKernel } from '../kernel/cli';
@@ -14,6 +13,7 @@ import { isRecord, KernelError, readJsonFile } from '../lib/json';
 import { finding, result, type CheckResult } from './findings';
 import type { CheckId } from './ids';
 import type { CheckContext } from './lib';
+import { executableBit, type ExecutableBit } from './runtime-surface-fs';
 
 // The bash preconditions named scripts/kernel.sh alongside the registries. It is
 // dropped from both lists on purpose: nothing here executes the shim any more,
@@ -102,14 +102,12 @@ export function sameList(left: readonly string[], right: readonly string[]): boo
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
-// `mode & 0o111` — the `[ -x FILE ]` of the shell, without asking who is asking:
-// the bit matters because a consumer executes the shim by path.
-export function isExecutable(ctx: CheckContext, relativePath: string): boolean {
-  try {
-    return (statSync(join(ctx.root, relativePath)).mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
+// The `[ -x FILE ]` of the shell, without asking who is asking: the bit matters
+// because a consumer executes the shim by path. One reader for the whole
+// validator, so the tri-state (`null` where the filesystem cannot answer) is
+// decided in exactly one place.
+export function isExecutable(ctx: CheckContext, relativePath: string): ExecutableBit {
+  return executableBit(ctx.root, relativePath);
 }
 
 // Sorted and de-duplicated, which is what every jq `unique` in the bash family

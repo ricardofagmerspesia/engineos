@@ -39,14 +39,14 @@ function okLines(text: string): string[] {
   return lines(text).filter((line) => line.startsWith(OK_PREFIX));
 }
 
-test('--list prints the 62 registered Checks in natural order (C1 first, C31 last)', () => {
+test('--list prints the 66 registered Checks in natural order (C1 first, C35 last)', () => {
   const listed = validate(['--list'], checkoutRoot());
   assert.equal(listed.status, 0);
   const ids = lines(listed.stdout);
   assert.deepEqual(ids.filter((id) => !CHECK_ID.test(id)), [], 'every --list line is a check id');
-  assert.equal(ids.length, 62);
+  assert.equal(ids.length, 66);
   assert.equal(ids[0], 'C1');
-  assert.equal(ids[ids.length - 1], 'C31');
+  assert.equal(ids[ids.length - 1], 'C35');
 });
 
 test('--only with an id no Check answers to exits 2', () => {

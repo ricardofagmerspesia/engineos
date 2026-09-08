@@ -21,7 +21,7 @@ import type { CheckId } from './ids';
 import { skipOnce, type CheckContext } from './lib';
 import { runMirrors, sliceSection } from './mirror';
 import { rowsOf } from './mirrors';
-import { isExecutable } from './runtime-surface-fs';
+import { executableBit } from './runtime-surface-fs';
 
 export const C27_FINDINGS = [
   'block-missing',
@@ -143,7 +143,8 @@ function homeFindings(home: unknown): Finding[] {
 
 function schemaFindings(ctx: CheckContext, schema: unknown): Finding[] {
   if (typeof schema !== 'string' || schema === '') return [finding('C27', 'schema-missing')];
-  if (!isExecutable(ctx.root, schema)) return [finding('C27', 'schema-not-executable', schema)];
+  // `=== false`, not falsy: `null` is "no mode on this filesystem", not a finding.
+  if (executableBit(ctx.root, schema) === false) return [finding('C27', 'schema-not-executable', schema)];
   return [];
 }
 

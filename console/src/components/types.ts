@@ -1,7 +1,7 @@
 // Entity shapes come from the real frozen-contract module now that it has
 // landed (Unit B). Only the API-response-only shapes that belong to this
 // unit's routes (diff/publish/history/rollback) are declared here.
-export type { EntityStatus, BaseEntity, SkillEntity, ValidationIssue } from "@/lib/entities/types";
+export type { EntityStatus, BaseEntity, SkillEntity, SkillPatch, ValidationIssue } from "@/lib/entities/types";
 import type { ValidationIssue } from "@/lib/entities/types";
 
 // Matches console/src/app/api/diff/route.ts exactly (read at integration —
