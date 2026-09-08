@@ -19,7 +19,12 @@ echo "EngineOS install from: $REPO_DIR"
 # Scans GIT-TRACKED files only (what could be committed) — untracked junk
 # (node_modules, build output, stray projects) is irrelevant to "secrets in the
 # repo" and would only cause false positives. Falls back to a recursive scan if
-# REPO_DIR is not a git work tree. FAILS CLOSED on an invalid pattern.
+# REPO_DIR is not a git work tree; that fallback excludes node_modules,
+# dist-release, build and .next for the same reason — dependency and build
+# output is not "secrets in the repo", and JSDoc URLs inside dependencies
+# (e.g. @types/node) match the credential-in-URL pattern, so scanning them
+# aborts a zip install on pure false positives. FAILS CLOSED on an invalid
+# pattern.
 SECRET_PATTERNS='sk-ant-[A-Za-z0-9_-]{10,}|sk-proj-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|gh[opsu]_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{35}|ATATT[A-Za-z0-9_=.-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|"private_key_id"[[:space:]]*:|[a-z][a-z+]+://[^/[:space:]]+:[^@[:space:]]+@'
 
 set +e
@@ -30,7 +35,7 @@ printf '' | grep -E "$SECRET_PATTERNS" >/dev/null 2>&1
 if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   SECRET_HITS=$( cd "$REPO_DIR" && git ls-files -z | grep -zvE '^install\.(sh|ps1)$' | xargs -0 grep -IlE "$SECRET_PATTERNS" 2>/dev/null )
 else
-  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude=install.sh --exclude=install.ps1 2>/dev/null)
+  SECRET_HITS=$(grep -rIlE "$SECRET_PATTERNS" "$REPO_DIR" --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist-release --exclude-dir=build --exclude-dir=.next --exclude=install.sh --exclude=install.ps1 2>/dev/null)
 fi
 set -e
 if [ -n "$SECRET_HITS" ]; then

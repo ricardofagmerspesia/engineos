@@ -487,3 +487,23 @@ both('case21 ENGINEOS_TELEMETRY=0-writes-no-span', (t, legacy) => {
   invoke(repo, path, { sid: 'vspan3', env: { ENGINEOS_TELEMETRY: '0' } });
   assert.equal(existsSync(telemetryDir(repo)), false);
 });
+
+// The gate runs the target repo's own scripts outside the tool-permission
+// prompt, and `.engineos/` at the session root is the consent it reads. A
+// package.json ABOVE that root — a non-adopted outer checkout, or one planted in
+// a world-writable directory — never consented, and the unbounded ascent reached
+// it anyway. This repo carries no package.json of its own, so the outer one is
+// the only marker the edited file has: a gate that still blocks here is a gate
+// that just ran a stranger's script.
+both('case22 package-above-the-adopted-root — no block', (t, legacy) => {
+  if (skipWithoutTooling(t)) return;
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root, { files: { 'src/x.ts': '', '.engineos/.keep': '' } });
+  writeFileSync(join(root, 'package.json'), `${JSON.stringify(pkg({ lint: 'exit 1', typecheck: 'exit 1' }))}\n`);
+  const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
+  const result = invoke(repo, path, { sid: 'contain1' });
+  assert.equal(decisionOf(result.stdout), '');
+  assert.equal(reasonOf(result.stdout), '');
+  // Nothing was verified, so there is no verdict to record either.
+  assert.deepEqual(telemetryLines(repo, 'contain1', '.jsonl'), []);
+});

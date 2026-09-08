@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { isRecord } from '../lib/json';
@@ -249,6 +249,105 @@ test('a file that belongs to no package is not verified', (t) => {
   const { spawn, calls } = runnerSpawn();
   assert.deepEqual(verify(stopOf(repo, 'S1', path), context(), spawn, MODERN), silent);
   assert.deepEqual(calls, []);
+});
+
+// The gate's consent marker is `.engineos/` at the session repo root, so a
+// package BESIDE that root never consented. Unbounded, the ascent ran its
+// scripts with no tool-permission prompt in front of them.
+test('a package beside the repo root is never entered', (t) => {
+  if (skipWithoutGit(t)) return;
+  const base = tempRoot(t);
+  const repo = fixtureRepo(base, { pkg: { name: 'fixture', scripts: { lint: 'exit 0' } }, files: { '.engineos/.keep': '' } });
+  const sibling = join(base, 'sibling');
+  mkdirSync(join(sibling, 'src'), { recursive: true });
+  writeFileSync(join(sibling, 'package.json'), JSON.stringify({ scripts: { lint: 'exit 1' } }));
+  // The transcript lives in the repo; the file it names does not.
+  const path = join(repo, 'outside.jsonl');
+  writeFileSync(path, transcript([{ name: 'Edit', input: { file_path: join(sibling, 'src', 'x.ts') } }]));
+  const { spawn, calls } = runnerSpawn({ lint: { status: 1 } });
+  assert.deepEqual(verify(stopOf(repo, 'S1', path), context(), spawn, MODERN), silent);
+  assert.deepEqual(calls, []);
+});
+
+// A second, non-adopted checkout containing this one — or a package.json planted
+// in a world-writable directory above it — is the same missing consent one level
+// up. The repo carries no package.json of its own, so the nearest marker for the
+// edited file IS the one that must be refused.
+test('a package above the adopted root is not in the run set', (t) => {
+  if (skipWithoutGit(t)) return;
+  const base = tempRoot(t);
+  const repo = fixtureRepo(base, { files: { '.engineos/.keep': '' } });
+  writeFileSync(join(base, 'package.json'), JSON.stringify({ scripts: { lint: 'exit 1' } }));
+  const path = transcriptOf(repo, edits(repo, 'src/x.ts'));
+  const { spawn, calls } = runnerSpawn({ lint: { status: 1 } });
+  assert.deepEqual(verify(stopOf(repo, 'S1', path), context(), spawn, MODERN), silent);
+  assert.deepEqual(calls, []);
+});
+
+// The other direction: the ceiling must not narrow the gate to the root alone —
+// packages nested UNDER the root consented with it and still run.
+test('packages under the adopted root still run while an outer one is refused', (t) => {
+  if (skipWithoutGit(t)) return;
+  const base = tempRoot(t);
+  const repo = fixtureRepo(base, { pkg: { name: 'fixture', scripts: { lint: 'exit 0' } }, files: { '.engineos/.keep': '' } });
+  writeFileSync(join(base, 'package.json'), JSON.stringify({ scripts: { lint: 'exit 1' } }));
+  mkdirSync(join(repo, 'pkgB', 'src'), { recursive: true });
+  writeFileSync(join(repo, 'pkgB', 'package.json'), JSON.stringify({ scripts: { lint: 'exit 0' } }));
+  const path = transcriptOf(repo, edits(repo, 'src/a.ts', 'pkgB/src/b.ts'));
+  const { spawn, calls } = runnerSpawn();
+  assert.deepEqual(verify(stopOf(repo, 'S1', path), context(), spawn, MODERN), silent);
+  assert.deepEqual(runCwds(calls), [repo, join(repo, 'pkgB')]);
+});
+
+// A lexical prefix is not containment. `<root>/vendor` reads as being under the
+// root in every string form, existsSync follows the link, and the runner would
+// then execute /outside's `lint` — the very consent gap the ceiling exists to
+// close, walked through the front door. Two shapes, because they fail at
+// different layers: an existing directory is caught when the walk STARTS from
+// its physical form, a non-existent one only when the OWNER the walk returned is
+// realpath'd.
+test('a symlink under the root that points outside is never entered', (t) => {
+  if (skipWithoutGit(t)) return;
+  const base = tempRoot(t);
+  const repo = fixtureRepo(base, { pkg: { name: 'fixture', scripts: { lint: 'exit 0' } }, files: { '.engineos/.keep': '' } });
+  const outside = join(base, 'outside');
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(outside, 'package.json'), JSON.stringify({ scripts: { lint: 'exit 1' } }));
+  symlinkSync(outside, join(repo, 'vendor'), 'dir');
+  const path = transcriptOf(repo, edits(repo, 'vendor/a.ts', 'vendor/gone/b.ts'));
+  const { spawn, calls } = runnerSpawn({ lint: { status: 1 } });
+  assert.deepEqual(verify(stopOf(repo, 'S1', path), context(), spawn, MODERN), silent);
+  assert.deepEqual(calls, []);
+});
+
+// The other direction, and the reason containment is realpath'd on BOTH sides
+// rather than only on the owner: `git rev-parse --show-toplevel` answers with the
+// physical path while the transcript carries whatever form the session used
+// (macOS `/tmp` -> `/private/tmp`, a symlinked checkout). Compared lexically,
+// every file was refused and the gate went quiet with nothing to say — a
+// verification gate disabled by a path spelling.
+test('a root whose files are named through a symlink still verifies its package', (t) => {
+  if (skipWithoutGit(t)) return;
+  const base = tempRoot(t);
+  // `src/` exists because the edited file's own directory is what gets realpath'd:
+  // a file in a directory that does not exist yet has no physical form to compare,
+  // and the gate stays silent rather than guessing at one.
+  const repo = fixtureRepo(base, { pkg: { name: 'fixture', scripts: { lint: 'exit 0' } }, files: { '.engineos/.keep': '', 'src/.keep': '' } });
+  const link = join(base, 'link');
+  symlinkSync(repo, link, 'dir');
+  // The split this case needs is git answering with the physical path while the
+  // cwd was the link. A platform that answers with the link has no split to test.
+  const toplevel = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: link, encoding: 'utf8' }).stdout.trim();
+  if (toplevel !== repo) {
+    t.skip(`git resolves --show-toplevel to ${toplevel}, so there is no path-form split to exercise`);
+    return;
+  }
+  const path = transcriptOf(repo, [{ name: 'Edit', input: { file_path: join(link, 'src', 'a.ts') } }]);
+  const { spawn, calls } = runnerSpawn();
+  const env = decode(envelope({ event: 'Stop', cwd: link, sid: 'S1', transcript: path }));
+  assert.deepEqual(verify(env, context(), spawn, MODERN), silent);
+  // The physical package, entered once: the gate is not silently disabled.
+  assert.deepEqual(runCwds(calls), [repo]);
 });
 
 // ------------------------------------------------------------------ the ladder

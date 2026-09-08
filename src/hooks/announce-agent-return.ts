@@ -6,7 +6,7 @@
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
-import { subagentType } from './announce-agent-dispatch';
+import { MAX_TYPE_CHARS, bannerField, subagentType } from './announce-agent-dispatch';
 import { closeSpan, spanIdFrom, telemetrySink } from './telemetry';
 import { isRecord } from '../lib/json';
 import { hookSlug } from '../lib/slug';
@@ -17,7 +17,13 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
   if (bypassed) return silent;
   const type = subagentType(env);
-  const banner = returnBanner(type);
+  // The banner is re-injected as hook-supplied context, which the model reads at
+  // a higher trust than its own output, so the harness-supplied type is bounded
+  // and flattened exactly as ./announce-agent-dispatch bounds it — the dispatch
+  // hook alone was hardened, and this one re-emitted the same value verbatim.
+  // The telemetry path below keeps the RAW type on purpose: the span was opened
+  // under it, and a bounded copy would no longer match.
+  const banner = returnBanner(bannerField(type, MAX_TYPE_CHARS));
   // Close the span the dispatch hook opened. No marker -> no span: a PostToolUse
   // without a matching PreToolUse (bypass toggled mid-turn, hook installed
   // mid-session, telemetry dir reaped) writes nothing rather than a fabricated

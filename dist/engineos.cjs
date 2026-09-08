@@ -201,10 +201,10 @@ function stringArray(v) {
 // src/registry/paths.ts
 var import_node_fs4 = require("node:fs");
 var import_node_path2 = require("node:path");
-function resolveRoot(env, startDir = __dirname) {
+function resolveRoot(env, startDir2 = __dirname) {
   const forced = env["ENGINEOS_ROOT"];
   if (forced !== void 0 && forced !== "") return forced;
-  let dir = startDir;
+  let dir = startDir2;
   for (; ; ) {
     if ((0, import_node_fs4.existsSync)((0, import_node_path2.join)(dir, "registries", "routing.json"))) return dir;
     const parent = (0, import_node_path2.dirname)(dir);
@@ -3388,10 +3388,14 @@ function writeEvents(sink, task) {
 var UNNAMED_AGENT = "general-purpose";
 var MAX_TYPE_CHARS = 64;
 var MAX_DESCRIPTION_CHARS = 160;
-var BANNER_UNSAFE = /[\u0000-\u001f\u007f`]/g;
+var BANNER_UNSAFE = /[\u0000-\u001f\u007f`"()]/g;
 function subagentType(env) {
   const input = toolInput(env);
   return firstString(input["subagent_type"], input["agentType"]) ?? UNNAMED_AGENT;
+}
+function bannerField(value, max) {
+  const flattened = value.replace(BANNER_UNSAFE, " ").replace(/\s+/g, " ").trim();
+  return flattened.length > max ? `${flattened.slice(0, max)}...` : flattened;
 }
 function run6(env, ctx) {
   const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
@@ -3405,10 +3409,6 @@ function run6(env, ctx) {
   } catch {
   }
   return context("PreToolUse", banner);
-}
-function bannerField(value, max) {
-  const flattened = value.replace(BANNER_UNSAFE, " ").replace(/\s+/g, " ").trim();
-  return flattened.length > max ? `${flattened.slice(0, max)}...` : flattened;
 }
 function dispatchBanner(type, description) {
   const descPart = description === "" ? "" : `, desc="${description}"`;
@@ -3463,7 +3463,7 @@ function run7(env, ctx) {
   const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
   if (bypassed) return silent;
   const type = subagentType(env);
-  const banner = returnBanner(type);
+  const banner = returnBanner(bannerField(type, MAX_TYPE_CHARS));
   try {
     const agent = hookSlug(type);
     closeSpan(telemetrySink(env, ctx, { bypassed }), spanIdFrom(env), {
@@ -3670,13 +3670,15 @@ var PROBE_TIMEOUT_SECONDS = 15;
 function hasVerifyExtension(file) {
   return VERIFY_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
 }
-function findUpAny(start, names2) {
+function findUpAny(start, names2, stop) {
+  if (stop !== void 0 && start !== stop && !start.startsWith(`${stop}/`)) return null;
   let dir = start;
   let previous = "";
   while (dir !== "/" && dir !== previous && dir !== "") {
     for (const name of names2) {
       if ((0, import_node_fs19.existsSync)(`${dir}/${name}`)) return dir;
     }
+    if (dir === stop) return null;
     previous = dir;
     dir = parentOf2(dir);
   }
@@ -3770,7 +3772,7 @@ function verify(env, ctx, spawn, nodeVersion = process.versions.node) {
   if (tooOld !== null && tooOld.situation === "infra") {
     return message(infraLine(tooOld.reason, targetsFor(ctx.io.env), `node ${environment.nodeMajor} cannot start the toolchain`));
   }
-  const packages = packageDirs(files);
+  const packages = packageDirs(files, root);
   if (packages.length === 0) return silent;
   const targets = targetsFor(ctx.io.env);
   const selection = runnerSelect(root);
@@ -3830,13 +3832,37 @@ function filePathOf(entry) {
   const fallback = isRecord(legacy) ? legacy["file_path"] : void 0;
   return typeof fallback === "string" ? fallback : "";
 }
-function packageDirs(files) {
+function packageDirs(files, root) {
+  let stopReal;
+  try {
+    stopReal = (0, import_node_fs20.realpathSync)(root);
+  } catch {
+    return [];
+  }
   const dirs = /* @__PURE__ */ new Set();
   for (const file of files) {
-    const owner = findUpAny((0, import_node_path15.dirname)(file), PACKAGE_MARKERS);
-    if (owner !== null) dirs.add(owner);
+    const owner = findUpAny(startDir(file), PACKAGE_MARKERS, stopReal);
+    if (owner === null) continue;
+    if (containedIn(stopReal, owner)) dirs.add(owner);
   }
   return [...dirs].sort();
+}
+function startDir(file) {
+  const dir = (0, import_node_path15.dirname)(file);
+  try {
+    return (0, import_node_fs20.realpathSync)(dir);
+  } catch {
+    return (0, import_node_path15.resolve)(dir);
+  }
+}
+function containedIn(stopReal, owner) {
+  let ownerReal;
+  try {
+    ownerReal = (0, import_node_fs20.realpathSync)(owner);
+  } catch {
+    return false;
+  }
+  return ownerReal === stopReal || ownerReal.startsWith(`${stopReal}${import_node_path15.sep}`);
 }
 function runLadder(selection, packages, targets, env, spawn, root) {
   const failures = [];

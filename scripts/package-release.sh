@@ -89,10 +89,17 @@ SHORT="$(git rev-parse --short "$COMMIT")"
 VERSION="$(git show "$COMMIT:package.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 [ -n "$VERSION" ] || { echo "erro: nao foi possivel ler a versao de package.json em $COMMIT" >&2; exit 1; }
 
-# Manifests do plugin devem concordar com package.json (E01).
+# Manifests do plugin devem concordar com package.json (E01). The marketplace
+# manifest is the version a plugin-mode consumer actually resolves, so a bump
+# that misses it publishes one version under two numbers.
 PLUGIN_VERSION="$(git show "$COMMIT:.claude-plugin/plugin.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
 if [ "$PLUGIN_VERSION" != "$VERSION" ]; then
-  echo "erro: versao divergente — package.json=$VERSION plugin.json=$PLUGIN_VERSION" >&2
+  echo "error: version mismatch — package.json=$VERSION plugin.json=$PLUGIN_VERSION" >&2
+  exit 1
+fi
+MARKET_VERSION="$(git show "$COMMIT:.claude-plugin/marketplace.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+if [ "$MARKET_VERSION" != "$VERSION" ]; then
+  echo "error: version mismatch — package.json=$VERSION marketplace.json=$MARKET_VERSION" >&2
   exit 1
 fi
 
@@ -107,12 +114,14 @@ echo "artefato ........ $ZIP"
 
 # --- Empacotamento ---------------------------------------------------------
 rm -f "$ZIP" "$ZIP.sha256" "$MANIFEST"
-git archive --format=zip -9 --prefix="engineos-${VERSION}/" -o "$ZIP" "$COMMIT" -- "${PATHS[@]}"
+# core.autocrlf/core.eol are forced off: the published bytes must be the commit's
+# bytes, whatever a Windows packager's global git config says about EOL.
+git -c core.autocrlf=false -c core.eol=lf archive --format=zip -9 --prefix="engineos-${VERSION}/" -o "$ZIP" "$COMMIT" -- "${PATHS[@]}"
 
 # --- Manifesto -------------------------------------------------------------
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-git archive --format=tar "$COMMIT" -- "${PATHS[@]}" | tar -x -C "$STAGE"
+git -c core.autocrlf=false -c core.eol=lf archive --format=tar "$COMMIT" -- "${PATHS[@]}" | tar -x -C "$STAGE"
 
 {
   echo "# EngineOS release manifest"
@@ -138,29 +147,38 @@ if [ "$VERIFY" -eq 1 ]; then
   # isso nao devem ter bit de execucao. Qualquer outro *.sh deve ter.
   is_sourced_lib() {
     case "$1" in
-      ./hooks/lib-*.sh|./hooks/layout-manifest.sh|./hooks/scaffold-layout.sh|./scripts/checks/*.sh) return 0 ;;
+      ./hooks/layout-manifest.sh|./hooks/scaffold-layout.sh|./scripts/checks/*.sh) return 0 ;;
       *) return 1 ;;
     esac
   }
 
-  # 1. Nenhum CRLF em arquivo consumido por parser POSIX.
-  crlf="$( cd "$STAGE" && find . -type f \( -name '*.sh' -o -name '*.md' -o -name '*.json' -o -name '*.jsonl' -o -name '*.ts' -o -name '*.tsx' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.yaml' -o -name '*.yml' -o -name '*.py' \) -exec grep -lU $'\r' {} + 2>/dev/null || true )"
-  if [ -n "$crlf" ]; then echo "FALHA CRLF em: $(echo "$crlf" | head -5)"; fail=1; else echo "ok   sem CRLF nos formatos POSIX"; fi
+  # 1. No CRLF in any file a POSIX parser consumes. Read from the COMMIT, not
+  #    from the extracted stage: the stage reflects whatever EOL conversion the
+  #    extractor applied, so a clean stage proves nothing about the artifact.
+  #    *.ps1 stays out of the list — PowerShell is fine with CRLF.
+  crlf="$(git grep -lI $'\r' "$COMMIT" -- "${PATHS[@]}" 2>/dev/null \
+    | cut -d: -f2- \
+    | grep -E '\.(sh|md|json|jsonl|ts|tsx|mjs|cjs|yaml|yml|py)$' || true)"
+  if [ -n "$crlf" ]; then echo "FAIL CRLF in: $(echo "$crlf" | head -5)"; fail=1; else echo "ok   no CRLF in the POSIX-parsed formats"; fi
 
-  # 2. Scripts executaveis tem bit de execucao; bibliotecas sourced nao.
+  # 2. Executable scripts carry the exec bit; sourced libraries do not. Modes are
+  #    read from the COMMIT because `[ -x ]` on MSYS answers from the shebang,
+  #    not from the tracked mode, so the check passed there for free.
   noexec=""
   wrongexec=""
-  while IFS= read -r f; do
-    if is_sourced_lib "$f"; then
-      [ -x "$STAGE/$f" ] && wrongexec="$wrongexec $f"
+  while IFS="$(printf '\t')" read -r meta path; do
+    case "$path" in *.sh) ;; *) continue ;; esac
+    mode="${meta%% *}"
+    if is_sourced_lib "./$path"; then
+      [ "$mode" = "100644" ] || wrongexec="$wrongexec $path($mode)"
     else
-      [ -x "$STAGE/$f" ] || noexec="$noexec $f"
+      [ "$mode" = "100755" ] || noexec="$noexec $path($mode)"
     fi
   done <<EOF
-$( cd "$STAGE" && find . -name '*.sh' -type f | LC_ALL=C sort )
+$(git ls-tree -r "$COMMIT" -- "${PATHS[@]}" | LC_ALL=C sort -k4)
 EOF
-  if [ -n "$noexec" ]; then echo "FALHA sem bit de execucao:$noexec"; fail=1; else echo "ok   scripts executaveis"; fi
-  if [ -n "$wrongexec" ]; then echo "FALHA biblioteca sourced marcada executavel:$wrongexec"; fail=1; else echo "ok   bibliotecas sourced sem bit de execucao"; fi
+  if [ -n "$noexec" ]; then echo "FAIL missing exec bit:$noexec"; fail=1; else echo "ok   executable scripts carry mode 100755"; fi
+  if [ -n "$wrongexec" ]; then echo "FAIL sourced library marked executable:$wrongexec"; fail=1; else echo "ok   sourced libraries carry mode 100644"; fi
 
   # 3. Nada reinstalavel, de cache ou de estado local entrou.
   junk="$( cd "$STAGE" && find . \( -name node_modules -o -name '.next' -o -name build -o -name '*.db' -o -name '*.sqlite*' -o -name '.env' -o -name '.env.*' -o -name '*.pem' -o -name '*.key' \) 2>/dev/null || true )"
