@@ -7,6 +7,7 @@ import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from '.
 import type { HitlFacts } from './hitl';
 import type { RepairFacts } from './repair';
 import { resolve, type DeclaredFacts } from './resolve';
+import { skillLookupSection, skillStateSection } from './skill-state';
 
 type Sub = (ctx: KernelContext, args: string[]) => unknown;
 
@@ -55,6 +56,7 @@ const SUBCOMMANDS: Record<string, Sub> = {
   'route-escalate': routeEscalateProjection,
   'resolve-task': resolveTaskProjection,
   resolve: resolveProjection,
+  'skill-state': skillStateProjection,
 };
 
 export function runKernel(argv: string[], io: Io): number {
@@ -279,6 +281,31 @@ function resolveProjection(ctx: KernelContext, args: string[]): unknown {
   const facts = flags.get('--facts');
   if (facts === undefined || facts === '') throw new KernelError('resolve requires --facts <json>');
   return resolve(parseFacts(facts), ctx);
+}
+
+// NOT a projection of `resolve`: skill enablement is a fact about the tree, not
+// about a prompt or a path, and the bash kernel answered it from its own arm for
+// the same reason. The flag loop is hand-rolled rather than parseFlags because
+// the bash message for an unrecognised argument here is "unknown argument", and
+// that string is what the parity suite compares.
+function skillStateProjection(ctx: KernelContext, args: string[]): unknown {
+  let id = '';
+  const rest = [...args];
+  for (;;) {
+    const flag = rest.shift();
+    if (flag === undefined) break;
+    if (flag !== '--id') throw new KernelError(`skill-state: unknown argument ${flag}`);
+    const value = rest.shift();
+    // bash bound ${2:-} and then `shift 2` ran off the end, so `--id` with no
+    // value spun its own loop forever: there is no legacy answer to be faithful
+    // to, and refusing beats answering about a skill nobody named.
+    if (value === undefined) throw new KernelError('skill-state: --id requires a value');
+    id = value;
+  }
+  const state = ctx.registries.skillState;
+  // bash tested `[ -n "$id" ]`, so an explicitly empty --id selected the list
+  // form exactly as an absent one did.
+  return id === '' ? skillStateSection(state) : skillLookupSection(state, id);
 }
 
 // The fact vocabulary, read key by key rather than cast: an unknown key is a

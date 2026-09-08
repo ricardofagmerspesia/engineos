@@ -143,11 +143,13 @@ toda skill escrita antes de o campo existir. Só a **primeira** frontmatter é l
 e só quando o arquivo começa com ela: uma linha `enabled:` no corpo é documentação,
 não configuração, e nunca desliga uma skill.
 
-**Onde isso é testado.** `scripts/test-kernel.sh` planta uma skill desabilitada
-numa árvore de fixture e afirma que o roteamento a derruba, que diz por quê, que a
-ausência do campo significa habilitada e que uma menção no corpo não desliga nada.
-Os checks `C34` (todo answer que emite `skills` emite `skills_suppressed`) e `C35`
-(nenhum domínio de routing fica sem skill habilitada) guardam a fronteira.
+**Onde isso é testado.** `src/kernel/kernel-skill-state.e2e.test.ts` planta uma
+skill desabilitada numa árvore de fixture e afirma que o roteamento a derruba, que
+diz por quê, que a ausência do campo significa habilitada e que uma menção no corpo
+não desliga nada; `src/kernel/skill-state.test.ts` cobre as grafias do leitor de
+frontmatter, e `src/kernel/parity.test.ts` compara o arm contra o kernel bash
+fixado. Os checks `C34` (todo answer que emite `skills` emite `skills_suppressed`) e
+`C35` (nenhum domínio de routing fica sem skill habilitada) guardam a fronteira.
 
 Adicionar `skills_suppressed` às respostas e `skill-state` à lista de subcomandos
 é **MINOR** — campo e subcomando novos, nada removido nem renomeado.
@@ -546,10 +548,12 @@ still required on Windows for `scripts/kernel.sh`, which stays bash until 2.0.
 
 ## Unreleased
 
-Both entries below narrow existing behaviour. Nothing in the public surface is
-renamed or removed, and no deprecation window is opened.
+The first two entries below narrow existing behaviour; the third moves an
+existing answer from bash to TypeScript without changing it. Nothing in the
+public surface is renamed or removed, and no deprecation window is opened.
 
 | Surface | change | Kind |
 |---|---|---|
 | `hooks/stop-verify.sh` / `src/hooks/stop-verify.ts` | the verification gate runs only in projects carrying `.engineos/`; it previously ran in any git repo | tightened |
 | `templates/permissions.template.json` | five prefix entries removed (`find`, `rg`, `npm run typecheck`, `npm run lint`, `npx tsc --noEmit`); re-running the installer does not remove entries already merged into `~/.claude/settings.json`, so consumers prune those by hand | tightened |
+| `scripts/kernel.sh skill-state` and the `skills_suppressed` field | now answered by the TypeScript kernel (`src/kernel/skill-state.ts`) instead of the bash one; the answers, their key order and the `skill-state: unknown argument <arg>` refusal are unchanged, and the bash cases moved to `node:test` under `src/kernel/` | ported |

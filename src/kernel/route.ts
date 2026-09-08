@@ -3,6 +3,7 @@ import type { IntentRow } from '../registry/intents';
 import type { RoutingDomain } from '../registry/routing';
 import type { Registries, RiskTier } from './context';
 import { scaleSection, type ScaleSection } from './scale';
+import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
 
 // One route section, three declared-fact forms: a path routes to a domain, a
 // prompt routes to intents, and resolve-task's prompt routes to the escalate
@@ -15,18 +16,20 @@ export type PathRouteSection =
       domain: string;
       rules: string[];
       skills: string[];
+      skills_suppressed: SuppressedSkill[];
       agent: string | null;
       risk_floor: RiskTier | null;
       hook_guidance: string;
       excluded: false;
     };
 
-// The ten fields cmd_route_intent projected, in its key order.
+// The eleven fields cmd_route_intent projected, in its key order.
 export interface IntentMatch {
   id: string;
   title: string;
   rules: string[];
   skills: string[];
+  skills_suppressed: SuppressedSkill[];
   agents: string[];
   commands: string[];
   mcp: string[];
@@ -89,11 +92,12 @@ export function routeByPath(file: string, regs: Registries, root: string): PathR
       dom.match.basenames.some((p) => globMatch(p, base));
     if (hit) {
       // Key order is the answer's contract: jq emitted domain, rules, skills,
-      // agent, risk_floor, hook_guidance, excluded.
+      // skills_suppressed, agent, risk_floor, hook_guidance, excluded.
       return {
         domain: dom.id,
         rules: dom.rules,
-        skills: dom.skills,
+        skills: enabledSkills(dom.skills, regs.skillState),
+        skills_suppressed: suppressedSkills(dom.skills, regs.skillState),
         agent: dom.agent,
         risk_floor: floorOf(dom, regs),
         hook_guidance: renderGuidance(dom),
@@ -117,7 +121,10 @@ export function routeByIntent(text: string, regs: Registries): IntentRouteSectio
       id: intent.id,
       title: intent.title,
       rules: intent.rules,
-      skills: intent.skills,
+      // Per match, not once for the answer: a disabled skill is never
+      // recommended, and never disappears from a match without saying why.
+      skills: enabledSkills(intent.skills, regs.skillState),
+      skills_suppressed: suppressedSkills(intent.skills, regs.skillState),
       agents: intent.agents,
       commands: intent.commands,
       mcp: intent.mcp,

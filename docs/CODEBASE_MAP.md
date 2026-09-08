@@ -156,7 +156,8 @@ engineos/
 | Command | Inputs | Reads | Output |
 |---|---|---|---|
 | `resolve` / `resolve-task` | `--prompt`, `--path`, `--facts`, `--task-contract` | intents, routing, policy, decision-rules | Answer envelope: route, decision_rules, hitl, task_contract |
-| `route-path` | file path | routing.json (first match in precedence) | domain, agent, rules, hook_guidance |
+| `route-path` | file path | routing.json (first match in precedence) | domain, agent, rules, skills + skills_suppressed, hook_guidance |
+| `skill-state` | `[--id <skill>]` | `skills/*/SKILL.md` frontmatter (`enabled:`, first block only) | skills[] + disabled[], or id/exists/enabled for one id; absence of the key means enabled |
 | `route-escalate` | prompt | intents signals + suppression, policy.router | escalate, reasons, intents, agents, model_tier, risk_floor, scale |
 | `risk` | five inputs | policy.risk | tier (max, never average) |
 | `hitl` | `--risk --autonomy [--evidence thin] [--external-effect] [--situation]` | policy.hitl, policy.autonomy | required, reasons (closed 8-id vocabulary), autonomy_after, record_home |

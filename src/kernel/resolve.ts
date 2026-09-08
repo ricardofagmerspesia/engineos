@@ -9,6 +9,7 @@ import { repairSection, type RepairFacts, type RepairSection } from './repair';
 import { riskSection, type RiskSection } from './risk';
 import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type SuppressedIntent } from './route';
 import { asciiDowncase, compilePromptRegex, scaleSection, type ScaleFacts, type ScaleSection } from './scale';
+import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
 import { wavesSection, type WavesFacts, type WavesSection } from './waves';
 
 // Declared facts, sparse by design: a section is answered iff the facts it needs
@@ -82,6 +83,7 @@ export interface TaskContractSection {
   rules: string[];
   policy_rules: string[];
   skills: string[];
+  skills_suppressed: SuppressedSkill[];
   commands: string[];
   mcp: string[];
   model_tier: string | null;
@@ -229,6 +231,11 @@ function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSec
   // Registry order, not match order: the bash arm selects the matched rows out
   // of intents.json, so the unions below follow the registry's own ordering.
   const matched = regs.intents.intents.filter((intent) => route.intents.includes(intent.id));
+  // The union is read from intents.json directly here, not through
+  // routeByIntent, so the enablement filter has to be applied again at this
+  // site. Two answer shapes, one rule: a disabled skill is never recommended,
+  // and never disappears without saying why.
+  const declaredSkills = unique(matched.flatMap((intent) => intent.skills));
   const substantive =
     route.intents.length > 0 ||
     decisions.matches.length > 0 ||
@@ -255,7 +262,8 @@ function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSec
         ...(route.agents.length > 0 ? [AGENT_POLICY_RULE] : []),
       ]),
     ].sort(),
-    skills: unique(matched.flatMap((intent) => intent.skills)),
+    skills: enabledSkills(declaredSkills, regs.skillState),
+    skills_suppressed: suppressedSkills(declaredSkills, regs.skillState),
     commands: unique(matched.flatMap((intent) => intent.commands)),
     mcp: unique(matched.flatMap((intent) => intent.mcp)),
     model_tier: route.model_tier,
