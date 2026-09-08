@@ -3,7 +3,7 @@
 
 // src/cli.ts
 var import_node_child_process = require("node:child_process");
-var import_node_fs6 = require("node:fs");
+var import_node_fs8 = require("node:fs");
 
 // src/io.ts
 var import_node_fs = require("node:fs");
@@ -1740,12 +1740,568 @@ function parseUnitsJson(raw) {
   }
 }
 
+// src/journal/exec-journal.ts
+var import_node_fs6 = require("node:fs");
+var import_node_path4 = require("node:path");
+
+// src/registry/policy-exec-journal.ts
+var MAX_VALUE_LENGTH_FALLBACK = 256;
+function loadExecJournalPolicy(root) {
+  const r = strictReader("policy.json");
+  const raw = loadRegistry(root, "policy.json");
+  const telemetry = r.requireRecord(isRecord(raw) ? raw["telemetry"] : void 0, ".telemetry");
+  const block = r.requireRecord(telemetry["exec_journal"], ".telemetry.exec_journal");
+  return {
+    home: r.requireString(block["home"], ".telemetry.exec_journal.home"),
+    // bash read this through `// empty` and then a digits-only case statement,
+    // so an absent, non-numeric or zero value reached the same fallback.
+    max_value_length: positiveInteger(block["max_value_length"]),
+    span_kinds: r.requireStrings(block["span_kinds"], ".telemetry.exec_journal.span_kinds"),
+    statuses: r.requireStrings(block["statuses"], ".telemetry.exec_journal.statuses")
+  };
+}
+function positiveInteger(value) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return MAX_VALUE_LENGTH_FALLBACK;
+  return value;
+}
+
+// src/journal/schema.ts
+var SLUG_RE = /^[A-Za-z0-9@_./:-]+$/;
+var JSON_BOOLEANS = ["true", "false"];
+var modelTiers = (regs) => regs.models.tiers.map((tier) => tier.id);
+var spanKinds = (regs) => regs.execJournal.span_kinds;
+var statuses = (regs) => regs.execJournal.statuses;
+var riskTiers = (regs) => Object.keys(regs.policy.autonomy.ceiling_by_risk);
+var EXEC_JOURNAL_FIELDS = [
+  { name: "timestamp", flag: "--timestamp", guard: "slug", json: "string", presence: "required" },
+  { name: "run_id", flag: "--run-id", guard: "slug", json: "string", presence: "required" },
+  { name: "capability_id", flag: "--capability-id", guard: "slug", json: "string", presence: "required" },
+  { name: "agent", flag: "--agent", guard: "slug", json: "string", presence: "always" },
+  { name: "model_tier", flag: "--model-tier", guard: "enum", json: "string", presence: "required", values: modelTiers },
+  { name: "status", flag: "--status", guard: "enum", json: "string", presence: "required", values: statuses },
+  { name: "tokens_in", flag: "--tokens-in", guard: "int", json: "number", presence: "required" },
+  { name: "tokens_out", flag: "--tokens-out", guard: "int", json: "number", presence: "required" },
+  { name: "duration_ms", flag: "--duration-ms", guard: "int", json: "number", presence: "required" },
+  { name: "note", flag: "--note", guard: "free", json: "string", presence: "always" },
+  { name: "trace_id", flag: "--trace-id", guard: "slug", json: "string", presence: "optional" },
+  { name: "span_id", flag: "--span-id", guard: "slug", json: "string", presence: "optional" },
+  { name: "parent_span_id", flag: "--parent-span-id", guard: "slug", json: "string", presence: "optional" },
+  { name: "span_kind", flag: "--span-kind", guard: "enum", json: "string", presence: "optional", values: spanKinds },
+  { name: "tool", flag: "--tool", guard: "slug", json: "string", presence: "optional" },
+  { name: "provider", flag: "--provider", guard: "slug", json: "string", presence: "optional" },
+  { name: "model", flag: "--model", guard: "slug", json: "string", presence: "optional" },
+  { name: "cost_micros", flag: "--cost-micros", guard: "int", json: "number", presence: "optional" },
+  { name: "retry_attempt", flag: "--retry-attempt", guard: "int", json: "number", presence: "optional" },
+  { name: "cache_hit", flag: "--cache-hit", guard: "enum", json: "boolean", presence: "optional", values: () => JSON_BOOLEANS },
+  { name: "route", flag: "--route", guard: "slug", json: "string", presence: "optional" },
+  { name: "risk", flag: "--risk", guard: "enum", json: "string", presence: "optional", values: riskTiers }
+];
+function journalRegistries(root) {
+  const models = memo2(() => loadModels(root));
+  const policy = memo2(() => loadPolicy(root));
+  const execJournal = memo2(() => loadExecJournalPolicy(root));
+  return {
+    get models() {
+      return models();
+    },
+    get policy() {
+      return policy();
+    },
+    get execJournal() {
+      return execJournal();
+    }
+  };
+}
+function memo2(make) {
+  let cell = null;
+  return () => {
+    if (cell === null) cell = { value: make() };
+    return cell.value;
+  };
+}
+
+// src/journal/exec-journal.ts
+var JournalError = class extends Error {
+  kind = "journal";
+  usage;
+  constructor(message, opts = {}) {
+    super(message);
+    this.usage = opts.usage ?? false;
+  }
+};
+var DEFAULTED_FIELD = "timestamp";
+var BY_FLAG = new Map(EXEC_JOURNAL_FIELDS.map((spec) => [spec.flag, spec]));
+var BY_NAME = new Map(EXEC_JOURNAL_FIELDS.map((spec) => [spec.name, spec]));
+function parseAppendArgs(argv2) {
+  const [file, ...rest] = argv2;
+  if (file === void 0 || file === "") throw new JournalError("", { usage: true });
+  const fields = {};
+  const pending = [...rest];
+  for (; ; ) {
+    const flag = pending.shift();
+    if (flag === void 0) break;
+    const value = pending.shift();
+    if (value === void 0) throw new JournalError("", { usage: true });
+    const spec = BY_FLAG.get(flag);
+    if (spec === void 0) throw new JournalError(`unknown arg: ${flag}`, { usage: true });
+    fields[spec.name] = value;
+  }
+  return { file, fields };
+}
+function appendLine(root, file, argv2, now, regs) {
+  requireModelsRegistry(root);
+  const { fields } = parseAppendArgs(argv2);
+  const maxLength = regs.execJournal.max_value_length;
+  for (const { spec, text } of setInArgvOrder(fields)) {
+    if (text.length > maxLength) {
+      throw new JournalError(`${spec.flag} must be at most ${maxLength} characters, got ${text.length}`);
+    }
+  }
+  if (unset(fields[DEFAULTED_FIELD])) fields[DEFAULTED_FIELD] = now();
+  for (const spec of EXEC_JOURNAL_FIELDS) {
+    if (spec.presence === "required" && unset(fields[spec.name])) throw new JournalError("", { usage: true });
+  }
+  for (const spec of EXEC_JOURNAL_FIELDS) {
+    const value = fields[spec.name];
+    if (value === void 0) continue;
+    guardValue(spec, String(value), regs);
+  }
+  writeLine(file, emit(fields));
+}
+function validateFile(root, file, regs) {
+  if (!(0, import_node_fs6.existsSync)(file)) throw new JournalError(`no such file: ${file}`);
+  requireModelsRegistry(root);
+  let text;
+  try {
+    text = (0, import_node_fs6.readFileSync)(file, "utf8");
+  } catch {
+    throw new JournalError(`no such file: ${file}`);
+  }
+  const lines = text.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const bad = [];
+  lines.forEach((line, index) => {
+    if (line === "") return;
+    if (!validLine(line, regs)) bad.push(index + 1);
+  });
+  return { lines: lines.length, bad };
+}
+function usage(argv0) {
+  const flags = EXEC_JOURNAL_FIELDS.map((spec) => {
+    const term = `${spec.flag} ${placeholder(spec)}`;
+    return spec.presence === "required" ? term : `[${term}]`;
+  }).join(" ");
+  return `usage: ${argv0} append <file> ${flags}
+       ${argv0} validate <file>
+`;
+}
+function unset(value) {
+  return value === void 0 || value === "";
+}
+function setInArgvOrder(fields) {
+  const rows = [];
+  for (const [name, value] of Object.entries(fields)) {
+    const spec = BY_NAME.get(name);
+    if (spec !== void 0 && value !== void 0) rows.push({ spec, text: String(value) });
+  }
+  return rows;
+}
+function placeholder(spec) {
+  if (spec.json === "boolean") return "true|false";
+  if (spec.guard === "int") return "N";
+  if (spec.guard === "enum") return "ENUM";
+  if (spec.guard === "free") return "TEXT";
+  return "ID";
+}
+function requireModelsRegistry(root) {
+  const path = (0, import_node_path4.join)(root, "registries", "models.json");
+  if (!(0, import_node_fs6.existsSync)(path)) throw new JournalError(`no models registry at ${path}`);
+}
+function guardValue(spec, value, regs) {
+  switch (spec.guard) {
+    case "free":
+      return;
+    case "slug":
+      if (!SLUG_RE.test(value)) throw new JournalError(`${spec.flag} must match ${SLUG_RE.source}, got: ${value}`);
+      return;
+    case "int":
+      if (!isNonNegativeInt(value)) {
+        throw new JournalError(`${spec.flag} must be a non-negative integer, got: ${value}`);
+      }
+      return;
+    case "bool":
+      if (value !== "true" && value !== "false") {
+        throw new JournalError(`${spec.flag} must be true or false, got: ${value}`);
+      }
+      return;
+    case "enum": {
+      const members = spec.values === void 0 ? [] : spec.values(regs);
+      if (members.includes(value)) return;
+      if (spec.json === "boolean") {
+        throw new JournalError(`${spec.flag} must be true or false, got: ${value}`);
+      }
+      throw new JournalError(`invalid ${spec.name}: ${value} (must be one of: ${members.join(" ")})`);
+    }
+  }
+}
+function isNonNegativeInt(value) {
+  return /^[0-9]+$/.test(value);
+}
+function emit(fields) {
+  const row = {};
+  for (const spec of EXEC_JOURNAL_FIELDS) {
+    const value = fields[spec.name];
+    if (value === void 0) {
+      if (spec.presence === "always") row[spec.name] = null;
+      continue;
+    }
+    const text = String(value);
+    row[spec.name] = spec.json === "number" ? Number.parseInt(text, 10) : spec.json === "boolean" ? text === "true" : text;
+  }
+  return row;
+}
+function writeLine(file, row) {
+  try {
+    (0, import_node_fs6.appendFileSync)(file, `${encode(row)}
+`);
+  } catch {
+    throw new JournalError(`cannot append to ${file}`);
+  }
+}
+function encode(row) {
+  return JSON.stringify(row).replace(/\u007f/g, "\\u007f");
+}
+function validLine(line, regs) {
+  let parsed;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return false;
+  }
+  if (!isRecord(parsed)) return false;
+  for (const spec of EXEC_JOURNAL_FIELDS) {
+    if (!validField(spec, parsed[spec.name], regs)) return false;
+  }
+  return true;
+}
+function validField(spec, value, regs) {
+  if (spec.guard === "free") return true;
+  const required = spec.presence === "required";
+  if (spec.guard === "slug") {
+    if (!required && (value === void 0 || value === null)) return true;
+    return typeof value === "string" && SLUG_RE.test(value);
+  }
+  if (!required && jqAbsent(value)) return true;
+  if (spec.guard === "int") {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 && Math.floor(value) === value;
+  }
+  if (spec.guard === "bool" || spec.json === "boolean") return typeof value === "boolean";
+  const members = spec.values === void 0 ? [] : spec.values(regs);
+  return typeof value === "string" && members.includes(value);
+}
+function jqAbsent(value) {
+  return value === void 0 || value === null || value === false;
+}
+
+// src/journal/cli.ts
+var ARGV0 = "scripts/exec-journal.sh";
+var runJournal = (argv2, io2) => {
+  const [name, ...rest] = argv2;
+  try {
+    if (name === "append") return append(rest, io2);
+    if (name === "validate") return validate(rest, io2);
+    throw new JournalError("", { usage: true });
+  } catch (e) {
+    if (e instanceof JournalError) {
+      if (e.message !== "") io2.err(`${e.message}
+`);
+      if (e.usage) io2.err(usage(ARGV0));
+      return 1;
+    }
+    if (e instanceof KernelError) {
+      io2.err(`${e.message}
+`);
+      return 1;
+    }
+    throw e;
+  }
+};
+function append(argv2, io2) {
+  const root = resolveRoot(io2.env);
+  const { file } = parseAppendArgs(argv2);
+  appendLine(root, file, argv2, isoNow, journalRegistries(root));
+  return 0;
+}
+function validate(argv2, io2) {
+  const [file] = argv2;
+  if (file === void 0 || file === "") throw new JournalError("", { usage: true });
+  const root = resolveRoot(io2.env);
+  const result = validateFile(root, file, journalRegistries(root));
+  for (const line of result.bad) io2.err(`line ${line}: does not match the exec-journal schema
+`);
+  if (result.bad.length > 0) {
+    io2.err(`${result.bad.length} invalid line(s) in ${file}
+`);
+    return 1;
+  }
+  io2.out(`${file}: ${result.lines} line(s), all valid
+`);
+  return 0;
+}
+function isoNow() {
+  return (/* @__PURE__ */ new Date()).toISOString().replace(/\.[0-9]{3}Z$/, "Z");
+}
+
+// src/journal/telemetry.ts
+var import_node_fs7 = require("node:fs");
+var import_node_path5 = require("node:path");
+
+// src/registry/policy-telemetry.ts
+var reader = strictReader("policy.json");
+function loadTelemetryPolicy(root) {
+  const document = reader.requireRecord(loadRegistry(root, "policy.json"), "");
+  const telemetry = reader.requireRecord(document["telemetry"], ".telemetry");
+  return {
+    home: reader.requireString(telemetry["home"], ".telemetry.home"),
+    retention_days: reader.requireNumber(telemetry["retention_days"], ".telemetry.retention_days"),
+    value_pattern: reader.requireString(telemetry["value_pattern"], ".telemetry.value_pattern"),
+    events: reader.requireRows(telemetry["events"], ".telemetry.events").map((row, i) => ({
+      id: reader.requireString(row["id"], `.telemetry.events[${i}].id`),
+      keys: reader.requireStrings(row["keys"], `.telemetry.events[${i}].keys`)
+    }))
+  };
+}
+
+// src/journal/telemetry.ts
+var TelemetryError = class extends Error {
+  kind = "telemetry";
+};
+var TelemetryUsageError = class extends Error {
+  kind = "telemetry-usage";
+};
+var APPEND_USAGE_ARGV0 = "scripts/telemetry.sh";
+function usage2(argv0 = APPEND_USAGE_ARGV0) {
+  return [
+    `usage: ${argv0} append <file> --session SID --event ID --data JSON [--ts TS]`,
+    `       ${argv0} validate <file>`,
+    ""
+  ].join("\n");
+}
+function parseAppendArgs2(args) {
+  const [file, ...rest] = args;
+  if (file === void 0) throw new TelemetryUsageError();
+  return { file, options: parseAppendFlags(rest) };
+}
+function requirePolicyPresent(root) {
+  if (!(0, import_node_fs7.existsSync)((0, import_node_path5.join)(root, "registries", "policy.json"))) throw new TelemetryError("policy.json missing");
+}
+function appendEvent(root, file, options, now = utcNow) {
+  requirePolicyPresent(root);
+  const policy = loadTelemetryPolicy(root);
+  const event = policy.events.find((row) => row.id === options.event);
+  if (event === void 0) throw new TelemetryError(`unknown event: ${options.event}`);
+  const data = parseData(options.data);
+  const pattern = compilePattern(policy.value_pattern);
+  if (!dataIsValid(data, event.keys, pattern)) {
+    throw new TelemetryError(`data failed schema/value_pattern check for event ${options.event}: ${options.data}`);
+  }
+  const ts = options.ts === void 0 || options.ts === "" ? now() : options.ts;
+  const line = jqCompact({ ts, session_id: options.session, event: options.event, data });
+  try {
+    (0, import_node_fs7.appendFileSync)(file, `${line}
+`);
+  } catch {
+    throw new TelemetryError(`cannot append to ${file}`);
+  }
+}
+function validateTelemetry(root, file) {
+  if (!isFile(file)) throw new TelemetryError(`no such file: ${file}`);
+  requirePolicyPresent(root);
+  const policy = loadTelemetryPolicy(root);
+  const pattern = compilePattern(policy.value_pattern);
+  const lines = readLines(file);
+  const bad = [];
+  lines.forEach((line, index) => {
+    if (line === "") return;
+    if (!lineIsValid(line, policy, pattern)) bad.push(index + 1);
+  });
+  return { lines: lines.length, bad };
+}
+function jqCompact(value) {
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return jqNumber(value);
+  if (typeof value === "string") return jqString(value);
+  if (Array.isArray(value)) return `[${value.map((item) => jqCompact(item)).join(",")}]`;
+  if (isRecord(value)) {
+    const fields = Object.entries(value).map(([key, item]) => `${jqString(key)}:${jqCompact(item)}`);
+    return `{${fields.join(",")}}`;
+  }
+  return "null";
+}
+var APPEND_FLAGS = ["--session", "--event", "--data", "--ts"];
+function parseAppendFlags(args) {
+  const values = /* @__PURE__ */ new Map();
+  let index = 0;
+  while (index < args.length) {
+    if (args.length - index < 2) throw new TelemetryUsageError();
+    const flag = args[index] ?? "";
+    if (!APPEND_FLAGS.includes(flag)) throw new TelemetryUsageError();
+    values.set(flag, args[index + 1] ?? "");
+    index += 2;
+  }
+  const session = values.get("--session") ?? "";
+  const event = values.get("--event") ?? "";
+  const data = values.get("--data") ?? "";
+  if (session === "" || event === "" || data === "") throw new TelemetryUsageError();
+  const ts = values.get("--ts") ?? "";
+  return ts === "" ? { session, event, data } : { session, event, data, ts };
+}
+function parseData(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new TelemetryError(`--data is not valid JSON: ${raw}`);
+  }
+  if (parsed === false || parsed === null) throw new TelemetryError(`--data is not valid JSON: ${raw}`);
+  return parsed;
+}
+function dataIsValid(data, keys, pattern) {
+  if (!isRecord(data)) return false;
+  for (const [key, value] of Object.entries(data)) {
+    if (!keys.includes(key)) return false;
+    if (!valueIsValid(value, pattern)) return false;
+  }
+  return true;
+}
+function valueIsValid(value, pattern) {
+  if (typeof value === "boolean" || typeof value === "number") return true;
+  if (typeof value === "string") return pattern.test(value);
+  if (Array.isArray(value)) return value.every((item) => typeof item === "string" && pattern.test(item));
+  return false;
+}
+function compilePattern(pattern) {
+  try {
+    return new RegExp(pattern);
+  } catch {
+    throw new TelemetryError(`telemetry.value_pattern is not a valid regular expression: ${pattern}`);
+  }
+}
+function lineIsValid(line, policy, pattern) {
+  let parsed;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return false;
+  }
+  if (!isRecord(parsed)) return false;
+  const ts = parsed["ts"];
+  const session = parsed["session_id"];
+  const event = parsed["event"];
+  if (typeof ts !== "string" || ts.length === 0) return false;
+  if (typeof session !== "string" || session.length === 0) return false;
+  if (typeof event !== "string") return false;
+  const known = policy.events.find((row) => row.id === event);
+  if (known === void 0) return false;
+  const raw = parsed["data"];
+  const data = raw === void 0 || raw === null || raw === false ? {} : raw;
+  return dataIsValid(data, known.keys, pattern);
+}
+function isFile(path) {
+  try {
+    return (0, import_node_fs7.statSync)(path).isFile();
+  } catch {
+    return false;
+  }
+}
+function readLines(file) {
+  let text;
+  try {
+    text = (0, import_node_fs7.readFileSync)(file, "utf8");
+  } catch {
+    throw new TelemetryError(`no such file: ${file}`);
+  }
+  if (text === "") return [];
+  const parts = text.split("\n");
+  if (parts[parts.length - 1] === "") parts.pop();
+  return parts;
+}
+function utcNow() {
+  return `${(/* @__PURE__ */ new Date()).toISOString().slice(0, 19)}Z`;
+}
+function jqString(value) {
+  return JSON.stringify(value).replace(/\u007F/gu, "\\u007f");
+}
+function jqNumber(value) {
+  if (!Number.isFinite(value)) return "null";
+  if (value === 0) return Object.is(value, -0) ? "-0" : "0";
+  const sign = value < 0 ? "-" : "";
+  const [digits, exponent] = shortestDigits(Math.abs(value));
+  const decpt = exponent + 1;
+  if (decpt <= -4 || decpt > digits.length + 15) {
+    const mantissa = digits.length > 1 ? `${digits.slice(0, 1)}.${digits.slice(1)}` : digits;
+    const power = decpt - 1;
+    const powerSign = power < 0 ? "-" : "+";
+    return `${sign}${mantissa}e${powerSign}${Math.abs(power).toString().padStart(2, "0")}`;
+  }
+  if (decpt <= 0) return `${sign}0.${"0".repeat(-decpt)}${digits}`;
+  if (decpt >= digits.length) return `${sign}${digits}${"0".repeat(decpt - digits.length)}`;
+  return `${sign}${digits.slice(0, decpt)}.${digits.slice(decpt)}`;
+}
+function shortestDigits(magnitude) {
+  const [mantissa, exponent] = magnitude.toExponential().split("e");
+  return [(mantissa ?? "0").replace(".", ""), Number.parseInt(exponent ?? "0", 10)];
+}
+
+// src/journal/telemetry-cli.ts
+var runTelemetry = (argv2, io2) => {
+  const [name, ...args] = argv2;
+  try {
+    if (name !== "append" && name !== "validate") throw new TelemetryUsageError();
+    return name === "append" ? runAppend(args, io2) : runValidate(args, io2);
+  } catch (e) {
+    if (e instanceof TelemetryUsageError) {
+      io2.err(usage2());
+      return 1;
+    }
+    if (e instanceof TelemetryError || e instanceof KernelError) {
+      writeJson(io2, { error: e.message });
+      return 1;
+    }
+    throw e;
+  }
+};
+function runAppend(args, io2) {
+  if (args.length === 0) throw new TelemetryUsageError();
+  const root = resolveRoot(io2.env);
+  requirePolicyPresent(root);
+  const { file, options } = parseAppendArgs2(args);
+  appendEvent(root, file, options);
+  return 0;
+}
+function runValidate(args, io2) {
+  const file = args[0];
+  if (file === void 0) throw new TelemetryUsageError();
+  const root = resolveRoot(io2.env);
+  const { lines, bad } = validateTelemetry(root, file);
+  for (const line of bad) io2.err(`line ${line}: does not match the telemetry schema
+`);
+  if (bad.length > 0) {
+    io2.err(`${bad.length} invalid line(s) in ${file}
+`);
+    return 1;
+  }
+  io2.out(`${file}: ${lines} line(s), all valid
+`);
+  return 0;
+}
+
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
 function isExecutable(path) {
   try {
-    (0, import_node_fs6.accessSync)(path, import_node_fs6.constants.X_OK);
+    (0, import_node_fs8.accessSync)(path, import_node_fs8.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -1776,8 +2332,8 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs6.existsSync, import_node_fs6.readdirSync, isExecutable);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs8.existsSync, import_node_fs8.readdirSync, isExecutable);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
-var table = { kernel: runKernel };
+var table = { kernel: runKernel, journal: runJournal, telemetry: runTelemetry };
 process.exit(dispatch(table, argv, io));

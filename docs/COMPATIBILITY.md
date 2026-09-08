@@ -226,3 +226,62 @@ carries `hook_guidance` and `risk_floor`, now computed rather than copied, so
 needs no change. Only a consumer parsing `registries/routing.json` directly for
 those two keys must switch to the structured fields. `risk_floor` on
 `registries/intents.json` intent rows is a different field and is untouched.
+
+### `scripts/exec-journal.sh` becomes a shim
+
+One more MINOR entry in the same release train, from the same TypeScript runtime
+migration.
+
+| Surface | Change | Kind |
+|---|---|---|
+| `scripts/exec-journal.sh` | now a shim that `exec`s `node dist/engineos.cjs journal "$@"` with `ENGINEOS_ROOT` set to its own root | implementation, surface unchanged |
+| `dist/engineos.cjs` | new `journal` subcommand, with `append` and `validate` under it | added |
+
+The journal's surface is unchanged by the shim: the same two subcommands take
+the same flags, write the same JSONL **line bytes** — same key order, same
+number rendering, same string escaping, `\u007f` included — and exit with the
+same codes. That is what `src/journal/parity.test.ts` asserts, byte for byte,
+against a pinned copy of the bash CLI kept at
+`test/fixtures/legacy-journal/exec-journal.sh`.
+
+What changed is the runtime requirement, in exactly the shape
+`scripts/kernel.sh` changed it: the CLI needed `bash` and `jq`, and now needs
+`bash` and **node >= 18**, and no longer calls `jq` itself. A consumer whose
+environment has `jq` but no node must install node before upgrading; tooling
+that runs `jq` over a journal *file* is unaffected, because the file is
+unchanged. A relocated copy of `exec-journal.sh` answers from its own
+`registries/` exactly as before, because the shim exports `ENGINEOS_ROOT` — the
+bash CLI derived that root from its own path, which is why the parity fixture is
+staged rather than run in place.
+
+`registries/policy.json` `telemetry.exec_journal.schema` still names
+`scripts/exec-journal.sh`, and C27a still requires that file to be executable.
+The shim is the entry point a consumer calls; the schema declaration points at
+the entry point, not at the implementation behind it.
+
+Two things that were *inside* the bash file are not public surface and moved:
+the `VALID_STATUSES` / `VALID_SPAN_KINDS` constants are gone entirely — the port
+resolves both vocabularies from `registries/policy.json` rather than restating
+them, so the values are unchanged and there is no longer a second copy to drift
+— and `MAX_VALUE_LEN_FALLBACK` became `MAX_VALUE_LENGTH_FALLBACK` in
+`src/registry/policy-exec-journal.ts`, same value, same purpose (the bound the
+CLI enforces when `policy.json` cannot be read). A consumer grepping the bash
+file for either is reading an implementation detail that the shim removed, which
+is the same trade `scripts/kernel.sh` made one section up.
+
+The usage text is the one *observable* difference, and it is not versioned
+surface: it is now rendered from the field table (`--<flag> <TYPE>`) instead of
+being restated as a literal, so its wording differs while every flag it names,
+and the exit code of every path that prints it, do not.
+
+**MINOR: `scripts/telemetry.sh` is a shim.** The file is now a two-line wrapper
+over `node dist/engineos.cjs telemetry "$@"` (implementation
+`src/journal/telemetry.ts`). Unchanged public surface: the `append` / `validate`
+subcommands, the `--session` / `--event` / `--data` / `--ts` flags, the four-field
+line shape (`ts`, `session_id`, `event`, `data`) byte for byte, the
+`{"error": ...}`-on-stdout-with-exit-1 convention, the `usage`-on-stderr
+convention, and `validate`'s `<file>: N line(s), all valid` /
+`line N: does not match the telemetry schema` / `N invalid line(s) in <file>`
+texts. Changed: the runtime dependency is node >= 18 instead of jq, and
+`ENGINEOS_ROOT` now relocates the registry lookup. `usage` names
+`scripts/telemetry.sh` rather than interpolating `$0`.

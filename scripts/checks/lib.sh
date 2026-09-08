@@ -26,6 +26,10 @@ KSH=scripts/kernel.sh
 ADMIT_TS=src/kernel/admit.ts
 TSH=scripts/telemetry.sh
 EJSH=scripts/exec-journal.sh
+# scripts/exec-journal.sh is a shim too. It is still run as a CLI (C27b's
+# behavioural canary), but its constants moved into src/journal/ and
+# src/registry/, so a Check reading a value reads the source that owns it.
+EJ_POLICY_TS=src/registry/policy-exec-journal.ts
 ROUTER_MD=agents/router.md
 PROMPT_ADVISOR=hooks/prompt-advisor.sh
 HOOKS_JSON=hooks/hooks.json
