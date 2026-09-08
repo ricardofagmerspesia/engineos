@@ -30,7 +30,7 @@ Esta matriz existe porque o PRD (`docs/PRD.md`, Draft v1 de 11/06/2026) descreve
 | RAG | Planejado | `rules/llm-apps.md`, `skills/eval-harness/references/retrieval-metrics.md` | Check de que as três métricas estão definidas e referenciadas | Orientação escrita, sem corpus, ingestão, índice ou recuperação. E08 |
 | Filas, workers, recuperação distribuída | Planejado | — | — | Nada implementado; exigido apenas se o perfil distribuído entrar na release. E09 |
 | Registry de tools/MCPs e autorização | Planejado | `templates/mcp.template.json` | — | Configuração manual por template; sem catálogo, health-check, rate limit ou autorização no servidor. E10 |
-| Adaptadores de outras ferramentas (Cursor, Trae, Windsurf, `.agents`) | Parcial | `.cursor/`, `.trae/`, `.windsurf/`, `.agents/`, `templates/adapters/` | Check `C32` — os três espelhos são byte a byte idênticos (47 arquivos × 2); matriz de enforcement honesta em `templates/adapters/README.md` | Fora do Claude Code, os gates de Stop degradam para convenção — está documentado, não resolvido. CI é a única camada portátil. Ficam fora do pacote por padrão (`--with-ide-mirrors`). E01 |
+| Adaptadores de outras ferramentas (Cursor, Trae, Windsurf, `.agents`) | Parcial | `.cursor/`, `.trae/`, `.windsurf/`, `.agents/`, `templates/adapters/` | Check `C32` — os três espelhos são byte a byte idênticos (147 arquivos × 2); matriz de enforcement honesta em `templates/adapters/README.md` | Fora do Claude Code, os gates de Stop degradam para convenção — está documentado, não resolvido. CI é a única camada portátil. Ficam fora do pacote por padrão (`--with-ide-mirrors`). E01 |
 
 ### Configuração efetiva — o console mostra o que o runtime decide
 
