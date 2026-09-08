@@ -39,9 +39,9 @@ same short overview to both constitution files. Inserted the hardening checklist
 English, framed as the reviewer's pass order and deferring policy to `rules/security.md`.
 
 ## Verification
-Not run at record time. Applicable: `scripts/validate-engineos.sh` (C2, C3, C5b, C9-C11
-touch CLAUDE.md, AGENTS.md and agents/*.md) and `npm test` (prose-layer e2e). Owner
-decides whether to run before merge.
+Run 2026-09-08 after the owner approved:
+- `scripts/validate-engineos.sh` -- passed 104, failed 0
+- `npm test` -- 1961 pass, 0 fail (112s)
 
 ## Human decisions
 none — risk low (reversible prose, no runtime or registry change)
