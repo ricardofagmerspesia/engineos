@@ -12,9 +12,9 @@
 // with them.
 //
 // The gate covers the read verbs too, so "reads are not the threat" is not the
-// claim being made: `GET /api/skills` writes to the store today (recorded for
-// U11), and a rebound origin can read every GET regardless. Reads pass the
-// origin check, never the Host allowlist.
+// claim being made: a rebound origin can read every GET regardless, and what
+// those GETs expose is the operator's repository. Reads pass the origin check,
+// never the Host allowlist.
 //
 // The verdict lives in src/lib/request-origin.ts, pure and unit-tested. This
 // file only reads the headers and shapes the refusal, so there is no logic here
