@@ -2513,6 +2513,7 @@ function readEnvelope(io2) {
   };
 }
 function hookContext(env, io2, spawn = import_node_child_process.spawnSync) {
+  void env;
   return {
     io: io2,
     root: resolveRoot(io2.env),
