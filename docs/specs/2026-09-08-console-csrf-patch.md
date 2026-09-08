@@ -114,3 +114,64 @@ compiled test files and `npx tsc --noEmit` in `console/` (needs `console/node_mo
 run `npm ci` there first if absent — it is gitignored). No root gate needed: nothing
 under `src/`, `dist/`, `registries/` changes — but `node dist/engineos.cjs validate`
 runs once anyway (C33 CRLF now covers `console/**/*.ts`).
+
+## Amendment 1 — after the security-reviewer and critic passes (2026-09-08)
+
+Findings driving it: HIGH DNS rebinding (attacker hostname resolving to 127.0.0.1 makes
+the request same-origin for the browser and `Origin` equal to `Host`, so both walls
+allow; reproduced against an isolated copy: `POST /api/publish` committed); LOW
+`Sec-Fetch-Site: none` allowed on writes with no legitimate emitter; LOW unbounded
+per-key issue list (2.2 MB body → 14 MB response) and no body bound; critic: the
+middleware itself has no test, `HEAD`/`OPTIONS`/null-host branches unexercised, the
+drawer redefines the patch shape.
+
+### Unit C — hardening (`console/src/lib/request-origin.ts` (+test), `console/src/middleware.ts`, `console/src/middleware.test.ts` (new), `console/tsconfig.test.json` include, `console/src/lib/validate/skill-patch.ts` (+test), `console/src/app/api/skills/[id]/route.ts`, `console/src/components/skills/skill-detail-drawer.tsx`)
+
+`originVerdict` rules, new order (first match returns):
+0. **Host allowlist, every method.** `host` must be `127.0.0.1`, `localhost` or
+   `[::1]`, each with or without `:<port>` (any port; the binding decides the port, the
+   allowlist decides the name). Missing or any other value → `refuse`. WHY: under DNS
+   rebinding the browser's origin and the `Host` header are the attacker's name; the
+   only thing the attacker cannot make `Host` say is a loopback literal, and reads are
+   in scope too because a rebound origin can read every GET.
+1. `GET` / `HEAD` / `OPTIONS` → `allow`.
+2. `Sec-Fetch-Site` present: `same-origin` → `allow`; anything else, `none` included →
+   `refuse`. WHY: the console's own client always sends `same-origin`; `none` on a write
+   verb has no legitimate emitter here (a navigation cannot POST; an extension is not
+   this app).
+3. absent, `Origin` present: `allow` only when the `Origin` URL's host equals `host`.
+4. both absent → `allow` (pending the owner's decision under Human decisions; if the
+   owner picks a shared secret, that becomes a separate unit).
+
+Tests added to `request-origin.test.ts`: `HEAD` and `OPTIONS` allowed cross-site;
+`host` null with `Origin` present → refuse; `Host: evil.example:3000` with
+`Sec-Fetch-Site: same-origin` → refuse; the same with matching `Origin` and no
+`Sec-Fetch-Site` → refuse; `localhost:3000`, `[::1]:3000`, `127.0.0.1` (no port) → allow
+with same-origin; `Sec-Fetch-Site: none` on POST → refuse (the old test that asserted
+allow is inverted, not deleted).
+
+`middleware.test.ts`: constructs `NextRequest` objects from `next/server` and calls
+`middleware()` directly — cross-site POST to `/api/publish` → status 403 and body
+`{ ok: false, reason: 'Cross-site request refused.' }`; same-origin POST with
+`Host: 127.0.0.1:3000` → a pass-through response (`x-middleware-next` header is `1`);
+`Host: evil.example:3000` same-origin → 403. If `next/server` cannot be loaded by
+`node --test` from the test build, say so and fall back to testing a thin exported
+`decide(request: { method, headers })` that the middleware delegates to. `middleware.ts`
+imports `./lib/request-origin.js` (relative, `.js`) so the test build resolves it;
+`tsconfig.test.json` include gains `src/middleware.ts`, `src/middleware.test.ts`.
+
+`parseSkillPatch`: unknown fields reported up to `MAX_UNKNOWN_FIELDS_REPORTED = 5`; past
+that, one issue `"<n> more unknown fields not listed."`. Test: 8 unknown keys → 6 issues
+(5 named + 1 tally) plus the "no field to apply" issue.
+
+Route `PUT`: before `request.json()`, if `content-length` parses to more than
+`MAX_BODY_BYTES = 16_384` → `413 { errors: [{ …, message: 'Request body exceeds 16384 bytes.' }] }`.
+WHY: the body carries two fields and `validateSkill` caps `description` at 2000
+characters; anything larger is not a patch.
+
+`skill-detail-drawer.tsx:15`: `onSave: (patch: SkillPatch) => void`, importing the type
+the way the file's other type imports go.
+
+Out of scope (recorded, U11): `GET /api/skills` writes to the store (so "reads are not
+the threat" holds only after U11 — narrow the middleware comment to say so),
+`needsQuoting` missing `: ` and ` #`.
