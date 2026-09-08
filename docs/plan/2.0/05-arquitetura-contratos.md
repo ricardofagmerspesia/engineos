@@ -1,37 +1,38 @@
-# EngineOS 2.0 — Arquitetura e contratos de componentes
+# EngineOS 2.0 — Architecture and component contracts
 
-Ancorado no código atual do repositório em `fed9a63`. Cada componente traz: o que já existe,
-o que falta, e o **contrato mínimo** que precisa ser aceito antes que consumidores comecem.
+Anchored in the repository's current code at `fed9a63`. Every component states: what already
+exists, what is missing, and the **minimum contract** that has to be accepted before consumers
+start.
 
-## 1. Forma do sistema
+## 1. Shape of the system
 
 ```mermaid
 graph TB
-  subgraph CP["Plano de controle"]
+  subgraph CP["Control plane"]
     CON["Console<br/>console/src"]
     REG["Registries<br/>registries/*.json"]
   end
-  subgraph DEC["Decisão — determinístico, sem efeito externo"]
+  subgraph DEC["Decision — deterministic, no external effect"]
     KER["Kernel<br/>scripts/kernel.sh"]
   end
-  subgraph EXE["Plano de execução"]
-    RUN["Runner<br/>src/runner (a criar)"]
-    PRV["Provider adapters<br/>src/providers (a criar)"]
-    TLS["Tool service / MCP<br/>src/tools (a criar)"]
+  subgraph EXE["Execution plane"]
+    RUN["Runner<br/>src/runner (to be created)"]
+    PRV["Provider adapters<br/>src/providers (to be created)"]
+    TLS["Tool service / MCP<br/>src/tools (to be created)"]
   end
-  subgraph EST["Estado e conhecimento"]
-    PER["Persistência<br/>runs, checkpoints, aprovações"]
-    MEM["Memória<br/>rules/memory.md"]
-    RAG["RAG<br/>rag/ (a criar)"]
+  subgraph EST["State and knowledge"]
+    PER["Persistence<br/>runs, checkpoints, approvals"]
+    MEM["Memory<br/>rules/memory.md"]
+    RAG["RAG<br/>rag/ (to be created)"]
   end
-  subgraph OBS["Evidência"]
-    TEL["Telemetria<br/>exec-journal, spans"]
+  subgraph OBS["Evidence"]
+    TEL["Telemetry<br/>exec-journal, spans"]
     EVA["Evals<br/>evals/"]
   end
 
-  CON -->|publica config_version| REG
-  REG -->|fatos declarados| KER
-  KER -->|decisão estruturada| RUN
+  CON -->|publishes config_version| REG
+  REG -->|declared facts| KER
+  KER -->|structured decision| RUN
   RUN --> PRV
   RUN --> TLS
   RUN <--> PER
@@ -41,40 +42,40 @@ graph TB
   MEM --> RUN
   RAG --> RUN
   TEL --> EVA
-  TEL -->|resultado observado| KER
+  TEL -->|observed result| KER
 ```
 
-**Invariante central:** o kernel decide e não age; o runner age e não decide. Uma decisão
-tomada dentro do runner é um defeito de arquitetura, porque deixa de ser testável em
-isolamento e deixa de aparecer na simulação do console (`E03-T10`).
+**Central invariant:** the kernel decides and does not act; the runner acts and does not
+decide. A decision taken inside the runner is an architecture defect, because it stops being
+testable in isolation and stops appearing in the console simulation (`E03-T10`).
 
-**Segunda invariante:** o console escreve configuração, nunca estado de execução. Estado de
-execução pertence à persistência do runner. Misturar os dois é o que torna publicação e
-rollback perigosos.
+**Second invariant:** the console writes configuration, never execution state. Execution
+state belongs to the runner's persistence. Mixing the two is what makes publishing and
+rollback dangerous.
 
 ---
 
-## 2. Kernel — decisão determinística
+## 2. Kernel — deterministic decision
 
-**Existe.** `scripts/kernel.sh` com 14 subcomandos: `route-path`, `route-intent`, `model`,
+**Exists.** `scripts/kernel.sh` with 14 subcommands: `route-path`, `route-intent`, `model`,
 `risk`, `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`, `decision-rules`, `scale`,
-`route-escalate`, `resolve-task`. Alimentado por `registries/policy.json` (blocos `risk`,
+`route-escalate`, `resolve-task`. Fed by `registries/policy.json` (blocks `risk`,
 `autonomy`, `gates`, `parallelism`, `retry`, `repair`, `breaker`, `hitl`, `telemetry`,
 `router`), `registries/decision-rules.json`, `intents.json`, `routing.json`, `models.json`,
 `agents.json`, `capabilities.json`.
 
-**Falta.** As decisões não estão ligadas a transições reais de execução (R06). O kernel
-responde corretamente e ninguém obedece.
+**Missing.** The decisions are not wired to real execution transitions (R06). The kernel
+answers correctly and nobody obeys.
 
-### Contrato
+### Contract
 
 ```
-entrada:  fatos declarados (caminho, intenção, contagem de arquivos, estado observado)
-saída:    decisão estruturada em JSON
-efeito:   nenhum. O kernel não escreve, não chama rede, não muta estado.
+input:   declared facts (path, intent, file count, observed state)
+output:  structured decision in JSON
+effect:  none. The kernel does not write, does not call the network, does not mutate state.
 ```
 
-`resolve-task` já devolve o envelope canônico:
+`resolve-task` already returns the canonical envelope:
 
 ```json
 {
@@ -105,21 +106,21 @@ efeito:   nenhum. O kernel não escreve, não chama rede, não muta estado.
 }
 ```
 
-**Regra de evolução (`docs/COMPATIBILITY.md`):** adicionar subcomando ou campo é MINOR;
-remover ou renomear é MAJOR com janela de depreciação. O interior do kernel — `reg`, os
-programas jq, quantos processos custa — não é superfície.
+**Evolution rule (`docs/COMPATIBILITY.md`):** adding a subcommand or a field is MINOR;
+removing or renaming one is MAJOR with a deprecation window. The kernel's interior — `reg`,
+the jq programs, how many processes it costs — is not surface.
 
-**Contrato a acrescentar em E01-T13:** toda regra em `policy.json` e `decision-rules.json`
-declara seu ponto de aplicação. Regra sem ponto de aplicação é reportada como **não
-aplicada**, e essa marcação é o que impede anunciar enforcement inexistente.
+**Contract to add in E01-T13:** every rule in `policy.json` and `decision-rules.json`
+declares its enforcement point. A rule with no enforcement point is reported as **not
+enforced**, and that marking is what stops nonexistent enforcement from being announced.
 
 ---
 
-## 3. Console — plano de controle
+## 3. Console — control plane
 
-**Existe.** Next.js 15 + React 19 + Drizzle/SQLite. Rotas `skills`, `publish`, `history`,
-`rollback`, `diff`. `console/src/lib/store/schema.ts` já é **genérico por `kind`** — comentário
-no próprio arquivo declara que adicionar entidade não deve exigir migração:
+**Exists.** Next.js 15 + React 19 + Drizzle/SQLite. Routes `skills`, `publish`, `history`,
+`rollback`, `diff`. `console/src/lib/store/schema.ts` is already **generic by `kind`** — a
+comment in the file itself states that adding an entity must not require a migration:
 
 ```ts
 entities            { id, kind, name, status, sourcePaths_json, data_json, updatedAt }
@@ -127,21 +128,21 @@ published_snapshot  { id, kind, data_json, publishedAt }
 publish_history     { id, commitSha, createdAt, summary, diff_json }
 ```
 
-**Falta.** As verticais `agent`, `model`, `mcp`, `routing`, `rule`; relações reais; binding
-e precedência; publicação transacional com comparação de revisão; rollback não destrutivo;
-hardening.
+**Missing.** The `agent`, `model`, `mcp`, `routing`, `rule` verticals; real relations;
+binding and precedence; transactional publishing with revision comparison; non-destructive
+rollback; hardening.
 
-### Contrato de entidade
+### Entity contract
 
-Toda vertical implementa a mesma interface. Isso é o que mantém o schema estável:
+Every vertical implements the same interface. That is what keeps the schema stable:
 
 ```ts
 export interface EntityAdapter<T> {
   kind: string;                                  // 'skill' | 'agent' | 'model' | 'mcp' | 'routing' | 'rule'
-  read(): Promise<Draft<T>[]>;                   // do source of truth em disco
+  read(): Promise<Draft<T>[]>;                   // from the source of truth on disk
   validate(draft: Draft<T>, graph: Graph): ValidationIssue[];
-  render(draft: Draft<T>): FileWrite[];          // o que será gravado, sem gravar
-  relations(draft: Draft<T>): Relation[];         // arestas para o grafo
+  render(draft: Draft<T>): FileWrite[];          // what will be written, without writing
+  relations(draft: Draft<T>): Relation[];         // edges for the graph
 }
 
 export interface ValidationIssue {
@@ -152,10 +153,10 @@ export interface ValidationIssue {
 }
 ```
 
-`severity: 'error'` **impede** a publicação. `warning` não. Não existe terceiro estado, e
-nenhuma publicação prossegue com erro "conhecido".
+`severity: 'error'` **blocks** publishing. `warning` does not. There is no third state, and
+no publish proceeds with a "known" error.
 
-### Contrato de publicação
+### Publish contract
 
 ```
 publish(baseRevision, draftSet) →
@@ -167,17 +168,17 @@ publish(baseRevision, draftSet) →
   | { ok: false, reason: 'partial',         recoveryToken, completedSteps }
 ```
 
-Quatro exigências que essa forma impõe:
+Four requirements this shape imposes:
 
-1. `baseRevision` é obrigatório — publicação sem base comparada não existe na API.
-2. `partial` é um resultado de primeira classe, não uma exceção. Falha entre gravar
-   arquivos, commitar e atualizar o snapshot deixa `recoveryToken` e a lista de etapas
-   concluídas. Sem isso, R08 é inevitável.
-3. `concurrent` implica lock: duas publicações não intercalam efeitos (`E03-T13`).
-4. `dirty-worktree` protege alteração feita fora do console — o console não é dono
-   exclusivo dos arquivos.
+1. `baseRevision` is mandatory — a publish without a compared base does not exist in the API.
+2. `partial` is a first-class result, not an exception. A failure between writing the
+   files, committing and updating the snapshot leaves a `recoveryToken` and the list of
+   completed steps. Without that, R08 is inevitable.
+3. `concurrent` implies a lock: two publishes do not interleave effects (`E03-T13`).
+4. `dirty-worktree` protects a change made outside the console — the console is not the
+   exclusive owner of the files.
 
-### Contrato de rollback
+### Rollback contract
 
 ```
 rollback(historyId, { onConflict: 'abort' | 'report' }) →
@@ -185,29 +186,29 @@ rollback(historyId, { onConflict: 'abort' | 'report' }) →
   | { ok: false, reason: 'operator-changes', paths, diff }
 ```
 
-`onConflict: 'abort'` é o padrão. Rollback nunca sobrescreve alteração posterior em silêncio.
+`onConflict: 'abort'` is the default. Rollback never silently overwrites a later change.
 
 ### `config_version`
 
-Contrato definido em `E01-T10`, consumido por console e runner:
+Contract defined in `E01-T10`, consumed by the console and the runner:
 
 ```
-config_version = hash( conteúdo canônico de registries/ + rules/ + agents/ + skills/ )
+config_version = hash( canonical content of registries/ + rules/ + agents/ + skills/ )
 ```
 
-Propriedades exigidas: determinístico (mesmo conteúdo, mesmo valor), sensível a qualquer
-arquivo que altere decisão, e insensível a fim de linha e modo de arquivo — caso contrário
-Windows e Linux produzem versões diferentes para a mesma configuração, e `E02-T3` deixa de
-ser cosmético para virar correção de correção.
+Required properties: deterministic (same content, same value), sensitive to any file that
+changes a decision, and insensitive to end of line (EOL) and file mode — otherwise
+Windows and Linux produce different versions for the same configuration, and `E02-T3` stops
+being cosmetic and becomes a fix of a fix.
 
 ---
 
-## 4. Runner — plano de execução
+## 4. Runner — execution plane
 
-**Não existe.** `src/` tem `cli.ts`, `dispatch.ts`, `io.ts`, `node-guard.ts`. O runner
-governado é novo.
+**Does not exist.** `src/` has `cli.ts`, `dispatch.ts`, `io.ts`, `node-guard.ts`. The
+governed runner is new.
 
-### Máquina de estados
+### State machine
 
 ```mermaid
 stateDiagram-v2
@@ -216,22 +217,22 @@ stateDiagram-v2
   queued --> queued: admit=defer
   queued --> failed: admit=reject
   running --> waiting_approval: hitl.required
-  waiting_approval --> running: aprovação válida
-  waiting_approval --> cancelled: aprovação negada ou expirada
-  running --> succeeded: pós-condições verificadas
-  running --> failed: erro tipado ou reparo esgotado
-  running --> timed_out: prazo excedido
-  running --> cancelled: cancelamento
+  waiting_approval --> running: valid approval
+  waiting_approval --> cancelled: approval denied or expired
+  running --> succeeded: postconditions verified
+  running --> failed: typed error or repair exhausted
+  running --> timed_out: deadline exceeded
+  running --> cancelled: cancellation
   succeeded --> [*]
   failed --> [*]
   timed_out --> [*]
   cancelled --> [*]
 ```
 
-Estados terminais são absorventes. Transição inválida é **rejeitada**, nunca corrigida para
-o estado mais próximo — corrigir silenciosamente é como uma falha vira sucesso.
+Terminal states are absorbing. An invalid transition is **rejected**, never corrected to
+the nearest state — correcting silently is how a failure becomes a success.
 
-### Contrato do run
+### Run contract
 
 ```ts
 export interface Run {
@@ -239,34 +240,34 @@ export interface Run {
   task_id: string;
   state: 'queued' | 'running' | 'waiting_approval'
        | 'succeeded' | 'failed' | 'cancelled' | 'timed_out';
-  config_version: string;        // fixado no início, não relido durante a execução
+  config_version: string;        // fixed at the start, not re-read during the run
   identity: { principal: string; scope: string[] };
   budget: { reserved: Money; consumed: Money; limit: Money };
   deadline: string;              // ISO 8601
   steps: { taken: number; limit: number };
   checkpoint?: CheckpointRef;
-  contract: TaskContract;        // saída de kernel resolve-task, congelada
+  contract: TaskContract;        // output of kernel resolve-task, frozen
 }
 ```
 
-`config_version` fixado no início é o que faz uma publicação durante um run não alterar o run
-em curso (`E04-T2`). Sem isso, o comportamento de uma execução deixa de ser reproduzível.
+`config_version` fixed at the start is what makes a publish during a run not change the
+in-flight run (`E04-T2`). Without it, a run's behavior stops being reproducible.
 
-### Contrato de aprovação
+### Approval contract
 
 ```ts
 export interface Approval {
   approval_id: string;
   action: string;
-  args_hash: string;             // hash canônico dos argumentos aprovados
-  target: string;                // recurso ou destino exato
+  args_hash: string;             // canonical hash of the approved arguments
+  target: string;                // exact resource or destination
   config_version: string;
   granted_by: string;
   granted_at: string;
   expires_at?: string;
 }
 
-// Válida somente se os quatro campos coincidirem com a chamada em questão.
+// Valid only if the four fields match the call in question.
 isValid(approval, call) =
   approval.action === call.action &&
   approval.args_hash === hash(call.args) &&
@@ -276,11 +277,11 @@ isValid(approval, call) =
   !revoked(approval);
 ```
 
-Mudança em qualquer um dos quatro invalida. E uma confirmação já válida para a mesma ação
-**não é pedida de novo** — repetir aprovação treina o operador a aprovar sem ler, o que
-destrói o valor do controle.
+A change in any of the four invalidates it. And a confirmation that is already valid for the
+same action **is not asked again** — repeating an approval trains the operator to approve
+without reading, which destroys the value of the control.
 
-### Contrato do provider adapter
+### Provider adapter contract
 
 ```ts
 export interface ProviderAdapter {
@@ -291,7 +292,7 @@ export interface ProviderAdapter {
 }
 
 export interface ModelRequest {
-  model: string;                         // explícito, nunca inferido de tier
+  model: string;                         // explicit, never inferred from a tier
   messages: Message[];
   outputSchema?: JsonSchema;
   tools?: ToolSpec[];
@@ -301,8 +302,8 @@ export interface ModelRequest {
 
 export interface ModelResponse {
   provider: string;
-  model: string;                         // o modelo que de fato respondeu
-  output: unknown;                       // validado contra outputSchema quando presente
+  model: string;                         // the model that actually answered
+  output: unknown;                       // validated against outputSchema when present
   usage: {
     inputTokens: number | null;
     outputTokens: number | null;
@@ -322,33 +323,33 @@ export type ProviderError =
   | { kind: 'unknown'; raw: string };
 ```
 
-O campo `availability` é o que impede R12. `cost: null` com
-`availability: 'unavailable'` significa **não medido** e é assim que aparece no dashboard —
-nunca como `0`.
+The `availability` field is what prevents R12. `cost: null` with
+`availability: 'unavailable'` means **not measured**, and that is how it appears on the
+dashboard — never as `0`.
 
-Erros são tipados porque o breaker e o loop de reparo precisam distinguir `rate-limited`
-(espera) de `schema-invalid` (repara) de `auth` (para e escala). Uma string de erro não
-sustenta essa decisão.
+Errors are typed because the breaker and the repair loop need to distinguish `rate-limited`
+(wait) from `schema-invalid` (repair) from `auth` (stop and escalate). An error string does
+not support that decision.
 
-### Resolução de modelo
+### Model resolution
 
 ```
 resolve(tier, requiredCapabilities) →
   { model, provider, fallbackFrom?, fallbackReason? }
 ```
 
-A seleção valida **disponibilidade e capacidade**, não nome de tier (`E04-T10`). Um fallback
-para um modelo sem a capability exigida é uma falha de resolução, não um fallback.
+Selection validates **availability and capability**, not a tier name (`E04-T10`). A fallback
+to a model without the required capability is a resolution failure, not a fallback.
 
 ---
 
 ## 5. Tool service / MCP adapter
 
-**Existe.** `templates/mcp.template.json` — um template, não um registry operacional.
+**Exists.** `templates/mcp.template.json` — a template, not an operational registry.
 
-**Falta.** Tudo em E10.
+**Missing.** Everything in E10.
 
-### Contrato de registry
+### Registry contract
 
 ```jsonc
 {
@@ -364,16 +365,17 @@ para um modelo sem a capability exigida é uma falha de resolução, não um fal
     "resultSchema": { },
     "limits": { "argsBytes": 65536, "resultBytes": 1048576, "timeoutMs": 30000 },
     "allowedProjects": ["engineos"],
-    "secretRef": "env:PG_MCP_URL",          // referência, nunca valor
+    "secretRef": "env:PG_MCP_URL",          // a reference, never a value
     "enabled": true
   }]
 }
 ```
 
-`effect` dirige a exigência de aprovação: `irreversible` sempre exige aprovação válida no
-escopo exato; `write-reversible` exige conforme o tier de risco; `read` não exige.
+`effect` drives the approval requirement: `irreversible` always requires a valid approval in
+the exact scope; `write-reversible` requires one according to the risk tier; `read` requires
+none.
 
-### Contrato de autorização
+### Authorization contract
 
 ```ts
 authorize(principal, operation, resource, context) →
@@ -381,30 +383,31 @@ authorize(principal, operation, resource, context) →
   | { allow: false; reason: string; audit: AuditRecord }
 ```
 
-Quatro propriedades não negociáveis:
+Four non-negotiable properties:
 
-1. Decidido **no servidor**, a partir de identidade e escopo do run — nunca a partir do
-   prompt ou de algo que o modelo escreveu (R17).
-2. Reconferido **no momento da execução**, inclusive após `pause`/`resume`. Autorização
-   verificada só no dispatch não sobrevive a uma revogação durante a pausa (R19).
-3. Negação é **auditada** e comprovadamente **sem escrita** — o teste verifica o efeito
-   ausente, não só o retorno negativo.
-4. Credencial é usada fora do contexto do modelo. O modelo recebe um handle, nunca o valor.
+1. Decided **on the server**, from the run's identity and scope — never from the
+   prompt or from something the model wrote (R17).
+2. Re-checked **at execution time**, including after `pause`/`resume`. Authorization
+   verified only at dispatch does not survive a revocation during the pause (R19).
+3. A denial is **audited** and provably **without a write** — the test verifies the absent
+   effect, not just the negative return.
+4. The credential is used outside the model's context. The model receives a handle, never
+   the value.
 
-### Entrada não confiável
+### Untrusted input
 
-Resultado de tool e documento de RAG são **dados**, nunca instruções (R20). O contrato
-exige que o conteúdo recuperado atravesse uma fronteira explícita antes de entrar no
-contexto, e que existam casos adversariais no conjunto de evals (`E10-T8`, `E08-T3`).
+A tool result and a RAG document are **data**, never instructions (R20). The contract
+requires the retrieved content to cross an explicit boundary before it enters the context,
+and adversarial cases to exist in the eval set (`E10-T8`, `E08-T3`).
 
 ---
 
-## 6. Persistência
+## 6. Persistence
 
-**Não existe** para execução. O SQLite atual (`console/.data/console.sqlite`) é do console e
-está no working tree — sai do artefato em `E02-T2`.
+**Does not exist** for execution. The current SQLite file (`console/.data/console.sqlite`)
+belongs to the console and sits in the working tree — it leaves the artifact in `E02-T2`.
 
-### Contrato
+### Contract
 
 ```
 runs         (run_id PK, state, config_version, identity, budget, deadline, updated_at, version)
@@ -414,63 +417,63 @@ events       (event_id PK, run_id FK, trace_id, kind, payload, created_at)
 effects      (idempotency_key PK, run_id FK, tool_id, target, status, external_ref, created_at)
 ```
 
-Duas exigências estruturais:
+Two structural requirements:
 
-- **Transição condicional.** Toda escrita de estado usa `WHERE state = <esperado> AND
-  version = <lido>`. Zero linhas afetadas significa que outro ator mudou o estado — o
-  worker desiste, não retenta às cegas. É o que impede um worker que perdeu o lease de
-  escrever depois (`E09-T3`).
-- **`effects` com `idempotency_key` como chave primária.** É onde a idempotência por efeito
-  vive. Antes de repetir uma operação incerta, o worker consulta `external_ref` (`E09-T5`).
+- **Conditional transition.** Every state write uses `WHERE state = <expected> AND
+  version = <read>`. Zero rows affected means another actor changed the state — the
+  worker gives up, it does not retry blindly. It is what stops a worker that lost its lease
+  from writing afterwards (`E09-T3`).
+- **`effects` with `idempotency_key` as the primary key.** That is where per-effect
+  idempotency lives. Before repeating an uncertain operation, the worker looks up
+  `external_ref` (`E09-T5`).
 
-A escolha de banco e fila é decidida em `E09-T1`, por requisitos de recuperação, carga,
-operação e equipe — não por preferência de stack. Este documento fixa o contrato, não o
-produto.
+The database and queue choice is decided in `E09-T1`, by recovery, load, operation and team
+requirements — not by stack preference. This document fixes the contract, not the product.
 
 ---
 
-## 7. Memória e recuperação
+## 7. Memory and retrieval
 
-**Existe** como regra e desenho: `rules/memory.md`,
+**Exists** as a rule and a design: `rules/memory.md`,
 `docs/specs/2026-09-03-agent-memory-architecture-design.md`, `skills/retro/SKILL.md`.
 
-**Não existe como dado:** `registries/policy.json` não tem bloco `memory`; o
-`promotion_threshold` só aparece no spec de desenho. O contrato abaixo pressupõe que esse
-bloco seja criado antes de E07-T3.
+**Does not exist as data:** `registries/policy.json` has no `memory` block;
+`promotion_threshold` only appears in the design spec. The contract below assumes that block
+is created before E07-T3.
 
-### Contrato
+### Contract
 
 ```ts
 export interface MemoryRecord {
-  key: string;                    // chave estável de agrupamento — não muda por reformulação
+  key: string;                    // stable grouping key — does not change on rewording
   content: string;
   provenance: { source: string; run_id?: string; observed_at: string }[];
   status: 'candidate' | 'promoted' | 'superseded' | 'revoked';
   supersedes?: string;
   validUntil?: string;
-  project: string;                // ACL: recuperação nunca cruza projeto
+  project: string;                // ACL: retrieval never crosses projects
 }
 
 retrieve(query, { project, budget }) → { records: MemoryRecord[]; truncated: boolean }
 ```
 
-Quatro invariantes, cada uma com teste correspondente em E07:
+Four invariants, each with a corresponding test in E07:
 
-- Registro `revoked` ou expirado **nunca** volta como atual.
-- Registro de outro `project` **nunca** aparece, mesmo com consulta construída para
-  favorecê-lo.
-- `promotion_threshold` conta ocorrências **independentes**; duplicata não infla.
-- Nenhum agente altera conhecimento procedural sozinho — promoção passa por revisão humana.
+- A `revoked` or expired record **never** comes back as current.
+- A record from another `project` **never** appears, even with a query built to favor
+  it.
+- `promotion_threshold` counts **independent** occurrences; a duplicate does not inflate it.
+- No agent changes procedural knowledge on its own — promotion goes through human review.
 
 ---
 
-## 8. Telemetria e evals
+## 8. Telemetry and evals
 
-**Existe.** `scripts/exec-journal.sh`, `scripts/telemetry.sh`, `policy.json`
-`telemetry.exec_journal` (checado por C27), ADR `2026-09-03-spans-extend-exec-journal.md`,
-`evals/` com dois datasets e `RUBRIC.md`, `.github/workflows/live-evals.yml`.
+**Exists.** `scripts/exec-journal.sh`, `scripts/telemetry.sh`, `policy.json`
+`telemetry.exec_journal` (checked by C27), the ADR `2026-09-03-spans-extend-exec-journal.md`,
+`evals/` with two datasets and `RUBRIC.md`, `.github/workflows/live-evals.yml`.
 
-### Contrato de span
+### Span contract
 
 ```ts
 export interface Span {
@@ -487,13 +490,13 @@ export interface Span {
 }
 ```
 
-`outcome` com quatro valores é o que permite detectar falha **sem depender do texto do
-agente** (`E05-T2`). `policy-blocked` é sucesso do sistema e insucesso da tarefa — separá-lo
-de `technical-error` é o que evita que um controle funcionando pareça um bug.
+`outcome` with four values is what allows failure to be detected **without depending on the
+agent's text** (`E05-T2`). `policy-blocked` is a system success and a task failure —
+separating it from `technical-error` is what stops a working control from looking like a bug.
 
-Atributos nunca carregam prompt, segredo ou dado pessoal por padrão (`E05-T6`).
+Attributes never carry a prompt, a secret or personal data by default (`E05-T6`).
 
-### Contrato de resultado de eval
+### Eval result contract
 
 ```jsonc
 {
@@ -509,22 +512,22 @@ Atributos nunca carregam prompt, segredo ou dado pessoal por padrão (`E05-T6`).
 }
 ```
 
-`status: "not-measured"` é obrigatório para caso pulado, custo desconhecido e erro de
-infraestrutura (`E06-T9`). Não existe conversão de ausência em aprovação — os 33 casos live
-ignorados na corrida citada na análise são exatamente esse estado, e é assim que precisam
-aparecer no relatório.
+`status: "not-measured"` is mandatory for a skipped case, an unknown cost and an
+infrastructure error (`E06-T9`). There is no conversion of absence into a pass — the 33 live
+cases skipped in the run cited in the analysis are exactly that state, and that is how they
+need to appear in the report.
 
 ---
 
-## 9. Decisões de stack ainda em aberto
+## 9. Stack decisions still open
 
-| Decisão | Onde é tomada | Critério | O que este documento já fixa |
+| Decision | Where it is taken | Criterion | What this document already fixes |
 |---|---|---|---|
-| TypeScript no núcleo | `E01-T9`, estende ADR `2026-09-04-typescript-runtime-over-bash` | Aproveita o runtime existente | O contrato, não a linguagem |
-| Worker Python | `E01-T12` | Só se requisito de integração ou operação justificar o custo de manutenção | Consome o mesmo contrato versionado |
-| Banco e fila | `E09-T1` | Recuperação, carga, operação, equipe | Schema e transição condicional |
-| Vector store | `E08-T4` | Experimento comparativo contra golden set | Versionamento de embedding e invalidação |
-| Índice semântico na memória | `E07-T8` | Comparação medida contra busca lexical | Nada é adotado sem a comparação |
+| TypeScript in the core | `E01-T9`, extends the ADR `2026-09-04-typescript-runtime-over-bash` | Reuses the existing runtime | The contract, not the language |
+| Python worker | `E01-T12` | Only if an integration or operation requirement justifies the maintenance cost | Consumes the same versioned contract |
+| Database and queue | `E09-T1` | Recovery, load, operation, team | Schema and conditional transition |
+| Vector store | `E08-T4` | Comparative experiment against the golden set | Embedding versioning and invalidation |
+| Semantic index in memory | `E07-T8` | Measured comparison against lexical search | Nothing is adopted without the comparison |
 
-Nenhuma dessas decisões obriga migração de stack. Este plano fixa contratos e deixa a
-escolha de produto para a tarefa que registra os requisitos.
+None of these decisions forces a stack migration. This plan fixes contracts and leaves the
+product choice to the task that records the requirements.

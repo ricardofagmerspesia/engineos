@@ -1,97 +1,97 @@
-# EngineOS 2.0 — Riscos e governança
+# EngineOS 2.0 — Risks and governance
 
-## 1. Registro de riscos
+## 1. Risk register
 
-Escala de probabilidade e impacto: baixa / média / alta. **Exposição** = a combinação, com
-o pior dos dois pesando mais. Cada risco tem um **gatilho observável** — a condição que
-indica que ele deixou de ser hipótese — e um **dono nominal**.
+Probability and impact scale: low / medium / high. **Exposure** = the combination, with
+the worse of the two weighing more. Every risk has an **observable trigger** — the condition
+that shows it has stopped being a hypothesis — and a **named owner**.
 
-### 1.1 Riscos de produto e escopo
+### 1.1 Product and scope risks
 
-| # | Risco | Prob. | Impacto | Exposição | Mitigação | Gatilho observável | Dono |
+| # | Risk | Prob. | Impact | Exposure | Mitigation | Observable trigger | Owner |
 |---|---|---|---|---|---|---|---|
-| R01 | Anunciar como pronta uma capacidade apenas desenhada | **alta** | alta | **crítica** | `E01-T4` exige implementação + evidência por linha; §4 do relatório de prontidão rejeita linha sem as duas | Uma capacidade aparece em release notes sem link para teste | Produto |
-| R02 | "2.0" ser publicado antes dos critérios de release | média | alta | alta | Versão só sobe em `E01-T6`, depois de F0; marcos A/B/C são bloqueios, não etiquetas | Manifest com 2.0.0 em commit anterior ao marco A | Tech Lead |
-| R03 | Escopo crescer para acompanhar o documento (RAG, filas, hospedagem) sem decisão de perfil | **alta** | média | alta | `E01-T3` fixa perfis; capacidade fora do perfil liberado fica declarada não suportada | Tarefa de F3/F4 entra em execução antes de F1 terminar | Produto |
-| R04 | Confundir consolidação com expansão e tratar E08/E09 como pré-requisito universal | média | média | média | Tabela de natureza em `01-decomposicao-epicos.md`; F4 é pulável por decisão explícita | Discussão de fila antes de o runner local estar governado | Tech Lead |
-| R05 | Notas qualitativas da análise anterior virarem meta de aceite | média | média | média | Documento declara que não são baseline; metas vêm de `E05-T8` e `E06-T8` | Alguém cita uma nota numérica como critério | Produto |
+| R01 | Announcing as ready a capability that is only designed | **high** | high | **critical** | `E01-T4` requires implementation + evidence per row; §4 of the readiness report rejects a row without both | A capability appears in release notes with no link to a test | Product |
+| R02 | "2.0" being published before the release criteria | medium | high | high | The version is only bumped in `E01-T6`, after F0; milestones A/B/C are blockers, not labels | A manifest with 2.0.0 in a commit earlier than milestone A | Tech Lead |
+| R03 | Scope growing to keep up with the document (RAG, queues, hosting) with no profile decision | **high** | medium | high | `E01-T3` fixes the profiles; a capability outside the released profile is declared unsupported | An F3/F4 task starts execution before F1 finishes | Product |
+| R04 | Confusing consolidation with expansion and treating E08/E09 as a universal prerequisite | medium | medium | medium | The nature table in `01-decomposicao-epicos.md`; F4 is skippable by explicit decision | A queue discussion before the local runner is governed | Tech Lead |
+| R05 | Qualitative scores from the earlier analysis turning into acceptance targets | medium | medium | medium | The document states they are not a baseline; targets come from `E05-T8` and `E06-T8` | Someone cites a numeric score as a criterion | Product |
 
-### 1.2 Riscos técnicos
+### 1.2 Technical risks
 
-| # | Risco | Prob. | Impacto | Exposição | Mitigação | Gatilho observável | Dono |
+| # | Risk | Prob. | Impact | Exposure | Mitigation | Observable trigger | Owner |
 |---|---|---|---|---|---|---|---|
-| R06 | Decisão do kernel não chegar à transição real de execução — enforcement anunciado e ausente | **alta** | **alta** | **crítica** | `E04-T3/T4/T7` ligam admit/breaker/hitl a transições; `E01-T13` mapeia regra → ponto de aplicação → teste; regra sem ponto de aplicação é marcada como não aplicada | `docs/TRACEABILITY.md` com linha sem ponto de aplicação | Backend |
-| R07 | `enabled=false` no console sem efeito no runtime | **alta** | alta | **crítica** | `E03-T15` é teste ponta a ponta e condição de saída de F2 | Console mostra desabilitado e o trace mostra a chamada | Backend |
-| R08 | Publicação parcial corromper configuração (arquivos gravados, commit não feito) | média | **alta** | alta | `E03-T12` com comparação de revisão, serialização e recuperação; falha injetada em cada etapa | Divergência entre `published_snapshot` e o working tree | Backend |
-| R09 | Rollback descartar alteração do operador | média | alta | alta | `E03-T14` detecta alteração intermediária e apresenta conflito em vez de sobrescrever | Reclamação de trabalho perdido após rollback | Frontend |
-| R10 | Efeito externo duplicado em retomada de worker | média | **alta** | alta | `E09-T5` idempotência por efeito + consulta de resultado externo; `E09-T10` teste de caos | Dois registros do mesmo efeito com run_id igual | Backend |
-| R11 | Fallback de modelo escolhido por nome de tier, não por capacidade | média | média | média | `E04-T10` valida disponibilidade e capacidade; motivo do fallback registrado | Fallback para modelo sem a capability exigida | LLM |
-| R12 | Custo desconhecido registrado como zero | média | média | média | `E05-T3` campo de disponibilidade separado do valor | Dashboard com custo 0 em execução real | Backend |
-| R13 | CRLF ou perda de bit de execução voltar em uma release futura | média | média | média | `E02-T10` regressão automatizada sobre o pacote final | Instalação exigindo `chmod` manual | DevOps |
-| R14 | Artefato levar estado local (`console/.data`, caches, worktree) | **alta** | média | alta | `E02-T1` allowlist; `E02-T2` remove rastreamento do SQLite; manifesto comparado em CI | `unzip -l` com entrada fora da allowlist | DevOps |
-| R15 | Hooks silenciosos por ausência de `jq` mascararem falta de governança | média | média | média | Documentado em `03-templates-evidencia.md`; verificação de `jq` na configuração de teste | Ausência de linha `[router]` em edições | DevOps |
-| R16 | Carga de regra não fechada fazer sumir uma política deferida | média | alta | alta | `E03-T5` valida fechamento; `scripts/validate-engineos.sh` já checa as duas metades | Check de fechamento falhando em CI | Tech Lead |
+| R06 | The kernel decision never reaching the real execution transition — enforcement announced and absent | **high** | **high** | **critical** | `E04-T3/T4/T7` wire admit/breaker/hitl to transitions; `E01-T13` maps rule → enforcement point → test; a rule with no enforcement point is marked as not enforced | `docs/TRACEABILITY.md` with a row that has no enforcement point | Backend |
+| R07 | `enabled=false` in the console with no effect in the runtime | **high** | high | **critical** | `E03-T15` is an end-to-end test and an exit condition of F2 | The console shows disabled and the trace shows the call | Backend |
+| R08 | A partial publish corrupting configuration (files written, commit not made) | medium | **high** | high | `E03-T12` with revision comparison, serialization and recovery; injected failure at every step | Divergence between `published_snapshot` and the working tree | Backend |
+| R09 | Rollback discarding an operator change | medium | high | high | `E03-T14` detects an intervening change and reports a conflict instead of overwriting | A complaint about lost work after a rollback | Frontend |
+| R10 | A duplicated external effect on worker resume | medium | **high** | high | `E09-T5` per-effect idempotency + external result lookup; `E09-T10` chaos test | Two records of the same effect with the same run_id | Backend |
+| R11 | A model fallback chosen by tier name, not by capability | medium | medium | medium | `E04-T10` validates availability and capability; the fallback reason is recorded | A fallback to a model without the required capability | LLM |
+| R12 | An unknown cost recorded as zero | medium | medium | medium | `E05-T3` keeps the availability field separate from the value | A dashboard showing cost 0 on a real run | Backend |
+| R13 | CRLF or loss of the execute bit coming back in a future release | medium | medium | medium | `E02-T10` automated regression over the final package | An installation requiring a manual `chmod` | DevOps |
+| R14 | The artifact carrying local state (`console/.data`, caches, worktree) | **high** | medium | high | `E02-T1` allowlist; `E02-T2` stops tracking the SQLite file; the manifest is compared in CI | `unzip -l` with an entry outside the allowlist | DevOps |
+| R15 | Hooks silent for lack of `jq` masking missing governance | medium | medium | medium | Documented in `03-templates-evidencia.md`; a `jq` check in the test setup | No `[router]` line on edits | DevOps |
+| R16 | A rule load that is not closed making a deferred policy disappear | medium | high | high | `E03-T5` validates closure; `scripts/validate-engineos.sh` already checks both halves | The closure check failing in CI | Tech Lead |
 
-### 1.3 Riscos de segurança e dados
+### 1.3 Security and data risks
 
-| # | Risco | Prob. | Impacto | Exposição | Mitigação | Gatilho observável | Dono |
+| # | Risk | Prob. | Impact | Exposure | Mitigation | Observable trigger | Owner |
 |---|---|---|---|---|---|---|---|
-| R17 | Autorização decidida no prompt em vez do servidor | média | **alta** | **crítica** | `E10-T3` decide no servidor; `E10-T11` testes adversariais na fronteira real | Agente de leitura conseguindo escrever por outra tool | Security |
-| R18 | Aprovação reutilizada em escopo diferente do aprovado | média | **alta** | alta | `E04-T7` vincula a ação, hash de argumentos, destino e `config_version`; `E10-T6` valida escopo | Aprovação aceita após mudança de destino | Security |
-| R19 | Revogação não afetar execução retomada | média | **alta** | alta | `E10-T4` reverifica na execução, inclusive após pause/resume | Run retomado usando credencial revogada | Security |
-| R20 | Prompt injection via resultado de tool ou documento de RAG | **alta** | **alta** | **crítica** | `E10-T8` e `E08-T3` tratam resultado e documento como entrada não confiável; casos adversariais no eval set | Comportamento mudando após conteúdo hostil plantado | Security |
-| R21 | Vazamento entre projetos na memória ou no RAG | média | **alta** | **crítica** | `E07-T6` e `E08-T10` com teste negativo construído para favorecer o vazamento | Recuperação retornando item de outro projeto | LLM |
-| R22 | Prompt, segredo ou dado pessoal em log | média | alta | alta | `E05-T6` redação por padrão; teste com segredo plantado | Segredo plantado aparecendo na saída | Security |
-| R23 | Segredo no artefato distribuído | baixa | **alta** | alta | `E02-T6` varredura sobre os bytes finais, bloqueante | Achado confirmado na varredura | DevOps |
-| R24 | Console hospedado exposto sem authn/RBAC | baixa | **alta** | alta | `E03-T17` mantém o perfil desabilitado e declarado não suportado até passar | Console acessível fora de `127.0.0.1` sem autenticação | Security |
+| R17 | Authorization decided in the prompt instead of on the server | medium | **high** | **critical** | `E10-T3` decides on the server; `E10-T11` adversarial tests at the real boundary | A read agent managing to write through another tool | Security |
+| R18 | An approval reused in a scope other than the approved one | medium | **high** | high | `E04-T7` binds the action, the argument hash, the target and `config_version`; `E10-T6` validates the scope | An approval accepted after the target changed | Security |
+| R19 | A revocation not affecting a resumed run | medium | **high** | high | `E10-T4` re-verifies at execution time, including after pause/resume | A resumed run using a revoked credential | Security |
+| R20 | Prompt injection through a tool result or a RAG document | **high** | **high** | **critical** | `E10-T8` and `E08-T3` treat results and documents as untrusted input; adversarial cases in the eval set | Behavior changing after hostile content is planted | Security |
+| R21 | Cross-project leakage in memory or in RAG | medium | **high** | **critical** | `E07-T6` and `E08-T10` with a negative test built to favor the leak | Retrieval returning an item from another project | LLM |
+| R22 | A prompt, a secret or personal data in a log | medium | high | high | `E05-T6` redaction by default; a test with a planted secret | A planted secret appearing in the output | Security |
+| R23 | A secret in the distributed artifact | low | **high** | high | `E02-T6` blocking scan over the final bytes | A confirmed finding in the scan | DevOps |
+| R24 | A hosted console exposed without authn/RBAC | low | **high** | high | `E03-T17` keeps the profile disabled and declared unsupported until it passes | The console reachable outside `127.0.0.1` without authentication | Security |
 
-### 1.4 Riscos de processo
+### 1.4 Process risks
 
-| # | Risco | Prob. | Impacto | Exposição | Mitigação | Gatilho observável | Dono |
+| # | Risk | Prob. | Impact | Exposure | Mitigation | Observable trigger | Owner |
 |---|---|---|---|---|---|---|---|
-| R25 | Papéis de execução permanecerem propostos, sem pessoas | **alta** | alta | **crítica** | Nenhuma onda inicia sem responsável nominal; o registro de riscos tem dono nominal, não papel | Task card com responsável `<nome>` não preenchido | Produto |
-| R26 | Valores de SLO/RPO/RTO/retenção nunca serem fixados | **alta** | alta | alta | `E01-T3` os torna bloqueio nominal; checklist do perfil rejeita `<pendente>` | Checklist operacional com campo pendente na véspera da liberação | Tech Lead |
-| R27 | Metas revisadas para baixo depois da adoção, sem registro | média | média | média | §8 exige preservar evidência anterior ao alterar meta | SLO alterado sem baseline anexada | Operações |
-| R28 | Gate cruzado por conclusão de tarefas em vez de evidência | **alta** | alta | **crítica** | Templates 2 e 4 exigem evidência reexecutável; `critic` obrigatório em risco high | Gate marcado como passado sem seção de cenário de falha | Tech Lead |
-| R29 | Bypass ligado de forma permanente em ambiente compartilhado | média | alta | alta | `E05-T9` registra bypass por caminho independente; flag machine-wide não expira sozinha | Registro de bypass contínuo por mais de uma sessão | Operações |
-| R30 | Depreciação silenciosa de superfície pública quebrar consumidores | média | alta | alta | `E01-T7` + `docs/COMPATIBILITY.md`: nada é removido na release que deprecia | Rename sem stub nem forwarding | Tech Lead |
+| R25 | Execution roles staying proposed, with no people | **high** | high | **critical** | No wave starts without a named owner; the risk register has a named owner, not a role | A task card with an unfilled `<name>` owner | Product |
+| R26 | SLO/RPO/RTO/retention values never being fixed | **high** | high | high | `E01-T3` makes them named blockers; the profile checklist rejects `<pending>` | An operational checklist with a pending field on the eve of the release | Tech Lead |
+| R27 | Targets revised downward after adoption, with no record | medium | medium | medium | §8 requires preserving the prior evidence when a target changes | An SLO changed with no baseline attached | Operations |
+| R28 | A gate crossed on task completion instead of evidence | **high** | high | **critical** | Templates 2 and 4 require re-executable evidence; `critic` mandatory at high risk | A gate marked as passed with no failure-scenario section | Tech Lead |
+| R29 | Bypass left permanently on in a shared environment | medium | high | high | `E05-T9` records bypass through an independent path; the machine-wide flag does not expire on its own | A bypass record continuing for more than one session | Operations |
+| R30 | Silent deprecation of public surface breaking consumers | medium | high | high | `E01-T7` + `docs/COMPATIBILITY.md`: nothing is removed in the release that deprecates it | A rename with no stub and no forwarding | Tech Lead |
 
-### 1.5 Riscos críticos — os oito que decidem a release
+### 1.5 Critical risks — the eight that decide the release
 
-R01, R06, R07, R17, R20, R21, R25, R28. Todos compartilham a mesma forma: **o sistema
-parece controlado e não está**. São os únicos cuja mitigação não pode ser adiada por
-classificação de prioridade, e cada um tem um teste que falha quando o controle é removido.
+R01, R06, R07, R17, R20, R21, R25, R28. They all share the same shape: **the system
+looks controlled and is not**. They are the only ones whose mitigation cannot be deferred by
+priority ranking, and each one has a test that fails when the control is removed.
 
-Um controle sem teste que o comprove pela negativa não conta como mitigação.
+A control without a test that proves it by the negative does not count as a mitigation.
 
 ---
 
-## 2. Modelo de governança
+## 2. Governance model
 
-### 2.1 Papéis
+### 2.1 Roles
 
-Papéis são funções, não pessoas. Cada um precisa de **uma pessoa nominal** antes do início
-da onda correspondente — R25 existe porque hoje nenhum tem.
+Roles are functions, not people. Each one needs **a named person** before the corresponding
+wave starts — R25 exists because today none has one.
 
-| Papel | Decide | Não decide |
+| Role | Decides | Does not decide |
 |---|---|---|
-| Responsável pelo produto (Ricardo Fagmer) | Perfis de implantação, escopo da release, aceite de risco residual, liberação | Implementação, escolha de stack |
-| Tech Lead | Arquitetura, ADRs, passagem de gate técnico, matriz de compatibilidade | Aceite de risco de negócio |
-| Security | Fronteira de autorização, tratamento de segredo, veto em risco de segurança | Prioridade de roadmap |
-| DevOps | Distribuição, CI, supply chain, backup e restauração | Contrato de API |
-| QA/LLM | Datasets, scorers, calibração de judge, marcação de não medido | Passagem de gate sozinho |
-| Operações | SLOs operacionais, alertas, runbooks, interrupção de adoção | Escopo |
-| Release owner | Liberação gradual, canário, critério de interrupção | Aceite de gate técnico |
+| Product owner (Ricardo Fagmer) | Deployment profiles, release scope, residual-risk acceptance, release | Implementation, stack choice |
+| Tech Lead | Architecture, ADRs, technical gate passage, compatibility matrix | Business-risk acceptance |
+| Security | Authorization boundary, secret handling, veto on security risk | Roadmap priority |
+| DevOps | Distribution, CI, supply chain, backup and restore | API contract |
+| QA/LLM | Datasets, scorers, judge calibration, marking things not measured | Gate passage on its own |
+| Operations | Operational SLOs, alerts, runbooks, halting adoption | Scope |
+| Release owner | Staged release, canary, stop criterion | Technical gate acceptance |
 
-**Veto de segurança:** Security pode bloquear qualquer passagem de gate por risco de
-segurança, e o bloqueio só é removido por correção ou por aceite formal e registrado do
-responsável pelo produto, com o risco residual escrito no relatório de prontidão.
+**Security veto:** Security can block any gate passage on security risk, and the block is
+removed only by a fix or by a formal, recorded acceptance from the product owner, with the
+residual risk written into the readiness report.
 
-### 2.2 RACI por épico
+### 2.2 RACI per epic
 
-R = executa · A = responde pelo resultado · C = consultado · I = informado
+R = executes · A = accountable for the result · C = consulted · I = informed
 
-| Épico | Produto | Tech Lead | Backend | Frontend | Security | DevOps | QA/LLM | Operações |
+| Epic | Product | Tech Lead | Backend | Frontend | Security | DevOps | QA/LLM | Operations |
 |---|---|---|---|---|---|---|---|---|
 | E01 | A | R | C | I | C | C | C | I |
 | E02 | I | A | I | I | C | R | C | I |
@@ -104,57 +104,57 @@ R = executa · A = responde pelo resultado · C = consultado · I = informado
 | E09 | I | A | R | I | C | R | C | C |
 | E10 | I | C | R | I | A | I | C | I |
 
-Duas linhas merecem atenção: **E10 responde a Security**, não a engenharia — autorização é
-decisão de segurança implementada por engenharia. E **E05 responde a Operações**, porque
-observabilidade que ninguém opera não é observabilidade.
+Two rows deserve attention: **E10 is accountable to Security**, not to engineering —
+authorization is a security decision implemented by engineering. And **E05 is accountable to
+Operations**, because observability nobody operates is not observability.
 
-### 2.3 Cadência
+### 2.3 Cadence
 
-| Ritual | Frequência | Participantes | Saída obrigatória |
+| Ritual | Frequency | Participants | Mandatory output |
 |---|---|---|---|
-| Barreira de onda | Ao fim de cada onda | Executores + Tech Lead | Handoff no Template 5 |
-| Passagem de gate | Ao fim de cada gate | Dono do gate + `critic` se risco high | Evidência de gate no Template 2 |
-| Revisão de riscos | Ao fim de cada fase | Produto + Tech Lead + Security | Registro atualizado com gatilhos disparados |
-| Retro | Mensal, ou após 3 ocorrências do mesmo defeito | Todos | Delta de regra/skill/registry como PR (skill `retro`) |
-| Decisão de perfil | Antes de F1 e revisada antes de F5 | Produto + Tech Lead | Perfis liberados e não suportados, por escrito |
-| Revisão pós-liberação | Semanal durante adoção controlada | Operações + Tech Lead | Continuar / pausar / reverter |
+| Wave barrier | At the end of every wave | Executors + Tech Lead | Handoff in Template 5 |
+| Gate passage | At the end of every gate | Gate owner + `critic` if risk is high | Gate evidence in Template 2 |
+| Risk review | At the end of every phase | Product + Tech Lead + Security | Updated register with the triggers that fired |
+| Retro | Monthly, or after 3 occurrences of the same defect | Everyone | Rule/skill/registry delta as a PR (skill `retro`) |
+| Profile decision | Before F1 and reviewed before F5 | Product + Tech Lead | Released and unsupported profiles, in writing |
+| Post-release review | Weekly during controlled adoption | Operations + Tech Lead | Continue / pause / revert |
 
-### 2.4 Escalonamento
+### 2.4 Escalation
 
-| Situação | Vai para | Prazo | Se não houver resposta |
+| Situation | Goes to | Deadline | If there is no answer |
 |---|---|---|---|
-| Gate reprovado duas vezes na mesma tarefa | Tech Lead | mesma onda | Tarefa é replanejada, não reexecutada |
-| Achado de segurança bloqueante | Security → Produto | 24h | Gate permanece bloqueado |
-| Campo operacional pendente na véspera da liberação | Produto | antes da liberação | Perfil não é liberado |
-| Divergência de decisão entre papéis | Tech Lead; se persistir, Produto | 48h | Registrada como ADR com a posição vencida documentada |
-| Limite de erro/latência/custo excedido em adoção | Operações | imediato | Expansão da adoção é interrompida |
+| A gate failed twice on the same task | Tech Lead | same wave | The task is replanned, not re-executed |
+| A blocking security finding | Security → Product | 24h | The gate stays blocked |
+| A pending operational field on the eve of the release | Product | before the release | The profile is not released |
+| A decision disagreement between roles | Tech Lead; Product if it persists | 48h | Recorded as an ADR with the losing position documented |
+| An error/latency/cost limit exceeded during adoption | Operations | immediate | Expansion of adoption is halted |
 
-**Loop de reparo limitado:** duas tentativas de correção por check, uma escalada de tier de
-modelo, e então parar e reportar vermelho (`registries/policy.json` `repair`). Esgotar o
-limite reporta vermelho honestamente — nunca reporta pronto. Isso é regra do próprio
-EngineOS aplicada ao desenvolvimento do EngineOS.
+**Bounded repair loop:** two fix attempts per check, one model-tier escalation, and then
+stop and report red (`registries/policy.json` `repair`). Exhausting the bound reports red
+honestly — it never reports done. This is EngineOS's own rule applied to the development of
+EngineOS.
 
 ### 2.5 Definition of Done
 
-Uma tarefa está pronta quando **todas** valem:
+A task is done when **all** of these hold:
 
-1. Objetivo observável é verdadeiro no sistema, não no documento.
-2. Aceite verificável tem teste, e existe um teste que falha quando o controle é removido.
-3. Evidência é reexecutável por terceiro: comando, commit, `config_version`, data.
-4. Itens não medidos estão listados explicitamente.
-5. Rollback está descrito, e sua segurança em relação aos dados foi avaliada.
-6. Limitações conhecidas estão escritas onde alguém que anuncia a capacidade vai ler.
-7. Change record fechado (`skills/record-change`), com spec vinculada quando o limiar exigiu.
-8. Superfície pública alterada seguiu `docs/COMPATIBILITY.md`.
+1. The observable objective is true in the system, not in the document.
+2. Verifiable acceptance has a test, and there is a test that fails when the control is removed.
+3. Evidence is re-executable by a third party: command, commit, `config_version`, date.
+4. Items not measured are listed explicitly.
+5. Rollback is described, and its safety with respect to the data has been assessed.
+6. Known limitations are written where someone announcing the capability will read them.
+7. The change record is closed (`skills/record-change`), with a linked spec when the threshold required one.
+8. Any changed public surface followed `docs/COMPATIBILITY.md`.
 
-Uma fase está pronta quando todas as suas tarefas estão prontas **e** a condição de saída da
-fase, em `02-sequenciamento.md`, foi demonstrada — não deduzida da soma das tarefas.
+A phase is done when all its tasks are done **and** the phase exit condition, in
+`02-sequenciamento.md`, has been demonstrated — not inferred from the sum of the tasks.
 
-### 2.6 O que a governança não deve fazer
+### 2.6 What governance must not do
 
-- Não converter ausência de dado em sucesso.
-- Não usar conclusão de tarefas como prova de prontidão.
-- Não aceitar configuração declarativa como prova de bloqueio: a prova é a chamada negada.
-- Não reduzir meta silenciosamente após a adoção; alterar meta preserva a evidência anterior.
-- Não publicar release, hospedar console ou disparar chamada paga pela existência de um
-  plano. Esses passos acontecem na tarefa e com a autorização correspondentes.
+- Do not turn absence of data into success.
+- Do not use task completion as proof of readiness.
+- Do not accept declarative configuration as proof of blocking: the proof is the denied call.
+- Do not lower a target silently after adoption; changing a target preserves the prior evidence.
+- Do not publish a release, host the console or fire a paid call because a plan exists.
+  Those steps happen in the corresponding task and with the corresponding authorization.
