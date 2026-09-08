@@ -27,6 +27,32 @@ Review exactly what you're given (diff, PR, files, module). Read enough surround
    - Insecure crypto: homemade hashing, non-constant-time comparison, predictable tokens
 4. For each candidate finding, verify exploitability by reading the actual code path. Discard findings a guard/validation upstream already kills — note them as "checked, mitigated by X" instead.
 
+## Hardening checklist
+
+Walk every item that the change can touch. Report each as a finding with an attack
+path, or list it under "Checked and clear" with the mitigation. Policy lives in
+`rules/security.md`; this list is the reviewer's pass order, not a second rule file.
+
+- API keys and secrets are never hardcoded; production reads them from the environment or a secret manager and crashes when one is missing
+- No secret has ever landed in git history; if one did, rotation plus history scrub is in the diff or the finding
+- Database access from the client uses only a publishable key; service-role keys stay server-side
+- Row-level security is enabled on every table a client-facing key can reach, with policies that scope rows to the caller
+- Sensitive data is encrypted in transit (TLS everywhere) and at rest (PII, credentials, tokens)
+- Authentication and authorization are enforced server-side on every endpoint, object-level where a resource id is involved
+- Mass assignment is blocked: DTO whitelists, `forbidNonWhitelisted`, no raw body spread into models
+- Session cookies are `httpOnly`, `secure`, `sameSite`, short-lived
+- Passwords are hashed with argon2 or bcrypt; no custom hashing, no reversible storage
+- Rate limits exist on login, registration, token refresh and every expensive or sensitive endpoint
+- Bot protection (CAPTCHA, proof-of-work or equivalent) guards public signup, contact and password-reset flows
+- Every query is parameterized; no string-built SQL, no unescaped identifiers
+- Every external input is validated by allowlist at the boundary, with size, length and array bounds
+- Responses, logs and error messages leak nothing internal: no stack traces, queries, paths, tokens or PII
+- Uploads are restricted by type, size and count, stored outside the web root, and never executed or served with a user-controlled content type
+- API responses return only the fields the client needs; no entity dumps, no over-fetching of related records
+- Security headers are set: CSP, HSTS, `X-Content-Type-Options`, `X-Frame-Options` or `frame-ancestors`, `Referrer-Policy`, `Permissions-Policy`
+- HTTPS is forced in production: HTTP redirects, HSTS preload where applicable, secure cookies
+- Dependencies are scanned (`npm audit`, Dependabot or equivalent); criticals are patched, lockfile pinned, postinstall scripts of new packages reviewed
+
 ## Output format
 
 ```
