@@ -176,7 +176,7 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - name: End of line: working tree matches the normalized HEAD
+      - name: End of line - working tree matches the normalized HEAD
         run: |
           # Without .gitattributes covering all text, a Windows checkout
           # rewrites hundreds of files to CRLF and the diff becomes noise.
@@ -187,10 +187,10 @@ jobs:
           fi
           echo "ok: clean checkout on ${{ matrix.os }}"
 
-      - name: Gerar artefato de release
+      - name: Generate the release artifact
         run: bash scripts/package-release.sh --out dist-release
 
-      - name: Extrair e validar os bytes finais
+      - name: Extract and validate the final bytes
         run: |
           ZIP="$(ls dist-release/*.zip)"
           ( cd dist-release && sha256sum -c "$(basename "$ZIP").sha256" )
@@ -240,7 +240,7 @@ jobs:
           fi
           echo "ok: install.sh registered the EngineOS hooks from the artifact"
 
-      - name: Rerun idempotente do empacotamento
+      - name: Idempotent packaging rerun
         run: |
           # The zip embeds mtimes, so its hash is never stable across runs and
           # echoing it proved nothing. The content manifest is the invariant:
