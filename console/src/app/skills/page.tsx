@@ -1,7 +1,5 @@
 import { SkillsPageClient } from "./skills-page-client";
 
-// TODO: nav link — layout.tsx (sibling shell unit) should add a nav entry
-// pointing here once Providers wraps the tree.
 export default function SkillsPage() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">

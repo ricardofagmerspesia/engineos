@@ -47,7 +47,7 @@ export function HistoryPageClient() {
         <button
           type="button"
           onClick={() => historyQuery.refetch()}
-          className="ml-2 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          className="ml-2 underline focus-ring-danger"
         >
           Retry
         </button>
