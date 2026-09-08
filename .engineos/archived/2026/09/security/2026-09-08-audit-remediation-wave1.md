@@ -103,3 +103,7 @@ approved in this wave: U5–U11.
 - M .engineos/audits/2026-09-08-all.md (line 46 reworded)
 - A docs/specs/2026-09-08-audit-remediation-wave1.md
 - moved .engineos/changes/2026-09-08-audit-remediation-wave1.md -> .engineos/archived/2026/09/security/
+- M package-lock.json — regenerated from package.json's declared ranges (typescript 5.9.3,
+  @types/node 18.19.130); the dependabot typescript 7.0.2 bump had landed in the lock only and
+  `npm ci` failed on main. Own commit 88c67dc; dist rebuilt with esbuild 0.28.2 in the same commit.
+- Branch rebased onto origin/main (88ad7db) after PR #70 turned out merged; opened PR #78.
