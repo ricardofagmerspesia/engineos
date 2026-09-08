@@ -37,15 +37,16 @@ route and stop.
    its `.route` answer as one line:
 
    ```bash
-   "$ENGINEOS_ROOT"/scripts/kernel.sh resolve --facts "$(jq -nc --arg p "$ARGUMENTS" '{prompt: $p, escalate: true}')"
+   "$ENGINEOS_ROOT"/scripts/kernel.sh resolve --facts "$(node -e 'process.stdout.write(JSON.stringify({ prompt: process.argv[1], escalate: true }))' -- "$ARGUMENTS")"
    ```
 
-   `jq -nc` builds the payload so any quote or newline in the request is
-   escaped rather than breaking the JSON; `"escalate": true` selects the
-   route-escalation form (`escalate`, `reasons`, `intents`, `agents`,
-   `risk_floor`, `scale`, `ambiguous`) instead of the plain intent form. If the
-   loop prints nothing, report that the kernel is unreachable from this project
-   and stop.
+   `node` builds the payload — node >= 18 is already the runtime the kernel
+   needs, and `jq` is no longer a dependency anywhere in this repo — so any
+   quote or newline in the request is escaped rather than breaking the JSON;
+   `"escalate": true` selects the route-escalation form (`escalate`, `reasons`,
+   `intents`, `agents`, `risk_floor`, `scale`, `ambiguous`) instead of the plain
+   intent form. If the loop prints nothing, report that the kernel is
+   unreachable from this project and stop.
 2. Dispatch the `router` agent via the Task tool with `model: opus`, passing
    `$ARGUMENTS` as the request. **Explicit invocation always dispatches**, even
    when `escalate` is `false` — the user asked for a plan, and the fast path in

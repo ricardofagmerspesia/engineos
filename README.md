@@ -180,7 +180,7 @@ with a window, never a silent `git mv`.
 Before merging any change to `rules/`, `agents/`, `skills/`, `commands/`,
 `registries/`, or `hooks/`, run:
 ```bash
-scripts/validate-engineos.sh   # 62 self-integrity Checks
+scripts/validate-engineos.sh   # 68 self-integrity Checks
 scripts/run-evals.sh           # golden set for router + agent behaviour
 ```
 `validate-engineos.sh` is a shim over `engineos validate`; the Checks are the
