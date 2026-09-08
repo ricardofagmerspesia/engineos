@@ -11,10 +11,12 @@ import { AGENTS_SKILLS_CHECKS } from './agents-skills';
 import { CONTRACTS_CHECKS } from './contracts';
 import { DECISION_REGISTRIES_CHECKS } from './decision-registries';
 import { KERNEL_CHECKS } from './kernel';
+import { PORTABILITY_CHECKS } from './portability';
 import { REGISTRIES_CHECKS } from './registries';
 import { RULES_CHECKS } from './rules';
 import { RUNTIME_GOVERNANCE_CHECKS } from './runtime-governance';
 import { RUNTIME_SURFACE_CHECKS } from './runtime-surface';
+import { SKILL_ENABLEMENT_CHECKS } from './skill-enablement';
 
 export interface Check<C extends CheckId = CheckId> {
   readonly id: C;
@@ -27,7 +29,7 @@ export interface Check<C extends CheckId = CheckId> {
 
 // One entry per family, in the bash source-file order. Registration order is
 // irrelevant to the harness — orderIds sorts what it runs and lists — and
-// index.test.ts asserts the 62 ids appear exactly once.
+// index.test.ts asserts every declared id appears exactly once.
 export const CHECKS: readonly Check[] = [
   ...RULES_CHECKS,
   ...REGISTRIES_CHECKS,
@@ -37,6 +39,8 @@ export const CHECKS: readonly Check[] = [
   ...CONTRACTS_CHECKS,
   ...RUNTIME_GOVERNANCE_CHECKS,
   ...RUNTIME_SURFACE_CHECKS,
+  ...PORTABILITY_CHECKS,
+  ...SKILL_ENABLEMENT_CHECKS,
 ];
 
 // Natural id order: the numeric part numerically, then the letter suffix

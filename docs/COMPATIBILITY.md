@@ -548,12 +548,15 @@ still required on Windows for `scripts/kernel.sh`, which stays bash until 2.0.
 
 ## Unreleased
 
-The first two entries below narrow existing behaviour; the third moves an
-existing answer from bash to TypeScript without changing it. Nothing in the
-public surface is renamed or removed, and no deprecation window is opened.
+The entries below narrow existing behaviour or move an existing answer from
+bash to TypeScript; one adds checks that a consumer's `validate` run can now
+fail on. Nothing in the public surface is renamed or removed, and no
+deprecation window is opened.
 
 | Surface | change | Kind |
 |---|---|---|
 | `hooks/stop-verify.sh` / `src/hooks/stop-verify.ts` | the verification gate runs only in projects carrying `.engineos/`; it previously ran in any git repo | tightened |
 | `templates/permissions.template.json` | five prefix entries removed (`find`, `rg`, `npm run typecheck`, `npm run lint`, `npx tsc --noEmit`); re-running the installer does not remove entries already merged into `~/.claude/settings.json`, so consumers prune those by hand | tightened |
 | `scripts/kernel.sh skill-state` and the `skills_suppressed` field | now answered by the TypeScript kernel (`src/kernel/skill-state.ts`) instead of the bash one; the answers, their key order and the `skill-state: unknown argument <arg>` refusal are unchanged, and the bash cases moved to `node:test` under `src/kernel/` | ported |
+| `scripts/validate-engineos.sh` / `validate --list` | C32 (adapter-mirror parity), C33 (CRLF guard), C34 (`skills`/`skills_suppressed` pair on every kernel answer) and C35 (no routing domain emptied by skill disablement) run again, as `src/checks/portability.ts` and `src/checks/skill-enablement.ts`; they had been bash-only since 1.7.0 and ran nowhere. A tree with CRLF text files or drifted `.trae`/`.windsurf` mirrors now fails `validate` (MINOR: new failing check). `scripts/checks/*.sh` is deleted; it was never public surface | ported |
+| `validate` execute-bit checks (C18f, C27, C29, C30) | on Windows the execute bit is reported as not representable and the checks emit no finding in either direction; they previously failed by construction on NTFS. POSIX behaviour is unchanged; the modes are still asserted from the commit by `scripts/package-release.sh` | tightened |

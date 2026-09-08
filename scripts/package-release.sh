@@ -147,7 +147,7 @@ if [ "$VERIFY" -eq 1 ]; then
   # isso nao devem ter bit de execucao. Qualquer outro *.sh deve ter.
   is_sourced_lib() {
     case "$1" in
-      ./hooks/layout-manifest.sh|./hooks/scaffold-layout.sh|./scripts/checks/*.sh) return 0 ;;
+      ./hooks/layout-manifest.sh|./hooks/scaffold-layout.sh) return 0 ;;
       *) return 1 ;;
     esac
   }

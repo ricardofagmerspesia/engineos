@@ -1,6 +1,9 @@
 // The check ids the validator answers for, in the order the shell families ran
-// them. Verified against `grep -ho '^check_C[0-9a-z]*' scripts/checks/*.sh`:
-// same 62 ids, so `--only <id>` and `--list` keep their byte-exact surface.
+// them: the ids the 1.7.0 port carried over from scripts/checks/*.sh, plus C32
+// to C35, whose two bash families were never registered by that port and were
+// ported and deleted in the audit-remediation wave. There is no bash left to
+// diff this list against, so it is authoritative rather than derived, and
+// `--only <id>` and `--list` keep their byte-exact surface for every earlier id.
 export const CHECK_IDS = [
   'C1',
   'C2',
@@ -64,6 +67,10 @@ export const CHECK_IDS = [
   'C29',
   'C30',
   'C31',
+  'C32',
+  'C33',
+  'C34',
+  'C35',
 ] as const;
 
 export type CheckId = (typeof CHECK_IDS)[number];

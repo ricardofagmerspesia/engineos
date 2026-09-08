@@ -19,7 +19,7 @@
 // above still agrees, because the files themselves have not moved.
 import { finding, result, type CheckResult, type Finding } from './findings';
 import { skipOnce, type CheckContext } from './lib';
-import { isExecutable } from './runtime-surface-fs';
+import { executableBit } from './runtime-surface-fs';
 
 export const C30_FINDINGS = [
   'library-list-unreadable',
@@ -75,7 +75,9 @@ function libraryFindings(ctx: CheckContext, libraries: readonly string[]): Findi
     if (!header(text).includes(LIB_MARKER)) {
       findings.push(finding('C30', 'listed-library-does-not-introduce-itself-as-one', name));
     }
-    if (isExecutable(ctx.root, `${HOOKS_DIR}/${name}`)) {
+    // `=== true`, not truthy: the must-NOT-be-executable direction reports only
+    // on a bit the filesystem actually carries, never on `null`.
+    if (executableBit(ctx.root, `${HOOKS_DIR}/${name}`) === true) {
       findings.push(finding('C30', 'library-carries-the-executable-bit', name));
     }
   }
@@ -89,7 +91,8 @@ function entryPointFindings(ctx: CheckContext, libraries: ReadonlySet<string>): 
     const text = ctx.readText(`${HOOKS_DIR}/${name}`);
     // A directory or an unreadable entry is not a hook script.
     if (text === undefined) continue;
-    if (!isExecutable(ctx.root, `${HOOKS_DIR}/${name}`)) {
+    // `=== false`, not falsy: `null` means the mode is not representable here.
+    if (executableBit(ctx.root, `${HOOKS_DIR}/${name}`) === false) {
       findings.push(finding('C30', 'hook-entry-point-is-not-executable', name));
     }
     if (header(text).includes(LIB_MARKER)) {

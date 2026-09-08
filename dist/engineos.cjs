@@ -83,7 +83,7 @@ function defaultIsExecutable(path) {
     return false;
   }
 }
-function findNewerNode(env, exists, listDir, isExecutable5 = defaultIsExecutable) {
+function findNewerNode(env, exists, listDir, isExecutable4 = defaultIsExecutable) {
   const nvmDir = env["NVM_DIR"] ?? (0, import_node_path.join)(env["HOME"] ?? "", ".nvm");
   const versionsDir = (0, import_node_path.join)(nvmDir, "versions", "node");
   if (exists(versionsDir)) {
@@ -100,11 +100,11 @@ function findNewerNode(env, exists, listDir, isExecutable5 = defaultIsExecutable
     });
     for (const v of candidates) {
       const bin = (0, import_node_path.join)(versionsDir, v, "bin", "node");
-      if (exists(bin) && isExecutable5(bin)) return bin;
+      if (exists(bin) && isExecutable4(bin)) return bin;
     }
   }
   for (const bin of ["/opt/homebrew/bin/node", "/usr/local/bin/node"]) {
-    if (exists(bin) && isExecutable5(bin)) return bin;
+    if (exists(bin) && isExecutable4(bin)) return bin;
   }
   return null;
 }
@@ -7066,8 +7066,21 @@ function agentModels(ctx, models) {
 }
 
 // src/checks/kernel-lib.ts
+var import_node_path31 = require("node:path");
+
+// src/checks/runtime-surface-fs.ts
 var import_node_fs35 = require("node:fs");
 var import_node_path30 = require("node:path");
+function executableBit(root, relativePath, platform = process.platform) {
+  if (platform === "win32") return null;
+  try {
+    return ((0, import_node_fs35.statSync)((0, import_node_path30.join)(root, relativePath)).mode & 73) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+// src/checks/kernel-lib.ts
 var KERNEL_INPUTS = ["registries/routing.json"];
 var ROUTER_INPUTS = [
   "registries/intents.json",
@@ -7094,7 +7107,7 @@ function loadedOr(read) {
   }
 }
 function rawJson(ctx, relativePath) {
-  const parsed = loadedOr(() => readJsonFile((0, import_node_path30.join)(ctx.root, relativePath)));
+  const parsed = loadedOr(() => readJsonFile((0, import_node_path31.join)(ctx.root, relativePath)));
   return isRecord(parsed) ? parsed : void 0;
 }
 function subRecord(row, key) {
@@ -7124,11 +7137,7 @@ function sameList(left, right) {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 function isExecutable2(ctx, relativePath) {
-  try {
-    return ((0, import_node_fs35.statSync)((0, import_node_path30.join)(ctx.root, relativePath)).mode & 73) !== 0;
-  } catch {
-    return false;
-  }
+  return executableBit(ctx.root, relativePath);
 }
 function uniqueSorted(values) {
   return [...new Set(values)].sort();
@@ -7313,7 +7322,7 @@ function checkC18e(ctx) {
 function checkC18f(ctx) {
   if (missingInputs(ctx, ROUTER_INPUTS)) return skipOnce(ctx, "C18f", C18F_TITLE, ROUTER_TOKEN);
   const findings = [];
-  if (!isExecutable2(ctx, PROMPT_ADVISOR)) {
+  if (isExecutable2(ctx, PROMPT_ADVISOR) === false) {
     findings.push(finding("C18f", "adapter-not-executable", PROMPT_ADVISOR));
   }
   const commands = rows2(subRecord(rawJson(ctx, HOOKS_JSON), "hooks"), "UserPromptSubmit").flatMap((entry) => rows2(entry, "hooks")).map((hook) => hook["command"]).filter((command) => typeof command === "string");
@@ -7456,8 +7465,134 @@ var KERNEL_CHECKS = [
   ...ROUTER_CHECKS
 ];
 
+// src/checks/portability.ts
+var import_node_fs36 = require("node:fs");
+var import_node_path32 = require("node:path");
+var C32_FINDINGS = [
+  "mirror-missing",
+  "file-missing-in-mirror",
+  "file-diverged",
+  "file-only-in-mirror"
+];
+var C33_FINDINGS = ["crlf"];
+var PORTABILITY_CHECKS = [
+  { id: "C32", codes: C32_FINDINGS, run: checkC32 },
+  { id: "C33", codes: C33_FINDINGS, run: checkC33 }
+];
+var C32_TITLE = "the adapter mirrors .trae/skills and .windsurf/skills are byte-identical to .agents/skills";
+var C33_TITLE = "every text file a POSIX parser reads is stored with LF line endings, *.ps1 being the one exception .gitattributes declares";
+var MIRROR_BASE = ".agents/skills";
+var MIRRORS2 = [".trae/skills", ".windsurf/skills"];
+var POSIX_TEXT_EXTENSIONS = [
+  ".sh",
+  ".md",
+  ".json",
+  ".jsonl",
+  ".ts",
+  ".tsx",
+  ".mjs",
+  ".cjs",
+  ".yaml",
+  ".yml",
+  ".py",
+  ".sql"
+];
+var SKIPPED_DIRECTORIES = /* @__PURE__ */ new Set([
+  ".git",
+  "node_modules",
+  "build",
+  "dist-release",
+  ".next",
+  ".claude",
+  "coverage"
+]);
+var CR = 13;
+function checkC32(ctx) {
+  if (!ctx.exists(MIRROR_BASE)) return skipPending(ctx, "C32", C32_TITLE, MIRROR_BASE);
+  const absent = MIRRORS2.filter((mirror) => !ctx.exists(mirror));
+  if (absent.length > 0) {
+    return [result("C32", C32_TITLE, absent.map((mirror) => finding("C32", "mirror-missing", mirror)))];
+  }
+  const base = filesUnder(ctx.root, MIRROR_BASE);
+  const declared4 = new Set(base);
+  const findings = [];
+  for (const mirror of MIRRORS2) {
+    const mirrored = new Set(filesUnder(ctx.root, mirror));
+    for (const relative of base) {
+      if (!mirrored.has(relative)) {
+        findings.push(finding("C32", "file-missing-in-mirror", `${mirror}/${relative}`));
+        continue;
+      }
+      if (!sameBytes((0, import_node_path32.join)(ctx.root, MIRROR_BASE, relative), (0, import_node_path32.join)(ctx.root, mirror, relative))) {
+        findings.push(finding("C32", "file-diverged", `${mirror}/${relative}`));
+      }
+    }
+    for (const relative of mirrored) {
+      if (!declared4.has(relative)) findings.push(finding("C32", "file-only-in-mirror", `${mirror}/${relative}`));
+    }
+  }
+  return [result("C32", C32_TITLE, findings)];
+}
+function checkC33(ctx) {
+  const findings = crlfOffenders(ctx.root).map((relative) => finding("C33", "crlf", relative));
+  return [result("C33", C33_TITLE, findings)];
+}
+function crlfOffenders(root) {
+  const offenders = [];
+  walk3(root, "", (relative) => {
+    if (!isPosixText(relative)) return;
+    if (containsCr((0, import_node_path32.join)(root, relative))) offenders.push(relative);
+  });
+  return offenders.sort(byteOrder2);
+}
+function isPosixText(relative) {
+  return POSIX_TEXT_EXTENSIONS.some((extension) => relative.endsWith(extension));
+}
+function filesUnder(root, base) {
+  const collected = [];
+  walk3((0, import_node_path32.join)(root, base), "", (relative) => collected.push(relative));
+  return collected.sort(byteOrder2);
+}
+function walk3(directory, prefix, visit) {
+  let entries;
+  try {
+    entries = (0, import_node_fs36.readdirSync)(directory, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      walk3((0, import_node_path32.join)(directory, entry.name), relative, visit);
+      continue;
+    }
+    if (entry.isFile()) visit(relative);
+  }
+}
+function sameBytes(left, right) {
+  const first = bytesOf(left);
+  const second = bytesOf(right);
+  if (first === void 0 || second === void 0) return false;
+  return first.equals(second);
+}
+function containsCr(path) {
+  var _a;
+  return ((_a = bytesOf(path)) == null ? void 0 : _a.includes(CR)) === true;
+}
+function bytesOf(path) {
+  try {
+    return (0, import_node_fs36.readFileSync)(path);
+  } catch {
+    return void 0;
+  }
+}
+function byteOrder2(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 // src/checks/registries-coherence.ts
-var import_node_path31 = require("node:path");
+var import_node_path33 = require("node:path");
 var ROUTING = "registries/routing.json";
 var DECISION_RULES = "registries/decision-rules.json";
 var CAPABILITIES = "registries/capabilities.json";
@@ -7471,7 +7606,7 @@ function readable(load) {
   }
 }
 function agentRows(ctx) {
-  const document = readable(() => readJsonFile((0, import_node_path31.join)(ctx.root, AGENTS2)));
+  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, AGENTS2)));
   if (document === null) return null;
   const rows3 = isRecord(document) ? document["agents"] : void 0;
   if (!Array.isArray(rows3)) return [];
@@ -7486,9 +7621,9 @@ function agentRows(ctx) {
   return agents;
 }
 function sortedUnique2(values) {
-  return [...new Set(values)].sort(byteOrder2);
+  return [...new Set(values)].sort(byteOrder3);
 }
-function byteOrder2(a, b) {
+function byteOrder3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function checkC14(ctx) {
@@ -7499,7 +7634,7 @@ function jsonValidity(ctx) {
   for (const name of ctx.list("registries")) {
     if (!name.endsWith(".json")) continue;
     const relative = `registries/${name}`;
-    if (!parsesAsJson((0, import_node_path31.join)(ctx.root, relative))) broken.push(finding("C14", "malformed-json", relative));
+    if (!parsesAsJson((0, import_node_path33.join)(ctx.root, relative))) broken.push(finding("C14", "malformed-json", relative));
   }
   return result("C14", "registries are valid JSON", broken);
 }
@@ -7553,7 +7688,7 @@ function decisionRuleCoherence(ctx) {
   if (!ctx.exists(DECISION_RULES)) {
     return [result("C14", "registries/decision-rules.json is present", [finding("C14", "missing", DECISION_RULES)])];
   }
-  const document = readable(() => readJsonFile((0, import_node_path31.join)(ctx.root, DECISION_RULES)));
+  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, DECISION_RULES)));
   if (document === null) return [];
   const rows3 = isRecord(document) ? document["rules"] : void 0;
   const rules = Array.isArray(rows3) ? rows3.filter(isRecord) : [];
@@ -7573,7 +7708,7 @@ function duplicateIds(rules) {
     if (seen.has(id)) duplicated.add(id);
     seen.add(id);
   }
-  return [...duplicated].sort(byteOrder2).map((id) => finding("C14", "duplicate-rule-id", id));
+  return [...duplicated].sort(byteOrder3).map((id) => finding("C14", "duplicate-rule-id", id));
 }
 function emptyOutcomes(rules) {
   const empty = [];
@@ -7597,7 +7732,7 @@ function invalidSignals(rules) {
       }
     }
   });
-  return [...broken].sort(byteOrder2).map((name) => finding("C14", "invalid-signal", name));
+  return [...broken].sort(byteOrder3).map((name) => finding("C14", "invalid-signal", name));
 }
 var VERIFICATION_SOURCE = "rules/verification.md";
 var VERIFICATION_REQUIRE = "lint output-shown tests-when-in-scope typecheck";
@@ -7608,7 +7743,7 @@ function verificationDrift(ctx, rules) {
   const declaredSource = rule == null ? void 0 : rule["source"];
   const source = typeof declaredSource === "string" ? declaredSource : "";
   const outcome = rule !== void 0 && isRecord(rule["then"]) ? rule["then"] : {};
-  const required = stringArray(outcome["require"]).slice().sort(byteOrder2);
+  const required = stringArray(outcome["require"]).slice().sort(byteOrder3);
   const drift2 = [];
   if (source !== VERIFICATION_SOURCE) {
     drift2.push(finding("C14", "verification-source-drift", source === "" ? "absent" : source));
@@ -7869,19 +8004,19 @@ function ruleNamesIn(line) {
   );
 }
 function unique3(values) {
-  return [...new Set(values)].sort(byteOrder3);
+  return [...new Set(values)].sort(byteOrder4);
 }
 function isTableRow(line) {
   return line.startsWith("|") && line.indexOf("|", 1) !== -1;
 }
-function byteOrder3(a, b) {
+function byteOrder4(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
 // src/checks/runtime-governance-shared.ts
-var import_node_fs36 = require("node:fs");
+var import_node_fs37 = require("node:fs");
 var import_node_os3 = require("node:os");
-var import_node_path32 = require("node:path");
+var import_node_path34 = require("node:path");
 var POLICY_JSON3 = "registries/policy.json";
 var ROUTING_JSON2 = "registries/routing.json";
 function requirePolicy(ctx, check, title, token) {
@@ -7950,11 +8085,11 @@ function telemetryRun(ctx, argv2) {
   }
 }
 function withTempDir(run10) {
-  const dir = (0, import_node_fs36.mkdtempSync)((0, import_node_path32.join)((0, import_node_os3.tmpdir)(), "engineos-check-"));
+  const dir = (0, import_node_fs37.mkdtempSync)((0, import_node_path34.join)((0, import_node_os3.tmpdir)(), "engineos-check-"));
   try {
     return run10(dir);
   } finally {
-    (0, import_node_fs36.rmSync)(dir, { recursive: true, force: true });
+    (0, import_node_fs37.rmSync)(dir, { recursive: true, force: true });
   }
 }
 function fileHas(ctx, path, needle) {
@@ -8111,8 +8246,8 @@ function verifyDoneNoteNamesRepair(ctx) {
 }
 
 // src/checks/runtime-governance-telemetry.ts
-var import_node_path33 = require("node:path");
-var import_node_fs37 = require("node:fs");
+var import_node_path35 = require("node:path");
+var import_node_fs38 = require("node:fs");
 var C22_FINDINGS = [
   "retention-days-not-a-whole-number",
   "retention-days-below-1",
@@ -8175,12 +8310,12 @@ function checkC22b(ctx) {
   const findings = [];
   withTempDir((dir) => {
     events.forEach((event2, index) => {
-      const file = (0, import_node_path33.join)(dir, `sample-${index}.jsonl`);
+      const file = (0, import_node_path35.join)(dir, `sample-${index}.jsonl`);
       const sample = JSON.stringify(event2.row["sample"] ?? null);
       const appended = telemetryRun(ctx, ["append", file, "--session", "canary", "--event", event2.id, "--data", sample, "--ts", "2026-08-06T00:00:00Z"]) && nonEmptyFile(file) && telemetryRun(ctx, ["validate", file]);
       if (!appended) findings.push(finding("C22b", "sample-did-not-round-trip", event2.id));
     });
-    const negatives = (0, import_node_path33.join)(dir, "negatives.jsonl");
+    const negatives = (0, import_node_path35.join)(dir, "negatives.jsonl");
     if (telemetryRun(ctx, ["append", negatives, "--session", "canary", "--event", "bogus-event", "--data", "{}"])) {
       findings.push(finding("C22b", "unknown-event-was-not-rejected"));
     }
@@ -8277,14 +8412,14 @@ function compiles(pattern) {
 }
 function nonEmptyFile(path) {
   try {
-    return (0, import_node_fs37.existsSync)(path) && (0, import_node_fs37.statSync)(path).size > 0;
+    return (0, import_node_fs38.existsSync)(path) && (0, import_node_fs38.statSync)(path).size > 0;
   } catch {
     return false;
   }
 }
 
 // src/checks/runtime-governance-constitution.ts
-var import_node_path34 = require("node:path");
+var import_node_path36 = require("node:path");
 var C23_FINDINGS = [
   "precedence-sentence-disagrees",
   "missing-from-compatibility",
@@ -8310,7 +8445,7 @@ function checkC23(ctx) {
   if (stated === "" || stated !== declared4) findings.push(finding("C23", "precedence-sentence-disagrees"));
   const compatibility = ctx.readText(COMPATIBILITY) ?? "";
   for (const rule of alwaysOnImports(ctx.readText(CLAUDE_MD2) ?? "")) {
-    const name = (0, import_node_path34.basename)(rule);
+    const name = (0, import_node_path36.basename)(rule);
     if (!compatibility.includes(`${name}\``)) findings.push(finding("C23", "missing-from-compatibility", name));
   }
   findings.push(...runMirrors(rowsOf("C23"), ctx));
@@ -8802,23 +8937,10 @@ var RUNTIME_GOVERNANCE_CHECKS = [
 // src/checks/runtime-surface-canary.ts
 var import_node_fs39 = require("node:fs");
 var import_node_os4 = require("node:os");
+var import_node_path38 = require("node:path");
+
+// src/checks/runtime-surface-journal.ts
 var import_node_path37 = require("node:path");
-
-// src/checks/runtime-surface-journal.ts
-var import_node_path36 = require("node:path");
-
-// src/checks/runtime-surface-fs.ts
-var import_node_fs38 = require("node:fs");
-var import_node_path35 = require("node:path");
-function isExecutable3(root, relativePath) {
-  try {
-    return ((0, import_node_fs38.statSync)((0, import_node_path35.join)(root, relativePath)).mode & 73) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-// src/checks/runtime-surface-journal.ts
 var C27_FINDINGS = [
   "block-missing",
   "home-missing",
@@ -8865,7 +8987,7 @@ function haveExecJournalInputs(ctx, check, title) {
 function execJournalBlock(ctx) {
   let raw;
   try {
-    raw = readJsonFile((0, import_node_path36.join)(ctx.root, POLICY));
+    raw = readJsonFile((0, import_node_path37.join)(ctx.root, POLICY));
   } catch {
     return void 0;
   }
@@ -8903,7 +9025,7 @@ function homeFindings(home) {
 }
 function schemaFindings(ctx, schema) {
   if (typeof schema !== "string" || schema === "") return [finding("C27", "schema-missing")];
-  if (!isExecutable3(ctx.root, schema)) return [finding("C27", "schema-not-executable", schema)];
+  if (executableBit(ctx.root, schema) === false) return [finding("C27", "schema-not-executable", schema)];
   return [];
 }
 function enumerationFindings(block2) {
@@ -9012,7 +9134,7 @@ var REJECTED_LINES = [
 function checkC27b(ctx) {
   const skipped = haveExecJournalInputs(ctx, "C27b", C27b_TITLE);
   if (skipped !== void 0) return skipped;
-  const workspace = (0, import_node_fs39.mkdtempSync)((0, import_node_path37.join)((0, import_node_os4.tmpdir)(), "engineos-c27b-"));
+  const workspace = (0, import_node_fs39.mkdtempSync)((0, import_node_path38.join)((0, import_node_os4.tmpdir)(), "engineos-c27b-"));
   try {
     const findings = [...appendFindings(ctx, workspace), ...validateFindings(ctx, workspace)];
     return [result("C27b", C27b_TITLE, findings)];
@@ -9022,14 +9144,14 @@ function checkC27b(ctx) {
 }
 function appendFindings(ctx, workspace) {
   const findings = [];
-  const spans = (0, import_node_path37.join)(workspace, "spans.exec.jsonl");
+  const spans = (0, import_node_path38.join)(workspace, "spans.exec.jsonl");
   findings.push(...fullSpanFindings(ctx, spans));
   for (const kind of declaredList(ctx, "span_kinds")) {
     if (!append2(ctx, spans, ["--span-kind", kind])) {
       findings.push(broke("append", `declared-span-kind-rejected:${kind}`));
     }
   }
-  findings.push(...v1ShapeFindings(ctx, (0, import_node_path37.join)(workspace, "v1.exec.jsonl")));
+  findings.push(...v1ShapeFindings(ctx, (0, import_node_path38.join)(workspace, "v1.exec.jsonl")));
   findings.push(...refusalFindings(ctx, spans));
   return findings;
 }
@@ -9129,7 +9251,7 @@ function refusalFindings(ctx, spans) {
 }
 function validateFindings(ctx, workspace) {
   const findings = [];
-  const file = (0, import_node_path37.join)(workspace, "foreign.exec.jsonl");
+  const file = (0, import_node_path38.join)(workspace, "foreign.exec.jsonl");
   for (const { subject, line } of REJECTED_LINES) {
     (0, import_node_fs39.writeFileSync)(file, `${line}
 `);
@@ -9235,7 +9357,9 @@ function checkC28(ctx) {
 function checkC29(ctx) {
   if (!ctx.exists(INIT_SCRIPT)) return skipPending(ctx, "C29", C29_TITLE, INIT_SCRIPT);
   const findings = [];
-  if (!isExecutable3(ctx.root, INIT_SCRIPT)) findings.push(finding("C29", "init-script-not-executable", INIT_SCRIPT));
+  if (executableBit(ctx.root, INIT_SCRIPT) === false) {
+    findings.push(finding("C29", "init-script-not-executable", INIT_SCRIPT));
+  }
   findings.push(...commandFindings(ctx));
   findings.push(...scaffolderFindings(ctx));
   findings.push(...adoptionDocFindings(ctx));
@@ -9336,7 +9460,7 @@ function libraryFindings(ctx, libraries) {
     if (!header(text3).includes(LIB_MARKER)) {
       findings.push(finding("C30", "listed-library-does-not-introduce-itself-as-one", name));
     }
-    if (isExecutable3(ctx.root, `${HOOKS_DIR2}/${name}`)) {
+    if (executableBit(ctx.root, `${HOOKS_DIR2}/${name}`) === true) {
       findings.push(finding("C30", "library-carries-the-executable-bit", name));
     }
   }
@@ -9348,7 +9472,7 @@ function entryPointFindings(ctx, libraries) {
     if (!name.endsWith(".sh") || libraries.has(name)) continue;
     const text3 = ctx.readText(`${HOOKS_DIR2}/${name}`);
     if (text3 === void 0) continue;
-    if (!isExecutable3(ctx.root, `${HOOKS_DIR2}/${name}`)) {
+    if (executableBit(ctx.root, `${HOOKS_DIR2}/${name}`) === false) {
       findings.push(finding("C30", "hook-entry-point-is-not-executable", name));
     }
     if (header(text3).includes(LIB_MARKER)) {
@@ -9462,6 +9586,60 @@ var RUNTIME_SURFACE_CHECKS = [
   { id: "C30", codes: C30_FINDINGS, run: checkC30 }
 ];
 
+// src/checks/skill-enablement.ts
+var C34_FINDINGS = ["answer-lacks-suppressed-pair"];
+var C35_FINDINGS = ["domain-emptied-by-disablement"];
+var SKILL_ENABLEMENT_CHECKS = [
+  { id: "C34", codes: C34_FINDINGS, run: checkC34 },
+  { id: "C35", codes: C35_FINDINGS, run: checkC35 }
+];
+var C34_TITLE = "the three kernel answer sites route-path, route-intent and resolve-task each emit skills together with skills_suppressed";
+var C35_TITLE = "no routing domain is left without an enabled skill by disablement";
+var ROUTING_JSON3 = "registries/routing.json";
+var INTENT_PROMPT = "create a new nestjs endpoint";
+var SKILLS_KEY = "skills";
+var SUPPRESSED_KEY = "skills_suppressed";
+function checkC34(ctx) {
+  const routing = loadedOr(() => ctx.registries.routing);
+  if (routing === void 0) return [preconditionResult("C34", C34_TITLE, ROUTING_JSON3)];
+  const sample = routing.domains.find(
+    (domain) => domain.skills.length > 0 && domain.sample_path !== null && domain.sample_path !== ""
+  );
+  if (sample === void 0) return skipPending(ctx, "C34", C34_TITLE, ROUTING_JSON3);
+  const findings = [
+    ...pairFindings2("route-path", kernelAnswer(ctx, ["route-path", sample.sample_path ?? ""])),
+    ...pairFindings2("route-intent", kernelAnswer(ctx, ["route-intent", INTENT_PROMPT])),
+    ...pairFindings2("resolve-task", kernelAnswer(ctx, ["resolve-task", "--prompt", INTENT_PROMPT]))
+  ];
+  return [result("C34", C34_TITLE, findings)];
+}
+function pairFindings2(arm, answer) {
+  return carriesPairAt(arm, answer) ? [] : [finding("C34", "answer-lacks-suppressed-pair", arm)];
+}
+function checkC35(ctx) {
+  const routing = loadedOr(() => ctx.registries.routing);
+  if (routing === void 0) return [preconditionResult("C35", C35_TITLE, ROUTING_JSON3)];
+  const state = readSkillState(ctx.root);
+  const findings = [];
+  for (const domain of routing.domains) {
+    if (domain.skills.length === 0) continue;
+    if (enabledSkills(domain.skills, state).length === 0) {
+      findings.push(finding("C35", "domain-emptied-by-disablement", domain.id));
+    }
+  }
+  return [result("C35", C35_TITLE, findings)];
+}
+function carriesPairAt(arm, answer) {
+  if (arm === "route-path") return carriesPair(answer);
+  if (arm === "resolve-task") return carriesPair(isRecord(answer) ? answer["task_contract"] : void 0);
+  const matches = isRecord(answer) ? answer["matches"] : void 0;
+  if (!Array.isArray(matches)) return false;
+  return matches.every(carriesPair);
+}
+function carriesPair(value) {
+  return isRecord(value) && SKILLS_KEY in value && SUPPRESSED_KEY in value;
+}
+
 // src/checks/index.ts
 var CHECKS = [
   ...RULES_CHECKS,
@@ -9471,14 +9649,16 @@ var CHECKS = [
   ...KERNEL_CHECKS,
   ...CONTRACTS_CHECKS,
   ...RUNTIME_GOVERNANCE_CHECKS,
-  ...RUNTIME_SURFACE_CHECKS
+  ...RUNTIME_SURFACE_CHECKS,
+  ...PORTABILITY_CHECKS,
+  ...SKILL_ENABLEMENT_CHECKS
 ];
 function orderIds(ids) {
   return [...ids].sort((a, b) => {
     const left = idKey(a);
     const right = idKey(b);
     if (left.numeric !== right.numeric) return left.numeric - right.numeric;
-    return byteOrder4(left.suffix, right.suffix);
+    return byteOrder5(left.suffix, right.suffix);
   });
 }
 function selectIds(ids, only) {
@@ -9505,7 +9685,7 @@ function idKey(id) {
   if (digits === void 0) return { numeric: 0, suffix: id };
   return { numeric: Number.parseInt(digits, 10), suffix: (matched == null ? void 0 : matched[2]) ?? "" };
 }
-function byteOrder4(a, b) {
+function byteOrder5(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -9594,7 +9774,7 @@ function messageOf(error) {
 // src/cli.ts
 var io = processIo();
 var argv = process.argv.slice(2);
-function isExecutable4(path) {
+function isExecutable3(path) {
   try {
     (0, import_node_fs40.accessSync)(path, import_node_fs40.constants.X_OK);
     return true;
@@ -9626,7 +9806,7 @@ function applyOutcome(outcome) {
   }
 }
 if (currentMajor() < MIN_NODE_MAJOR) {
-  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs40.existsSync, import_node_fs40.readdirSync, isExecutable4);
+  const newer = process.env["ENGINEOS_REEXEC"] === "1" ? null : findNewerNode(process.env, import_node_fs40.existsSync, import_node_fs40.readdirSync, isExecutable3);
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 var table = {

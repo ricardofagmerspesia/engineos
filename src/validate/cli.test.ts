@@ -16,6 +16,7 @@ const NATURAL_ORDER: readonly string[] = [
   'C19', 'C19b', 'C19c', 'C20', 'C20b', 'C20c', 'C20d', 'C21', 'C21b', 'C21c', 'C21e',
   'C22', 'C22b', 'C22c', 'C23', 'C23c', 'C24', 'C24b', 'C24c', 'C25', 'C25b', 'C25c',
   'C26', 'C26b', 'C26c', 'C26d', 'C27', 'C27b', 'C27c', 'C27d', 'C28', 'C29', 'C30', 'C31',
+  'C32', 'C33', 'C34', 'C35',
 ];
 
 function check(id: CheckId, run: (ctx: CheckContext) => CheckResult[]): Check {
