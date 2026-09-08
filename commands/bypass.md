@@ -67,9 +67,10 @@ pause across sessions. Two switches above it can, and neither is cleared at
 - `~/.claude/engineos.bypass` — machine-wide. Create it to pause EngineOS in every
   repo without uninstalling; delete it to resume.
 
-`hooks/bypass.sh status` names which switch is on, and `off` reports when it
-cleared the repo marker while a sticky switch still holds the bypass — it never
-clears a machine-wide or environment switch on your behalf.
+`engineos bypass status` names which switch is on — `hooks/bypass.sh status` is a
+shim over that same command — and `off` reports when it cleared the repo marker
+while a sticky switch still holds the bypass — it never clears a machine-wide or
+environment switch on your behalf.
 
 While it is on, the `UserPromptSubmit` hook injects a `BYPASS ACTIVE` reminder on
 every turn. Surface that state to the user rather than working silently

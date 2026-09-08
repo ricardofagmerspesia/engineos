@@ -4,9 +4,19 @@ import { accessSync, constants, existsSync, readdirSync } from 'node:fs';
 import { processIo, writeJson } from './io';
 import { currentMajor, findNewerNode, guardOutcome, MIN_NODE_MAJOR, type GuardOutcome } from './node-guard';
 import { dispatch, type CommandTable } from './dispatch';
+import { message, render } from './hooks/output';
 import { runKernel } from './kernel/cli';
 import { runJournal } from './journal/cli';
 import { runTelemetry } from './journal/telemetry-cli';
+import { runHook } from './hooks/cli';
+import { runInit } from './init/cli';
+import { runSettingsMerge } from './install/cli';
+import { runBypass } from './bypass/cli';
+import { runGen } from './gen/cli';
+import { runEvals } from './evals/run';
+import { runBench } from './bench/run';
+import { runUsageReport } from './report/usage';
+import { runValidate } from './validate/cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -38,8 +48,9 @@ function applyOutcome(outcome: GuardOutcome): void {
       process.exit(0);
       break;
     case 'skip':
-      writeJson(io, { systemMessage: outcome.message });
-      process.exit(0);
+      // hooks/output.ts imports nothing, so the guard can render through the same
+      // writer every hook uses even on the node it is about to refuse.
+      process.exit(render(message(outcome.message), io));
       break;
     case 'refuse':
       writeJson(io, { error: outcome.message });
@@ -52,5 +63,18 @@ if (currentMajor() < MIN_NODE_MAJOR) {
   applyOutcome(guardOutcome(argv, process.versions.node, newer));
 }
 
-const table: CommandTable = { kernel: runKernel, journal: runJournal, telemetry: runTelemetry };
+const table: CommandTable = {
+  kernel: runKernel,
+  journal: runJournal,
+  telemetry: runTelemetry,
+  hook: runHook,
+  init: runInit,
+  'settings-merge': runSettingsMerge,
+  bypass: runBypass,
+  gen: runGen,
+  evals: runEvals,
+  bench: runBench,
+  'usage-report': runUsageReport,
+  validate: runValidate,
+};
 process.exit(dispatch(table, argv, io));

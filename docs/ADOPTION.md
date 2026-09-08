@@ -12,13 +12,18 @@ project. Follow in order. Each step says what it does and how to verify it.
 ## 0. Prerequisites
 
 - **Claude Code** installed (CLI / desktop / IDE).
-- **`jq`** (the installer and hooks need it): `brew install jq` (macOS) / `apt install jq`.
+- **node >= 18** — the installer's only hard dependency, and the hook runtime.
+  `hooks/hooks.json` registers `node "<repo>/dist/engineos.cjs" hook <name>`, and
+  `install.sh` merges `settings.json` by calling `engineos settings-merge`.
+- `jq` and `python3` are **not** needed — not to adopt EngineOS and not to work on
+  it. Working *on* this repo needs node >= 18 plus `shellcheck` for `install.sh`
+  and the bash shims: `brew install shellcheck` (macOS) / `apt install shellcheck`.
 - macOS only: **`coreutils`** for the post-edit timeout safety net: `brew install coreutils`.
 - The plugins EngineOS routes to — install both:
   - `superpowers` (brainstorming, TDD, debugging, verification)
   - `tlc-spec-driven` (spec → design → tasks → execute)
 
-Verify: `jq --version` and `claude --version` both print.
+Verify: `node --version` (>= 18) and `claude --version` both print.
 
 ---
 
@@ -38,7 +43,7 @@ What it does (idempotent — re-run after every `git pull`):
 Verify:
 ```bash
 ls ~/.claude/agents ~/.claude/commands        # coordinators, specialists, /audit, /implement
-jq '.hooks | keys' ~/.claude/settings.json    # PreToolUse, PostToolUse, Stop, SessionStart, UserPromptSubmit
+node -p 'Object.keys(require(process.env.HOME+"/.claude/settings.json").hooks)'   # PreToolUse, PostToolUse, Stop, SessionStart, UserPromptSubmit
 ```
 **Restart Claude Code** so the hooks load in new sessions.
 

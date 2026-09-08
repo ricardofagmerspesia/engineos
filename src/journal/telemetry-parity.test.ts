@@ -14,6 +14,17 @@ import { runTelemetry } from './telemetry-cli';
 // the same bytes in the file. The fixture and its refresh procedure are
 // documented in test/fixtures/legacy-journal/README.md.
 //
+// jq 1.6 is the pinned number-format reference. The port reproduces jq 1.6's
+// double-based rendering of JSON numbers — `1e-07`, `1000000000000000`, `1` for
+// `1.0` — because that is what the fixture CLI emitted when it was pinned. jq
+// 1.7 re-renders numbers through decNumber instead (`1E-7`, `1E+15`, `1.0`), so
+// the samples whose bytes depend on that formatter cannot be compared against a
+// non-1.6 jq without pinning the port to a formatter it was never written
+// against. Those samples are therefore version-gated: the suite probes the jq on
+// PATH once and skips only the samples THIS jq renders differently from jq 1.6.
+// Everything else, number cases included where the two agree, keeps full byte
+// parity on every jq.
+//
 // Deliberately NOT cases:
 //   - anything that reaches usage(). bash interpolates $0, which is the staged
 //     path; the port has no $0 and names scripts/telemetry.sh. Exit code and the
@@ -29,6 +40,7 @@ import { runTelemetry } from './telemetry-cli';
 const FIXTURE = join(resolveRoot({}, __dirname), 'test', 'fixtures', 'legacy-journal');
 const TS = '2026-08-06T00:00:00Z';
 const MISSING_TOOL = firstMissingTool(['bash', 'jq']);
+const JQ_VERSION = jqVersion();
 
 const APPEND_CASES: string[][] = [
   // Every registry sample, which is the payload each writing hook really emits.
@@ -38,16 +50,6 @@ const APPEND_CASES: string[][] = [
   ['--session', 's1', '--event', 'route', '--data', '{"agents":["a"],"escalate":true,"intents":["b"]}'],
   ['--session', 's1', '--event', 'route', '--data', '{"agents":["apps/api/src/x.ts","a@b:c-d_e"]}'],
   ['--session', 's1', '--event', 'verify', '--data', '{"failed":false,"targets":3}'],
-  // The number forms where JSON.stringify and jq 1.6 disagree.
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":-0}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":1e-7}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":1e-6}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":1e15}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":1e16}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":1.5e17}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":1.0}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":0.1}'],
-  ['--session', 's1', '--event', 'verify', '--data', '{"targets":123456789012345678901}'],
   ['--session', 'sessão-1', '--event', 'route', '--data', '{}'],
   // Refusals: one per guard the CLI carries.
   ['--session', 's1', '--event', 'bogus', '--data', '{}'],
@@ -66,6 +68,27 @@ const APPEND_CASES: string[][] = [
   // A repeated flag: last one wins on both sides.
   ['--session', 's1', '--session', 's2', '--event', 'route', '--data', '{}'],
 ];
+
+// The number forms where JSON.stringify and jq 1.6 disagree, each paired with
+// the `data` bytes jq 1.6 renders for it — measured on jq-1.6, which is the
+// pinned reference this port was written against. A jq that renders a sample
+// differently gates that one sample and nothing else.
+const NUMBER_SAMPLES: { data: string; jq16: string }[] = [
+  { data: '{"targets":-0}', jq16: '{"targets":-0}' },
+  { data: '{"targets":1e-7}', jq16: '{"targets":1e-07}' },
+  { data: '{"targets":1e-6}', jq16: '{"targets":1e-06}' },
+  { data: '{"targets":1e15}', jq16: '{"targets":1000000000000000}' },
+  { data: '{"targets":1e16}', jq16: '{"targets":1e+16}' },
+  { data: '{"targets":1.5e17}', jq16: '{"targets":1.5e+17}' },
+  { data: '{"targets":1.0}', jq16: '{"targets":1}' },
+  { data: '{"targets":0.1}', jq16: '{"targets":0.1}' },
+  { data: '{"targets":123456789012345678901}', jq16: '{"targets":123456789012345680000}' },
+];
+
+// data -> what the jq on PATH renders, for the samples where that differs from
+// jq 1.6. Empty on jq 1.6.x by construction: that version IS the reference, so a
+// mismatch there is a real regression and has to stay red.
+const DIVERGENT_NUMBERS = divergentNumbers();
 
 // The corpus every validate case runs over: one file, both implementations, so
 // the file path inside each message is the same on both sides.
@@ -102,6 +125,26 @@ test('append answers identically to the pinned bash telemetry CLI', (t) => {
   const root = skipOrStage(t);
   if (root === null) return;
   for (const args of APPEND_CASES) appendCase(root, args);
+});
+
+// One subtest per sample so a jq whose number formatter has moved on gates that
+// sample alone, visibly, instead of failing the whole append suite.
+test('append renders every number form identically to the pinned bash telemetry CLI', async (t) => {
+  const root = skipOrStage(t);
+  if (root === null) return;
+  for (const { data, jq16 } of NUMBER_SAMPLES) {
+    const rendered = DIVERGENT_NUMBERS.get(data);
+    await t.test(`append --data ${data}`, (subtest) => {
+      if (rendered !== undefined) {
+        subtest.skip(
+          `jq 1.6 is the pinned number-format reference; ${JQ_VERSION ?? 'the jq on PATH'} renders ${data}`
+          + ` as ${rendered} rather than ${jq16}`,
+        );
+        return;
+      }
+      appendCase(root, ['--session', 's1', '--event', 'verify', '--data', data]);
+    });
+  }
 });
 
 test('validate answers identically to the pinned bash telemetry CLI', (t) => {
@@ -224,6 +267,32 @@ function readJsonRecord(path: string): Record<string, unknown> {
 
 function slug(label: string): string {
   return label.replace(/[^A-Za-z0-9]+/gu, '-').slice(0, 80);
+}
+
+// `jq --version` prints one token: `jq-1.6`, `jq-1.7.1`, `jq-1.8.0`. Read once
+// per file, because the answer cannot change mid-run.
+function jqVersion(): string | null {
+  const probe = spawnSync('jq', ['--version'], { encoding: 'utf8' });
+  if (probe.error !== undefined || probe.status !== 0) return null;
+  return probe.stdout.trim();
+}
+
+// Renders every sample through the jq on PATH in ONE invocation, along the same
+// path the pinned CLI uses (`--argjson`, then straight out), and keeps the ones
+// whose bytes differ from jq 1.6's. A probe that cannot be run at all leaves the
+// whole set gated with that stated as the reason: without an established
+// equivalence there is no jq-1.6 reference to compare bytes against.
+function divergentNumbers(): Map<string, string> {
+  const divergent = new Map<string, string>();
+  if (MISSING_TOOL !== null || JQ_VERSION === null || JQ_VERSION.startsWith('jq-1.6')) return divergent;
+  const payload = `[${NUMBER_SAMPLES.map((sample) => sample.data).join(',')}]`;
+  const probe = spawnSync('jq', ['-nc', '--argjson', 'samples', payload, '$samples[]'], { encoding: 'utf8' });
+  const lines = probe.status === 0 ? (probe.stdout ?? '').trimEnd().split('\n') : [];
+  for (const [index, sample] of NUMBER_SAMPLES.entries()) {
+    const rendered = lines.length === NUMBER_SAMPLES.length ? lines[index] : 'nothing — the jq number-format probe failed';
+    if (rendered !== undefined && rendered !== sample.jq16) divergent.set(sample.data, rendered);
+  }
+  return divergent;
 }
 
 function firstMissingTool(tools: string[]): string | null {

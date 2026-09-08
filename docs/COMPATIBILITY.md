@@ -20,6 +20,7 @@ Changing any of these is a **breaking change**:
 | Hook event contract in `hooks/hooks.json` | Consumers wire these into their settings |
 | `registries/*.json` top-level shape | Read by hooks and by tooling |
 | `scripts/kernel.sh` subcommand names and their JSON answer shape | Called by hooks, by the router agent, and by consumers' own tooling |
+| Runtime entry point `dist/engineos.cjs` subcommand names (`kernel`, `journal`, `telemetry`, `hook`, `init`, `bypass`, `gen`, `evals`, `bench`, `usage-report`, `validate`, `settings-merge`) and their stdout/exit contracts | Registered in `hooks/hooks.json`, called by the installers, CI and every `.sh` shim; the shims' deprecation window assumes these names hold |
 | The `## Return format` envelope fields | Parsed by orchestrators |
 
 The kernel subcommands covered by that row are `resolve`, `route-path`, `route-intent`,
@@ -142,11 +143,13 @@ toda skill escrita antes de o campo existir. Só a **primeira** frontmatter é l
 e só quando o arquivo começa com ela: uma linha `enabled:` no corpo é documentação,
 não configuração, e nunca desliga uma skill.
 
-**Onde isso é testado.** `scripts/test-kernel.sh` planta uma skill desabilitada
-numa árvore de fixture e afirma que o roteamento a derruba, que diz por quê, que a
-ausência do campo significa habilitada e que uma menção no corpo não desliga nada.
-Os checks `C34` (todo answer que emite `skills` emite `skills_suppressed`) e `C35`
-(nenhum domínio de routing fica sem skill habilitada) guardam a fronteira.
+**Onde isso é testado.** `src/kernel/kernel-skill-state.e2e.test.ts` planta uma
+skill desabilitada numa árvore de fixture e afirma que o roteamento a derruba, que
+diz por quê, que a ausência do campo significa habilitada e que uma menção no corpo
+não desliga nada; `src/kernel/skill-state.test.ts` cobre as grafias do leitor de
+frontmatter, e `src/kernel/parity.test.ts` compara o arm contra o kernel bash
+fixado. Os checks `C34` (todo answer que emite `skills` emite `skills_suppressed`) e
+`C35` (nenhum domínio de routing fica sem skill habilitada) guardam a fronteira.
 
 Adicionar `skills_suppressed` às respostas e `skill-state` à lista de subcomandos
 é **MINOR** — campo e subcomando novos, nada removido nem renomeado.
@@ -282,12 +285,12 @@ taken here.
 which is not the same as being the only field a consumer must distrust. Every
 other field is shape-bounded, not classified: harness-supplied characters still
 reach disk dash-joined, and the class admits `.` and `/`, so a journal field is
-never safe as a filesystem path component without `hooks/lib-common.sh`'s
-`hook_path_slug`.
+never safe as a filesystem path component without `src/lib/slug.ts`'s
+`hookPathSlug`.
 Adding a second free-text field to the journal is a compatibility event, not a
 convenience. The guard bounds the shape and the size of what reaches disk; it
-does not classify content, and `hooks/lib-common.sh` sanitizes rather than
-rejects at the hook boundary, so a harness-supplied value's characters still
+does not classify content, and the hook boundary (`src/lib/slug.ts`'s `hookSlug`,
+applied by `src/hooks/telemetry.ts`) sanitizes rather than rejects, so a harness-supplied value's characters still
 transit dash-joined.
 
 ### `scripts/kernel.sh` becomes a shim, and `routing.json` drops two derived fields
@@ -382,3 +385,175 @@ convention, and `validate`'s `<file>: N line(s), all valid` /
 texts. Changed: the runtime dependency is node >= 18 instead of jq, and
 `ENGINEOS_ROOT` now relocates the registry lookup. `usage` names
 `scripts/telemetry.sh` rather than interpolating `$0`.
+
+### The hooks become shims, and the telemetry writer rosters follow
+
+Same release train, same trade. Every `hooks/*.sh` registered in
+`hooks/hooks.json` is now a shim that `exec`s `node dist/engineos.cjs hook
+<name>`; the implementations live in `src/hooks/<name>.ts`.
+
+| Surface | Change | Kind |
+|---|---|---|
+| `hooks/hooks.json` registrations | unchanged — the same nine paths, the same events and matchers | unchanged |
+| `hooks/<name>.sh` | now a shim over `dist/engineos.cjs hook <name>` | implementation, surface unchanged |
+| `registries/policy.json` `telemetry.events[].written_by` | values move from `hooks/<name>.sh` to `src/hooks/<name>.ts` | value change, see below |
+| `registries/policy.json` `telemetry.exec_journal.written_by` | same move | value change, see below |
+| `registries/policy.json` `telemetry.exec_journal.written_by_helper` | `hooks/lib-common.sh` -> `src/hooks/telemetry.ts` | value change, see below |
+
+The hook event contract does not change: same events, same matchers, same
+registered paths, same stdout shapes and exit codes. What changes for a consumer
+is the runtime requirement — the hooks needed `bash` and `jq`, and now need
+`bash` and **node >= 18** — and the three roster fields above.
+
+Those rosters are data whose *values* are file paths, and the files that write
+the events moved. A consumer reading `written_by` to know where an event comes
+from now gets a TypeScript module path instead of a shell script path. Nothing
+about the key, its array shape, or the event ids changes; only the paths do, and
+they point at the file that actually writes the line, which is what the field has
+always meant. `written_by_helper` names the shared append site, which is now the
+sink in `src/hooks/telemetry.ts` rather than the sourced bash library.
+
+Two implementation details that were *inside* the bash hooks and are not public
+surface: `hook_slug` / `hook_path_slug` are `hookSlug` / `hookPathSlug` in
+`src/lib/slug.ts`, and the `hook_span` / `hook_telemetry` emitters are the span
+lifecycle (`withSpan`, `openSpan`, `closeSpan`) and `event` in
+`src/hooks/telemetry.ts`. A consumer grepping a hook file for either is reading
+a detail the shim removed.
+
+## 1.7.0 additions
+
+### 1.7.0: hooks.json registers node directly; installers drop jq and bash.exe
+
+`1.7.0` is a **MINOR** release. Nothing in the public surface is removed and
+nothing is renamed; deprecation windows open on every bash shim — the hook
+shims, `scripts/kernel.sh`, `scripts/exec-journal.sh`, `scripts/telemetry.sh`,
+`scripts/init-project.sh`, `hooks/bypass.sh`, the two `scripts/gen-agent-*.sh`
+entry points, `scripts/run-evals.sh`, `scripts/bench-runtime.sh`,
+`scripts/usage-report.sh` and `scripts/validate-engineos.sh` — and one runtime
+requirement becomes explicit: `node >= 18`, with `jq` and `python3` gone.
+
+| Surface | 1.7.0 change | Kind |
+|---|---|---|
+| `hooks/hooks.json` command form | `"${CLAUDE_PLUGIN_ROOT}"/hooks/<name>.sh` -> `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>` | value change, backward compatible |
+| `hooks/<name>.sh` shims | deprecated in 1.7.0, removed in 2.0 | deprecated |
+| `scripts/kernel.sh`, `scripts/exec-journal.sh`, `scripts/telemetry.sh`, `scripts/init-project.sh`, `hooks/bypass.sh` | shims over `engineos kernel` / `journal` / `telemetry` / `init` / `bypass` since 1.6.x; deprecated in 1.7.0, removed in 2.0. `scripts/kernel.sh` still needs a bash on Windows until then | deprecated |
+| `hooks/layout-manifest.sh`, `hooks/scaffold-layout.sh` | frozen bash until 2.0 — sourced functions cannot be shimmed; `engineos init` requires them as siblings. Not deprecated: they go when `init` stops shelling out, in 2.0 | frozen |
+| `python3` | no longer used by anything shipped (`scripts/bench-runtime.sh` was the last caller) | requirement removed |
+| CI (`.github/workflows/ci.yml`) | "Tools present" checks `shellcheck`, `bash`, `node` only; JSON validation, the validator, the evals and the bench call `node dist/engineos.cjs` directly. The two gen drift guards stay on the `.sh` shims so the deprecated shims get one CI exercise before 2.0 | changed |
+| `engineos settings-merge` | new subcommand of the runtime entry point | added |
+| `engineos bypass` | new subcommand of the runtime entry point | added |
+| `engineos gen` | new subcommand of the runtime entry point | added |
+| `engineos evals` | new subcommand of the runtime entry point | added |
+| `engineos bench` | new subcommand of the runtime entry point | added |
+| `engineos usage-report` | new subcommand of the runtime entry point | added |
+| `engineos validate` | new subcommand of the runtime entry point; all 62 checks registered in `src/checks/index.ts` — `scripts/validate-engineos.sh` is now a shim over it | added |
+| `scripts/validate-engineos.sh` | shim over `engineos validate`; `scripts/checks/*.sh` deleted, `scripts/test-validate-engineos.sh` deleted (harness cases in `src/validate/validate.e2e.test.ts`, planted-breakage cases in `src/checks/*.test.ts`) | deprecated, removed in 2.0 |
+| Bash test suites `hooks/test-*.sh`, `scripts/test-*.sh` | ported one by one to `*.e2e.test.ts` files beside the module they exercise and run by `npm test`; each port deletes the `.sh` suite and its CI step. All fifteen are ported and deleted: `test-validate-engineos`, `test-kernel`, `test-route`, `test-prompt-advisor`, `test-bypass`, `test-verify`, `test-exec-journal`, `test-agent-announce`, `test-layout`, `test-docs`, `test-gen-agent-registry`, `test-install-hooks`, `test-telemetry`, `test-governance`, `test-post-edit`. Shim-only cases (a `.sh` under a jq-free or node-free PATH) stay inside the e2e files as `spawnSync('bash', ...)` | removed |
+| `hooks/lib-common.sh`, `hooks/lib-runner.sh`, `hooks/docs-ledger.sh` | deleted — sourced-only bash libraries whose last consumers were the ported suites; their logic lives in `src/hooks/*.ts`, `src/lib/*.ts` and `registries/docs-ledger.json`. `hooks/layout-manifest.sh` and `hooks/scaffold-layout.sh` stay: `engineos init` requires them as frozen bash siblings until 2.0 | removed |
+| `install.sh` `ENGINEOS_HOOK_LIBRARIES` | `"lib-common.sh lib-runner.sh layout-manifest.sh scaffold-layout.sh"` -> `"layout-manifest.sh scaffold-layout.sh"`; check C30 reads the list, so the validator and `install.sh` shrink together | value change |
+| Check C1 | reads `node >= 18 present`, not `jq present` — `jq` is no longer a validator dependency; same id, same exit semantics | changed message |
+| `scripts/gen-agent-commands.sh`, `scripts/gen-agent-registry.sh` | bash implementation -> shim over `engineos gen agent-commands` / `engineos gen agent-registry`; both shims deprecated in 1.7.0, removed in 2.0 | deprecated |
+| `scripts/run-evals.sh`, `scripts/bench-runtime.sh`, `scripts/usage-report.sh` | bash implementation -> shim over `engineos evals` / `engineos bench` / `engineos usage-report`; all three shims deprecated in 1.7.0, removed in 2.0 | deprecated |
+| `install.sh` / `install.ps1` dependency | `jq` -> `node >= 18` | requirement change |
+| Windows hook path | `bash.exe` no longer resolved or registered | requirement removed |
+
+**Why the command-form change is MINOR.** A consumer who copied the old `.sh`
+entries into their own `settings.json` keeps a working install: the
+`hooks/*.sh` shims stay on disk and still `exec` the same implementation. On the
+next `install.sh` / `install.ps1` run those entries are scrubbed and replaced by
+the node form — `settings-merge` recognises a prior EngineOS entry by its
+command referencing `<plugin-root>/hooks/` **or** containing
+`dist/engineos.cjs`, so both forms are removed before the current list is
+appended and no hook ends up registered twice. Removing the shims is MAJOR and
+lands in 2.0.
+
+**`node >= 18` is now required to install, not only to run hooks.** `install.sh`
+and `install.ps1` check for it and, when it is missing, register nothing and
+print the by-hand fallback pointing at `hooks/hooks.json`. This replaces the old
+`jq` gate.
+
+**`jq` is no longer needed by the installers or the hooks.** The settings.json
+merge — scrub, append, `permissions.allow` set union — moved into
+`engineos settings-merge`, and the hooks have parsed tool input natively since
+the 1.6.x port. The two agent generators dropped it with the shim swap below,
+and so did the eval runner and the usage report.
+`jq` is no longer a dependency of the validator either: the check families now
+run in-process under `engineos validate`, and check C1 asks for `node >= 18` in
+its place. No shipped file calls `jq` any more: the bash test suites that did
+are ported to `*.e2e.test.ts` and deleted, and CI validates JSON with node.
+
+**The two agent generators are shims now.** `scripts/gen-agent-commands.sh` and
+`scripts/gen-agent-registry.sh` `exec` `engineos gen agent-commands` and
+`engineos gen agent-registry`; the implementations live in `src/gen/` and ship in
+`dist/engineos.cjs`. What a caller sees is unchanged and is what the shims exist
+to preserve — same stdout and stderr messages, byte-identical `commands/agents/`
+and `registries/agents.json`, same exit codes — so CI's two drift guards keep
+running against the `.sh` paths. The generators now need `node >= 18` where
+they used to need `jq`, which is the same trade the hooks made in 1.6.x. Like
+the `hooks/<name>.sh` shims, both are deprecated in 1.7.0 and removed in 2.0;
+call `engineos gen <target>` directly to get ahead of that.
+
+**The eval runner, the perf bench and the usage report are shims now.**
+`scripts/run-evals.sh`, `scripts/bench-runtime.sh` and `scripts/usage-report.sh`
+`exec` `engineos evals`, `engineos bench` and `engineos usage-report`; the
+implementations live in `src/evals/`, `src/bench/` and `src/report/` and ship in
+`dist/engineos.cjs`. What a caller sees is what the shims exist to preserve —
+CI's "Evals (deterministic tier)" and "Runtime performance budgets" steps now
+call `engineos evals` and `engineos bench` directly, while
+`.github/workflows/live-evals.yml` still runs `scripts/run-evals.sh`:
+`run-evals.sh` keeps its `ok` / `FAIL` / `SKIP` lines, its summary line and its
+exit codes, and `ENGINEOS_EVAL_LIVE=1` still adds the live tier;
+`bench-runtime.sh` keeps the five budget names and the `ok` / `FAIL` line format,
+and `ENGINEOS_PERF_MULTIPLIER` still scales them; `usage-report.sh` keeps every
+section header and line format the `retro` skill reads. Dependencies dropped with
+the swap: `jq` for the eval runner and the usage report, `python3` for the bench.
+All three need `node >= 18` in their place — the same trade the hooks made in
+1.6.x — and like the other shims they are deprecated in 1.7.0 and removed in 2.0.
+
+**The validator is `engineos validate`.** It carries the `--only` / `--list`
+surface, the `== EngineOS integrity ==` header, the `ok   ` / `FAIL ` / `skip `
+prefixes, `passed N, failed N` and the 0/1/2 exit codes of
+`scripts/validate-engineos.sh`, over an explicit check registry
+(`src/checks/index.ts`) holding all 62 checks, one module per family under
+`src/checks/`. `scripts/validate-engineos.sh` is a shim that execs it (deprecated
+in 1.7.0, removed in 2.0); `scripts/checks/*.sh` are gone, and
+`scripts/test-validate-engineos.sh` is gone: its harness cases run as
+`src/validate/validate.e2e.test.ts` under `npm test`, and the planted-breakage
+cases live beside each family as `src/checks/<family>.test.ts`, asserting on
+finding codes. Check ids and the ok/FAIL/skip verdicts are
+unchanged; C1's title now reads `node >= 18 present` instead of `jq present`,
+because `jq` is no longer a dependency of anything the validator runs. What
+changes for good is the tail of a `FAIL` line: it is rendered from the check's
+findings as `[<code>]` / `[<code>:<subject>]`, and that prose is not versioned
+surface (design deviation 8).
+
+**`usage-report` says more than the bash did, in three places.**
+`./scripts/usage-report.sh abc` now prints `usage: engineos usage-report [days]`
+on stderr and exits 1; bash handed the value to `find -mtime`, which failed
+quietly and printed `No transcripts in window.` — an empty report that read as a
+finding rather than as a typo. Any window that is not a positive integer (`0`,
+`-5`, `1.5`) is rejected the same way. And the router section's
+`(none found — router not announcing?)` line is reachable at last: it hung off a
+`||` after a `grep | sed | sort | uniq` pipeline that exits 0 on no matches, so
+that section used to be silently empty instead. The telemetry section's
+`(none — telemetry not adopted here)` line lost its `, or jq missing` clause,
+which is now a cause it cannot have. Every other line of the report is byte for
+byte what the bash printed.
+
+**Git Bash is off the hook path on Windows.** Hook commands are `node ...`, so
+Windows spawns node directly instead of resolving a `.sh` path through the file
+association that Git for Windows points at `git-bash.exe`. `install.ps1` no
+longer locates `bash.exe` and no longer wraps hook commands with it. Git Bash is
+still required on Windows for `scripts/kernel.sh`, which stays bash until 2.0.
+
+## Unreleased
+
+The first two entries below narrow existing behaviour; the third moves an
+existing answer from bash to TypeScript without changing it. Nothing in the
+public surface is renamed or removed, and no deprecation window is opened.
+
+| Surface | change | Kind |
+|---|---|---|
+| `hooks/stop-verify.sh` / `src/hooks/stop-verify.ts` | the verification gate runs only in projects carrying `.engineos/`; it previously ran in any git repo | tightened |
+| `templates/permissions.template.json` | five prefix entries removed (`find`, `rg`, `npm run typecheck`, `npm run lint`, `npx tsc --noEmit`); re-running the installer does not remove entries already merged into `~/.claude/settings.json`, so consumers prune those by hand | tightened |
+| `scripts/kernel.sh skill-state` and the `skills_suppressed` field | now answered by the TypeScript kernel (`src/kernel/skill-state.ts`) instead of the bash one; the answers, their key order and the `skill-state: unknown argument <arg>` refusal are unchanged, and the bash cases moved to `node:test` under `src/kernel/` | ported |

@@ -78,7 +78,7 @@ router decision and the verification gate are spans in it.
   `.` and `/`: `../../../../etc/cron.d/x` is a valid slug that
   `exec-journal.sh validate` passes clean. A journal field is therefore never
   safe as a filesystem path component, and a consumer building a path from one
-  must narrow it itself — `hooks/lib-common.sh`'s `hook_path_slug`, which drops
+  must narrow it itself — `src/lib/slug.ts`'s `hookPathSlug`, which drops
   `.` and `/` from the class, is that narrowing. What the guard does buy is
   unchanged and still true: no field but `note` can carry whitespace, a newline,
   a quote or a control character, so nothing written through one can break the

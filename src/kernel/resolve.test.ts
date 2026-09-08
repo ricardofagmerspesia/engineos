@@ -50,7 +50,9 @@ test('no match answers {domain:null, excluded:false}', () => {
 
 test('a match carries the domain fields in jq key order', () => {
   const a = routePath('/src/modules/auth/guard.ts');
-  assert.deepEqual(Object.keys(a), ['domain', 'rules', 'skills', 'agent', 'risk_floor', 'hook_guidance', 'excluded']);
+  assert.deepEqual(Object.keys(a), [
+    'domain', 'rules', 'skills', 'skills_suppressed', 'agent', 'risk_floor', 'hook_guidance', 'excluded',
+  ]);
   assert.equal(a.domain, 'security');
 });
 
@@ -60,6 +62,7 @@ test('a match derives risk_floor from intents.json and hook_guidance from the re
     domain: 'ios-release',
     rules: ['security'],
     skills: [],
+    skills_suppressed: [],
     agent: 'ios-builder',
     risk_floor: 'high',
     hook_guidance: 'rules/security.md | agent:ios-builder (signing)',
@@ -107,11 +110,12 @@ test('matching is ASCII-case-insensitive and Unicode-boundary aware', () => {
   assert.deepEqual(routeIntent('réadd endpoint').matches, []);
 });
 
-test('an intent match carries the ten projected fields in jq key order', () => {
+test('an intent match carries the eleven projected fields in jq key order', () => {
   const [first] = routeIntent('run a retro').matches;
   if (first === undefined) throw new Error('no intent matched a known signal');
   assert.deepEqual(Object.keys(first), [
-    'id', 'title', 'rules', 'skills', 'agents', 'commands', 'mcp', 'model_tier', 'risk_floor', 'note',
+    'id', 'title', 'rules', 'skills', 'skills_suppressed', 'agents', 'commands', 'mcp',
+    'model_tier', 'risk_floor', 'note',
   ]);
   assert.equal(first.id, 'retro');
   assert.equal(first.model_tier, 'design');
@@ -318,7 +322,8 @@ test('a task-contract fact answers route, decision_rules and task_contract toget
   if (contract === undefined) throw new Error('no task contract for a task-contract fact');
   assert.deepEqual(Object.keys(contract), [
     'substantive', 'intents', 'escalates', 'escalation_reasons', 'suppressed', 'agents', 'rules',
-    'policy_rules', 'skills', 'commands', 'mcp', 'model_tier', 'risk_floor', 'autonomy_ceiling_at_floor',
+    'policy_rules', 'skills', 'skills_suppressed', 'commands', 'mcp', 'model_tier', 'risk_floor',
+    'autonomy_ceiling_at_floor',
     'scale', 'decision_rules', 'required', 'gates', 'preferences',
   ]);
   assert.deepEqual(contract.intents, ['mobile']);

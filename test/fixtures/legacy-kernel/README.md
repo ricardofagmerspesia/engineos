@@ -15,13 +15,18 @@ failure always means "the port disagrees with the kernel we ported", and never
 
 | Path | What it is |
 |---|---|
-| `kernel.sh` | Byte copy of `scripts/kernel.sh` (executable) |
+| `kernel.sh` | The last bash `scripts/kernel.sh`, pinned by sha below (executable) |
 | `registries/*.json` | Snapshot of the repo's `registries/` |
 
 ## Pinned at
 
-- Commit `3f1f646cf3485152b14a4d9e4a0eeaf9bd28977b` (branch `feat/kernel-wave1a`).
-- Plus one uncommitted delta that was in the working tree at snapshot time:
+- `kernel.sh`: commit `02c9f82ae36f2509671b4c482be997c2bbb9333e` (`origin/main`) —
+  the last bash implementation, refreshed from `3f1f646` so it carries the
+  `skill-state` arm and the `skills_suppressed` field the port has to match. It
+  is byte-identical to `3f1f646`'s copy apart from that addition (verified by
+  diff before the refresh), so no other parity case moved.
+- `registries/*.json`: still the `3f1f646` working-tree snapshot described below.
+- Plus one uncommitted delta that was in that working tree at snapshot time:
   `registries/routing.json` already carried the Task 7 edits — the per-domain
   `hint` fields and the three rewritten `hook_guidance` strings. The snapshot is
   of the **working tree**, not of the commit, so bash and TypeScript answer from
@@ -38,7 +43,8 @@ live registry keeps one form of each fact.
 
 The snapshot under `registries/` here deliberately **retains both fields**. The
 pinned bash kernel emits them by reading them (`{domain: .id, rules, skills,
-agent, risk_floor, hook_guidance, excluded: false}`) and has no renderer; strip
+skills_suppressed, agent, risk_floor, hook_guidance, excluded: false}`) and has
+no renderer; strip
 them from the snapshot and every `route-path` parity case would compare a
 derived string against `null` — a red that says nothing about the port. The
 divergence between this snapshot and the live registry is therefore expected,
@@ -72,7 +78,10 @@ cp registries/*.json test/fixtures/legacy-kernel/registries/
 
 `scripts/kernel.sh` is no longer copyable: it is a shim over
 `dist/engineos.cjs`, so the pinned `kernel.sh` here is the last real bash
-implementation and stays frozen. Refreshing the registries alone will also
+implementation and stays frozen. The one legitimate way to move it is the way it
+moved once already — `git show <sha>:scripts/kernel.sh` from a commit whose
+`scripts/kernel.sh` is still bash, diffed against the copy being replaced so the
+PR can say exactly which arms changed. Refreshing the registries alone will also
 **re-break** `route-path` parity unless `hook_guidance` and `risk_floor` are put
 back on the ten domain rows of the copied `routing.json` — see the section above.
 
@@ -91,6 +100,11 @@ migration's own progress, not on behaviour.
 
 ## Lifetime
 
-Requires `bash` and `jq` on the machine running the suite (the harness skips
-rather than fails when either is missing). Deleted together with the bash shim
-at 2.0, along with `src/kernel/parity.test.ts`.
+Requires `jq` and a **bash >= 4** on the machine running the suite. The version
+floor is not decoration: `skill_state_json` nests a `case` inside two levels of
+command substitution, which bash 3.2 — still the `/bin/bash` macOS ships —
+cannot parse at all. The harness probes both (`bash -n` on this file) and skips
+by name rather than failing, so a macOS checkout reports the parity suite as
+skipped instead of red; CI runs bash 5 on Linux and Git Bash on Windows, where
+it parses. Deleted together with the bash shim at 2.0, along with
+`src/kernel/parity.test.ts`.

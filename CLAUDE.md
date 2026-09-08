@@ -55,13 +55,14 @@ Rules for routing:
   ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
-- **The hooks need `jq`.** Without it, `route-before-change.sh`,
-  `mark-unrecorded.sh`, `record-verify.sh`, and `prompt-advisor.sh` exit 0
-  silently — routing guidance and the change-record Stop gate simply do not fire.
-  If you are not seeing `[router] …` context on edits, check `jq` before assuming
-  the routing is wrong. Those four are the only ones that go silent:
-  `stop-verify.sh` and `post-edit-check.sh` degrade to grep/sed parsing and keep
-  running, and `ensure-project-layout.sh` keeps running via a grep fallback.
+- **The hooks need node >= 18.** Every `hooks/*.sh` is a shim over
+  `dist/engineos.cjs`; `jq` is no longer a hook dependency. Under a missing or
+  too-old node, `route-before-change.sh`, `mark-unrecorded.sh`,
+  `record-verify.sh` and `prompt-advisor.sh` exit 0 silently — routing guidance
+  and the change-record Stop gate simply do not fire — while the other hooks
+  emit a `[engineos] <hook> skipped: node >= 18 required` system message. If you
+  are not seeing `[router] …` context on edits, check which `node` the hook PATH
+  resolves to before assuming the routing is wrong.
 
 - **Bypass short-circuits everything below.** When `/engineos:bypass` is on, the
   `UserPromptSubmit` hook injects `[engineos] BYPASS ACTIVE` on every turn. On seeing
@@ -163,3 +164,16 @@ read it there, not here.
 11. **Public surface changes follow `docs/COMPATIBILITY.md`** — rule paths, agent names,
     aliases, command names, skill directories, hook contracts and the return envelope
     are versioned surface. A rename is a deprecation with a window, never a silent `git mv`.
+
+## Codebase Overview
+
+EngineOS is a prose constitution (`rules/`, `agents/`, `skills/`, `commands/`) projected
+into `registries/*.json`, executed by a deterministic TypeScript kernel and nine Claude
+Code hooks bundled into `dist/engineos.cjs`, and kept coherent by a 62-check validator.
+
+**Stack**: TypeScript (esbuild to one committed CJS bundle, node >= 18), JSON registries,
+bash shims, Node built-in test runner; `console/` is a separate Next.js admin app.
+**Structure**: prose layer -> `registries/` -> `src/{kernel,hooks,journal,checks,gen}` ->
+`dist/engineos.cjs`; per-project state in `.engineos/` and `.git/engineos-telemetry/`.
+
+For detailed architecture, see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).

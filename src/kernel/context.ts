@@ -4,6 +4,7 @@ import { loadIntents, type IntentsRegistry } from '../registry/intents';
 import { loadModels, type ModelsRegistry } from '../registry/models';
 import { loadPolicy, type PolicyRegistry } from '../registry/policy';
 import { loadRouting, type RoutingRegistry } from '../registry/routing';
+import { readSkillState, type SkillState } from './skill-state';
 
 // The risk vocabulary is defined beside the first loader that validates it
 // (src/registry/intents.ts) and re-exported here, where every kernel module
@@ -12,10 +13,15 @@ import { loadRouting, type RoutingRegistry } from '../registry/routing';
 export { isRiskTier, type RiskTier } from '../registry/intents';
 export type { IntentRow, IntentsRegistry } from '../registry/intents';
 
+// The seven registry FILES, keyed by the name every caller uses for them. Split
+// out of Registries below so a consumer that maps a name onto a file on disk
+// (src/checks/mirrors.ts) can spell "registry file" in its own types instead of
+// subtracting a key that is not one.
+//
 // The two registries typed `unknown` have no typed loader yet: a later task lands
 // one each and replaces the placeholder. Keeping the keys here keeps the frozen
-// Registries shape whole while the loaders arrive one at a time.
-export interface Registries {
+// shape whole while the loaders arrive one at a time.
+export interface RegistryFiles {
   readonly routing: RoutingRegistry;
   readonly intents: IntentsRegistry;
   readonly models: ModelsRegistry;
@@ -23,6 +29,16 @@ export interface Registries {
   readonly decisionRules: DecisionRulesRegistry;
   readonly capabilities: unknown;
   readonly agents: unknown;
+}
+
+export interface Registries extends RegistryFiles {
+  // Not a registry file, and carried here anyway: skill enablement is the one
+  // other per-root resolution the routing answers depend on, and it rides this
+  // bundle so EVERY caller that already builds a KernelContext out of
+  // lazyRegistries answers with enablement applied. The alternative — a second
+  // field each construction site has to remember to pass — is exactly how a
+  // disabled skill would keep being recommended by whichever site forgot.
+  readonly skillState: SkillState;
 }
 
 export interface KernelContext {
@@ -38,6 +54,10 @@ export function lazyRegistries(root: string): Registries {
   const decisionRules = memo(() => loadDecisionRules(root));
   const capabilities = memo(() => loadRegistry(root, 'capabilities.json'));
   const agents = memo(() => loadRegistry(root, 'agents.json'));
+  // Memoized for the reason bash kept SKILL_STATE_CACHE: resolve-task reads the
+  // state at three answer sites, and walking skills/ once per site would turn a
+  // routing answer into N directory scans.
+  const skillState = memo(() => readSkillState(root));
   return {
     get routing(): RoutingRegistry { return routing(); },
     get intents(): IntentsRegistry { return intents(); },
@@ -46,6 +66,7 @@ export function lazyRegistries(root: string): Registries {
     get decisionRules(): DecisionRulesRegistry { return decisionRules(); },
     get capabilities(): unknown { return capabilities(); },
     get agents(): unknown { return agents(); },
+    get skillState(): SkillState { return skillState(); },
   };
 }
 

@@ -5,30 +5,38 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # node >= 18 is the runtime; shellcheck covers install.sh and the bash shims
+      # that stay until 2.0. jq and python3 are no longer needed anywhere.
       - name: Tools present
         run: |
-          jq --version
           shellcheck --version
           bash --version | head -1
           node --version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
 
-      - name: Node runtime — install, typecheck, unit tests
+      - name: Node runtime — install, typecheck
         run: |
           npm ci
           npm run typecheck
-          npm test
 
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+      # Before the tests: the *.e2e.test.ts suites spawn the committed bundle, so a
+      # stale dist must fail here with this message, not as an e2e assertion.
       - name: Node runtime — dist drift guard
         run: |
           npm run build
@@ -40,13 +48,18 @@ jobs:
           echo "ok: dist/engineos.cjs matches src/"
           test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
 
-      - name: Shellcheck hooks + scripts (errors only)
-        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh scripts/checks/*.sh
+      - name: Node runtime — unit and e2e tests
+        run: npm test
+
+      # The gen drift guards below stay on the .sh shims on purpose: they are the
+      # one CI exercise the deprecated shims get before 2.0 removes them.
+      - name: Shellcheck install.sh + bash shims (errors only)
+        run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh
 
       - name: Validate JSON
         run: |
           for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json registries/capabilities.json registries/agents.json; do
-            jq empty "$f" && echo "ok $f"
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$f" && echo "ok $f"
           done
 
       - name: Agent-commands drift guard
@@ -70,61 +83,13 @@ jobs:
           echo "ok: registries/agents.json matches scripts/gen-agent-registry.sh output"
 
       - name: EngineOS integrity check
-        run: bash scripts/validate-engineos.sh
-
-      - name: Integrity check catches planted breakage
-        run: bash scripts/test-validate-engineos.sh
+        run: node dist/engineos.cjs validate
 
       - name: Evals (deterministic tier)
-        run: bash scripts/run-evals.sh
-
-      - name: Routing hook tests
-        run: bash hooks/test-route.sh
-
-      - name: Change-governance marker tests
-        run: bash hooks/test-governance.sh
-
-      - name: Unified prompt advisor tests
-        run: bash hooks/test-prompt-advisor.sh
-
-      - name: Hook-envelope library tests
-        run: bash hooks/test-lib-common.sh
-
-      - name: Installer hook-derivation tests
-        run: bash hooks/test-install-hooks.sh
+        run: node dist/engineos.cjs evals
 
       - name: Runtime performance budgets
-        run: bash scripts/bench-runtime.sh
-
-      - name: Standard-layout scaffold tests
-        run: bash hooks/test-layout.sh
-
-      - name: Stop-gate verify tests
-        run: bash hooks/test-verify.sh
-
-      - name: Exec-journal schema tests
-        run: bash scripts/test-exec-journal.sh
-
-      - name: Agent-registry generator tests
-        run: bash scripts/test-gen-agent-registry.sh
-
-      - name: Decision-kernel resolver tests
-        run: bash scripts/test-kernel.sh
-
-      - name: Bypass switch tests
-        run: bash hooks/test-bypass.sh
-
-      - name: Prose-layer docs tests
-        run: bash hooks/test-docs.sh
-
-      - name: Agent-announce hook tests
-        run: bash hooks/test-agent-announce.sh
-
-      - name: Telemetry CLI tests
-        run: bash scripts/test-telemetry.sh
-
-      - name: Post-edit check tests
-        run: bash hooks/test-post-edit.sh
+        run: node dist/engineos.cjs bench
 
       - name: Secrets gate aborts on a planted secret
         run: |
@@ -162,9 +127,9 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
           cache: npm
@@ -198,11 +163,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
 
@@ -242,7 +207,7 @@ jobs:
           # zip carrega timestamps; o manifesto de conteudo e o invariante.
           echo "ok: rerun concluiu sem erro"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: matrix.os == 'ubuntu-latest'
         with:
           name: engineos-release

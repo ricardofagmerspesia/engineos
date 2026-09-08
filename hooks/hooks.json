@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/ensure-project-layout.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook ensure-project-layout"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/prompt-advisor.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook prompt-advisor"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/route-before-change.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook route-before-change"
           }
         ]
       },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/announce-agent-dispatch.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook announce-agent-dispatch"
           }
         ]
       }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/mark-unrecorded.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook mark-unrecorded"
           }
         ]
       },
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/announce-agent-return.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook announce-agent-return"
           }
         ]
       }
@@ -68,11 +68,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/stop-verify.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook stop-verify"
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/record-verify.sh"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook record-verify"
           }
         ]
       }

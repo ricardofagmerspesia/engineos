@@ -167,20 +167,22 @@ Key properties the flow encodes:
 
 Which script fires on which harness event, and what it may do.
 
-| Event | Matcher | Hook | Effect | Needs `jq`? |
+| Event | Matcher | Hook | Effect | Runtime |
 |---|---|---|---|---|
-| `SessionStart` | all | `ensure-project-layout.sh` | Scaffolds `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` when the project opted in (`.engineos/` present or `ENGINEOS_SCAFFOLD=1`). Non-blocking | no (grep fallback) |
-| `UserPromptSubmit` | all | `prompt-advisor.sh` | Calls `kernel.sh resolve-task`, injects one task contract; writes a `router` span; announces `BYPASS ACTIVE` when bypassed | yes |
-| `PreToolUse` | `Edit\|Write\|NotebookEdit` | `route-before-change.sh` | `kernel.sh route-path` on the file → injects the domain's rules/skill/agent (precedence: security → test → backend → dba → ios-release → android-release → devops → mobile → frontend → llm) | yes |
-| `PreToolUse` | `Agent\|Task` | `announce-agent-dispatch.sh` | Re-injects the green `[agent] … \| model \| mode \| scope` banner | — |
-| `PostToolUse` | `Edit\|Write\|NotebookEdit` | `mark-unrecorded.sh` | Sets the unrecorded-change flag in the git dir | yes |
-| `PostToolUse` | `Agent\|Task` | `announce-agent-return.sh` | Green `-> done / FAILED` line; writes an `agent` span with duration + status floor | — |
-| `Stop` | all | `stop-verify.sh` | Blocks once if code changed and scoped lint+typecheck did not run; tests join only when ON (`ENGINEOS_VERIFY_TESTS=1` or in scope) | no (grep/sed fallback) |
-| `Stop` | all | `record-verify.sh` | Blocks once if code changed and no change record was closed | yes |
-| not wired | — | `post-edit-check.sh` | Per-edit typecheck+lint, retired from default wiring; opt-in only | no |
+| `SessionStart` | all | `ensure-project-layout.sh` | Scaffolds `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` when the project opted in (`.engineos/` present or `ENGINEOS_SCAFFOLD=1`). Non-blocking | node |
+| `UserPromptSubmit` | all | `prompt-advisor.sh` | Calls `kernel.sh resolve-task`, injects one task contract; writes a `router` span; announces `BYPASS ACTIVE` when bypassed | node |
+| `PreToolUse` | `Edit\|Write\|NotebookEdit` | `route-before-change.sh` | `kernel.sh route-path` on the file → injects the domain's rules/skill/agent (precedence: security → test → backend → dba → ios-release → android-release → devops → mobile → frontend → llm) | node |
+| `PreToolUse` | `Agent\|Task` | `announce-agent-dispatch.sh` | Re-injects the green `[agent] … \| model \| mode \| scope` banner | node |
+| `PostToolUse` | `Edit\|Write\|NotebookEdit` | `mark-unrecorded.sh` | Sets the unrecorded-change flag in the git dir | node |
+| `PostToolUse` | `Agent\|Task` | `announce-agent-return.sh` | Green `-> done / FAILED` line; writes an `agent` span with duration + status floor | node |
+| `Stop` | all | `stop-verify.sh` | Blocks once if code changed and scoped lint+typecheck did not run; tests join only when ON (`ENGINEOS_VERIFY_TESTS=1` or in scope) | node |
+| `Stop` | all | `record-verify.sh` | Blocks once if code changed and no change record was closed | node |
+| not wired | — | `post-edit-check.sh` | Per-edit typecheck+lint, retired from default wiring; opt-in only | node |
 
-Hooks that need `jq` exit 0 silently without it. If you never see `[router]`
-context on edits, check `jq` before suspecting the routing.
+Every hook is a shim that `exec`s `dist/engineos.cjs`, so all of them need node
+>= 18 on the hook PATH and none of them needs `jq` any more. If you never see
+`[router]` context on edits, check which node the hook PATH resolves to before
+suspecting the routing.
 
 ---
 
@@ -429,8 +431,8 @@ stateDiagram-v2
 | Check | Runs | Fails when |
 |---|---|---|
 | `scripts/validate-engineos.sh` | CI + manual | CLAUDE.md router table ≠ `routing.json`; `rules/models.md` ≠ `models.json`; a row's load list is not closed; a registry points at a missing agent/tier |
-| `hooks/test-docs.sh` + `docs-ledger.sh` | CI + manual | dangling rule/agent/skill pointer; orphaned agent; `commands/agents/` drift; single-source-of-truth budget exceeded |
-| `hooks/test-*.sh`, `scripts/test-*.sh` | CI + manual | a hook or kernel contract regresses |
+| `src/docs/prose-layer.e2e.test.ts` + `registries/docs-ledger.json` | `npm test` (CI + manual) | dangling rule/agent/skill pointer; orphaned agent; `commands/agents/` drift; single-source-of-truth budget exceeded |
+| `src/**/*.e2e.test.ts` | `npm test` (CI + manual) | a hook, CLI or kernel contract regresses |
 | `evals/` + `scripts/run-evals.sh` | manual / CI | routing or advisor output drifts from the golden set |
 | `scripts/exec-journal.sh validate` | manual | a telemetry span breaks the line format or slug class |
 

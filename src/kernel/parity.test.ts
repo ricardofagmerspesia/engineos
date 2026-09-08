@@ -305,9 +305,36 @@ const RESOLVE_TASK_PROMPTS = [
 
 const RESOLVE_TASK_CASES = [...RESOLVE_TASK_PROMPTS.map((prompt) => ['--prompt', prompt]), []];
 
+// The fixture root carries no skills/ directory, so BOTH sides answer from an
+// empty state: the list form is empty, an unknown id reads as enabled, and every
+// skill a routing row or an intent declares survives into `skills` with nothing
+// in `skills_suppressed`. That last part is what the route-path, route-intent
+// and resolve-task cases above now also pin. The disabled-skill behaviour needs
+// a planted tree, which kernel-skill-state.e2e.test.ts owns.
+const SKILL_STATE_CASES = [
+  [],
+  ['--id', 'strategy'],
+  ['--id', 'no-such-skill-anywhere'],
+  // bash tested `[ -n "$id" ]`, so an explicitly empty --id is no id at all and
+  // selects the list form on both sides.
+  ['--id', ''],
+  // The one arm whose unknown-argument message the two sides DO share, because
+  // it is parsed by hand instead of by parseFlags (src/kernel/cli.ts).
+  ['--bogus', 'x'],
+];
+
 // Probed once: both tools are external, and a missing one skips rather than
 // fails the suite (plan Task 8b).
 const MISSING_TOOL = firstMissingTool(['bash', 'jq']);
+
+// The pinned kernel now carries main's `skill_state_json`, which nests a `case`
+// inside two levels of command substitution — syntax bash 3.2, still the
+// /bin/bash macOS ships, cannot parse AT ALL. A machine whose bash cannot read
+// the fixture has no answer to compare against, so the suite skips by name
+// rather than reporting a parity failure for a reason that is not about the
+// port. CI runs bash 5 on Linux and Git Bash on Windows, where it parses; macOS
+// is not a supported platform (docs/COMPATIBILITY.md).
+const PINNED_PARSE_ERROR = pinnedParseError();
 
 test('route-path answers identically to the pinned bash kernel', (t) => {
   runArm(t, 'route-path', ROUTE_PATH_CASES.map((path) => [path]));
@@ -365,6 +392,10 @@ test('resolve-task answers identically to the pinned bash kernel', (t) => {
   runArm(t, 'resolve-task', RESOLVE_TASK_CASES);
 });
 
+test('skill-state answers identically to the pinned bash kernel', (t) => {
+  runArm(t, 'skill-state', SKILL_STATE_CASES);
+});
+
 // The `resolve` arm has no bash counterpart — it is the one arm this migration
 // ADDS — so its parity case asserts the thing that would otherwise go unchecked:
 // every section of the sparse Answer deep-equals the legacy projection that owns
@@ -373,6 +404,10 @@ test('resolve-task answers identically to the pinned bash kernel', (t) => {
 test('resolve answers each section identically to the legacy projection that owns it', (t) => {
   if (MISSING_TOOL !== null) {
     t.skip(`parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
+    return;
+  }
+  if (PINNED_PARSE_ERROR !== null) {
+    t.skip(PINNED_PARSE_ERROR);
     return;
   }
   const root = stageFixture(t);
@@ -405,6 +440,10 @@ test('resolve answers each section identically to the legacy projection that own
 function runArm(t: TestContext, arm: string, cases: string[][]): void {
   if (MISSING_TOOL !== null) {
     t.skip(`parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
+    return;
+  }
+  if (PINNED_PARSE_ERROR !== null) {
+    t.skip(PINNED_PARSE_ERROR);
     return;
   }
   const root = stageFixture(t);
@@ -520,6 +559,19 @@ function parseAnswer(result: RunResult, label: string): unknown {
     // worth reading in full.
     assert.fail(`${label}: stdout is not JSON (exit ${result.status})\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
   }
+}
+
+// `bash -n` parses without executing: the cheapest way to ask whether THIS
+// machine's bash can read the fixture at all. A bash that is absent is
+// MISSING_TOOL's finding, not this one's.
+function pinnedParseError(): string | null {
+  const probe = spawnSync('bash', ['-n', join(FIXTURE, 'kernel.sh')], { encoding: 'utf8' });
+  if (probe.error !== undefined) return null;
+  if (probe.status === 0) return null;
+  // First line only: bash repeats the offending source line, which would put a
+  // fragment of the fixture's own `case` statement into the skip reason.
+  const [first] = probe.stderr.trim().split('\n');
+  return `this machine's bash cannot parse the pinned kernel (bash >= 4 required): ${first ?? 'bash -n failed'}`;
 }
 
 function firstMissingTool(tools: string[]): string | null {

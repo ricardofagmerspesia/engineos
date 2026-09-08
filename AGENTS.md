@@ -173,3 +173,16 @@ read it there, not here.
 11. **Public surface changes follow `docs/COMPATIBILITY.md`** — rule paths, agent names,
     aliases, command names, skill directories, hook contracts and the return envelope
     are versioned surface. A rename is a deprecation with a window, never a silent `git mv`.
+
+## Codebase Overview
+
+EngineOS is a prose constitution (`rules/`, `agents/`, `skills/`, `commands/`) projected
+into `registries/*.json`, executed by a deterministic TypeScript kernel and nine Claude
+Code hooks bundled into `dist/engineos.cjs`, and kept coherent by a 62-check validator.
+
+**Stack**: TypeScript (esbuild to one committed CJS bundle, node >= 18), JSON registries,
+bash shims, Node built-in test runner; `console/` is a separate Next.js admin app.
+**Structure**: prose layer -> `registries/` -> `src/{kernel,hooks,journal,checks,gen}` ->
+`dist/engineos.cjs`; per-project state in `.engineos/` and `.git/engineos-telemetry/`.
+
+For detailed architecture, see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).

@@ -191,19 +191,28 @@ for dir in "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$CLAUDE_DIR/commands"; do
   done < <(find "$dir" -maxdepth 1 -type l -print0)
 done
 
-# ---------- 5. Hooks: merge into settings.json (requires jq) ----------
-# Hook scripts are bash. On Windows (Git Bash/MSYS) they MUST be invoked through
-# Git Bash's bash.exe: a bare `...foo.sh` command resolves through the Windows
-# .sh file association, which Git for Windows points at git-bash.exe -- a
-# *terminal launcher* that pops a visible console window on every hook fire
-# (every prompt, every edit, every stop) and stalls the tool that triggered it.
-# bash.exe is a plain console binary and stays invisible. Mirrors install.ps1.
-# On macOS/Linux the bare script path is correct and unchanged.
-# hooks/*.sh holds two kinds of file: hook entry points, which the harness
-# executes BY PATH (hooks/hooks.json registers the script itself, not
-# `bash <script>`), and libraries that are only ever `.`-sourced. A blanket
-# `chmod +x hooks/*.sh` flips the tracked mode of every library committed 644,
-# so merely running the installer left ` M hooks/...` in the checkout.
+# ---------- 5. Hooks: merge into settings.json (requires node >= 18) ----------
+# The hooks are node now. hooks/hooks.json registers
+# `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>`, so the harness
+# spawns node directly and no shell sits between it and the hook. That is why
+# this section no longer resolves an interpreter on Windows: the old form was a
+# bare `...foo.sh` path, which Windows resolved through the .sh file
+# association -- pointed by Git for Windows at git-bash.exe, a *terminal
+# launcher* that popped a visible console window on every hook fire (every
+# prompt, every edit, every stop). A `node ...` command never touches that
+# association, so bash.exe leaves the hook path entirely. Git Bash is still
+# required on Windows for scripts/kernel.sh until 2.0, just not for hooks.
+# Mirrors install.ps1.
+#
+# The hooks/*.sh shims stay on disk -- deprecated in 1.7.0, removed in 2.0 --
+# because a consumer may have copied the old `.sh` entries into their own
+# settings.json. Those keep firing; a reinstall scrubs and replaces them.
+#
+# hooks/*.sh holds two kinds of file: hook entry points, which such a
+# copied-forward registration still executes BY PATH, and libraries that are
+# only ever `.`-sourced. A blanket `chmod +x hooks/*.sh` flips the tracked mode
+# of every library committed 644, so merely running the installer left
+# ` M hooks/...` in the checkout.
 #
 # Which files are libraries is DECLARED here, by name. It used to be read out of
 # each file's own first eight lines, by searching them for the phrase a library
@@ -221,123 +230,54 @@ done
 # here does not exist or does not introduce itself that way, or when either kind
 # carries the wrong mode bit. The mode is the honest signal only because that
 # check holds it to it.
-ENGINEOS_HOOK_LIBRARIES="lib-common.sh lib-runner.sh layout-manifest.sh scaffold-layout.sh"
+ENGINEOS_HOOK_LIBRARIES="layout-manifest.sh scaffold-layout.sh"
 for _hook in "$REPO_DIR"/hooks/*.sh; do
   [ -f "$_hook" ] || continue
   case " $ENGINEOS_HOOK_LIBRARIES " in *" ${_hook##*/} "*) continue ;; esac
   chmod +x "$_hook"
 done
 unset _hook
-if command -v jq >/dev/null 2>&1; then
+
+# node is both the hook runtime and this installer's JSON tool: `engineos
+# settings-merge` does what three jq programs used to do here.
+NODE_MAJOR=0
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+fi
+case "$NODE_MAJOR" in ''|*[!0-9]*) NODE_MAJOR=0 ;; esac
+
+if [ "$NODE_MAJOR" -ge 18 ]; then
   [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
   # write-once backup: never clobber the last known-good with an already-bad file
   [ -f "$SETTINGS.engineos.bak" ] || cp "$SETTINGS" "$SETTINGS.engineos.bak"
 
-  HOOKS_DIR="$REPO_DIR/hooks"
-  BASH_EXE=""
+  # Claude Code is cross-platform and wants forward slashes; on Windows the
+  # plugin root has to be the native C:/... form, because the placeholder it
+  # replaces ends up in a command the harness runs outside MSYS.
+  PLUGIN_ROOT="$REPO_DIR"
   case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-      HOOKS_DIR="$(cygpath -m "$HOOKS_DIR")"
-      # Git root is the MSYS filesystem root. Never fall back to a bare `bash`:
-      # on Windows that can resolve to WSL, which cannot read C:/... paths.
-      for cand in "$(cygpath -m /)/bin/bash.exe" "$(cygpath -m /)/usr/bin/bash.exe"; do
-        if [ -f "$cand" ]; then BASH_EXE="$cand"; break; fi
-      done
-      if [ -z "$BASH_EXE" ]; then
-        warn "Git Bash bash.exe not found -- hooks will be registered as bare .sh paths."
-        warn "Windows hands those to git-bash.exe and pops a terminal window per hook fire."
-      fi
-      ;;
+    MINGW*|MSYS*|CYGWIN*) PLUGIN_ROOT="$(cygpath -m "$REPO_DIR")" ;;
   esac
 
-  # quoted interpreter + quoted script on Windows; the bare script elsewhere
-  hook_cmd() {
-    if [ -n "$BASH_EXE" ]; then
-      printf '"%s" "%s"' "$BASH_EXE" "$HOOKS_DIR/$1"
-    else
-      printf '%s' "$HOOKS_DIR/$1"
-    fi
-  }
-
-  # The hook list IS hooks/hooks.json -- the same file plugin mode loads. Every
-  # event/matcher/command is read from there and the leading
-  # "${CLAUDE_PLUGIN_ROOT}" placeholder replaced by this checkout, so symlink
-  # mode and plugin mode cannot drift. Adding a hook means editing hooks.json,
-  # and nothing else.
-  HOOKS_JSON="$REPO_DIR/hooks/hooks.json"
-  # Split each TSV row by hand: with IFS=<tab>, `read a b c` collapses the two
-  # tabs of an empty matcher into one and shifts the fields (tab is IFS
-  # whitespace), which would register every matcher-less hook under the wrong
-  # matcher.
-  ADDS=""
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    ev="${line%%$'\t'*}";      rest="${line#*$'\t'}"
-    matcher="${rest%%$'\t'*}"; script="${rest#*$'\t'}"
-    # The placeholder rewrite above leaves a bare script name. Anything else is
-    # a command form this installer cannot place -- fail loudly instead of
-    # registering a path that silently never fires.
-    case "$script" in
-      ''|*/*|*' '*)
-        red "ABORT: unrecognized hook command in $HOOKS_JSON: $script"
-        red "Expected \"\${CLAUDE_PLUGIN_ROOT}\"/hooks/<script>.sh"
-        exit 1 ;;
-    esac
-    ADDS="$ADDS$ev"$'\t'"$matcher"$'\t'"$(hook_cmd "$script")"$'\n'
-  done < <(jq -r '.hooks | to_entries[] | .key as $event | .value[]
-                  | (.matcher // "") as $matcher
-                  | .hooks[]
-                  | [$event, $matcher,
-                     (.command | sub("^\"\\$\\{CLAUDE_PLUGIN_ROOT\\}\"/hooks/"; ""))]
-                  | @tsv' "$HOOKS_JSON")
-
-  jq --arg hooksdir "$HOOKS_DIR" --arg adds "$ADDS" '
-    # scrub: drop every previously installed EngineOS hook entry (any command
-    # referencing the hooks dir, slash-normalized) from EVERY event before
-    # re-adding, so an earlier install can never leave a stale form firing
-    # alongside the new one -- notably the bare-.sh terminal-window spawner on
-    # Windows, and any hook since retired: the per-edit gate (post-edit-check.sh;
-    # verification runs once at Stop, rules/verification.md "The final gate") and
-    # the three legacy prompt advisors that prompt-advisor.sh replaced.
-    def scrub:
-      .hooks |= with_entries(.value |=
-          (map(.hooks |= map(select(
-              (((.command // "") | gsub("\\\\"; "/")) | contains($hooksdir + "/")) | not)))
-           | map(select((.hooks | length) > 0))));
-    def add($event; $matcher; $cmd):
-      .hooks[$event] //= []
-      | .hooks[$event] += [{matcher: $matcher, hooks: [{type: "command", command: $cmd}]}];
-    .hooks //= {}
-    | scrub
-    | reduce ($adds | split("\n")[] | select(length > 0) | split("\t")) as $a
-        (.; add($a[0]; $a[1]; $a[2]))
-  ' "$SETTINGS" > "$SETTINGS.tmp" && mv "$SETTINGS.tmp" "$SETTINGS"
-  green "Hooks merged into settings.json (backup: settings.json.engineos.bak)."
-  [ -n "$BASH_EXE" ] && echo "  hooks run through: $BASH_EXE (no terminal windows)"
-
-  # ---------- 5b. Shared permission allowlist (read-only commands) ----------
-  PERMS="$REPO_DIR/templates/permissions.template.json"
-  if [ -f "$PERMS" ]; then
-    jq -s '
-      .[0] as $settings | (.[1].allow // []) as $shared |
-      $settings |
-      .permissions //= {} |
-      .permissions.allow = ((.permissions.allow // []) + $shared | unique)
-    ' "$SETTINGS" "$PERMS" > "$SETTINGS.tmp" \
-      && mv "$SETTINGS.tmp" "$SETTINGS"
-    green "Shared read-only allowlist merged into permissions."
-  else
-    warn "permissions template missing ($PERMS) — skipped allowlist merge."
-  fi
+  # The hook list IS hooks/hooks.json -- the same file plugin mode loads.
+  # settings-merge reads it, substitutes ${CLAUDE_PLUGIN_ROOT} with the plugin
+  # root, scrubs every prior EngineOS entry (the old .sh form included) from
+  # every event, appends the current list, and merges
+  # templates/permissions.template.json into permissions.allow. Symlink mode and
+  # plugin mode cannot drift, and adding a hook means editing hooks.json and
+  # nothing else.
+  node "$PLUGIN_ROOT/dist/engineos.cjs" settings-merge \
+    --settings "$SETTINGS" --plugin-root "$PLUGIN_ROOT" \
+    || { red "ABORT: settings merge failed"; exit 1; }
+  green "Hooks merged into settings.json (backup: settings.json.engineos.bak); shared read-only allowlist merged into permissions."
 else
-  # No jq means no hooks.json parsing either, so there is no list to print here
-  # without hand-copying one -- exactly the second copy this installer stopped
-  # keeping. Point at the source of truth instead.
-  warn "jq not found — hooks NOT registered. Install jq and re-run:"
-  warn "  https://jqlang.github.io/jq/download/"
+  # No node means no hooks.json parsing either, so there is no list to print
+  # here without hand-copying one -- exactly the second copy this installer
+  # stopped keeping. Point at the source of truth instead.
+  warn "node >= 18 not found — hooks NOT registered. Install node and re-run:"
+  warn "  https://nodejs.org/en/download"
   warn "Or add every entry of $REPO_DIR/hooks/hooks.json to $SETTINGS by hand,"
-  warn "replacing the leading \"\${CLAUDE_PLUGIN_ROOT}\" with $REPO_DIR."
-  warn "Note: every hook parses tool input with jq, so they stay silent until jq is installed."
+  warn "replacing the \"\${CLAUDE_PLUGIN_ROOT}\" placeholder with $REPO_DIR."
 fi
 
 # ---------- 6. MCP reminder ----------

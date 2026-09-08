@@ -38,7 +38,9 @@ test('route-path emits the section in the legacy key order', () => {
   assert.equal(runKernel(['route-path', '/tmp/api/user.controller.ts'], io), 0);
   const answer: unknown = JSON.parse(io.stdout.join(''));
   if (!isRecord(answer)) throw new Error('route-path did not answer an object');
-  assert.deepEqual(Object.keys(answer), ['domain', 'rules', 'skills', 'agent', 'risk_floor', 'hook_guidance', 'excluded']);
+  assert.deepEqual(Object.keys(answer), [
+    'domain', 'rules', 'skills', 'skills_suppressed', 'agent', 'risk_floor', 'hook_guidance', 'excluded',
+  ]);
 });
 
 test('unknown subcommand is a JSON error', () => {
@@ -99,7 +101,8 @@ test('route-intent emits the section and its matches in the legacy key order', (
   const first: unknown = matches[0];
   if (!isRecord(first)) throw new Error('route-intent answered no match for a known signal');
   assert.deepEqual(Object.keys(first), [
-    'id', 'title', 'rules', 'skills', 'agents', 'commands', 'mcp', 'model_tier', 'risk_floor', 'note',
+    'id', 'title', 'rules', 'skills', 'skills_suppressed', 'agents', 'commands', 'mcp',
+    'model_tier', 'risk_floor', 'note',
   ]);
   assert.equal(first['id'], 'retro');
 });
@@ -635,4 +638,34 @@ test('resolve refuses two facts that would answer one key', () => {
   assert.deepEqual(answerOf(['resolve', '--facts', '{"prompt":"x","taskContract":true,"decisions":{"prompt":"x"}}'], 1), {
     error: 'a task-contract fact and a decisions fact cannot be declared together',
   });
+});
+
+// skill-state is the one arm parsed by hand rather than by parseFlags, because
+// the bash message for an unrecognised argument here is "unknown argument" and
+// the parity suite compares that string. The missing-value refusal is the half
+// with NO bash counterpart — bash's `shift 2` ran off the end and spun its loop
+// forever — so it is asserted here, where the TypeScript wording is owned.
+test('skill-state refuses an unknown argument with the legacy wording', () => {
+  assert.deepEqual(answerOf(['skill-state', '--bogus', 'x'], 1), {
+    error: 'skill-state: unknown argument --bogus',
+  });
+});
+
+test('skill-state refuses --id with no value instead of answering the list', () => {
+  assert.deepEqual(answerOf(['skill-state', '--id'], 1), {
+    error: 'skill-state: --id requires a value',
+  });
+});
+
+test('skill-state answers the list form for no argument and for an empty --id', () => {
+  for (const argv of [['skill-state'], ['skill-state', '--id', '']]) {
+    const answer = answerOf(argv, 0);
+    if (!isRecord(answer)) throw new Error(`${argv.join(' ')} did not answer an object`);
+    assert.deepEqual(Object.keys(answer), ['skills', 'disabled']);
+  }
+});
+
+test('skill-state --id answers the lookup form in jq key order', () => {
+  const answer = answerOf(['skill-state', '--id', 'no-such-skill-anywhere'], 0);
+  assert.deepEqual(answer, { id: 'no-such-skill-anywhere', exists: false, enabled: true });
 });

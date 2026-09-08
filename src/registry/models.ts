@@ -9,6 +9,19 @@ import { loadRegistry } from './load';
 // document and exit 0 — silence where the caller expected a model name — so the
 // loader refuses the row instead of defaulting it.
 
+// The tier ids, in the order registries/models.json lists them, as a literal
+// union a caller cannot mistype. `ModelTier` below is the loaded ROW (id, model,
+// escalation target); `ModelTierId` is the id alone, which is what a span field
+// and an agent dispatch carry. The two names stay separate because the row is
+// data read at runtime and the id is a compile-time vocabulary.
+//
+// `as const` rather than a hand-written union beside a hand-written array: one
+// declaration, so the literals and the list cannot drift. models.test.ts pins
+// the list to .tiers[].id, order included.
+export const MODEL_TIER_IDS = ['most-capable', 'design', 'build', 'cheap'] as const;
+
+export type ModelTierId = (typeof MODEL_TIER_IDS)[number];
+
 export interface ModelTier {
   id: string;
   model: string;

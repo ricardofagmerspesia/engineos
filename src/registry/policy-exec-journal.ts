@@ -9,6 +9,23 @@ import { strictReader } from './strict';
 // this one owns `.telemetry.exec_journal`, the telemetry port owns
 // `.telemetry.events` and `.telemetry.value_pattern`. One file per reader keeps
 // the two ports from writing the same lines.
+
+// The two span vocabularies as literal unions, in the order
+// registries/policy.json lists them. The loaded ExecJournalPolicy below carries
+// the same values as string arrays — that is what the journal's enum guard
+// walks at runtime; these are what a CALLER writes, so a wrong kind or status
+// is a compile error rather than a span the guard drops on the floor.
+//
+// `as const` keeps the literals and the list one declaration;
+// policy-exec-journal.test.ts pins each list to the registry, order included.
+export const SPAN_KINDS = ['router', 'coordinator', 'agent', 'tool', 'model', 'verification'] as const;
+
+export type SpanKind = (typeof SPAN_KINDS)[number];
+
+export const SPAN_STATUSES = ['OK', 'BLOCKED', 'FAILED', 'DEGRADED'] as const;
+
+export type SpanStatus = (typeof SPAN_STATUSES)[number];
+
 export interface ExecJournalPolicy {
   home: string;
   max_value_length: number;

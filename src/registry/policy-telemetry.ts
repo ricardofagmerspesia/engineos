@@ -5,6 +5,18 @@ import { strictReader } from './strict';
 // policy.ts rather than a section of it: the kernel never reads the telemetry
 // block, and the telemetry CLI never reads the kernel's, so binding them into one
 // loader would make each one's refusals the other's problem.
+
+// The kernel-decision event ids as a literal union, in registry order. The
+// loaded TelemetryPolicy carries the same ids plus each event's declared keys —
+// that is what the append boundary validates against; this is what a caller
+// names, so an unknown event id is a compile error rather than a swallowed
+// append.
+//
+// policy-telemetry.test.ts pins the list to .telemetry.events[].id, order included.
+export const TELEMETRY_EVENT_IDS = ['route', 'decision-rules', 'verify', 'hitl'] as const;
+
+export type TelemetryEventId = (typeof TELEMETRY_EVENT_IDS)[number];
+
 export interface TelemetryEvent {
   id: string;
   keys: string[];

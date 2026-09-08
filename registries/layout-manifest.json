@@ -1,0 +1,35 @@
+{
+  "note": "Single source of truth for the EngineOS standard project layout. Each entry is a relative dir plus the seeds copied into it when nothing occupies the name. A seed src of \"@path\" is relative to the EngineOS repo root (reuse in-repo files); any other src is a basename under templates/project-layout/. dest is the filename written into the target dir. Mirror of the table in docs/specs/2026-06-19-project-layout-standard-design.md. audits/ is intentionally absent (created on first /audit). hooks/layout-manifest.sh reads this file with jq and keeps a literal copy as its jq-free fallback.",
+  "entries": [
+    {
+      "dir": ".engineos/changes",
+      "seeds": [
+        { "src": "@.engineos/changes/_template.md", "dest": "_template.md" },
+        { "src": "@.engineos/changes/README.md", "dest": "README.md" }
+      ]
+    },
+    {
+      "dir": ".engineos/archived",
+      "seeds": [{ "src": "@.engineos/archived/README.md", "dest": "README.md" }]
+    },
+    {
+      "dir": ".engineos/memory",
+      "seeds": [{ "src": "@.engineos/memory/README.md", "dest": "README.md" }]
+    },
+    {
+      "dir": "docs/specs",
+      "seeds": [{ "src": "specs-README.md", "dest": "README.md" }]
+    },
+    {
+      "dir": "docs/prds",
+      "seeds": [
+        { "src": "prds-README.md", "dest": "README.md" },
+        { "src": "prd-template.md", "dest": "_template.md" }
+      ]
+    },
+    {
+      "dir": "docs/rules",
+      "seeds": [{ "src": "rules-README.md", "dest": "README.md" }]
+    }
+  ]
+}
