@@ -115,10 +115,10 @@ jobs:
             echo "FAIL: install aborted on a clean repo"; exit 1
           fi
 
-  # E03 — o console nao era tocado pela CI: typecheck, lint, testes e build
-  # rodavam so na maquina de quem editasse. Um console que publica e reverte
-  # arquivos do repositorio e faz commit e' superficie de escrita, e superficie
-  # de escrita sem verificacao automatizada e' onde perda de trabalho nasce.
+  # E03 — the console was not touched by CI: typecheck, lint, tests and build
+  # ran only on the machine of whoever edited it. A console that publishes and
+  # reverts repository files and makes commits is a write surface, and a write
+  # surface without automated verification is where work loss is born.
   console:
     runs-on: ubuntu-latest
     defaults:
@@ -144,15 +144,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Testes das guardas de publicacao (revisao base e lock de escrita)
+      - name: Publish guard tests (base revision and write lock)
         run: npm test
 
       - name: Build
         run: npm run build
 
-  # E02 — o artefato publicado e testado com os bytes finais da release,
-  # em Linux e em Windows/Git Bash. Um pacote que instala so na maquina de
-  # quem empacotou nao e distribuicao reproduzivel.
+  # E02 — the published artifact is tested with the final bytes of the release,
+  # on Linux and on Windows/Git Bash. A package that installs only on the
+  # machine of whoever packaged it is not reproducible distribution.
   package:
     # Packaging only makes sense once the source it packages is known good, and
     # two OS legs re-running a red tree just doubles the noise.
@@ -176,16 +176,16 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - name: Fim de linha — working tree bate com o HEAD normalizado
+      - name: End of line: working tree matches the normalized HEAD
         run: |
-          # Sem .gitattributes cobrindo todo texto, um checkout Windows
-          # reescreve centenas de arquivos para CRLF e o diff vira ruido.
+          # Without .gitattributes covering all text, a Windows checkout
+          # rewrites hundreds of files to CRLF and the diff becomes noise.
           if ! git diff --quiet; then
-            echo "FALHA: checkout diverge do HEAD (provavel CRLF nao normalizado)"
+            echo "FAIL: checkout diverges from HEAD (CRLF probably not normalized)"
             git diff --stat | tail -20
             exit 1
           fi
-          echo "ok: checkout limpo em ${{ matrix.os }}"
+          echo "ok: clean checkout on ${{ matrix.os }}"
 
       - name: Gerar artefato de release
         run: bash scripts/package-release.sh --out dist-release

@@ -2,85 +2,85 @@
 name: 2026-09-07-e01-baseline-e02-packaging
 status: active
 owner: Ricardo Fagmer
-spec: n/a — execução direta dos épicos E01/E02 do plano "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, revisão 2)
+spec: n/a — direct execution of epics E01/E02 of the plan "EngineOS 2.0 — Production readiness plan" (2026-09-06, revision 2)
 domain: devops
 ---
 
 ## What
 
-Estabelece a baseline do snapshot canônico, normaliza o fim de linha de todo o texto rastreado, publica a matriz de capacidades com evidência e cria o primeiro caminho de empacotamento reproduzível com manifesto, checksum e verificação sobre os bytes finais da release.
+Establishes the baseline of the canonical snapshot, normalizes the end of line of all tracked text, publishes the capability matrix with evidence and creates the first reproducible packaging path with a manifest, a checksum and verification over the final bytes of the release.
 
 ## Why
 
-O plano de adequação apontava três problemas P0 que se confirmaram na inspeção do repositório:
+The production readiness plan pointed at three P0 problems that were confirmed in the inspection of the repository:
 
-1. **Fim de linha (item 3 da análise).** `.gitattributes` cobria apenas `*.sh` e `dist/engineos.cjs`. Todo o restante ficava com `eol` não especificado, então um checkout em Windows convertia 509 arquivos para CRLF. Medida antes da correção: `git diff --shortstat` = 512 arquivos / 87.071 inserções; `git diff --ignore-cr-at-eol --shortstat` = 1 arquivo / 222 inserções. Ou seja, 99,8% do diff era ruído, e nenhuma revisão conseguia distinguir trabalho real de artefato de checkout. Os blobs do HEAD já estavam em LF — o problema era exclusivamente de checkout, não de conteúdo commitado.
-2. **Artefato de distribuição (item 2).** Não existia nenhum caminho de empacotamento: nem script em `scripts/`, nem alvo em `package.json`. O ZIP distribuído era do working tree, por isso carregava dependências, caches e estado local.
-3. **Versão e PRD divergentes (item 1).** `package.json`, `.claude-plugin/plugin.json` e `marketplace.json` estão consistentes em 1.6.0 — a divergência real é entre o código e o PRD, ainda em "Draft v1" de 11/06/2026, cujos *non-goals* contradizem o que o repositório já faz.
+1. **End of line (item 3 of the analysis).** `.gitattributes` covered only `*.sh` and `dist/engineos.cjs`. Everything else was left with `eol` unspecified, so a Windows checkout converted 509 files to CRLF. Measured before the fix: `git diff --shortstat` = 512 files / 87,071 insertions; `git diff --ignore-cr-at-eol --shortstat` = 1 file / 222 insertions. In other words, 99.8% of the diff was noise, and no review could distinguish real work from a checkout artifact. The HEAD blobs were already in LF — the problem was exclusively one of checkout, not of committed content.
+2. **Distribution artifact (item 2).** There was no packaging path at all: no script in `scripts/`, no target in `package.json`. The distributed ZIP was of the working tree, and so it carried dependencies, caches and local state.
+3. **Divergent version and PRD (item 1).** `package.json`, `.claude-plugin/plugin.json` and `marketplace.json` are consistent at 1.6.0 — the real divergence is between the code and the PRD, still at "Draft v1" of 2026-06-11, whose *non-goals* contradict what the repository already does.
 
 ## Scope
 
-- `.gitattributes` — política de fim de linha para todo formato de texto.
-- 509 arquivos rastreados — working tree reconvertido para LF (sem mudança de conteúdo).
-- `scripts/package-release.sh` — novo.
-- `.github/workflows/ci.yml` — novo job `package` (ubuntu-latest, windows-latest).
+- `.gitattributes` — end-of-line policy for every text format.
+- 509 tracked files — working tree reconverted to LF (with no content change).
+- `scripts/package-release.sh` — new.
+- `.github/workflows/ci.yml` — new `package` job (ubuntu-latest, windows-latest).
 - `.gitignore` — `dist-release/`.
-- `docs/CAPABILITIES.md` — novo.
-- `docs/PRD.md` — aviso de desatualização e ponteiro para a matriz.
+- `docs/CAPABILITIES.md` — new.
+- `docs/PRD.md` — out-of-date warning and pointer to the matrix.
 
 ## Checklist
 
-- [x] Comparar working tree com HEAD distinguindo mudança semântica de fim de linha
-- [x] Definir LF nos formatos consumidos pelos parsers, preservando CRLF onde a plataforma exige
-- [x] Gerar pacote a partir de um commit por allowlist explícita
-- [x] Gerar manifesto e checksum
-- [x] Verificar CRLF, bit de execução, dependências, caches, segredos e lockfiles sobre os bytes finais
-- [x] Testar extração → instalação limpa → validate → typecheck → testes
-- [x] Publicar matriz de capacidades com estado e evidência por capacidade
-- [x] Registrar divergências do PRD
-- [ ] Reescrever o escopo do PRD (decisão do responsável pelo produto)
-- [x] Mapa de compatibilidade: plataformas suportadas, pré-requisitos e os três pontos de aplicação da política de fim de linha
-- [x] Registrar ADRs de contrato de configuração, política de aprovação e critérios de separação de serviços
-- [x] Fechar a política de portabilidade com checks (`C32` paridade de espelhos, `C33` fim de linha)
-- [ ] Consolidar release notes
-- [ ] Fixar SLO, RPO, RTO, retenção e orçamento por perfil de implantação
+- [x] Compare the working tree with HEAD, distinguishing semantic change from end of line
+- [x] Set LF in the formats consumed by the parsers, preserving CRLF where the platform requires it
+- [x] Generate the package from a commit by explicit allowlist
+- [x] Generate the manifest and the checksum
+- [x] Verify CRLF, execute bit, dependencies, caches, secrets and lockfiles over the final bytes
+- [x] Test extraction → clean installation → validate → typecheck → tests
+- [x] Publish the capability matrix with a state and evidence per capability
+- [x] Record the divergences from the PRD
+- [ ] Rewrite the scope of the PRD (decision of the product owner)
+- [x] Compatibility map: supported platforms, prerequisites and the three enforcement points of the end-of-line policy
+- [x] Record ADRs for the configuration contract, the approval policy and the service-separation criteria
+- [x] Close the portability policy with checks (`C32` mirror parity, `C33` end of line)
+- [ ] Consolidate release notes
+- [ ] Pin SLO, RPO, RTO, retention and budget per deployment profile
 
 ## What was made
 
-`.gitattributes` passou a declarar `* text=auto eol=lf` com exceções explícitas: `*.ps1` em CRLF (host Windows, não consumido por parser POSIX) e binários marcados como `binary`. O working tree foi reconvertido para LF nos 509 arquivos afetados; nenhum blob mudou de hash.
+`.gitattributes` now declares `* text=auto eol=lf` with explicit exceptions: `*.ps1` in CRLF (Windows host, not consumed by a POSIX parser) and binaries marked as `binary`. The working tree was reconverted to LF in the 509 affected files; no blob changed hash.
 
-`scripts/package-release.sh` empacota a partir de um **commit** via `git archive`, nunca do working tree, usando allowlist explícita de caminhos. Verifica sobre os bytes finais: ausência de CRLF nos formatos POSIX, bit de execução coerente (scripts executáveis; bibliotecas carregadas com `source` sem o bit), ausência de `node_modules`, `.next`, `build`, bancos, `.env`, chaves e certificados, varredura de segredos, presença dos lockfiles e dos entrypoints do instalador. Emite `MANIFEST.txt` com sha256 por arquivo e `.zip.sha256` do pacote. Recusa empacotar se `package.json` e `.claude-plugin/plugin.json` declararem versões diferentes.
+`scripts/package-release.sh` packages from a **commit** via `git archive`, never from the working tree, using an explicit path allowlist. It verifies over the final bytes: absence of CRLF in the POSIX formats, coherent execute bit (executable scripts; libraries loaded with `source` without the bit), absence of `node_modules`, `.next`, `build`, databases, `.env`, keys and certificates, secret scan, presence of the lockfiles and of the installer entrypoints. It emits `MANIFEST.txt` with a sha256 per file and a `.zip.sha256` for the package. It refuses to package if `package.json` and `.claude-plugin/plugin.json` declare different versions.
 
-A allowlist expôs uma dependência real que o plano não previa: quatro checks do `validate-engineos.sh` leem `.engineos/{README,archived/README,changes/README,changes/_template}.md`. Esses arquivos são ativo de runtime, não histórico de desenvolvimento, e entram no pacote; o restante de `.engineos/` fica de fora.
+The allowlist exposed a real dependency the plan had not foreseen: four checks of `validate-engineos.sh` read `.engineos/{README,archived/README,changes/README,changes/_template}.md`. Those files are a runtime asset, not development history, and they go into the package; the rest of `.engineos/` stays out.
 
-O job `package` da CI roda em ubuntu-latest e windows-latest e falha se o checkout divergir do HEAD — é a regressão automatizada de CRLF/permissões que o plano exige, e ela roda antes de qualquer outra coisa.
+The CI `package` job runs on ubuntu-latest and windows-latest and fails if the checkout diverges from HEAD — it is the automated CRLF/permission regression the plan demands, and it runs before anything else.
 
-`docs/CAPABILITIES.md` classifica cada capacidade como disponível, parcial ou planejada, com implementação, evidência e épico da lacuna, mais os gates por perfil de implantação.
+`docs/CAPABILITIES.md` classifies every capability as available, partial or planned, with implementation, evidence and the epic of the gap, plus the gates per deployment profile.
 
 ## Verification
 
-Sobre os bytes finais de `dist-release/engineos-1.6.0-99b5eec.zip` (344 arquivos), extraídos em diretório limpo:
+Over the final bytes of `dist-release/engineos-1.6.0-99b5eec.zip` (344 files), extracted into a clean directory:
 
 - `scripts/validate-engineos.sh` — **108 passed, 0 failed**
-- `npm ci` pelo lockfile — sucesso
-- `npm run typecheck` — limpo
+- `npm ci` from the lockfile — success
+- `npm run typecheck` — clean
 - `npm test` — **24/24**
-- `sha256` do pacote: `a462fd2bad55b6c29566125cc4d638904a13bc96ee7acd00018d00e11fbc1d57`
+- `sha256` of the package: `a462fd2bad55b6c29566125cc4d638904a13bc96ee7acd00018d00e11fbc1d57`
 
-Limitações declaradas, não convertidas em sucesso:
+Declared limitations, not converted into success:
 
-- O `install.sh` **não** foi executado: ele escreve em `~/.claude` e exige ambiente isolado. Só a sintaxe foi verificada (`bash -n`).
-- macOS não foi testado e não está declarado suportado.
-- A matriz de plataformas da CI ainda não teve uma execução real registrada — o job `package` foi adicionado nesta mudança.
-- A varredura de segredos não encontrou achado, o que não é prova de ausência de segredo.
-- Nenhum eval live foi executado; a coluna "Evals" da matriz permanece **parcial** por isso.
-- No working tree em Windows, `validate-engineos.sh` reporta 107/1: as quatro bibliotecas `hooks/lib-*.sh`, `layout-manifest.sh` e `scaffold-layout.sh` aparecem com bit de execução porque o filesystem montado reporta todos os arquivos como executáveis. No git elas são `100644` e no pacote saem corretas — por isso o artefato passa onde o working tree falha. É artefato de plataforma, não defeito.
+- `install.sh` was **not** executed: it writes to `~/.claude` and requires an isolated environment. Only the syntax was verified (`bash -n`).
+- macOS was not tested and is not declared supported.
+- The CI platform matrix has not had a real run recorded yet — the `package` job was added in this change.
+- The secret scan found nothing, which is not proof of the absence of a secret.
+- No live eval was run; the "Evals" column of the matrix stays **partial** because of that.
+- In the working tree on Windows, `validate-engineos.sh` reports 107/1: the four `hooks/lib-*.sh` libraries, `layout-manifest.sh` and `scaffold-layout.sh` show up with the execute bit because the mounted filesystem reports every file as executable. In git they are `100644` and they come out correct in the package — which is why the artifact passes where the working tree fails. It is a platform artifact, not a defect.
 
 ## Human decisions
 
 <!-- date | who | reasons (from registries/policy.json hitl.reasons) | approved/refused | note -->
-2026-09-07 | Ricardo Fagmer | escopo de execução | aprovado | Escolheu executar E01-a (normalização de EOL), E01-b (baseline e PRD) e E02 (script de release) nesta sessão, entre as opções apresentadas.
-2026-09-07 | Ricardo Fagmer | permissão de escrita | aprovado | Autorizou exclusão de arquivos na pasta do projeto para que o git pudesse gravar o índice (`.git/index.lock` órfão de 06/09 impedia qualquer commit).
+2026-09-07 | Ricardo Fagmer | execution scope | approved | Chose to execute E01-a (EOL normalization), E01-b (baseline and PRD) and E02 (release script) in this session, among the options presented.
+2026-09-07 | Ricardo Fagmer | write permission | approved | Authorized deleting files in the project folder so that git could write the index (an orphan `.git/index.lock` from 2026-09-06 was preventing any commit).
 
 ## Changes registered
 
@@ -90,26 +90,26 @@ git log --oneline fed9a63..HEAD
   d82245c feat(e02): empacotamento reproduzivel com manifesto, checksum e matriz de CI
 ```
 
-Pendente de commit nesta mudança: `docs/CAPABILITIES.md`, `docs/PRD.md`, este registro.
+Pending commit in this change: `docs/CAPABILITIES.md`, `docs/PRD.md`, this record.
 
-Fora do escopo, deixado intocado no working tree: `skills-lock.json` (+222 linhas, única mudança semântica preexistente) e ~20 skills não rastreadas em `.agents/skills/`, `.trae/`, `.windsurf/` — decisão de escopo pendente.
+Out of scope, left untouched in the working tree: `skills-lock.json` (+222 lines, the only pre-existing semantic change) and ~20 untracked skills in `.agents/skills/`, `.trae/`, `.windsurf/` — scope decision pending.
 
-## Segunda unidade — fechamento de E01 (mesma sessão)
+## Second unit — closing E01 (same session)
 
-`scripts/checks/80-portability.sh` acrescenta dois checks. `C32` afirma que `.agents/skills`, `.trae/skills` e `.windsurf/skills` são byte a byte idênticos — eram, mas nada garantia; agora um commit que edita um espelho e esquece os outros falha. `C33` audita 571 arquivos de texto POSIX rastreados e é a regressão que impede a política de fim de linha de voltar a se soltar. Ambos usam o índice do git como fonte quando há repositório e a árvore quando não há, para rodarem também sobre o pacote extraído.
+`scripts/checks/80-portability.sh` adds two checks. `C32` asserts that `.agents/skills`, `.trae/skills` and `.windsurf/skills` are byte-for-byte identical — they were, but nothing guaranteed it; now a commit that edits one mirror and forgets the others fails. `C33` audits 571 tracked POSIX text files and is the regression that stops the end-of-line policy from coming loose again. Both use the git index as the source when there is a repository and the tree when there is not, so that they also run over the extracted package.
 
-`C33` encontrou, no primeiro run, `.claude/worktrees/` — duas worktrees de agente `prunable`, 3,4 MB, dentro do repositório, não rastreadas e **não ignoradas**. É a evidência concreta do item 2 da análise ("ZIP inclui worktree e estado"). O `git archive` já as excluía por serem não rastreadas, então o artefato nunca esteve comprometido; `.gitignore` passou a cobrir `.claude/worktrees/` e `.claude/settings.local.json` para que também não sujem o `git status` nem sejam commitadas por descuido.
+`C33` found, on the first run, `.claude/worktrees/` — two `prunable` agent worktrees, 3.4 MB, inside the repository, untracked and **not ignored**. It is the concrete evidence of item 2 of the analysis ("the ZIP includes a worktree and state"). `git archive` already excluded them because they were untracked, so the artifact was never compromised; `.gitignore` now covers `.claude/worktrees/` and `.claude/settings.local.json` so that they also do not dirty `git status` nor get committed by oversight.
 
-`docs/COMPATIBILITY.md` ganhou a matriz de plataformas (Linux e Windows/Git Bash suportados; macOS não; `install.ps1` parcial), os pré-requisitos com o que acontece na ausência de cada um — em especial: **sem `jq`, os hooks não são registrados e a instalação tem regras, não gates** — e a tabela dos três pontos de aplicação da política de fim de linha.
+`docs/COMPATIBILITY.md` gained the platform matrix (Linux and Windows/Git Bash supported; macOS not; `install.ps1` partial), the prerequisites with what happens in the absence of each one — in particular: **without `jq`, the hooks are not registered and the installation has rules, not gates** — and the table of the three enforcement points of the end-of-line policy.
 
-Quatro ADRs. `release-from-commit-with-allowlist` (accepted) registra a decisão de E02 com a denylist via `export-ignore` como alternativa rejeitada. `versioned-config-contract`, `approval-bound-to-effect` e `when-to-split-a-service` ficam em **proposed**: descrevem contratos de E03/E04/E09 ainda não implementados, e enquanto estiverem nesse estado o comportamento correspondente não pode ser anunciado.
+Four ADRs. `release-from-commit-with-allowlist` (accepted) records the E02 decision with the `export-ignore` denylist as the rejected alternative. `versioned-config-contract`, `approval-bound-to-effect` and `when-to-split-a-service` stay in **proposed**: they describe E03/E04/E09 contracts that are not implemented yet, and while they stay in that state the corresponding behavior cannot be announced.
 
-Uma escolha de projeto que vale registrar: `C32` audita o que está versionado, não a árvore inteira. Na primeira versão ele auditava o filesystem e reportou 200 divergências — as ~100 skills não rastreadas em `.agents/skills/`, que existem só ali. Isso é decisão de escopo pendente, não defeito de sincronismo; um check que fica vermelho por trabalho em andamento ensina a ignorar checks.
+One design choice worth recording: `C32` audits what is versioned, not the whole tree. In its first version it audited the filesystem and reported 200 divergences — the ~100 untracked skills in `.agents/skills/`, which exist only there. That is a pending scope decision, not a synchronization defect; a check that stays red because of work in progress teaches people to ignore checks.
 
-Verificação desta unidade: `validate-engineos.sh` **109 passed, 1 failed** no working tree — a falha é o artefato de plataforma já descrito (bit de execução das quatro bibliotecas em filesystem Windows).
+Verification of this unit: `validate-engineos.sh` **109 passed, 1 failed** in the working tree — the failure is the platform artifact already described (execute bit of the four libraries on a Windows filesystem).
 
 ## Notes
 
-- A ordem importou: sem a normalização de EOL, nenhuma das outras verificações teria sinal. Um repositório que reporta 512 arquivos modificados não permite revisar nada.
-- O empacotador recusa versões divergentes entre `package.json` e `plugin.json` por construção. Quando 2.0 for publicado, os dois têm de subir juntos — o gate já existe.
-- Próxima unidade, conforme o plano: fechar E01 com as ADRs e o mapa de compatibilidade, depois E03 (console íntegro) e os contratos de E04/E10.
+- The order mattered: without the EOL normalization, none of the other verifications would have had signal. A repository that reports 512 modified files does not allow anything to be reviewed.
+- The packager refuses divergent versions between `package.json` and `plugin.json` by construction. When 2.0 is published, the two have to go up together — the gate already exists.
+- Next unit, as per the plan: close E01 with the ADRs and the compatibility map, then E03 (sound console) and the E04/E10 contracts.

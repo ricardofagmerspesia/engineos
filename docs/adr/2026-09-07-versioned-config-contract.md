@@ -1,49 +1,49 @@
-# Contrato de configuração versionada entre console e runner
+# Versioned configuration contract between console and runner
 
 Date: 2026-09-07
 Status: proposed
 
-Source: "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, rev. 2), épicos E01 (contrato de configuração), E03 (publicação e rollback) e E04 (fixar versão por execução).
+Source: "EngineOS 2.0 — Production readiness plan" (2026-09-06, rev. 2), epics E01 (configuration contract), E03 (publish and rollback) and E04 (pin the version per execution).
 
 ## Context
 
-Hoje o console grava arquivos e o runtime lê arquivos. Não há nome para "a configuração que estava valendo quando esta execução rodou". As consequências aparecem em três lugares distintos que na verdade são o mesmo problema:
+Today the console writes files and the runtime reads files. There is no name for "the configuration that was in force when this execution ran". The consequences show up in three distinct places that are in fact the same problem:
 
-- Uma publicação no meio de uma execução muda o comportamento dela pela metade, e nada registra isso.
-- Um rollback não tem como saber se descarta trabalho que outro operador acabou de gravar — o console já implementa `publish`, `diff`, `history` e `rollback` sobre arquivos, sem revisão base.
-- Um trace de telemetria não consegue responder "com qual política esta decisão foi tomada?", que é a primeira pergunta de qualquer investigação de incidente.
+- A publish in the middle of an execution changes its behavior halfway through, and nothing records that.
+- A rollback has no way of knowing whether it discards work another operator has just written — the console already implements `publish`, `diff`, `history` and `rollback` over files, with no base revision.
+- A telemetry trace cannot answer "under which policy was this decision made?", which is the first question of any incident investigation.
 
-O kernel já é determinístico: fatos declarados entram, decisão estruturada sai, sem efeito externo. O que falta não é determinismo, é **identidade** da entrada.
+The kernel is already deterministic: declared facts go in, a structured decision comes out, with no external effect. What is missing is not determinism, it is **identity** of the input.
 
 ## Options considered
 
-1. **`config_version` imutável, com hash do conteúdo, fixada por execução** (escolhida).
-   - Pros: uma execução declara sua versão no início e a carrega até o fim — o resultado é reproduzível e explicável; publicação concorrente compara contra a revisão base e falha em vez de sobrescrever; o rollback vira "publicar a versão N de novo", não "desfazer arquivos"; telemetria e evals podem versionar resultados por configuração, que é pré-requisito para comparar antes/depois em E06.
-   - Cons: exige uma tabela de versões e um ponto de serialização das publicações; uma execução longa pode terminar com política antiga — o que é uma propriedade desejada, não um bug, mas precisa ser dito ao operador.
+1. **Immutable `config_version`, with a content hash, pinned per execution** (chosen).
+   - Pros: an execution declares its version at the start and carries it to the end — the result is reproducible and explainable; a concurrent publish compares against the base revision and fails instead of overwriting; rollback becomes "publish version N again", not "undo files"; telemetry and evals can version results per configuration, which is a prerequisite for comparing before/after in E06.
+   - Cons: it requires a version table and a serialization point for publishes; a long execution may finish with an old policy — which is a desired property, not a bug, but needs to be said to the operator.
 
-2. **Ler os arquivos a cada decisão (estado atual)** (rejeitada).
-   - Pros: nenhuma infraestrutura; mudança tem efeito imediato.
-   - Cons: efeito imediato *no meio de uma execução* é precisamente o modo de falha. Uma tarefa que passou por `admit` sob um orçamento e chama o modelo sob outro não tem comportamento definido, e nenhum trace consegue explicar o que aconteceu.
+2. **Read the files at every decision (current state)** (rejected).
+   - Pros: no infrastructure; a change takes effect immediately.
+   - Cons: immediate effect *in the middle of an execution* is precisely the failure mode. A task that passed through `admit` under one budget and calls the model under another has no defined behavior, and no trace can explain what happened.
 
-3. **Commit do git como a versão** (rejeitada).
-   - Pros: já existe, já tem hash, já tem histórico.
-   - Cons: amarra publicação a commit, o que impede o console de publicar sem escrever no repositório e torna o perfil hospedado dependente de credencial de git. Além disso, nem toda configuração efetiva vem de arquivo versionado — a resolução final depende de precedência (ação → rota → agente → skill → padrão) e é a *resolvida* que precisa de identidade. O commit continua sendo registrado como proveniência, não como identidade.
+3. **The git commit as the version** (rejected).
+   - Pros: it already exists, already has a hash, already has history.
+   - Cons: it ties publishing to a commit, which prevents the console from publishing without writing to the repository and makes the hosted profile depend on a git credential. Besides that, not every effective configuration comes from a versioned file — the final resolution depends on precedence (action → route → agent → skill → default) and it is the *resolved* one that needs an identity. The commit is still recorded as provenance, not as identity.
 
 ## Decision
 
-Opção 1. A configuração publicada é imutável e endereçada por `config_version` (monotônica) mais o hash do conteúdo resolvido. O contrato mínimo de uma publicação é `{config_version, base_hash, autor, alterações, timestamp}`.
+Option 1. The published configuration is immutable and addressed by `config_version` (monotonic) plus the hash of the resolved content. The minimum contract of a publish is `{config_version, base_hash, author, changes, timestamp}`.
 
-Regras que decorrem:
+Rules that follow:
 
-- **O runner fixa a versão no início da execução** e não a troca. `run_id` carrega `config_version`.
-- **Publicação é condicional à revisão base.** Se `base_hash` não bate com o estado atual, a publicação falha e mostra o conflito. Publicações concorrentes são serializadas.
-- **Rollback publica uma versão anterior como versão nova.** Nunca reescreve o histórico e nunca descarta gravação alheia sem conflito explícito.
-- **Escrita em arquivo, commit e snapshot do banco são coordenados.** Falha entre etapas deixa uma operação recuperável registrada, não um estado meio-gravado.
-- **`config_version` aparece em trace, eval e registro de aprovação.** Sem isso, nenhuma comparação antes/depois de E06 é interpretável.
+- **The runner pins the version at the start of the execution** and does not swap it. `run_id` carries `config_version`.
+- **Publishing is conditional on the base revision.** If `base_hash` does not match the current state, the publish fails and shows the conflict. Concurrent publishes are serialized.
+- **Rollback publishes a previous version as a new version.** It never rewrites history and never discards someone else's write without an explicit conflict.
+- **File write, commit and database snapshot are coordinated.** A failure between steps leaves a recoverable operation recorded, not a half-written state.
+- **`config_version` appears in traces, evals and the approval record.** Without it, no before/after comparison in E06 is interpretable.
 
 ## Consequences
 
-- `config_version` passa a ser superfície pública sob `docs/COMPATIBILITY.md`.
-- Uma aprovação humana é válida para uma `config_version`; ver `2026-09-07-approval-bound-to-effect.md`.
-- Execução longa pode terminar sob política antiga. É a garantia, e o operador precisa poder ver isso — não é motivo para trocar a versão no meio.
-- Enquanto E03/E04 não implementarem isto, "desabilitar no console" **não** é enforcement e não deve ser anunciado como tal (ver `docs/CAPABILITIES.md`).
+- `config_version` becomes public surface under `docs/COMPATIBILITY.md`.
+- A human approval is valid for one `config_version`; see `2026-09-07-approval-bound-to-effect.md`.
+- A long execution may finish under an old policy. That is the guarantee, and the operator needs to be able to see it — it is not a reason to swap the version halfway through.
+- Until E03/E04 implement this, "disable in the console" is **not** enforcement and must not be announced as such (see `docs/CAPABILITIES.md`).
