@@ -25,7 +25,7 @@ Changing any of these is a **breaking change**:
 
 The kernel subcommands covered by that row are `resolve`, `route-path`, `route-intent`,
 `model`, `risk`, `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`,
-`decision-rules`, `scale`, `route-escalate` and `resolve-task`. Adding a subcommand or a field to an answer
+`decision-rules`, `scale`, `route-escalate`, `resolve-task` and `skill-state`. Adding a subcommand or a field to an answer
 is MINOR; removing or renaming either is MAJOR and gets the deprecation window
 below.
 
@@ -107,6 +107,103 @@ unrelated work.
 - [ ] `scripts/validate-engineos.sh` passes with both old and new surfaces present.
 - [ ] MAJOR version bumped in `.claude-plugin/plugin.json`.
 - [ ] Consumers who need to act are told what to change, not just what broke.
+
+## What `enabled: false` does and does not do
+
+`enabled: false` na frontmatter de `skills/<id>/SKILL.md` é o interruptor que o
+console mostra. Até 07/09/2026 **nada fora do console lia esse campo**: desabilitar
+uma skill mudava um arquivo e nada mais, e a interface apresentava como controle
+algo que não controlava nada. Esta seção é o contrato do que ele passou a valer —
+e do que ele continua não valendo, que é a parte que não pode ser omitida.
+
+**O que passa a ser verdade.** O kernel deixa de recomendar a skill, nos três
+lugares onde ele responde sobre skills:
+
+| Answer | Comportamento com a skill desabilitada |
+|---|---|
+| `kernel.sh route-path <file>` | Sai de `skills`; entra em `skills_suppressed` com `reason: "disabled"` |
+| `kernel.sh route-intent <text>` | Idem, por intent correspondida |
+| `kernel.sh resolve-task --prompt` | Idem, em `task_contract` |
+| `kernel.sh skill-state [--id <s>]` | Responde a resolução diretamente, para console, check e hook lerem a mesma coisa |
+
+A supressão é **visível**, nunca silenciosa. Uma lista curta e uma lista filtrada
+são indistinguíveis para o operador se o motivo não vier junto, e um controle cujo
+efeito não pode ser observado volta a ser decorativo por outro caminho.
+
+**O que continua não sendo verdade, e não pode ser anunciado.** EngineOS **não**
+impede alguém de invocar uma skill desabilitada pelo nome: a ferramenta Skill lê o
+diretório e não há hook entre as duas coisas. O que existe é recomendação e
+roteamento; remoção efetiva exige tirar o diretório da instalação. Isto é o que a
+matriz de adaptadores chama de degradar para convenção, dito no lugar certo:
+**quem quiser bloqueio real precisa desinstalar a skill, não desabilitá-la.**
+
+**Ausência do campo significa habilitada.** É o contrato do console
+(`console/src/lib/entities/skills.ts`) e a única leitura que mantém funcionando
+toda skill escrita antes de o campo existir. Só a **primeira** frontmatter é lida,
+e só quando o arquivo começa com ela: uma linha `enabled:` no corpo é documentação,
+não configuração, e nunca desliga uma skill.
+
+**Onde isso é testado.** `scripts/test-kernel.sh` planta uma skill desabilitada
+numa árvore de fixture e afirma que o roteamento a derruba, que diz por quê, que a
+ausência do campo significa habilitada e que uma menção no corpo não desliga nada.
+Os checks `C34` (todo answer que emite `skills` emite `skills_suppressed`) e `C35`
+(nenhum domínio de routing fica sem skill habilitada) guardam a fronteira.
+
+Adicionar `skills_suppressed` às respostas e `skill-state` à lista de subcomandos
+é **MINOR** — campo e subcomando novos, nada removido nem renomeado.
+
+## Supported platforms and prerequisites
+
+Distribuição local também é uso de produção: exige suporte declarado, atualização
+segura e recuperação. Esta é a matriz que a release cobre. Uma plataforma que não
+está aqui não está suportada — não é "provavelmente funciona".
+
+| Plataforma | Estado | Como é verificada |
+|---|---|---|
+| Linux (x86-64) | **Suportada** | Job `verify` + job `package` em `ubuntu-latest`: gera o artefato, extrai e roda `validate-engineos.sh`, `npm ci`, typecheck e testes sobre os bytes finais |
+| Windows + Git Bash | **Suportada** | Job `package` em `windows-latest`, mesma sequência, mais a guarda de que o checkout não diverge do HEAD |
+| macOS | **Não suportada** | Nunca executada em CI nem manualmente. Não declarar suporte antes de a matriz cobri-la |
+| PowerShell (`install.ps1`) | **Parcial** | Sintaxe e presença verificadas no artefato; a execução do instalador não roda em CI |
+
+### Pré-requisitos
+
+| Requisito | Versão | Onde é declarado | O que acontece sem ele |
+|---|---|---|---|
+| Node.js | `>= 18` | `package.json.engines`, `src/node-guard.ts` (`MIN_NODE_MAJOR`) | O guard recusa ou pula o hook com mensagem explícita — não falha em silêncio |
+| `bash` | POSIX bash | `.gitattributes` força LF em `*.sh` para que continuações de linha não quebrem | Hooks e kernel não executam |
+| `jq` | qualquer | `install.sh` (§5) | **Hooks não são registrados.** O instalador avisa e continua; todo hook que analisa entrada com `jq` fica silencioso. Uma instalação sem `jq` tem regras, não gates |
+
+### Fim de linha e modo de execução
+
+`.gitattributes` declara LF para todo texto, com `*.ps1` em CRLF como única exceção
+(host Windows, fora de qualquer parser POSIX). Isso não é preferência de estilo: sem
+essa política, um checkout em Windows reescreve ~509 arquivos e o diff do repositório
+deixa de ser legível — foi o estado medido em 07/09/2026, com 512 arquivos alterados
+e nenhuma mudança semântica.
+
+Três pontos de aplicação sustentam a promessa, e mudar um sem os outros é regressão:
+
+| Promessa | Onde é aplicada | Onde é testada |
+|---|---|---|
+| Todo texto em LF | `.gitattributes` | Check `C33`; job `package` falha se o checkout divergir do HEAD |
+| Script executável tem o bit; biblioteca `source` não | modos no índice do git | Check de modos de hook; verificação do `scripts/package-release.sh` sobre os bytes finais |
+| Espelhos de adaptador não divergem | `.agents/`, `.trae/`, `.windsurf/` | Check `C32` |
+
+O bit de execução **não** sobrevive a um checkout Windows com `core.fileMode=false`:
+o valor autoritativo é o do índice do git, não o do filesystem. Um `chmod +x` local
+que não vira `git update-index --chmod=+x` não chega ao pacote — e o empacotador
+recusa a release quando isso acontece.
+
+### Adaptadores de outras ferramentas
+
+A matriz de enforcement por ferramenta — o que é bloqueante, o que roda em CI e o que
+degrada para convenção — vive em [`templates/adapters/README.md`](../templates/adapters/README.md)
+e é a fonte para esse recorte. Regra que nada verifica é convenção; chamá-la de gate
+numa ferramenta que não pode aplicá-la é como uma equipe deixa de confiar no sistema
+inteiro.
+
+Os espelhos `.agents/`, `.trae/` e `.windsurf/` ficam **fora** do pacote por padrão;
+entram com `scripts/package-release.sh --with-ide-mirrors`.
 
 ## 1.6.0 additions
 

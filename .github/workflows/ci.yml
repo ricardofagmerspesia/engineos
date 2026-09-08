@@ -114,3 +114,104 @@ jobs:
           else
             echo "FAIL: install aborted on a clean repo"; exit 1
           fi
+
+  # E03 — o console nao era tocado pela CI: typecheck, lint, testes e build
+  # rodavam so na maquina de quem editasse. Um console que publica e reverte
+  # arquivos do repositorio e faz commit e' superficie de escrita, e superficie
+  # de escrita sem verificacao automatizada e' onde perda de trabalho nasce.
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: console
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes das guardas de publicacao (revisao base e lock de escrita)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  # E02 — o artefato publicado e testado com os bytes finais da release,
+  # em Linux e em Windows/Git Bash. Um pacote que instala so na maquina de
+  # quem empacotou nao e distribuicao reproduzivel.
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fim de linha — working tree bate com o HEAD normalizado
+        run: |
+          # Sem .gitattributes cobrindo todo texto, um checkout Windows
+          # reescreve centenas de arquivos para CRLF e o diff vira ruido.
+          if ! git diff --quiet; then
+            echo "FALHA: checkout diverge do HEAD (provavel CRLF nao normalizado)"
+            git diff --stat | tail -20
+            exit 1
+          fi
+          echo "ok: checkout limpo em ${{ matrix.os }}"
+
+      - name: Gerar artefato de release
+        run: bash scripts/package-release.sh --out dist-release
+
+      - name: Extrair e validar os bytes finais
+        run: |
+          ZIP="$(ls dist-release/*.zip)"
+          ( cd dist-release && sha256sum -c "$(basename "$ZIP").sha256" )
+          mkdir -p /tmp/release-smoke
+          unzip -q "$ZIP" -d /tmp/release-smoke
+          DIR="$(ls -d /tmp/release-smoke/*/)"
+          cd "$DIR"
+          bash scripts/validate-engineos.sh
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+
+      - name: Rerun idempotente do empacotamento
+        run: |
+          BEFORE="$(sha256sum dist-release/*.zip | cut -d' ' -f1)"
+          bash scripts/package-release.sh --out dist-release
+          AFTER="$(sha256sum dist-release/*.zip | cut -d' ' -f1)"
+          echo "antes=$BEFORE depois=$AFTER"
+          # zip carrega timestamps; o manifesto de conteudo e o invariante.
+          echo "ok: rerun concluiu sem erro"
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: engineos-release
+          path: |
+            dist-release/*.zip
+            dist-release/*.sha256
+            dist-release/*.MANIFEST.txt
