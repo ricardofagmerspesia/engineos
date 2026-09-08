@@ -46,7 +46,7 @@ out-of-order stack merges stranded two PRs). Translation PRs exceed the 400-line
 construction and say so.
 
 Counts stay in the prose and a check keeps them honest (C37), rather than deleting every count: a
-reader is better served by "66 checks" that CI proves than by "some checks". Hook counts are the
+reader is better served by "68 checks" that CI proves than by "some checks". Hook counts are the
 exception — they are spelled as words in prose and the registered set is the truth, so the prose
 names the registry (`hooks/hooks.json`) and drops the number.
 
@@ -99,7 +99,7 @@ for what C32 compares; sync only what it compares).
 Prose fixes:
 - `CLAUDE.md:171-172` → "…executed by a deterministic TypeScript kernel and the Claude Code hooks
   registered in `hooks/hooks.json`, bundled into `dist/engineos.cjs`, and kept coherent by a
-  66-check validator." Same sentence in `AGENTS.md:180-181` (Codex copy keeps "Claude Code hooks";
+  68-check validator." Same sentence in `AGENTS.md:180-181` (Codex copy keeps "Claude Code hooks";
   Codex does not run them, the sentence describes the repo).
 - `CLAUDE.md:90` and `AGENTS.md:99`: `/analyze-architecture`, `patterns/1-Analysis.md`.
 - `CLAUDE.md:106` and the same row in `AGENTS.md`: "`router` agent runs one
@@ -112,7 +112,7 @@ Prose fixes:
   Keep every deliberate Codex delta listed under Decision.
 - `templates/adapters/codex.md`: add a short section "## The AGENTS.md copy" listing the deliberate
   deltas from `CLAUDE.md` (the four bullets under Decision) so a future sync preserves them.
-- `README.md:183` → `# 66 self-integrity Checks`.
+- `README.md:183` → `# 68 self-integrity Checks`.
 - `commands/route.md:40`: replace the `jq -nc` line with
   `"$ENGINEOS_ROOT"/scripts/kernel.sh resolve --facts "$(node -e 'process.stdout.write(JSON.stringify({ prompt: process.argv[1], escalate: true }))' -- "$ARGUMENTS")"`
   and rewrite the following paragraph: node builds the payload (node >= 18 is already the runtime
@@ -122,9 +122,9 @@ Prose fixes:
   silently and the rest print a `[engineos] <hook> skipped` message — `CLAUDE.md` names which";
   bootstrap step 2 → "Confirm `node --version` is 18 or newer." `templates/adapters/README.md:22`
   Claude Code cell → "`post-edit-check.sh` (opt-in, unregistered by default)".
-- `docs/CODEBASE_MAP.md`: `:16` "(66 checks)"; `:103` "(skills vertical only; CI job `console`)";
-  `:205` "the 66-check integrity harness"; `:235` "Not referenced by root `package.json`; CI runs
-  typecheck, lint, tests and build in the `console` job."; `:317` "66 checks over …"; delete the
+- `docs/CODEBASE_MAP.md`: `:16` "(68 checks)"; `:103` "(skills vertical only; CI job `console`)";
+  `:205` "the 68-check integrity harness"; `:235` "Not referenced by root `package.json`; CI runs
+  typecheck, lint, tests and build in the `console` job."; `:317` "68 checks over …"; delete the
   gotcha at `:344`; `:348` → "`console/` is not part of the root build; only its Skills vertical
   exists." Families table: add rows `| portability | C32-C33 | adapter-mirror parity, LF policy |`,
   `| skill enablement | C34-C35 | skills/skills_suppressed pair on every kernel answer, no routing domain emptied by disablement |`,
