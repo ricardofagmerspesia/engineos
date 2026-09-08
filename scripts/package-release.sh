@@ -156,7 +156,10 @@ if [ "$VERIFY" -eq 1 ]; then
   #    from the extracted stage: the stage reflects whatever EOL conversion the
   #    extractor applied, so a clean stage proves nothing about the artifact.
   #    *.ps1 stays out of the list — PowerShell is fine with CRLF.
-  crlf="$(git grep -lI $'\r' "$COMMIT" -- "${PATHS[@]}" 2>/dev/null \
+  #    The CR is spelled as a PCRE escape, never as a raw byte in argv: under
+  #    Git Bash a raw CR does not survive the MSYS -> native git.exe argument
+  #    conversion, the pattern degrades and every text file matches.
+  crlf="$(git grep -P -lI '\r' "$COMMIT" -- "${PATHS[@]}" 2>/dev/null \
     | cut -d: -f2- \
     | grep -E '\.(sh|md|json|jsonl|ts|tsx|mjs|cjs|yaml|yml|py)$' || true)"
   if [ -n "$crlf" ]; then echo "FAIL CRLF in: $(echo "$crlf" | head -5)"; fail=1; else echo "ok   no CRLF in the POSIX-parsed formats"; fi
