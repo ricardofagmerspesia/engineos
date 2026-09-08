@@ -1,6 +1,7 @@
 ---
 name: 2026-09-08-console-hygiene
 status: done
+completed: 2026-09-08
 owner: Ricardo Fagmer
 spec: docs/specs/2026-09-08-console-hygiene.md
 domain: frontend
