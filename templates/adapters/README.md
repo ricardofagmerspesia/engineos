@@ -19,7 +19,7 @@ Each adapter states three things, in this order:
 | Always-on rules in context | hooks + `@` imports | `.cursor/rules` always-apply | `AGENTS.md` | `.github/copilot-instructions.md` |
 | Route on file pattern | `route-before-change.sh` (PreToolUse) | glob-scoped rule files | convention | path-scoped instructions |
 | Gate advisory from decision rules | `prompt-advisor.sh` (UserPromptSubmit) | convention | convention | convention |
-| Post-edit lint/typecheck | `post-edit-check.sh` (PostToolUse) | convention | convention | convention |
+| Post-edit lint/typecheck | `post-edit-check.sh` (opt-in, unregistered by default) | convention | convention | convention |
 | Block "done" without verification | `stop-verify.sh` (Stop) | **none** | **none** | **none** |
 | Block on unrecorded change | `record-verify.sh` (Stop) | **none** | **none** | **none** |
 | Integrity + evals | `scripts/*.sh` in CI | same, via CI | same, via CI | same, via CI |

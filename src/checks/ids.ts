@@ -1,9 +1,11 @@
 // The check ids the validator answers for, in the order the shell families ran
 // them: the ids the 1.7.0 port carried over from scripts/checks/*.sh, plus C32
 // to C35, whose two bash families were never registered by that port and were
-// ported and deleted in the audit-remediation wave. There is no bash left to
-// diff this list against, so it is authoritative rather than derived, and
-// `--only <id>` and `--list` keep their byte-exact surface for every earlier id.
+// ported and deleted in the audit-remediation wave, plus C36 and C37, which had
+// no bash ancestor at all — they were written for the prose-truth family. There
+// is no bash left to diff this list against, so it is authoritative rather than
+// derived, and `--only <id>` and `--list` keep their byte-exact surface for
+// every earlier id.
 export const CHECK_IDS = [
   'C1',
   'C2',
@@ -71,6 +73,8 @@ export const CHECK_IDS = [
   'C33',
   'C34',
   'C35',
+  'C36',
+  'C37',
 ] as const;
 
 export type CheckId = (typeof CHECK_IDS)[number];

@@ -7591,6 +7591,165 @@ function byteOrder2(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+// src/checks/ids.ts
+var CHECK_IDS = [
+  "C1",
+  "C2",
+  "C3",
+  "C5",
+  "C5b",
+  "C6",
+  "C7",
+  "C8",
+  "C9",
+  "C10",
+  "C11",
+  "C12",
+  "C13",
+  "C14",
+  "C15",
+  "C15b",
+  "C16",
+  "C17",
+  "C17b",
+  "C17c",
+  "C17e",
+  "C18",
+  "C18b",
+  "C18c",
+  "C18d",
+  "C18e",
+  "C18f",
+  "C18g",
+  "C19",
+  "C19b",
+  "C19c",
+  "C20",
+  "C20b",
+  "C20c",
+  "C20d",
+  "C21",
+  "C21b",
+  "C21c",
+  "C21e",
+  "C22",
+  "C22b",
+  "C22c",
+  "C23",
+  "C23c",
+  "C24",
+  "C24b",
+  "C24c",
+  "C25",
+  "C25b",
+  "C25c",
+  "C26",
+  "C26b",
+  "C26c",
+  "C26d",
+  "C27",
+  "C27b",
+  "C27c",
+  "C27d",
+  "C28",
+  "C29",
+  "C30",
+  "C31",
+  "C32",
+  "C33",
+  "C34",
+  "C35",
+  "C36",
+  "C37"
+];
+var DECLARED = new Set(CHECK_IDS);
+
+// src/checks/prose-truth.ts
+var C36_FINDINGS = ["command-missing", "pattern-missing", "no-references"];
+var C37_FINDINGS = ["count-drift"];
+var PROSE_TRUTH_CHECKS = [
+  { id: "C36", codes: C36_FINDINGS, run: checkC36 },
+  { id: "C37", codes: C37_FINDINGS, run: checkC37 }
+];
+var C36_TITLE = "router-table command and pattern references resolve";
+var C37_TITLE = "check-count claims equal the registered count";
+var ROUTER_FILES = ["CLAUDE.md", "AGENTS.md"];
+var COUNT_FILES = ["CLAUDE.md", "AGENTS.md", "README.md", "docs/CODEBASE_MAP.md"];
+var COMMAND_TOKEN = /^\/(?:engineos:)?([a-z][a-z0-9-]*)$/;
+var PATTERN_TOKEN = /^patterns\/([^`]+)$/;
+var COUNT_CLAIM = /\b(\d+)[- ](?:self-integrity )?[Cc]hecks?\b/g;
+var BACKTICKED = /`([^`]+)`/g;
+function checkC36(ctx) {
+  const absent = ROUTER_FILES.find((file) => !ctx.exists(file));
+  if (absent !== void 0) return skipOnce(ctx, "C36", C36_TITLE, absent);
+  const findings = [];
+  for (const file of ROUTER_FILES) {
+    const references = referencesIn(ctx.readText(file) ?? "");
+    if (references.length === 0) {
+      findings.push(finding("C36", "no-references", file));
+      continue;
+    }
+    for (const reference of references) {
+      if (reference.kind === "command") {
+        if (!ctx.exists(`commands/${reference.name}.md`)) {
+          findings.push(finding("C36", "command-missing", `${file}:${reference.token}`));
+        }
+        continue;
+      }
+      if (!resolvesUnderPatterns(ctx, reference.name)) {
+        findings.push(finding("C36", "pattern-missing", `${file}:${reference.token}`));
+      }
+    }
+  }
+  return [result("C36", C36_TITLE, findings)];
+}
+function checkC37(ctx) {
+  const absent = COUNT_FILES.find((file) => !ctx.exists(file));
+  if (absent !== void 0) return skipOnce(ctx, "C37", C37_TITLE, absent);
+  const registered = CHECK_IDS.length;
+  const findings = [];
+  for (const file of COUNT_FILES) {
+    for (const claimed of claimedCounts(ctx.readText(file) ?? "")) {
+      if (claimed !== registered) findings.push(finding("C37", "count-drift", `${file}:${claimed}`));
+    }
+  }
+  return [result("C37", C37_TITLE, findings)];
+}
+function referencesIn(text3) {
+  const seen = /* @__PURE__ */ new Set();
+  const collected = [];
+  for (const line of text3.split("\n")) {
+    if (!line.startsWith("|")) continue;
+    for (const match of line.matchAll(BACKTICKED)) {
+      const token = match[1] ?? "";
+      if (seen.has(token)) continue;
+      const reference = referenceOf(token);
+      if (reference === void 0) continue;
+      seen.add(token);
+      collected.push(reference);
+    }
+  }
+  return collected;
+}
+function referenceOf(token) {
+  const command = COMMAND_TOKEN.exec(token);
+  if (command !== null) return { kind: "command", token, name: command[1] ?? "" };
+  const pattern = PATTERN_TOKEN.exec(token);
+  if (pattern !== null) return { kind: "pattern", token, name: pattern[1] ?? "" };
+  return void 0;
+}
+function resolvesUnderPatterns(ctx, name) {
+  if (name.split("/").includes("..")) return false;
+  return ctx.exists(`patterns/${name}`) || ctx.exists(`patterns/${name}.md`);
+}
+function claimedCounts(text3) {
+  const claimed = /* @__PURE__ */ new Set();
+  for (const match of text3.matchAll(COUNT_CLAIM)) {
+    claimed.add(Number.parseInt(match[1] ?? "", 10));
+  }
+  return [...claimed];
+}
+
 // src/checks/registries-coherence.ts
 var import_node_path33 = require("node:path");
 var ROUTING = "registries/routing.json";
@@ -9651,7 +9810,8 @@ var CHECKS = [
   ...RUNTIME_GOVERNANCE_CHECKS,
   ...RUNTIME_SURFACE_CHECKS,
   ...PORTABILITY_CHECKS,
-  ...SKILL_ENABLEMENT_CHECKS
+  ...SKILL_ENABLEMENT_CHECKS,
+  ...PROSE_TRUTH_CHECKS
 ];
 function orderIds(ids) {
   return [...ids].sort((a, b) => {

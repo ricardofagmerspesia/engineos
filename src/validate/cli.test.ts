@@ -7,7 +7,7 @@ import type { CheckContext } from '../checks/lib';
 import { runInProcess, tempRoot, type RunResult } from '../testing/harness';
 import { runValidate } from './cli';
 
-// The natural order the bash harness produced for the 62 declared Checks:
+// The natural order the bash harness produced for the declared Checks:
 // `sed -E 's/^(C[0-9]+)/\1:/' | sort -t: -k1.2,1n -k2,2`. Written out rather than
 // recomputed, so this pins the ordering instead of restating the implementation.
 const NATURAL_ORDER: readonly string[] = [
@@ -16,7 +16,7 @@ const NATURAL_ORDER: readonly string[] = [
   'C19', 'C19b', 'C19c', 'C20', 'C20b', 'C20c', 'C20d', 'C21', 'C21b', 'C21c', 'C21e',
   'C22', 'C22b', 'C22c', 'C23', 'C23c', 'C24', 'C24b', 'C24c', 'C25', 'C25b', 'C25c',
   'C26', 'C26b', 'C26c', 'C26d', 'C27', 'C27b', 'C27c', 'C27d', 'C28', 'C29', 'C30', 'C31',
-  'C32', 'C33', 'C34', 'C35',
+  'C32', 'C33', 'C34', 'C35', 'C36', 'C37',
 ];
 
 function check(id: CheckId, run: (ctx: CheckContext) => CheckResult[]): Check {
