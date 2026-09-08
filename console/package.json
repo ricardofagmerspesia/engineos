@@ -4,9 +4,9 @@
   "private": true,
   "description": "Local admin console for the EngineOS plugin's capability graph (skills, agents, models, MCP, routing, rules).",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "node -e \"require('node:fs').rmSync('.test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && cd .test-build && node --test"

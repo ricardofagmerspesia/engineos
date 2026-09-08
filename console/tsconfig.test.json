@@ -6,10 +6,13 @@
   // emitting config instead of the suite pulling in a bundler or a test
   // framework. Same shape as the root package's `tsc && node --test build`.
   //
-  // Only `src/lib/**` is compiled: those modules are pure and base-path
-  // injected by design (rules/architecture.md), so they run under node with no
-  // Next runtime. Route handlers are not tested here — they are orchestration
-  // over these modules, and testing them would mean booting Next.
+  // Mostly `src/lib/**`: those modules are pure and base-path injected by
+  // design (rules/architecture.md), so they run under node with no Next
+  // runtime. `src/middleware.ts` is the one exception — it imports
+  // `next/server`, which loads and runs under plain node, so the gate in front
+  // of every /api/** route gets a test instead of no test. Route handlers are
+  // still not tested here: they are orchestration over these modules, and
+  // testing them would mean booting Next.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
@@ -26,6 +29,15 @@
   // Only the modules under test and their own imports. store/ is excluded on
   // purpose: it is the better-sqlite3 seam and uses import.meta, neither of
   // which belongs in a node --test build of pure logic.
-  "include": ["src/lib/entities/**/*.ts", "src/lib/publish-lock.ts", "src/lib/publish-lock.test.ts"],
+  "include": [
+    "src/lib/entities/**/*.ts",
+    "src/lib/publish-lock.ts",
+    "src/lib/publish-lock.test.ts",
+    "src/lib/request-origin.ts",
+    "src/lib/request-origin.test.ts",
+    "src/lib/validate/**/*.ts",
+    "src/middleware.ts",
+    "src/middleware.test.ts"
+  ],
   "exclude": ["node_modules", ".next", ".test-build"]
 }
