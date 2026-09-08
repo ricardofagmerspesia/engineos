@@ -1,276 +1,276 @@
-# EngineOS 2.0 — Templates de evidência e aceite
+# EngineOS 2.0 — Evidence and acceptance templates
 
-Formatos obrigatórios para fechar tarefa, cruzar gate e liberar release. Compatíveis com
-`rules/gates.md`, `rules/verification.md`, `skills/record-change/` e `templates/handoff.md`.
+Mandatory formats for closing a task, crossing a gate and shipping a release. Compatible with
+`rules/gates.md`, `rules/verification.md`, `skills/record-change/` and `templates/handoff.md`.
 
-## Princípio
+## Principle
 
-Uma tarefa está concluída quando existe evidência que **um terceiro consegue reexecutar**.
-Três coisas nunca contam como evidência:
+A task is complete when evidence exists that **a third party can re-execute**.
+Three things never count as evidence:
 
-- typecheck ou build passando isoladamente;
-- descrição em prosa do que o agente afirma ter feito;
-- ausência de erro onde nenhum teste rodou.
+- typecheck or build passing on its own;
+- a prose description of what the agent claims to have done;
+- the absence of an error where no test ran.
 
-Ausência de dado nunca vira sucesso. Teste pulado, custo desconhecido e erro de
-infraestrutura permanecem explicitamente marcados como **não medido**.
+Absence of data never becomes success. A skipped test, an unknown cost and an
+infrastructure error stay explicitly marked as **not measured**.
 
 ---
 
 ## Template 1 — Task card
 
-Um por tarefa `E0X-Tn`. Vive em `.engineos/changes/<data>-<slug>.md` até ser arquivado.
+One per `E0X-Tn` task. Lives in `.engineos/changes/<date>-<slug>.md` until it is archived.
 
 ```markdown
 ---
 id: E04-T7
 epico: E04
-titulo: Aprovação persistida e invalidável
-responsavel: <nome>
+titulo: Persisted and invalidatable approval
+responsavel: <name>
 dependencias: [E01-T11]
 risco: high
 autonomia: A0
 gate: validation
 status: pending | in_progress | blocked | done
-spec: docs/specs/<data>-<slug>-design.md   # obrigatório se >2 arquivos ou capacidade nova
+spec: docs/specs/<date>-<slug>-design.md   # mandatory if >2 files or a new capability
 ---
 
-## Objetivo observável
-<Uma frase. O que passa a ser verdade no sistema quando isto terminar.>
+## Observable objective
+<One sentence. What becomes true in the system when this is finished.>
 
-## Escopo
-Arquivos: <lista fechada>
-Fora de escopo: <o que explicitamente não muda>
+## Scope
+Files: <closed list>
+Out of scope: <what explicitly does not change>
 
-## Configuração de teste
-Ambiente: <local | homologação | staging>
-Dados: <origem e autorização>
-Comandos:
+## Test setup
+Environment: <local | homologation | staging>
+Data: <origin and authorization>
+Commands:
 ```
-<comandos exatos, reexecutáveis>
+<exact, re-executable commands>
 ```
 
-## Critérios de aceite
-- [ ] <pós-condição verificável 1>
-- [ ] <pós-condição verificável 2>
-- [ ] Cenário de falha: <o controle removido faz o teste falhar>
+## Acceptance criteria
+- [ ] <verifiable postcondition 1>
+- [ ] <verifiable postcondition 2>
+- [ ] Failure scenario: <removing the control makes the test fail>
 
-## Evidência
-| Item | Valor |
+## Evidence
+| Item | Value |
 |---|---|
 | Commit | <sha> |
-| config_version | <valor> |
-| Comando | <comando> |
-| Resultado | <saída resumida + link do log> |
-| Data | <ISO 8601> |
-| Não medido | <lista explícita, ou "nenhum"> |
+| config_version | <value> |
+| Command | <command> |
+| Result | <summarized output + log link> |
+| Date | <ISO 8601> |
+| Not measured | <explicit list, or "none"> |
 
 ## Rollback
-<Passos para desfazer. Se o rollback for inseguro por incompatibilidade de dados,
-dizer isso aqui e descrever a recuperação progressiva.>
+<Steps to undo. If rollback is unsafe because of data incompatibility,
+say so here and describe the progressive recovery.>
 
-## Limitações conhecidas
-<O que esta entrega não cobre e não deve ser anunciado como coberto.>
+## Known limitations
+<What this delivery does not cover and must not be announced as covered.>
 ```
 
-**Regra de recusa:** um task card sem seção de cenário de falha não fecha tarefa de risco
-`medium` ou `high`. Comprovar que algo funciona não comprova que o controle bloqueia.
+**Refusal rule:** a task card without a failure-scenario section does not close a `medium`
+or `high` risk task. Proving that something works does not prove that the control blocks.
 
 ---
 
-## Template 2 — Evidência de gate
+## Template 2 — Gate evidence
 
-Um por passagem de gate da escada `discovery → design → implementation → validation → release`.
+One per gate passage on the ladder `discovery → design → implementation → validation → release`.
 
 ```markdown
-# Gate <nome> — <épico ou fase>
+# Gate <name> — <epic or phase>
 
-Data: <ISO 8601> · Commit: <sha> · Perfil: <local | hospedado | distribuído>
+Date: <ISO 8601> · Commit: <sha> · Profile: <local | hosted | distributed>
 
-## Tarefas cobertas
-| ID | Aceite atendido | Evidência | Não medido |
+## Tasks covered
+| ID | Acceptance met | Evidence | Not measured |
 |---|---|---|---|
-| E0X-Tn | sim/não | <link> | <lista> |
+| E0X-Tn | yes/no | <link> | <list> |
 
-## Verificação executada
-| Check | Comando | Resultado | Log |
+## Verification executed
+| Check | Command | Result | Log |
 |---|---|---|---|
-| typecheck | `npm run typecheck` | verde/vermelho | <link> |
-| testes | `npm test` | verde/vermelho | <link> |
-| integridade | `scripts/validate-engineos.sh` | N checks | <link> |
-| evals determinísticos | `scripts/run-evals.sh --deterministic` | N/N | <link> |
-| evals live | `scripts/run-evals.sh --live` | N/N ou **pulado** | <link> |
+| typecheck | `npm run typecheck` | green/red | <link> |
+| tests | `npm test` | green/red | <link> |
+| integrity | `scripts/validate-engineos.sh` | N checks | <link> |
+| deterministic evals | `scripts/run-evals.sh --deterministic` | N/N | <link> |
+| live evals | `scripts/run-evals.sh --live` | N/N or **skipped** | <link> |
 
-## Cenários de falha comprovados
-| Controle | Como foi removido | Teste que passou a falhar |
+## Proven failure scenarios
+| Control | How it was removed | Test that started failing |
 |---|---|---|
 
-## Critic (obrigatório em risco high)
-Agente: `critic` · Veredito: <refutou | não refutou> · Achados: <lista ou "nenhum">
+## Critic (mandatory at high risk)
+Agent: `critic` · Verdict: <refuted | did not refute> · Findings: <list or "none">
 
-## Decisão
-Passa / Não passa · Responsável: <nome> · Riscos residuais aceitos: <lista>
+## Decision
+Pass / Fail · Owner: <name> · Accepted residual risks: <list>
 ```
 
-**Regra de recusa:** eval live pulado não pode ser reportado como aprovado. O campo é
-`pulado`, e o gate registra que não há evidência de precisão live nessa corrida.
+**Refusal rule:** a skipped live eval cannot be reported as passed. The field is
+`skipped`, and the gate records that there is no live-accuracy evidence in that run.
 
 ---
 
-## Template 3 — Checklist por gate operacional
+## Template 3 — Checklist per operational gate
 
-Um por perfil de implantação declarado em `E01-T3`. Campo pendente bloqueia a liberação
-daquele perfil — não do produto inteiro, e não silenciosamente.
+One per deployment profile declared in `E01-T3`. A pending field blocks the release of
+that profile — not of the whole product, and not silently.
 
 ```markdown
-# Prontidão operacional — perfil <nome>
+# Operational readiness — profile <name>
 
-| Gate | Entrega obrigatória | Responsável | Status | Evidência | Valor acordado |
+| Gate | Mandatory deliverable | Owner | Status | Evidence | Agreed value |
 |---|---|---|---|---|---|
-| Capacidade e SLO | Metas de sucesso, latência, concorrência e custo por classe de tarefa | Tech Lead + Operações | ⬜ | | SLO: <pendente> |
-| Segurança e isolamento | Modelo de ameaças, menor privilégio, segredos fora do modelo, autorização por recurso | Security + Backend | ⬜ | | |
-| Estado e recuperação | Inventário de dados duráveis, backup, RPO/RTO, restauração ensaiada | DevOps + Data | ⬜ | | RPO: <pendente> · RTO: <pendente> |
-| Migrações e atualização | Compatibilidade de schema/config/adapters, migração repetível, retorno | Backend + DevOps | ⬜ | | |
-| Supply chain | Lockfiles, SBOM, integridade do pacote, análise de dependências | DevOps + Security | ⬜ | | |
-| Observação e resposta | Dashboards, alertas com proprietário, runbooks, severidade | Operações | ⬜ | | |
-| Liberação gradual | Ambientes separados, flags, canário, critérios de interrupção | Release owner | ⬜ | | |
-| Dados e auditoria | Retenção, exclusão, acesso a logs, histórico protegido | Backend + Security | ⬜ | | Retenção: <pendente> |
-| Suporte | Matriz de versões/plataformas, instalação, upgrade, diagnóstico, incidente | Tech Lead + Operações | ⬜ | | |
+| Capacity and SLO | Success, latency, concurrency and cost targets per task class | Tech Lead + Operations | ⬜ | | SLO: <pending> |
+| Security and isolation | Threat model, least privilege, secrets outside the model, per-resource authorization | Security + Backend | ⬜ | | |
+| State and recovery | Inventory of durable data, backup, RPO/RTO, rehearsed restore | DevOps + Data | ⬜ | | RPO: <pending> · RTO: <pending> |
+| Migrations and upgrade | schema/config/adapter compatibility, repeatable migration, rollback | Backend + DevOps | ⬜ | | |
+| Supply chain | Lockfiles, SBOM, package integrity, dependency analysis | DevOps + Security | ⬜ | | |
+| Observation and response | Dashboards, alerts with an owner, runbooks, severity | Operations | ⬜ | | |
+| Staged release | Separate environments, flags, canary, stop criteria | Release owner | ⬜ | | |
+| Data and audit | Retention, deletion, log access, protected history | Backend + Security | ⬜ | | Retention: <pending> |
+| Support | Version/platform matrix, installation, upgrade, diagnostics, incident | Tech Lead + Operations | ⬜ | | |
 
-Legenda: ⬜ pendente · 🟡 parcial com limitação declarada · ✅ atendido com evidência
+Legend: ⬜ pending · 🟡 partial with a declared limitation · ✅ met with evidence
 ```
 
-Os campos numéricos — SLO, RPO, RTO, retenção, orçamento — **ainda não foram informados**.
-São decisão do responsável pelo produto e do Tech Lead em `E01-T3`, e cada um deles é um
-bloqueio nominal até ser preenchido. Um perfil com campo `<pendente>` não é liberado.
+The numeric fields — SLO, RPO, RTO, retention, budget — **have not been supplied yet**.
+They are a decision of the product owner and of the Tech Lead in `E01-T3`, and each one is a
+named blocker until it is filled in. A profile with a `<pending>` field is not released.
 
 ---
 
-## Template 4 — Relatório de prontidão de release
+## Template 4 — Release readiness report
 
-Um por release. É o artefato que autoriza a liberação; sua ausência é a resposta.
+One per release. It is the artifact that authorizes the release; its absence is the answer.
 
 ```markdown
-# Relatório de prontidão — EngineOS <versão>
+# Readiness report — EngineOS <version>
 
-Data: <ISO 8601> · Responsável pela liberação: <nome>
+Date: <ISO 8601> · Release owner: <name>
 
-## 1. Identidade do que é liberado
-| Item | Valor |
+## 1. Identity of what is released
+| Item | Value |
 |---|---|
 | Commit | <sha> |
-| Hash do artefato | <sha256> |
-| Versão do pacote | <x.y.z> |
-| Versão dos manifests | <x.y.z> |
-| Versão de policy.json | <x.y.z> |
-| Versões de dataset de eval | <lista> |
-| config_version de referência | <valor> |
+| Artifact hash | <sha256> |
+| Package version | <x.y.z> |
+| Manifests version | <x.y.z> |
+| policy.json version | <x.y.z> |
+| Eval dataset versions | <list> |
+| Reference config_version | <value> |
 
-## 2. Perfis liberados
-| Perfil | Liberado | Gates atendidos | Limitação declarada |
+## 2. Released profiles
+| Profile | Released | Gates met | Declared limitation |
 |---|---|---|---|
-| Local single-user | sim/não | 9/9 | |
-| Local time | sim/não | | |
-| Hospedado | **não** | | Sem authn/RBAC/isolamento (E03-T17) |
-| Distribuído | sim/não | | |
+| Local single-user | yes/no | 9/9 | |
+| Local team | yes/no | | |
+| Hosted | **no** | | No authn/RBAC/isolation (E03-T17) |
+| Distributed | yes/no | | |
 
-## 3. Validação integrada
-| # | Passo | Resultado | Evidência |
+## 3. Integrated validation
+| # | Step | Result | Evidence |
 |---|---|---|---|
-| 1 | Cadastrar skill, modelo e tool | | |
-| 2 | Publicar configuração | | |
+| 1 | Register a skill, a model and a tool | | |
+| 2 | Publish configuration | | |
 | ... | | | |
-| 11 | Restaurar backup e conferir compatibilidade | | |
+| 11 | Restore a backup and check compatibility | | |
 
-## 4. Capacidades anunciadas
-Cada linha aponta para implementação e evidência. Capacidade sem as duas não entra.
-| Capacidade | Implementação | Evidência | Perfis |
+## 4. Announced capabilities
+Every row points to an implementation and to evidence. A capability without both does not go in.
+| Capability | Implementation | Evidence | Profiles |
 |---|---|---|---|
 
-## 5. O que não está pronto
-<Lista explícita. Funcionalidade desenhada e não implementada aparece aqui,
-nunca na seção 4.>
+## 5. What is not ready
+<Explicit list. Functionality that is designed and not implemented appears here,
+never in section 4.>
 
-## 6. Riscos residuais aceitos
-| Risco | Impacto | Por que foi aceito | Quem aceitou | Gatilho de reversão |
+## 6. Accepted residual risks
+| Risk | Impact | Why it was accepted | Who accepted it | Reversal trigger |
 |---|---|---|---|---|
 
 ## 7. Rollback
-Procedimento: <passos>
-Compatibilidade de dados confirmada: sim/não
-Se não: recuperação progressiva descrita em <link>
+Procedure: <steps>
+Data compatibility confirmed: yes/no
+If not: progressive recovery described in <link>
 
-## 8. Assinaturas
-Produto: <nome/data> · Tech Lead: <nome/data> · Security: <nome/data> · Operações: <nome/data>
+## 8. Signatures
+Product: <name/date> · Tech Lead: <name/date> · Security: <name/date> · Operations: <name/date>
 ```
 
 ---
 
-## Template 5 — Handoff entre ondas
+## Template 5 — Handoff between waves
 
-Barreira de onda e fim de sessão. Estende `templates/handoff.md`.
+Wave barrier and end of session. Extends `templates/handoff.md`.
 
 ```markdown
-## Objetivo
-<o que esta onda deveria tornar verdadeiro>
+## Objective
+<what this wave was supposed to make true>
 
-## Estado
-Gate atual: <nome> · Risco: <tier> · Onda: <F<n>.<m>>
-config_version em uso: <valor>
+## State
+Current gate: <name> · Risk: <tier> · Wave: <F<n>.<m>>
+config_version in use: <value>
 
-## Feito
-<com evidência, não com adjetivos>
+## Done
+<with evidence, not with adjectives>
 
-## Decisões tomadas
-<e por quê — para que a próxima sessão não as reabra sem motivo>
+## Decisions taken
+<and why — so the next session does not reopen them without reason>
 
-## Arquivos tocados
-<lista>
+## Files touched
+<list>
 
-## Evidência
-<comandos e resultados>
+## Evidence
+<commands and results>
 
-## Falhas conhecidas
-<o que está vermelho agora>
+## Known failures
+<what is red right now>
 
-## Riscos em aberto
-<o que pode quebrar e ainda não foi testado>
+## Open risks
+<what can break and has not been tested yet>
 
-## Não feito
-<explicitamente>
+## Not done
+<explicitly>
 
-## Próximo passo
-<uma ação concreta — nunca "continuar de onde parou">
+## Next step
+<one concrete action — never "continue where you left off">
 ```
 
 ---
 
-## Template 6 — Registro de "não medido"
+## Template 6 — "Not measured" register
 
-Anexo de qualquer relatório que contenha lacuna. Existe para impedir que a lacuna
-desapareça na próxima leitura.
+An annex to any report that contains a gap. It exists to stop the gap from
+disappearing at the next reading.
 
 ```markdown
-| Item | Por que não foi medido | O que seria necessário | Bloqueia qual gate |
+| Item | Why it was not measured | What it would take | Which gate it blocks |
 |---|---|---|---|
-| Precisão live do roteador | 33 casos ignorados na corrida <id> | Credenciais e teto de custo | E06 / gate validation |
-| Custo por tarefa | Provider não reporta no plano atual | Reconciliação por fatura | E05-T3 / gate release |
+| Live router accuracy | 33 cases skipped in run <id> | Credentials and a cost ceiling | E06 / validation gate |
+| Cost per task | The provider does not report it on the current plan | Invoice-based reconciliation | E05-T3 / release gate |
 ```
 
 ---
 
-## Como estes templates se ligam ao que já existe
+## How these templates connect to what already exists
 
-| Template | Ancora em | Verificado por |
+| Template | Anchored in | Verified by |
 |---|---|---|
-| Task card | não-negociável #5 do `CLAUDE.md` (change record) | hook `record-verify.sh` (Stop gate) |
-| Evidência de gate | `rules/gates.md`, `rules/verification.md` | hooks `stop-verify.sh` + revisão do `critic` |
-| Checklist operacional | §8 do plano 2.0 | revisão do Tech Lead por perfil |
-| Relatório de prontidão | §8 e validação integrada | assinatura nominal, não automação |
-| Handoff | `templates/handoff.md` | barreira de onda |
-| Não medido | `rules/verification.md` | leitura obrigatória no gate de release |
+| Task card | non-negotiable #5 of `CLAUDE.md` (change record) | `record-verify.sh` hook (Stop gate) |
+| Gate evidence | `rules/gates.md`, `rules/verification.md` | `stop-verify.sh` hook + `critic` review |
+| Operational checklist | §8 of the 2.0 plan | Tech Lead review per profile |
+| Readiness report | §8 and integrated validation | named signature, not automation |
+| Handoff | `templates/handoff.md` | wave barrier |
+| Not measured | `rules/verification.md` | mandatory reading at the release gate |
 
-O hook `record-verify.sh` depende de `jq`. Sem `jq` ele sai em silêncio e o Stop gate de
-change record simplesmente não dispara — o que significa que a ausência de bloqueio não
-prova conformidade. Verificar `jq` faz parte da configuração de teste de qualquer tarefa
-que dependa desse gate.
+The `record-verify.sh` hook depends on `jq`. Without `jq` it exits silently and the change
+record Stop gate simply does not fire — which means that the absence of a block does not
+prove compliance. Checking `jq` is part of the test setup of any task that depends on
+that gate.
