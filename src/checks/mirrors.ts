@@ -8,11 +8,11 @@
 // (foreign keys, uniqueness, well-formedness), canaries that pin a literal
 // string, and joins across two registry fields are not mirrors and stay code in
 // their family; each check's remaining assertions are named in its comment.
-import type { Registries } from '../kernel/context';
+import type { RegistryFiles } from '../kernel/context';
 import type { CheckId } from './ids';
 
 export type Direction = 'doc-names-registry' | 'registry-names-doc' | 'both';
-export type RegistryName = keyof Registries;
+export type RegistryName = keyof RegistryFiles;
 
 // Dot segments under a registry name. A segment may carry `[]` (map over an
 // array) or `[id=x]` (the one element whose id is x — every registry array in

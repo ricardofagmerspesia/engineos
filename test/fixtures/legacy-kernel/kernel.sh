@@ -24,6 +24,7 @@
 #   kernel.sh scale --prompt <text>
 #   kernel.sh route-escalate --prompt <text>
 #   kernel.sh resolve-task --prompt <text>
+#   kernel.sh skill-state [--id <skill>]
 #
 # Exit: 0 success (a null/no-match answer IS an answer), 1 error. Errors are
 # {"error": "..."} on stdout so callers parse a single stream. jq is REQUIRED —
@@ -87,6 +88,69 @@ require_positional() {
   [ $# -eq 1 ] || err "$cmd takes exactly one argument, got $#"
 }
 
+# ------------------------------------------------------- skill enablement
+# `enabled: false` in skills/<id>/SKILL.md frontmatter is the console's disable
+# switch. Until now nothing outside the console read it: a skill could be
+# disabled in the UI and still be handed to the model by every routing answer.
+# A control that changes a file and nothing else is not a control, and showing
+# it as one is worse than not having it.
+#
+# What this makes true: the kernel stops RECOMMENDING a disabled skill, and
+# says so in `skills_suppressed` instead of dropping it silently — a suppressed
+# recommendation has to be visible or the operator cannot tell an empty list
+# from an enforced one.
+#
+# What it does NOT make true, and must not be advertised as: EngineOS cannot
+# stop a person from invoking a disabled skill by name, because the Skill tool
+# reads the directory and no hook sits between. See docs/COMPATIBILITY.md,
+# "What `enabled: false` does and does not do".
+#
+# Absence of the key means enabled — the console's contract
+# (console/src/lib/entities/skills.ts) and the only reading that keeps every
+# skill written before this field existed working.
+SKILL_STATE_CACHE=""
+skill_state_json() {
+  [ -n "$SKILL_STATE_CACHE" ] && { printf '%s' "$SKILL_STATE_CACHE"; return 0; }
+  SKILL_STATE_CACHE=$(
+    for d in "$ROOT"/skills/*/; do
+      [ -f "$d/SKILL.md" ] || continue
+      id="${d%/}"; id="${id##*/}"
+      # Only the FIRST frontmatter block is read, and only when the file opens
+      # with one: an `enabled:` line in prose further down is documentation,
+      # not configuration, and must never flip a skill off.
+      case "$(awk '
+        NR==1 && $0 !~ /^---[[:space:]]*$/ {exit}
+        NR==1 {next}
+        /^---[[:space:]]*$/ {exit}
+        /^enabled:/ {sub(/^enabled:[ \t]*/, ""); sub(/[[:space:]]*$/, ""); print; exit}
+      ' "$d/SKILL.md")" in
+        false) printf '%s\tfalse\n' "$id" ;;
+        *)     printf '%s\ttrue\n'  "$id" ;;
+      esac
+    done | jq -R -s -c '
+      split("\n") | map(select(length > 0) | split("\t"))
+      | map({(.[0]): (.[1] == "true")}) | add // {}'
+  )
+  printf '%s' "$SKILL_STATE_CACHE"
+}
+
+# ---------------------------------------------------------------- skill-state
+# The answer on its own, so the console, a check and a hook all read the same
+# resolution instead of each re-parsing frontmatter its own way.
+cmd_skill_state() {
+  local id=""
+  while [ $# -gt 0 ]; do case "$1" in --id) id="${2:-}"; shift 2 ;; *) err "skill-state: unknown argument $1" ;; esac; done
+  local st; st="$(skill_state_json)"
+  if [ -n "$id" ]; then
+    jq -n --arg id "$id" --argjson st "$st" \
+      '{id: $id, exists: ($st | has($id)), enabled: ($st[$id] != false)}'
+  else
+    jq -n --argjson st "$st" \
+      '{skills: ($st | to_entries | map({id: .key, enabled: .value}) | sort_by(.id)),
+        disabled: ($st | to_entries | map(select(.value == false) | .key) | sort)}'
+  fi
+}
+
 # ---------------------------------------------------------------- route-path
 # First exclusion wins; then domains in precedence order, first matching glob
 # wins — the same first-match-wins semantics as the case ladder this replaced.
@@ -140,9 +204,12 @@ cmd_route_path() {
   if [ -z "$hit" ]; then
     jq -n '{domain: null, excluded: false}'
   else
-    jq --arg d "$hit" '
+    jq --arg d "$hit" --argjson st "$(skill_state_json)" '
       .domains[] | select(.id==$d)
-      | {domain: .id, rules, skills, agent, risk_floor, hook_guidance, excluded: false}' "$R"
+      | {domain: .id, rules,
+         skills:            [ .skills[] | select($st[.] != false) ],
+         skills_suppressed: [ .skills[] | select($st[.] == false) | {id: ., reason: "disabled"} ],
+         agent, risk_floor, hook_guidance, excluded: false}' "$R"
   fi
 }
 
@@ -159,7 +226,7 @@ cmd_route_intent() {
   # spawned sed + grep for every signal (136 today), making routing take ~3s.
   # `bounded_contains` preserves the old non-alphanumeric boundary semantics:
   # "add" matches "add endpoint" but never "addressed".
-  jq -n --arg text "$text" --slurpfile intents "$I" '
+  jq -n --arg text "$text" --argjson st "$(skill_state_json)" --slurpfile intents "$I" '
     def bounded_contains($haystack; $needle):
       ($needle | length) as $n
       | any($haystack | indices($needle)[];
@@ -174,7 +241,10 @@ cmd_route_intent() {
          | select(any(.signals[]?;
              . as $signal
              | bounded_contains($lower; ($signal | ascii_downcase))))
-         | {id, title, rules, skills, agents, commands, mcp,
+         | {id, title, rules,
+            skills:            [ .skills[]? | select($st[.] != false) ],
+            skills_suppressed: [ .skills[]? | select($st[.] == false) | {id: ., reason: "disabled"} ],
+            agents, commands, mcp,
             model_tier, risk_floor, note} ]) as $matches
     | {matches: $matches, ambiguous: (($matches | length) == 0)}'
 }
@@ -826,15 +896,21 @@ cmd_resolve_task() {
   fi
 
   jq -n --arg prompt "$prompt" --argjson route "$route" --argjson decisions "$decisions" \
-    --argjson hitl "$hitl" \
+    --argjson hitl "$hitl" --argjson st "$(skill_state_json)" \
     --slurpfile intents "$I" --slurpfile pol "$P" '
     ($route.intents) as $ids
     | ([ $intents[0].intents[]
          | select(.id as $id | $ids | index($id) != null) ]) as $matched
     | (reduce ($matched | map(.rules[]?) | .[]) as $x
         ([]; if index($x) then . else . + [$x] end)) as $rules
+    # $matched comes from intents.json directly here, not through
+    # cmd_route_intent, so the enablement filter has to be applied again at this
+    # site. Two answer shapes, one rule: a disabled skill is never recommended,
+    # and never disappears without saying why.
     | (reduce ($matched | map(.skills[]?) | .[]) as $x
-        ([]; if index($x) then . else . + [$x] end)) as $skills
+        ([]; if index($x) then . else . + [$x] end)) as $all_skills
+    | ([ $all_skills[] | select($st[.] != false) ]) as $skills
+    | ([ $all_skills[] | select($st[.] == false) | {id: ., reason: "disabled"} ]) as $skills_suppressed
     | (reduce ($matched | map(.commands[]?) | .[]) as $x
         ([]; if index($x) then . else . + [$x] end)) as $commands
     | (reduce ($matched | map(.mcp[]?) | .[]) as $x
@@ -874,6 +950,7 @@ cmd_resolve_task() {
          rules: $rules,
          policy_rules: $policy_rules,
          skills: $skills,
+         skills_suppressed: $skills_suppressed,
          commands: $commands,
          mcp: $mcp,
          model_tier: $route.model_tier,
@@ -915,5 +992,6 @@ case "$cmd" in
   scale)          cmd_scale "$@" ;;
   route-escalate) cmd_route_escalate "$@" ;;
   resolve-task)   cmd_resolve_task "$@" ;;
-  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|repair|admit|breaker|hitl|waves|decision-rules|scale|route-escalate|resolve-task} ..." ;;
+  skill-state)    cmd_skill_state "$@" ;;
+  *) err "usage: kernel.sh {route-path|route-intent|model|risk|gates|repair|admit|breaker|hitl|waves|decision-rules|scale|route-escalate|resolve-task|skill-state} ..." ;;
 esac

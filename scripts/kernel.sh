@@ -4,6 +4,6 @@
 # dist/engineos.cjs. ENGINEOS_ROOT lets a relocated copy of this file answer from
 # its own registries/ (src/testing/harness.ts relocatedRoot).
 # Subcommands: resolve route-path route-intent model risk gates repair admit breaker
-#              hitl waves decision-rules scale route-escalate resolve-task
+#              hitl waves decision-rules scale route-escalate resolve-task skill-state
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINEOS_ROOT="$ROOT" exec node "$ROOT/dist/engineos.cjs" kernel "$@"

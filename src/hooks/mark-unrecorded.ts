@@ -13,6 +13,7 @@ import { silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { gitDir } from '../lib/git';
 import { globMatch } from '../lib/glob';
+import { hookPathSlug } from '../lib/slug';
 import { loadRouting } from '../registry/routing';
 
 // The code-change allowlist. Shared with route-before-change so the two cannot
@@ -58,8 +59,15 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (env.cwd === '') return silent;
   const dir = gitDir(env.cwd, ctx.spawn);
   if (dir === null) return silent;
+  // The session id is harness-supplied and here it NAMES A FILE, so it takes the
+  // path class rather than the constant prefix as its only containment — a value
+  // of "../../x" would otherwise write outside the git dir. ../lib/slug narrows
+  // the same field for the telemetry file names (src/hooks/span-writer.ts), and
+  // ./record-verify derives the marker identically or the gate stops firing.
+  const sid = hookPathSlug(env.sessionId);
+  if (sid === null) return silent;
   try {
-    writeFileSync(`${dir}/${UNRECORDED_MARKER_PREFIX}${env.sessionId}`, '');
+    writeFileSync(`${dir}/${UNRECORDED_MARKER_PREFIX}${sid}`, '');
   } catch {
     // bash `2>/dev/null || true`: an unwritable git dir is not the edit's problem.
   }

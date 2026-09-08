@@ -1,6 +1,50 @@
-# Shell scripts (hooks, install.sh, scripts/) execute in POSIX bash on every
-# platform; a CR before the newline breaks backslash line-continuations and
-# mangles output. Force LF so core.autocrlf=true on Windows cannot rewrite
-# them to CRLF at checkout.
-*.sh text eol=lf
+# EngineOS — normalização de fim de linha (E01/E02).
+#
+# Sem esta política, um checkout em Windows converte todo o texto para CRLF e
+# o working tree passa a divergir do HEAD em centenas de arquivos que não
+# tiveram mudança semântica alguma, tornando impossível distinguir trabalho
+# real de ruído. LF é o padrão para todo texto; exceções explícitas abaixo.
+
+* text=auto eol=lf
+
+# Shell scripts (hooks, install.sh, scripts/) executam em bash POSIX em toda
+# plataforma; um CR antes do newline quebra continuações de linha com barra
+# invertida e corrompe a saída.
+*.sh        text eol=lf
+*.bash      text eol=lf
+
+# Formatos consumidos por parsers do kernel, do console e da CI.
+*.md        text eol=lf
+*.mdc       text eol=lf
+*.json      text eol=lf
+*.jsonl     text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.js        text eol=lf
+*.py        text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.sql       text eol=lf
+*.gitignore text eol=lf
+LICENSE     text eol=lf
+
 dist/engineos.cjs text eol=lf
+
+# PowerShell é executado por hosts Windows; mantém CRLF por convenção da
+# plataforma e não é consumido pelos parsers POSIX.
+*.ps1       text eol=crlf
+
+# Binários — nunca normalizar.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.woff      binary
+*.woff2     binary

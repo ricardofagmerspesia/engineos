@@ -1,0 +1,31 @@
+{
+  // Node-runnable build of the pure library modules, for `node --test`.
+  //
+  // The app's own tsconfig is Next's: noEmit, bundler resolution, JSX preserved.
+  // None of that can be executed by node directly, so the tests get their own
+  // emitting config instead of the suite pulling in a bundler or a test
+  // framework. Same shape as the root package's `tsc && node --test build`.
+  //
+  // Only `src/lib/**` is compiled: those modules are pure and base-path
+  // injected by design (rules/architecture.md), so they run under node with no
+  // Next runtime. Route handlers are not tested here — they are orchestration
+  // over these modules, and testing them would mean booting Next.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2022"],
+    "jsx": "react-jsx",
+    "incremental": false,
+    "plugins": [],
+    "types": ["node"]
+  },
+  // Only the modules under test and their own imports. store/ is excluded on
+  // purpose: it is the better-sqlite3 seam and uses import.meta, neither of
+  // which belongs in a node --test build of pure logic.
+  "include": ["src/lib/entities/**/*.ts", "src/lib/publish-lock.ts", "src/lib/publish-lock.test.ts"],
+  "exclude": ["node_modules", ".next", ".test-build"]
+}

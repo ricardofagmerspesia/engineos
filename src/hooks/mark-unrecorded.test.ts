@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { resolveRoot } from '../registry/paths';
@@ -31,8 +31,16 @@ function editOf(cwd: string, sid: string, file: string): HookEnvelope {
   return decoded;
 }
 
+// The name is spelled out rather than derived: the marker file name is the
+// contract ./record-verify reads, so a test that recomputed it with the hook's
+// own slug helper would agree with itself. Every plain `S…` id below is already
+// in the path class, so it slugs to itself.
 function markerFor(repo: string, sid: string): string {
   return join(repo, '.git', `ENGINEOS_UNRECORDED.${sid}`);
+}
+
+function markerNames(repo: string): string[] {
+  return readdirSync(join(repo, '.git')).filter((entry) => entry.startsWith('ENGINEOS_UNRECORDED'));
 }
 
 test('the allowlist is the eight code extensions the router shares', () => {
@@ -47,6 +55,30 @@ test('a code edit raises the session-scoped flag and stays silent', (t) => {
   const repo = fixtureRepo(tempRoot(t));
   assert.deepEqual(run(editOf(repo, 'S1', join(repo, 'src', 'foo.ts')), context()), silent);
   assert.equal(existsSync(markerFor(repo, 'S1')), true);
+});
+
+test('a traversal-shaped session id names a file inside the git dir, nowhere else', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(run(editOf(repo, '../../x', join(repo, 'src', 'foo.ts')), context()), silent);
+  // Every '.' and '/' is out of the path class, so the id can name only a direct
+  // child of the git dir — it can neither escape it nor name a dotted parent.
+  assert.deepEqual(markerNames(repo), ['ENGINEOS_UNRECORDED.------x']);
+  assert.equal(existsSync(join(repo, 'x')), false);
+  assert.equal(existsSync(join(repo, '.git', 'x')), false);
+});
+
+test('a session id in the path class already writes the plain name', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  run(editOf(repo, 'sess-42', join(repo, 'src', 'foo.ts')), context());
+  assert.deepEqual(markerNames(repo), ['ENGINEOS_UNRECORDED.sess-42']);
 });
 
 test('every allowlisted extension raises the flag', (t) => {

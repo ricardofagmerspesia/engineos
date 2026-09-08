@@ -3,6 +3,8 @@
 // Never blocks on infra quirks — only on genuine red (a real lint/type/test
 // failure). Tests are opt-in, not part of the default gate (rules/verification.md
 // "Tests are opt-in"); ENGINEOS_VERIFY_TESTS=1 folds the test target back in.
+// It runs ONLY in projects that have adopted EngineOS — a working tree carrying
+// `.engineos/` — because the checks it runs are the target repo's own scripts.
 //
 // Port of hooks/stop-verify.sh. The ladder below runs once for every runner: Nx
 // and pnpm/yarn/npm are adapters behind ./runner.ts, so the timeout table is
@@ -13,7 +15,7 @@
 // kernel's repair section (../kernel/repair), which is the one reader of
 // registries/policy.json .repair.max_fix_attempts_per_check — this hook is a
 // shim over that answer, never a private copy of the numbers.
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
@@ -82,6 +84,13 @@ export function verify(
   if (env.cwd === '') return silent;
   const root = repoRoot(env.cwd, ctx.spawn);
   if (root === null) return silent;
+  // Adoption is consent. Hooks run outside the tool-permission prompt, so every
+  // `npm run <target>` below would execute whatever the nearest package.json
+  // declares with nothing asking the user first — a repository that has not
+  // adopted EngineOS must never have its scripts run by this gate. The marker is
+  // the same one the telemetry sink reads: `.engineos/` at the working tree root,
+  // as ensure-project-layout.ts defines it. No env override.
+  if (!isDirectory(join(root, '.engineos'))) return silent;
 
   const files = changedFiles(env.transcriptPath);
   if (files.length === 0) return silent;

@@ -38,8 +38,12 @@ function editOf(cwd: string, sid: string, file: string): HookEnvelope {
   return decode(envelope({ event: 'PostToolUse', cwd, sid, tool: { name: 'Edit', input: { file_path: file } } }));
 }
 
-function markerFor(repo: string, sid: string): string {
-  return join(repo, '.git', `ENGINEOS_UNRECORDED.${sid}`);
+// Takes the SLUGGED id, spelled out rather than recomputed with the hook's own
+// helper: the file name is the contract the writer and the reader share, and a
+// helper that derived it here would agree with itself. Every plain `S…` id below
+// is already in the path class, so it slugs to itself.
+function markerFor(repo: string, sluggedSid: string): string {
+  return join(repo, '.git', `ENGINEOS_UNRECORDED.${sluggedSid}`);
 }
 
 // The two halves are exercised together: the gate's contract is that it blocks on
@@ -73,6 +77,31 @@ test('the block reason names the defer marker inside a touch command', (t) => {
     decision.reason,
     `EngineOS gate: code changed but the change was not recorded. Run the record-change skill — mark the changes/ record done, register files + movements, git mv it to archived/. That step clears this flag. To defer recording for this session instead, create the marker: touch "${markerFor(repo, 'S1')}.deferred"`,
   );
+});
+
+// Writer and reader must narrow the harness-supplied id identically, or the flag
+// is written under one name and looked for under another and the gate stops
+// firing. An id carrying '/' and '.' is where the two could drift.
+test('a session id that needs narrowing is written and found under the same name', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  markUnrecorded(editOf(repo, 'a/b..c', join(repo, 'src', 'foo.ts')), context());
+  assert.equal(existsSync(markerFor(repo, 'a-b--c')), true);
+  assert.equal(run(stopOf(repo, 'a/b..c'), context()).kind, 'block');
+});
+
+test('the defer marker of a narrowed session id silences the gate', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  markUnrecorded(editOf(repo, 'a/b..c', join(repo, 'src', 'foo.ts')), context());
+  writeFileSync(`${markerFor(repo, 'a-b--c')}.deferred`, '');
+  assert.deepEqual(run(stopOf(repo, 'a/b..c'), context()), silent);
 });
 
 test('another session is not blocked by this session flag', (t) => {

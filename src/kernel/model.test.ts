@@ -104,6 +104,7 @@ function withModels(models: ModelsRegistry): Registries {
     get decisionRules() { return regs.decisionRules; },
     get capabilities() { return regs.capabilities; },
     get agents() { return regs.agents; },
+    get skillState() { return regs.skillState; },
   };
 }
 

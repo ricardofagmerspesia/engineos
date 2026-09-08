@@ -12,6 +12,10 @@
 // injected spawner; this file is the other half — real npm, real git, real
 // telemetry files — so the two are deliberately not the same assertions.
 //
+// Every fixture carries `.engineos/.keep`: the gate runs only in an adopted
+// project, so a fixture without the marker would make its case pass on the
+// opt-in guard rather than on the behaviour it names.
+//
 // Each case that supplies a transcript runs twice, once per transcript shape:
 // the harness default (`input`, what a real Claude transcript carries) and
 // `{ legacy: true }` (`tool_input`, the shape the bash suite planted).
@@ -169,7 +173,7 @@ function both(name: string, body: (t: TestContext, legacy: boolean) => void): vo
 
 both('case1 no-package.json — no block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path).stdout), '');
 });
@@ -179,7 +183,7 @@ both('case1 no-package.json — no block', (t, legacy) => {
 // failing test must not block the gate.
 both('case2 failing-test-not-opted-in — no block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path).stdout), '');
 });
@@ -188,7 +192,7 @@ both('case2 failing-test-not-opted-in — no block', (t, legacy) => {
 // and the failing script must now block.
 both('case2b failing-test-opted-in — block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   const result = invoke(repo, path, { env: { ENGINEOS_VERIFY_TESTS: '1' } });
   assert.equal(decisionOf(result.stdout), 'block');
@@ -197,7 +201,7 @@ both('case2b failing-test-opted-in — block', (t, legacy) => {
 // Proves the opt-in path itself does not spuriously block when the test passes.
 both('case3 passing-test-opted-in — no block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 0' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 0' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   const result = invoke(repo, path, { env: { ENGINEOS_VERIFY_TESTS: '1' } });
   assert.equal(decisionOf(result.stdout), '');
@@ -205,21 +209,21 @@ both('case3 passing-test-opted-in — no block', (t, legacy) => {
 
 both('case4 loop-guard — no block with stop_hook_active=true', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path, { stopHookActive: true }).stdout), '');
 });
 
 both('case5 no-test-script — no block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ lint: 'exit 0' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ lint: 'exit 0' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path).stdout), '');
 });
 
 both('case6 failing-lint-pass-test — block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 0', lint: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 0', lint: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path).stdout), 'block');
 });
@@ -233,6 +237,7 @@ both('case7 space-in-path — block', (t, legacy) => {
     files: {
       'my pkg/package.json': `${JSON.stringify(pkg({ test: 'exit 1' }))}\n`,
       'my pkg/src/x.ts': '',
+      '.engineos/.keep': '',
     },
   });
   const path = transcriptFile(repo, edits(repo, 'my pkg/src/x.ts'), legacy);
@@ -244,7 +249,7 @@ both('case7 space-in-path — block', (t, legacy) => {
 // file's package into the gate, even when its test script exits 1.
 both('case8 read-only-no-block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/readonly.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/readonly.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, reads(repo, 'src/readonly.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path).stdout), '');
 });
@@ -260,6 +265,7 @@ both('case9 mixed-read-edit-line — no block', (t, legacy) => {
       'src/edited.ts': '',
       'pkgR/package.json': `${JSON.stringify(pkg({ test: 'exit 1' }))}\n`,
       'pkgR/src/readonly.ts': '',
+      '.engineos/.keep': '',
     },
   });
   const path = mixedTranscriptFile(repo, join(repo, 'pkgR/src/readonly.ts'), join(repo, 'src/edited.ts'), legacy);
@@ -276,7 +282,7 @@ both('case9 mixed-read-edit-line — no block', (t, legacy) => {
 both('case10 no-jq-loop-guard — no block with stop_hook_active=true', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
   const root = tempRoot(t);
-  const repo = fixtureRepo(root, { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(root, { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   const bin = join(root, 'nojq-bin');
   mkdirSync(bin, { recursive: true });
@@ -300,7 +306,7 @@ both('case11 repair-ladder-in-reason', (t, legacy) => {
   assert.notEqual(ladder, '', 'kernel repair --check lint --attempt 1 answered no reason');
   // red via lint, not test: tests are opt-in, so a failing "test" script alone no
   // longer makes the default gate go red.
-  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ lint: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ lint: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   const reason = reasonOf(invoke(repo, path).stdout);
   assert.equal(
@@ -375,7 +381,7 @@ both('case16 ancient-node-infra-skip — no block (shim, driven as bash)', (t, l
     return;
   }
   const root = tempRoot(t);
-  const repo = fixtureRepo(root, { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '' } });
+  const repo = fixtureRepo(root, { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   const oldBin = join(root, 'oldbin');
   mkdirSync(oldBin, { recursive: true });
@@ -404,7 +410,7 @@ both('case17 npm-arm-infra-guard — no block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
   const repo = fixtureRepo(tempRoot(t), {
     pkg: pkg({ lint: 'echo "Missing script: \\"lint\\""; exit 1' }),
-    files: { 'src/x.ts': '' },
+    files: { 'src/x.ts': '', '.engineos/.keep': '' },
   });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   assert.equal(decisionOf(invoke(repo, path).stdout), '');
