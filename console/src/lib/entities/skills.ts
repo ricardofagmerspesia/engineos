@@ -8,11 +8,12 @@
 // for values (reusing JSON.parse/stringify, not a new dependency) round-trips
 // safely without needing full YAML nesting support.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { parseMarkdownWithFrontmatter } from './frontmatter';
+import { loadGraph, resolveSkillRelations } from './relations';
 import type { SkillEntity } from './types';
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 export class SkillWriteError extends Error {
   constructor(message: string) {
@@ -21,56 +22,71 @@ export class SkillWriteError extends Error {
   }
 }
 
-interface ParsedFrontmatter {
-  block: string;
-  body: string;
-  data: Record<string, string | boolean>;
+/**
+ * Identity of a source file's exact bytes. Not a timestamp: mtime moves when a
+ * tool rewrites a file with identical content, and does not move at all on some
+ * filesystems within the same second — either way it answers the wrong
+ * question. What publish needs to know is whether the CONTENT changed.
+ */
+export function hashSource(raw: string): string {
+  return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
-/** Splits raw SKILL.md content into its frontmatter block and body. Throws if no frontmatter block is found. */
-function splitFrontmatter(raw: string): { block: string; body: string } {
-  const match = FRONTMATTER_RE.exec(raw);
-  if (!match) {
-    throw new Error('no frontmatter block found (file must start with "---")');
-  }
-  return { block: match[1] ?? '', body: raw.slice(match[0].length) };
+export interface BaseConflict {
+  entityId: string;
+  sourcePath: string;
+  /** 'changed' — the file moved on since this draft; 'unknown-base' — the draft predates the guard; 'missing' — the file is gone. */
+  reason: 'changed' | 'unknown-base' | 'missing';
 }
 
-/** Reads one flat "key: value" line. Values may be a JSON string literal (quoted, escaped) or a bare token. */
-function parseFrontmatterLine(line: string, lineNumber: number): [string, string | boolean] | null {
-  if (line.trim() === '') return null;
-  const match = /^([A-Za-z0-9_-]+):[ \t]?(.*)$/.exec(line);
-  if (!match) {
-    throw new Error(`unsupported frontmatter syntax at line ${lineNumber}: ${JSON.stringify(line)}`);
-  }
-  const key = match[1] as string;
-  const rawValue = (match[2] ?? '').trim();
-  if (rawValue === 'true') return [key, true];
-  if (rawValue === 'false') return [key, false];
-  if (rawValue.startsWith('"')) {
-    try {
-      return [key, JSON.parse(rawValue) as string];
-    } catch (err) {
-      throw new Error(`malformed quoted value at line ${lineNumber}: ${(err as Error).message}`);
+/**
+ * Compares each entity's recorded base against the file on disk right now.
+ *
+ * This is the whole point of the guard, so it is worth stating plainly: the
+ * console edits a COPY. Between the moment a draft captured a file and the
+ * moment someone clicks publish, that file can be edited by hand, by another
+ * console session, or by a git operation. Writing the draft then silently
+ * discards that work — no error, no diff, no trace. Publishing is refused
+ * instead, and the operator is told which files moved.
+ *
+ * Pure and read-only: it never writes, so publish can call it before touching
+ * anything.
+ */
+export function detectBaseConflicts(basePath: string, entities: SkillEntity[]): BaseConflict[] {
+  const conflicts: BaseConflict[] = [];
+
+  for (const entity of entities) {
+    const sourcePath = entity.sourcePaths[0];
+    if (!sourcePath) {
+      conflicts.push({ entityId: entity.id, sourcePath: '(none)', reason: 'missing' });
+      continue;
+    }
+
+    const absolutePath = path.join(basePath, sourcePath);
+    if (!existsSync(absolutePath)) {
+      conflicts.push({ entityId: entity.id, sourcePath, reason: 'missing' });
+      continue;
+    }
+
+    if (!entity.baseHash) {
+      conflicts.push({ entityId: entity.id, sourcePath, reason: 'unknown-base' });
+      continue;
+    }
+
+    if (hashSource(readFileSync(absolutePath, 'utf8')) !== entity.baseHash) {
+      conflicts.push({ entityId: entity.id, sourcePath, reason: 'changed' });
     }
   }
-  return [key, rawValue];
+
+  return conflicts;
 }
 
-function parseFrontmatterBlock(block: string): Record<string, string | boolean> {
-  const data: Record<string, string | boolean> = {};
-  const lines = block.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const parsed = parseFrontmatterLine(lines[i] ?? '', i + 1);
-    if (parsed) data[parsed[0]] = parsed[1];
-  }
-  return data;
-}
-
-function parseSkillFile(raw: string): ParsedFrontmatter {
-  const { block, body } = splitFrontmatter(raw);
-  const data = parseFrontmatterBlock(block);
-  return { block, body, data };
+/**
+ * SKILL.md's frontmatter dialect is the shared one; the reader lives in
+ * `frontmatter.ts` so agents and skills cannot drift into two dialects.
+ */
+function parseSkillFile(raw: string) {
+  return parseMarkdownWithFrontmatter(raw);
 }
 
 function toRelativePath(basePath: string, absolute: string): string {
@@ -78,7 +94,10 @@ function toRelativePath(basePath: string, absolute: string): string {
 }
 
 /**
- * Parses every `SKILL.md` under each immediate subdirectory of `<basePath>/skills`.
+ * Parses every `SKILL.md` under each immediate subdirectory of `<basePath>/skills`,
+ * resolving each one's real relations (`usedByAgents`, `dependsOnRules`) against
+ * the agents, rules and registries in the same tree — see `relations.ts` for why
+ * these must not be the fixed `[]` they used to be.
  * A malformed file yields a `status: 'error'` entity with `parseError` set rather
  * than throwing — one bad file must not stop the rest of the directory from parsing.
  */
@@ -91,6 +110,9 @@ export function parseSkills(basePath: string): SkillEntity[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const result: SkillEntity[] = [];
+  // Read the agent bodies, the registries and the rule list once for the whole
+  // directory, not once per skill.
+  const graph = loadGraph(basePath);
 
   for (const entry of entries) {
     const skillFile = path.join(skillsDir, entry.name, 'SKILL.md');
@@ -102,7 +124,9 @@ export function parseSkills(basePath: string): SkillEntity[] {
 
     try {
       const raw = readFileSync(skillFile, 'utf8');
-      const { data } = parseSkillFile(raw);
+      const { data, body } = parseSkillFile(raw);
+      const relations = resolveSkillRelations(graph, id, body);
+      const baseHash = hashSource(raw);
 
       const name = typeof data.name === 'string' && data.name.trim() !== '' ? data.name : id;
       const description = typeof data.description === 'string' ? data.description : '';
@@ -117,8 +141,9 @@ export function parseSkills(basePath: string): SkillEntity[] {
         updatedAt,
         description,
         enabled,
-        usedByAgents: [],
-        dependsOnRules: [],
+        baseHash,
+        usedByAgents: relations.usedByAgents,
+        dependsOnRules: relations.dependsOnRules,
       });
     } catch (err) {
       result.push({
@@ -197,6 +222,17 @@ export function writeSkills(basePath: string, entities: SkillEntity[]): FileChan
 
     const absolutePath = path.join(basePath, sourcePath);
     const before = readFileSync(absolutePath, 'utf8');
+
+    // Second line of defence. Publish calls detectBaseConflicts first and
+    // aborts before reaching here, but the compute seam refusing on its own
+    // means a future caller cannot reintroduce the silent-clobber path just by
+    // forgetting the pre-check.
+    if (entity.baseHash && hashSource(before) !== entity.baseHash) {
+      throw new SkillWriteError(
+        `skill "${entity.id}": ${sourcePath} changed on disk since this draft was captured — refusing to overwrite it`,
+      );
+    }
+
     const { block, body, data } = parseSkillFile(before);
 
     const onDiskDescription = typeof data.description === 'string' ? data.description : '';
