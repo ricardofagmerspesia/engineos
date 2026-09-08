@@ -123,7 +123,7 @@ function guardOutcome(argv2, nodeVersion, newer) {
 function dispatch(table2, argv2, io2) {
   const [name, ...rest] = argv2;
   if (name === "--version" || name === "-v") {
-    const v = true ? "1.6.0" : readPackageVersion();
+    const v = true ? "1.7.0" : readPackageVersion();
     io2.out(`engineos ${v}
 `);
     return 0;

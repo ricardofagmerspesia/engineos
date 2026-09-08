@@ -13,6 +13,7 @@ version in which the old surface is removed.
 | Version | Notes |
 |---|---|
 | 1.6.0 | [1.6.0.md](1.6.0.md) — runtime governance: backpressure, circuit breaker, HITL, agent spans, one-command adoption |
+| 1.7.0 | [1.7.0.md](1.7.0.md) — the node runtime: one bundle, node hooks, jq and python3 gone, every bash entry point a deprecated shim, bash suites ported to node:test |
 
 Releases before 1.6.0 have no file here: the directory did not exist, and
 nothing is being reconstructed after the fact. For those versions the

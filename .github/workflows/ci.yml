@@ -11,9 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # node >= 18 is the runtime; shellcheck covers install.sh and the bash shims
+      # that stay until 2.0. jq and python3 are no longer needed anywhere.
       - name: Tools present
         run: |
-          jq --version
           shellcheck --version
           bash --version | head -1
           node --version
@@ -44,13 +45,15 @@ jobs:
       - name: Node runtime — unit and e2e tests
         run: npm test
 
-      - name: Shellcheck hooks + scripts (errors only)
+      # The gen drift guards below stay on the .sh shims on purpose: they are the
+      # one CI exercise the deprecated shims get before 2.0 removes them.
+      - name: Shellcheck install.sh + bash shims (errors only)
         run: shellcheck -S error hooks/*.sh install.sh scripts/*.sh
 
       - name: Validate JSON
         run: |
           for f in hooks/hooks.json .claude-plugin/plugin.json .claude-plugin/marketplace.json templates/mcp.template.json templates/permissions.template.json registries/routing.json registries/decision-rules.json registries/capabilities.json registries/agents.json; do
-            jq empty "$f" && echo "ok $f"
+            node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$f" && echo "ok $f"
           done
 
       - name: Agent-commands drift guard
@@ -74,13 +77,13 @@ jobs:
           echo "ok: registries/agents.json matches scripts/gen-agent-registry.sh output"
 
       - name: EngineOS integrity check
-        run: bash scripts/validate-engineos.sh
+        run: node dist/engineos.cjs validate
 
       - name: Evals (deterministic tier)
-        run: bash scripts/run-evals.sh
+        run: node dist/engineos.cjs evals
 
       - name: Runtime performance budgets
-        run: bash scripts/bench-runtime.sh
+        run: node dist/engineos.cjs bench
 
       - name: Secrets gate aborts on a planted secret
         run: |
