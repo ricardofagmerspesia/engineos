@@ -4,39 +4,39 @@
 # read. The decision-kernel registries (models, intents, policy) are C16, in
 # 40-decision-registries.sh.
 
-# ------------------- C6/C7/C8: guidance-string targets all exist (registry)
-# Pre-P2 these grepped a hand-written case ladder's echo literals; guidance now
-# lives ONLY in registries/routing.json — so the same three checks read the
-# registry's hook_guidance strings instead.
+# ------------------- C6/C7/C8: routing targets all exist (registry)
+# Pre-P2 these grepped a hand-written case ladder's echo literals; then they
+# parsed the registry's hook_guidance strings. That string is now DERIVED by
+# src/kernel/route.ts from the structured fields, so the three checks read the
+# structured fields themselves — agent, skills[], rules[] — and the guidance
+# string can no longer name a target the row does not declare.
 scan_guidance_targets() {
   command -v jq >/dev/null 2>&1 && [ -f "$RJSON" ] || return 1
   missing_agents=""; missing_skills=""; missing_rules=""
-  GUIDANCE=$(jq -r '.domains[].hook_guidance' "$RJSON")
-  for a in $(printf '%s' "$GUIDANCE" | grep -oE 'agent:[a-z-]+' | sed 's/agent://' | sort -u); do
+  for a in $(jq -r '.domains[].agent // empty' "$RJSON" | sort -u); do
     [ -f "agents/$a.md" ] || missing_agents="$missing_agents $a"
   done
-  for s in $(printf '%s' "$GUIDANCE" | grep -oE 'skill:[a-z-]+' | sed 's/skill://' | sort -u); do
+  for s in $(jq -r '.domains[].skills[]?' "$RJSON" | sort -u); do
     [ -f "skills/$s/SKILL.md" ] || missing_skills="$missing_skills $s"
   done
-  # guidance writes chained rule lists: "rules/backend.md+architecture.md+data.md"
-  for r in $(printf '%s' "$GUIDANCE" | grep -oE '(rules/|\+)[a-z0-9-]+\.md' | sed 's|^rules/||; s|^+||; s|\.md$||' | sort -u); do
+  for r in $(jq -r '.domains[].rules[]?' "$RJSON" | sort -u); do
     [ -f "rules/$r.md" ] || missing_rules="$missing_rules $r"
   done
 }
 
 check_C6() {
   scan_guidance_targets || return 0
-  [ -z "$missing_agents" ] && ok "guidance agents all exist" || bad "hook_guidance names missing agents:$missing_agents"
+  [ -z "$missing_agents" ] && ok "guidance agents all exist" || bad "routing.json names missing agents:$missing_agents"
 }
 
 check_C7() {
   scan_guidance_targets || return 0
-  [ -z "$missing_skills" ] && ok "guidance skills all exist" || bad "hook_guidance names missing skills:$missing_skills"
+  [ -z "$missing_skills" ] && ok "guidance skills all exist" || bad "routing.json names missing skills:$missing_skills"
 }
 
 check_C8() {
   scan_guidance_targets || return 0
-  [ -z "$missing_rules"  ] && ok "guidance rules all exist"  || bad "hook_guidance names missing rules:$missing_rules"
+  [ -z "$missing_rules"  ] && ok "guidance rules all exist"  || bad "routing.json names missing rules:$missing_rules"
 }
 
 # ----------------------------------------------- C14: registries are coherent
@@ -56,17 +56,6 @@ check_C14() {
     # now, so that drift class is structurally dead. Its successor is the C17
     # behavioral check below (every sample path routes correctly).
 
-    # the rules list must agree with the rules named inside the guidance string
-    mism=""
-    while IFS= read -r id; do
-      declared=$(jq -r --arg i "$id" '.domains[] | select(.id==$i) | .rules[]' "$R" | sort | tr '\n' ' ')
-      g=$(jq -r --arg i "$id" '.domains[] | select(.id==$i) | .hook_guidance' "$R")
-      infrom=$(printf '%s' "$g" | grep -oE '(rules/|\+)[a-z0-9-]+\.md' | sed 's|^rules/||; s|^+||; s|\.md$||' | sort | tr '\n' ' ')
-      [ "$declared" = "$infrom" ] || mism="$mism $id(declared='$declared' guidance='$infrom')"
-    done < <(jq -r '.domains[].id' "$R")
-    [ -z "$mism" ] && ok "registry rules[] match the rules named in each hook_guidance" \
-                   || bad "registry rules/guidance mismatch:$mism"
-
     # precedence must list every domain exactly once, in the registry's own domain order
     p_reg=$(jq -r '.precedence | join(" ")' "$R")
     p_dom=$(jq -r '[.domains[].id] | join(" ")' "$R")
@@ -79,10 +68,6 @@ check_C14() {
     for s in $(jq -r '.domains[].skills[]?' "$R" | sort -u); do [ -f "skills/$s/SKILL.md" ] || ra="$ra skill:$s"; done
     for r in $(jq -r '.domains[].rules[]' "$R" | sort -u); do [ -f "rules/$r.md" ] || ra="$ra rule:$r"; done
     [ -z "$ra" ] && ok "registry agents, skills and rules all exist" || bad "registry names missing targets:$ra"
-
-    # risk floors must be a known tier
-    rf=$(jq -r '.domains[] | select(.risk_floor|test("^(low|medium|high)$")|not) | .id' "$R")
-    [ -z "$rf" ] && ok "every registry domain declares a valid risk floor" || bad "invalid risk_floor on:$rf"
   else
     bad "registries/routing.json missing"
   fi

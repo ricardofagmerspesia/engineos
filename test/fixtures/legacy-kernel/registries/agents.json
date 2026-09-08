@@ -1,0 +1,360 @@
+{
+  "version": "1.0.0",
+  "description": "Generated from agents/*.md frontmatter by scripts/gen-agent-registry.sh — do not hand-edit. capability_ids is a back-reference from registries/capabilities.json.",
+  "agents": [
+    {
+      "name": "android-builder",
+      "alias": null,
+      "description": "Android build-and-release engineer — source to Google Play, end to end. Branches: BUILD (artifact only) | BETA (internal/beta track, default) | RELEASE (production track — explicit instruction only). Never touches iOS, backend, or web code.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "architecture-analyst",
+      "alias": "analyst",
+      "description": "System-comprehension and onboarding-docs specialist. Branches: `/analyze-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: analyst.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "model": "opus",
+      "model_tier": "design",
+      "capability_ids": []
+    },
+    {
+      "name": "audit-consolidator",
+      "alias": "corradin",
+      "description": "Merges specialist reports into one consolidated status report — top-line verdict, root cause, ordered remediation plan. Read-only; may read Jira via the atlassian MCP but never writes to it. Dispatched last by the audit orchestrator. Alias: corradin.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "mcp__mcp-atlassian__jira_search",
+        "mcp__mcp-atlassian__jira_get_issue"
+      ],
+      "model": "opus",
+      "model_tier": "design",
+      "capability_ids": []
+    },
+    {
+      "name": "backend-coordinator",
+      "alias": "borisenko",
+      "description": "Backend specialist — NestJS modules, controllers, services, DTOs, data access, repositories, queues, workers, migrations. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: borisenko.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write",
+        "Skill",
+        "mcp__nestjs"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": [
+        "implement"
+      ]
+    },
+    {
+      "name": "cicd-specialist",
+      "alias": "gustavo",
+      "description": "Read-only CI/CD specialist — GitHub workflows, Actions runs, PR/CI status, branch protection, via the github MCP and the repo's workflow files. Never edits workflows or merges. Dispatched by the audit orchestrator. Alias: gustavo.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "mcp__github"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "critic",
+      "alias": "vera",
+      "description": "Adversarial correctness review of work that is about to be called done. Dispatched when risk=high per rules/risk-autonomy.md, when the release gate requires an independent pass per rules/gates.md, or on explicit request. Tries to refute the claim that the work is correct and complete — the general-correctness counterpart to security-reviewer's security-only lens. Read-only, never edits. Alias: vera.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
+      "model": "opus",
+      "model_tier": "design",
+      "capability_ids": []
+    },
+    {
+      "name": "dba-coordinator",
+      "alias": "ronaldo",
+      "description": "Data-layer specialist — schema design, migrations, query performance, indexing, access patterns, across Postgres/Oracle and other relational stores. Branches: AUDIT (read-only findings) | IMPLEMENT (writes migrations/queries). Alias: ronaldo.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "devops-coordinator",
+      "alias": "hinokuma",
+      "description": "DevOps/infra specialist — CI/CD pipelines, Docker, Kubernetes/Helm, Terraform/IaC, cloud resources, observability config. Branches: AUDIT (read-only findings) | IMPLEMENT (writes config). Alias: hinokuma.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "docs-writer",
+      "alias": "tomasz",
+      "description": "Writes and updates documentation for work that already landed — READMEs, usage docs, endpoint and config references. Use when a delivered change leaves documentation stale, or when a headless workflow needs documentation as its own step rather than an afterthought. Documents what the code actually does, never what it was supposed to do. Alias: tomasz.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": [
+        "document"
+      ]
+    },
+    {
+      "name": "frontend-coordinator",
+      "alias": "arturo",
+      "description": "Frontend specialist — React/Next components, pages/app router, state, data fetching, forms, styling, performance, accessibility. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: arturo.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write",
+        "Skill"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "gcp-specialist",
+      "alias": "nakamura",
+      "description": "Read-only Google Cloud specialist — compute, storage, IAM, networking, billing signals, via the gcp MCP. Never mutates cloud resources. Dispatched by the audit orchestrator. Alias: nakamura.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "mcp__gcp"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "ios-builder",
+      "alias": null,
+      "description": "iOS build-and-release engineer — source to the Apple store, end to end. Branches: BUILD (artifact only) | BETA (TestFlight, default) | RELEASE (submit for App Store review — explicit instruction only). Never touches Android, backend, or web code.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "kubernetes-specialist",
+      "alias": "kovac",
+      "description": "Read-only Kubernetes specialist — workloads, events, resource usage, config, via the kubernetes MCP. Never mutates the cluster. Dispatched by the audit orchestrator. Alias: kovac.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "mcp__kubernetes"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "llm-coordinator",
+      "alias": "hermsdorff",
+      "description": "LLM/AI engineering specialist — prompt design, agent tools, structured output, RAG pipelines, embeddings, evals. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code/prompts). Alias: hermsdorff.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write",
+        "Skill"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "mobile-coordinator",
+      "alias": "elias",
+      "description": "Mobile specialist (React Native) — greenfield mobile features (screens, navigation, native-module glue, offline/storage) and web->mobile mirroring, adapting web patterns to mobile idioms. Reads the web frontend as read-only reference when mirroring; writes only in the mobile app tree — never API/backend, web frontend, or DevOps/infra. Branches: AUDIT (mobile findings / parity report) | IMPLEMENT (build the feature or mirror). Alias: elias.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Edit",
+        "Write",
+        "Skill"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "oracle-specialist",
+      "alias": "leo",
+      "description": "Read-only Oracle specialist — schema, indexes, execution plans, via the oracle MCP on a read-only connection. Never runs DDL/DML. Dispatched by the audit orchestrator. Alias: leo.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "mcp__oracle"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "postgres-specialist",
+      "alias": "pereira",
+      "description": "Read-only Postgres specialist — schema, indexes, query plans, via the postgres MCP pointed at a READ-ONLY role. Never runs DDL/DML. Dispatched by the audit orchestrator. Alias: pereira.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "mcp__postgres"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "product-spec",
+      "alias": "mariana",
+      "description": "Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: mariana.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Write"
+      ],
+      "model": "fable",
+      "model_tier": "most-capable",
+      "capability_ids": [
+        "author-spec"
+      ]
+    },
+    {
+      "name": "qa-tester",
+      "alias": "qa",
+      "description": "Autonomous end-to-end API QA — brings the stack up from clean, discovers every endpoint, emits an inventory plus Postman collection, then exercises happy paths, negatives and chained flows headlessly via Newman and reports pass/fail. Never waits for user input (skips MFA and email-sending steps). Alias: qa.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": []
+    },
+    {
+      "name": "router",
+      "alias": null,
+      "description": "Resolves a request into a dispatch plan — intents, rules and skills to load, agents with disjoint file scopes, model per agent, MCP servers, risk tier, autonomy ceiling, gates and wave grouping. Runs scripts/kernel.sh route-escalate and risk FIRST and reasons only about what those answers leave open: intent tiebreaks the registry notes do not settle mechanically, scope decomposition against the real repo, and wave grouping. Dispatched when hooks/prompt-advisor.sh reports escalate=true, or on demand via /engineos:route. Read-only planner — it never edits, and it never dispatches the plan it produces.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
+      "model": "opus",
+      "model_tier": "design",
+      "capability_ids": [
+        "route"
+      ]
+    },
+    {
+      "name": "security-reviewer",
+      "alias": "leo-ely",
+      "description": "Adversarial security review of a diff, PR, or module. Use before merging risky changes, when the router hits review intent on code touching auth/input/data, or on explicit \"security review\" request. Also dispatched at edit time on security-sensitive files (auth, guard, middleware, secret, .env, credentials) by the routing hook. Read-only — reports findings, never edits. Alias: leo-ely.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash"
+      ],
+      "model": "opus",
+      "model_tier": "design",
+      "capability_ids": [
+        "security-review"
+      ]
+    },
+    {
+      "name": "test-writer",
+      "alias": "ameer",
+      "description": "Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature needs coverage, a bug fix needs a regression test, or tests are being backfilled. Dispatched deliberately, never automatically after ordinary changes. Alias: ameer.",
+      "tools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Bash",
+        "Write",
+        "Edit"
+      ],
+      "model": "opus",
+      "model_tier": "build",
+      "capability_ids": [
+        "validate"
+      ]
+    }
+  ]
+}

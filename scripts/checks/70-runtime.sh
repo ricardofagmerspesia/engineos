@@ -761,13 +761,15 @@ check_C26c() {
 check_C26d() {
   have_jq || return 0
   have_hitl_inputs || return 0
-  # C26d: the backpressure coupling. cmd_admit's reject message embeds
+  # C26d: the backpressure coupling. admit's reject message embeds
   # "hitl: budget-exhausted" as prose, and nothing tied that string to this
   # vocabulary — so renaming the reason id would have left Task 2's reject
   # message citing a reason that no longer exists, in the one place a caller
   # reads to find out why a human is needed. Three things must agree: the
-  # registry declares the id in BOTH reasons and situations, cmd_admit cites
-  # it, and kernel.sh hitl --situation reject answers with exactly it.
+  # registry declares the id in BOTH reasons and situations, src/kernel/admit.ts
+  # cites it, and kernel.sh hitl --situation reject answers with exactly it.
+  # The literal moved out of scripts/kernel.sh when that became a shim over
+  # dist/engineos.cjs; the source that owns the message is what gets grepped.
   #
   # The id is spelled once, here, because something has to say WHICH reason
   # backpressure exhaustion maps to. A rename in the registry fails the first
@@ -777,8 +779,9 @@ check_C26d() {
   bx=budget-exhausted
   if jq -e --arg b "$bx" \
        '((.hitl.reasons // []) | index($b)) and ((.hitl.situations // []) | index($b))' "$PJ" >/dev/null 2>&1; then
-    grep -q "hitl: $bx" "$KSH" \
-      || k_bad="$k_bad kernel.sh-reject-message-does-not-cite-hitl:-$bx"
+    # Code lines only: a comment naming the literal must not satisfy the check.
+    grep -v '^[[:space:]]*//' "$ADMIT_TS" | grep -q "hitl: $bx" \
+      || k_bad="$k_bad admit.ts-reject-message-does-not-cite-hitl:-$bx"
     low_ceil=$(jq -r '.autonomy.ceiling_by_risk.low // ""' "$PJ")
     got=$(bash "$KSH" hitl --risk low --autonomy "$low_ceil" --situation reject 2>/dev/null \
           | jq -r '[.reasons[]?] | join(",")' 2>/dev/null)
@@ -808,23 +811,6 @@ have_exec_journal_inputs() {
   return 1
 }
 
-# The span vocabulary as the SCRIPT declares it, normalised to a sorted CSV.
-# Prints nothing when the constant cannot be read, which is how C27a turns an
-# unparseable script into its own named finding instead of a vacuous match
-# against an empty list.
-ej_constant() { # <constant-name>
-  local v
-  v=$(sed -n "s/^$1=\"\\(.*\\)\"\$/\\1/p" "$EJSH" 2>/dev/null | head -1)
-  [ -n "$v" ] || return 0
-  printf '%s' "$v" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ',' | sed 's/,$//'
-}
-
-# The same list as the REGISTRY declares it, so the two are compared as data
-# and neither side is a literal in this file.
-ej_registry_list() { # <field-name>
-  jq -r --arg f "$1" '[.telemetry.exec_journal[$f][]? | select(type=="string")] | sort | join(",")' "$PJ" 2>/dev/null
-}
-
 check_C27() {
   have_jq || return 0
   have_exec_journal_inputs || return 0
@@ -849,20 +835,15 @@ check_C27() {
   elif [ ! -x "$schema" ]; then
     x_bad="$x_bad schema-names-a-non-executable-file:$schema"
   fi
-  # Both halves of each pair are read from their own source. A blank on either
-  # side is its own finding: comparing two empty strings is the vacuous match
-  # that would let a renamed span kind through.
-  for pair in "span_kinds:VALID_SPAN_KINDS" "statuses:VALID_STATUSES"; do
-    field="${pair%%:*}"; constant="${pair##*:}"
-    from_script=$(ej_constant "$constant")
-    from_registry=$(ej_registry_list "$field")
-    if [ -z "$from_script" ]; then
-      x_bad="$x_bad cannot-read-$constant-from-exec-journal.sh"
-    elif [ -z "$from_registry" ]; then
-      x_bad="$x_bad $field-missing-or-empty-in-the-registry"
-    elif [ "$from_script" != "$from_registry" ]; then
-      x_bad="$x_bad $field-disagrees-with-$constant(registry:$from_registry script:$from_script)"
-    fi
+  # The CLI no longer restates either vocabulary: src/journal/schema.ts declares
+  # the field table once and resolves each enumerated row's members from the
+  # registry that owns them, so there is no second copy left to compare against.
+  # What remains checkable here is that the registry side is usable at all — an
+  # empty list would make the port enumerate nothing and accept everything — and
+  # C27b is what proves the running CLI actually honours it.
+  for field in span_kinds statuses; do
+    n=$(jq -r --arg f "$field" '[.telemetry.exec_journal[$f][]? | select(type=="string")] | length' "$PJ" 2>/dev/null)
+    [ "${n:-0}" -ge 1 ] || x_bad="$x_bad $field-missing-or-empty-in-the-registry"
   done
   nwb=$(jq -r '[.telemetry.exec_journal.written_by[]? | select(type=="string")] | length' "$PJ")
   if [ "${nwb:-0}" -lt 1 ]; then
@@ -879,23 +860,25 @@ check_C27() {
   elif [ ! -f "$helper" ]; then
     x_bad="$x_bad written_by_helper-names-a-missing-file:$helper"
   fi
-  # The per-value length bound is DATA here, not a literal in the CLI. The CLI
+  # The per-value length bound is DATA here, not a literal in the CLI. The port
   # still carries a fallback so it runs standalone without this registry, and
   # the two must agree — otherwise a tree without policy.json quietly enforces a
-  # different bound from the one all three prose homes quote.
+  # different bound from the one all three prose homes quote. That fallback moved
+  # into src/registry/ when the bash CLI became a shim, so the source that owns
+  # the constant is what gets read.
   mvl=$(jq -r '.telemetry.exec_journal.max_value_length // empty' "$PJ")
   case "$mvl" in
     ''|*[!0-9]*|0)
       x_bad="$x_bad max_value_length-not-a-positive-integer:${mvl:-missing}" ;;
     *)
-      mfb=$(sed -n 's/^MAX_VALUE_LEN_FALLBACK="\(.*\)"$/\1/p' "$EJSH" 2>/dev/null | head -1)
+      mfb=$(sed -n 's/^export const MAX_VALUE_LENGTH_FALLBACK = \([0-9]*\);$/\1/p' "$EJ_POLICY_TS" 2>/dev/null | head -1)
       if [ -z "$mfb" ]; then
-        x_bad="$x_bad cannot-read-MAX_VALUE_LEN_FALLBACK-from-exec-journal.sh"
+        x_bad="$x_bad cannot-read-MAX_VALUE_LENGTH_FALLBACK-from-$EJ_POLICY_TS"
       elif [ "$mfb" != "$mvl" ]; then
-        x_bad="$x_bad max_value_length-disagrees-with-MAX_VALUE_LEN_FALLBACK(registry:$mvl script:$mfb)"
+        x_bad="$x_bad max_value_length-disagrees-with-MAX_VALUE_LENGTH_FALLBACK(registry:$mvl source:$mfb)"
       fi ;;
   esac
-  [ -z "$x_bad" ] && ok "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses/max_value_length match exec-journal.sh's own constants, and every writer exists" \
+  [ -z "$x_bad" ] && ok "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses are non-empty, max_value_length agrees with the port's standalone fallback, and every writer exists" \
                    || bad "exec_journal block problems:$x_bad"
 }
 
@@ -1172,200 +1155,6 @@ check_C27d() {
     || p_bad="$p_bad parallelism.md-lost-its-Agent-traces-reference"
   [ -z "$p_bad" ] && ok "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-0 and status-is-a-floor caveats, and the all-but-note slug claim with its length bound" \
                    || bad "exec-journal prose-mirror problems:$p_bad"
-}
-
-# The set of fields the APPEND path guards as slugs, from its check_slug_flag
-# call sites, normalised to a sorted CSV of JSON field names. Prints nothing
-# when no call site can be read, which is how C27e turns an unparseable script
-# into a named finding instead of a vacuous match of two empty strings.
-ej_slug_flags() {
-  sed -n 's/^ *check_slug_flag  *--\([a-z-]*\) .*/\1/p' "$EJSH" 2>/dev/null \
-    | tr '-' '_' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# The same set as VALIDATE guards, from the one `all(...)` field list in its jq
-# program. Read as data from the other side of the file, so neither half is a
-# literal here.
-ej_validated_fields() {
-  sed -n '/^ *(\[\.[a-z_]*,/,/all(\. == null/p' "$EJSH" 2>/dev/null \
-    | grep -o '\.[a-z_]\{2,\}' | sed 's/^\.//' \
-    | grep -vx 'all' | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# The set of fields APPEND gates against an ENUMERATION, from its in_list call
-# sites (the _val suffix is the shell variable's, not the field's). Slug shape
-# and enum membership are different guards, so they get different set
-# comparisons: ej_slug_flags above answers "is it in the class", this one
-# answers "is it one of the declared values".
-ej_enum_flags() {
-  sed -n 's/^ *in_list "\$\([a-z_]*\)".*/\1/p' "$EJSH" 2>/dev/null \
-    | sed 's/_val$//' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# The same set as VALIDATE gates, from the enumerated predicates in its jq
-# program — `IN(...)` for the vocabularies and the boolean type test for
-# cache_hit. Read from the other side of the file so neither half is a literal
-# here, and empty is a named finding rather than a vacuous match.
-ej_validated_enums() {
-  sed -n '/^cmd_validate()/,/^}/p' "$EJSH" 2>/dev/null \
-    | grep -E 'IN\(|type == "boolean"' \
-    | sed -n 's/^[^.]*\.\([a-z_]\{2,\}\).*/\1/p' \
-    | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# The set of fields APPEND gates as non-negative integers, and the same set as
-# VALIDATE gates. The third guard class, extracted for the same reason as the
-# other two: a class the coverage comparison below cannot see is a class a field
-# can go unguarded in.
-ej_int_flags() {
-  sed -n 's/^ *is_nonneg_int "\$\([a-z_]*\)".*/\1/p' "$EJSH" 2>/dev/null \
-    | sed 's/_val$//' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-ej_validated_ints() {
-  sed -n '/^cmd_validate()/,/^}/p' "$EJSH" 2>/dev/null \
-    | grep -F '| is_nonneg_int)' \
-    | sed -n 's/^[^.]*\.\([a-z_]\{2,\}\).*/\1/p' \
-    | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# The schema's own DECLARATION of its fields, from EJ_SCHEMA_FIELDS — the one
-# set below that is not derived from a guard, which is the entire point of it.
-# Every other function in this section reads the implementation, so a field the
-# implementation guards NOWHERE is absent from all of them and a comparison
-# among them cannot see it. `timestamp` was that field.
-ej_declared_fields() { # <class|all> -> sorted CSV of the fields declared with it
-  local decl
-  decl=$(sed -n 's/^EJ_SCHEMA_FIELDS="\(.*\)"$/\1/p' "$EJSH" 2>/dev/null | head -1)
-  [ -n "$decl" ] || return 0
-  if [ "$1" = all ]; then
-    printf '%s' "$decl" | tr ' ' '\n' | sed -n 's/:[a-z]*$//p'
-  else
-    printf '%s' "$decl" | tr ' ' '\n' | sed -n "s/:$1\$//p"
-  fi | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# The set of keys the append path actually EMITS, from the jq object literal it
-# builds. The declaration above is only worth having if it cannot fall behind
-# the code, so the third side of the triangle is what reaches disk. Anchored on
-# the start of the jq program rather than on its first key: an anchor naming a
-# field is an anchor a reordering of that object silently breaks, and the
-# finding then reads "cannot read the object" instead of naming the new field.
-ej_emitted_fields() {
-  sed -n "/^ *'{/,/with_entries/p" "$EJSH" 2>/dev/null \
-    | grep -o '[a-z_]\{2,\}:' | tr -d ':' | sort -u | tr '\n' ',' | sed 's/,$//'
-}
-
-# in_csv <field> <csv> -> 0 when the field is a member.
-in_csv() { case ",$2," in *",$1,"*) return 0 ;; esac; return 1; }
-
-check_C27e() {
-  have_jq || return 0
-  have_exec_journal_inputs || return 0
-  # C27e: the containment claim, as a set comparison rather than a sentence.
-  # Three prose homes say "every field except note is a slug"; this asserts that
-  # the fields APPEND guards and the fields VALIDATE guards are the same set,
-  # and that note is in neither. The defect this exists for: --agent was the one
-  # string flag with no check_slug_flag call, so the claim was false at the
-  # append boundary and again at the validate boundary, and nothing noticed.
-  s_bad=""
-  appended=$(ej_slug_flags)
-  validated=$(ej_validated_fields)
-  if [ -z "$appended" ]; then
-    s_bad="$s_bad cannot-read-check_slug_flag-call-sites-from-exec-journal.sh"
-  elif [ -z "$validated" ]; then
-    s_bad="$s_bad cannot-read-the-validate-slug-field-list-from-exec-journal.sh"
-  elif [ "$appended" != "$validated" ]; then
-    s_bad="$s_bad append-and-validate-guard-different-fields(append:$appended validate:$validated)"
-  fi
-  # note is the documented exception and must stay out of both sets: adding it
-  # would be a silent compatibility event in the other direction.
-  case ",$appended,$validated," in
-    *,note,*) s_bad="$s_bad note-is-guarded-as-a-slug-but-documented-as-free-text" ;;
-  esac
-  # The three v1 identifier fields are the half that was missing; naming them
-  # explicitly means a future edit that drops one is its own finding rather than
-  # a set difference nobody reads.
-  for f in run_id capability_id agent; do
-    case ",$appended," in *",$f,"*) ;; *) s_bad="$s_bad append-does-not-guard:$f" ;; esac
-    case ",$validated," in *",$f,"*) ;; *) s_bad="$s_bad validate-does-not-guard:$f" ;; esac
-  done
-  # The SECOND half of the same claim, and the one that was false: the slug set
-  # is not the whole guard, because status and model_tier are enumerated rather
-  # than shape-checked. append gated both through in_list; validate checked them
-  # for `type == "string"`, so a hand-forged line carrying prose in status and a
-  # newline in model_tier validated clean. Compared as sets for the same reason
-  # as above, with both vocabularies named explicitly so dropping one is its own
-  # finding.
-  appended_enums=$(ej_enum_flags)
-  validated_enums=$(ej_validated_enums)
-  if [ -z "$appended_enums" ]; then
-    s_bad="$s_bad cannot-read-in_list-call-sites-from-exec-journal.sh"
-  elif [ -z "$validated_enums" ]; then
-    s_bad="$s_bad cannot-read-the-validate-enum-predicates-from-exec-journal.sh"
-  elif [ "$appended_enums" != "$validated_enums" ]; then
-    s_bad="$s_bad append-and-validate-enumerate-different-fields(append:$appended_enums validate:$validated_enums)"
-  fi
-  for f in status model_tier; do
-    case ",$appended_enums," in *",$f,"*) ;; *) s_bad="$s_bad append-does-not-enumerate:$f" ;; esac
-    case ",$validated_enums," in *",$f,"*) ;; *) s_bad="$s_bad validate-does-not-enumerate:$f" ;; esac
-  done
-  # The THIRD comparison, and the one the two above are structurally unable to
-  # make. Both of them derive their halves from the guards, so a field guarded
-  # on NEITHER boundary is in neither half and the sets match while the claim is
-  # false. `timestamp` was exactly that: declared a string, guarded nowhere, and
-  # a value carrying a newline and an ANSI escape appended and validated clean
-  # while the same payload in --run-id was rejected — with C27e green. So the
-  # field set is taken from the schema's own declaration (EJ_SCHEMA_FIELDS),
-  # which no guard produces, and every declared field is required to be covered
-  # on BOTH boundaries by the class it was declared with.
-  declared_all=$(ej_declared_fields all)
-  emitted=$(ej_emitted_fields)
-  if [ -z "$declared_all" ]; then
-    s_bad="$s_bad cannot-read-EJ_SCHEMA_FIELDS-from-exec-journal.sh"
-  elif [ -z "$emitted" ]; then
-    s_bad="$s_bad cannot-read-the-emitted-object-keys-from-exec-journal.sh"
-  else
-    # A declaration that may silently fall behind the code is no better than no
-    # declaration: it would just move the blind spot. So the declared set is
-    # pinned against what append actually writes, in both directions, before
-    # anything is asserted through it.
-    for f in $(printf '%s' "$emitted" | tr ',' ' '); do
-      in_csv "$f" "$declared_all" || s_bad="$s_bad emitted-but-not-declared-in-EJ_SCHEMA_FIELDS:$f"
-    done
-    for f in $(printf '%s' "$declared_all" | tr ',' ' '); do
-      in_csv "$f" "$emitted" || s_bad="$s_bad declared-in-EJ_SCHEMA_FIELDS-but-never-emitted:$f"
-    done
-    appended_ints=$(ej_int_flags)
-    validated_ints=$(ej_validated_ints)
-    # Each declared class is answered by the pair of sets that implements it.
-    # `free` is answered by every set at once: note's whole contract is that no
-    # boundary constrains its shape, so it must appear in none of the six.
-    for f in $(ej_declared_fields slug | tr ',' ' '); do
-      in_csv "$f" "$appended"  || s_bad="$s_bad declared-slug-field-not-guarded-on-append:$f"
-      in_csv "$f" "$validated" || s_bad="$s_bad declared-slug-field-not-guarded-on-validate:$f"
-    done
-    for f in $(ej_declared_fields enum | tr ',' ' '); do
-      in_csv "$f" "$appended_enums"  || s_bad="$s_bad declared-enum-field-not-enumerated-on-append:$f"
-      in_csv "$f" "$validated_enums" || s_bad="$s_bad declared-enum-field-not-enumerated-on-validate:$f"
-    done
-    for f in $(ej_declared_fields int | tr ',' ' '); do
-      in_csv "$f" "$appended_ints"  || s_bad="$s_bad declared-int-field-not-bounded-on-append:$f"
-      in_csv "$f" "$validated_ints" || s_bad="$s_bad declared-int-field-not-bounded-on-validate:$f"
-    done
-    for f in $(ej_declared_fields free | tr ',' ' '); do
-      for s in "$appended" "$validated" "$appended_enums" "$validated_enums" "$appended_ints" "$validated_ints"; do
-        in_csv "$f" "$s" && s_bad="$s_bad declared-free-text-field-is-guarded:$f"
-      done
-    done
-    # ... and the other direction, so a guard on a field nobody declared is a
-    # finding too: the declaration is the schema, not a subset of it.
-    for f in $(printf '%s,%s,%s' "$appended" "$appended_enums" "$appended_ints" | tr ',' ' '); do
-      in_csv "$f" "$declared_all" || s_bad="$s_bad append-guards-an-undeclared-field:$f"
-    done
-  fi
-  [ -z "$s_bad" ] && ok "exec-journal.sh guards the same field set on append and on validate — slugs ($appended), enumerations ($appended_enums) — and every field EJ_SCHEMA_FIELDS declares is covered on both boundaries by its declared class, with note guarded by neither: the containment claim its header, policy.json and rules/observability.md all make" \
-                   || bad "exec-journal slug-guard set problems:$s_bad"
 }
 
 check_C27f() {

@@ -27,9 +27,10 @@ check() {  # <desc> <file> <expected-substring | empty=expect no routing>
 }
 
 # Full canonical guidance strings (rules|skill|agent) — kept identical to the
-# hook_guidance values in registries/routing.json. Asserting the full string, not
-# just the agent name, catches a wrong/stale rules list that a substring check
-# would miss.
+# `hook_guidance` the kernel RENDERS for each routing.json domain row (from its
+# rules[], skills[], agent and hint; routing.json stopped storing the string
+# itself). Asserting the full string, not just the agent name, catches a
+# wrong/stale rules list that a substring check would miss.
 FRONTEND="rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator"
 BACKEND="rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator"
 DBA="rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)"
@@ -37,9 +38,9 @@ DEVOPS="rules/architecture.md+observability.md | agent:devops-coordinator (kuber
 LLM="rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator"
 TEST_G="rules/testing.md | agent:test-writer"
 SECURITY="rules/security.md | agent:security-reviewer"
-MOBILE="rules/frontend.md+architecture.md+backend.md+testing.md+observability.md (adapt to React Native) | agent:mobile-coordinator"
-IOS_BUILD="rules/security.md (signing) | agent:ios-builder"
-ANDROID_BUILD="rules/security.md (signing) | agent:android-builder"
+MOBILE="rules/frontend.md+architecture.md+backend.md+testing.md+observability.md | skill:react-patterns | agent:mobile-coordinator (adapt to React Native)"
+IOS_BUILD="rules/security.md | agent:ios-builder (signing)"
+ANDROID_BUILD="rules/security.md | agent:android-builder (signing)"
 
 check "tsx -> frontend"        "/tmp/app/Button.tsx"                 "$FRONTEND"
 check "controller -> backend"  "/tmp/api/user.controller.ts"        "$BACKEND"

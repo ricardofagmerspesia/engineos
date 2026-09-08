@@ -76,8 +76,11 @@ relocated_kernel() {
   # `local name="$1" dir="$TMPROOT/$name"` aborts under `set -u`.
   local name="$1" mutation="$2"
   local dir="$TMPROOT/$name"
-  mkdir -p "$dir/scripts" "$dir/registries" || return 1
+  mkdir -p "$dir/scripts" "$dir/registries" "$dir/dist" || return 1
   cp "$KERNEL" "$dir/scripts/kernel.sh" || return 1
+  # kernel.sh is a shim that resolves dist/engineos.cjs relative to ITSELF, so a
+  # relocated copy has to carry the bundle as well as the registries.
+  cp "$ROOT/dist/engineos.cjs" "$dir/dist/" || return 1
   cp "$REG"/*.json "$dir/registries/" || return 1
   jq "$mutation" "$REG/policy.json" > "$dir/registries/policy.json" \
     || { echo "fixture mutation failed: $mutation" >&2; return 1; }
@@ -139,8 +142,9 @@ assert_eq "a foreign project's hooks/x.ts -> not excluded" "$(jqval '.excluded')
 # while the kernel's own $ROOT is the resolved one — unresolved, nothing would match.
 SELFT="$TMPROOT/self"
 for variant in with without; do
-  mkdir -p "$SELFT/$variant/scripts" "$SELFT/$variant/registries"
+  mkdir -p "$SELFT/$variant/scripts" "$SELFT/$variant/registries" "$SELFT/$variant/dist"
   cp "$KERNEL" "$SELFT/$variant/scripts/kernel.sh"
+  cp "$ROOT/dist/engineos.cjs" "$SELFT/$variant/dist/"
 done
 cp "$REG/routing.json" "$SELFT/with/registries/routing.json"
 jq 'del(.excluded.self_dirs)' "$REG/routing.json" > "$SELFT/without/registries/routing.json"
@@ -473,8 +477,9 @@ assert_err "route-escalate with unknown argument errors"
 # resolves) and still satisfy assert_err, which would make the fail-closed
 # claim vacuous.
 for variant in with without; do
-  mkdir -p "$TMPROOT/router-$variant/scripts" "$TMPROOT/router-$variant/registries"
+  mkdir -p "$TMPROOT/router-$variant/scripts" "$TMPROOT/router-$variant/registries" "$TMPROOT/router-$variant/dist"
   cp "$KERNEL" "$TMPROOT/router-$variant/scripts/kernel.sh"
+  cp "$ROOT/dist/engineos.cjs" "$TMPROOT/router-$variant/dist/"
   cp "$REG"/*.json "$TMPROOT/router-$variant/registries/"
 done
 jq 'del(.router)' "$REG/policy.json" > "$TMPROOT/router-without/registries/policy.json"
@@ -543,8 +548,9 @@ echo "-- registry loader --"
 # hides exactly one registry, so a subcommand that stopped declaring one of its
 # inputs — or that names the wrong one — fails here.
 LOADT=$(cd "$(mktemp -d)" && pwd -P)
-mkdir -p "$LOADT/scripts" "$LOADT/registries"
+mkdir -p "$LOADT/scripts" "$LOADT/registries" "$LOADT/dist"
 cp "$KERNEL" "$LOADT/scripts/kernel.sh"
+cp "$ROOT/dist/engineos.cjs" "$LOADT/dist/"
 cp "$REG"/*.json "$LOADT/registries/"
 
 while IFS=$'\t' read -r missing sub args; do
@@ -803,8 +809,9 @@ assert_err "breaker rejects an unknown --probe-result"
 # overwrites the real registry), and this one cannot leave the repo's
 # registries broken if the run dies mid-fixture.
 BRKT="$TMPROOT/breaker"
-mkdir -p "$BRKT/scripts" "$BRKT/registries"
+mkdir -p "$BRKT/scripts" "$BRKT/registries" "$BRKT/dist"
 cp "$KERNEL" "$BRKT/scripts/kernel.sh"
+cp "$ROOT/dist/engineos.cjs" "$BRKT/dist/"
 jq 'del(.breaker)' "$REG/policy.json" > "$BRKT/registries/policy.json"
 OUT=$(bash "$BRKT/scripts/kernel.sh" breaker --state closed --failures 0 2>&1); RC=$?
 assert_err "breaker with no breaker policy block errors (fail-closed, never a fabricated open)"
@@ -1003,8 +1010,9 @@ fi
 # breaker case above uses the same shape): a run that dies mid-fixture cannot
 # leave the repo's registries broken.
 HITLT="$TMPROOT/hitlt"
-mkdir -p "$HITLT/scripts" "$HITLT/registries"
+mkdir -p "$HITLT/scripts" "$HITLT/registries" "$HITLT/dist"
 cp "$KERNEL" "$HITLT/scripts/kernel.sh"
+cp "$ROOT/dist/engineos.cjs" "$HITLT/dist/"
 jq 'del(.hitl)' "$REG/policy.json" > "$HITLT/registries/policy.json"
 OUT=$(bash "$HITLT/scripts/kernel.sh" hitl --risk low --autonomy A2 2>&1); RC=$?
 assert_err "hitl with no hitl policy block errors (fail-closed, never a null record_home)"
@@ -1034,17 +1042,19 @@ assert_ok "a relocated kernel copy with record_home intact still answers hitl"
 assert_eq "the answered record_home is the registry's" "$(jqval .record_home)" "$RECORD_HOME"
 
 # Same shape for the other registry value the answer depends on. Without the
-# guard, jq indexes the level list with null and autonomy_after comes back as a
-# confident wrong ceiling instead of an error. The adequate-evidence path does
-# not read the field, so it must still answer.
+# guard, jq indexed the level list with null and autonomy_after came back as a
+# confident wrong ceiling instead of an error. The node runtime goes further:
+# its policy loader is strict, so a malformed policy.json is refused at load and
+# even the adequate-evidence path (which never reads the field) fails closed.
 THINT="$TMPROOT/thint"
-mkdir -p "$THINT/scripts" "$THINT/registries"
+mkdir -p "$THINT/scripts" "$THINT/registries" "$THINT/dist"
 cp "$KERNEL" "$THINT/scripts/kernel.sh"
+cp "$ROOT/dist/engineos.cjs" "$THINT/dist/"
 jq 'del(.autonomy.high_with_thin_evidence)' "$REG/policy.json" > "$THINT/registries/policy.json"
 OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 --evidence thin 2>&1); RC=$?
 assert_err "hitl errors when autonomy.high_with_thin_evidence is missing"
 OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 2>&1); RC=$?
-assert_ok "hitl still answers with adequate evidence, which does not read that field"
+assert_err "hitl refuses with adequate evidence too: a malformed policy.json never answers"
 jq '.autonomy.high_with_thin_evidence = "sideways"' "$REG/policy.json" > "$THINT/registries/policy.json"
 OUT=$(bash "$THINT/scripts/kernel.sh" hitl --risk high --autonomy A3 --evidence thin 2>&1); RC=$?
 assert_err "hitl errors when autonomy.high_with_thin_evidence is not a level id"

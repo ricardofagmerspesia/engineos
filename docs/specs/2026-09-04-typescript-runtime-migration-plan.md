@@ -813,7 +813,7 @@ git commit -m "feat(kernel): add JSON and bash-glob helpers"
   export function registryPath(root: string, name: RegistryName): string   // KernelError `registry missing: registries/<name>` when absent
   export function loadRegistry(root: string, name: RegistryName): unknown  // readJsonFile(registryPath(...))
   // src/registry/routing.ts
-  export interface RoutingDomain { id: string; match: { paths: string[]; basenames: string[] }; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; sample_path: string | null }
+  export interface RoutingDomain { id: string; match: { paths: string[]; basenames: string[] }; rules: string[]; skills: string[]; agent: string | null; hint: string | null; sample_path: string | null }   // hook_guidance and risk_floor are not loaded: derived in src/kernel/route.ts (design "Route guidance")
   export interface RoutingRegistry { precedence: string[]; excluded: { paths: string[]; basenames: string[]; self_dirs: string[] }; domains: RoutingDomain[] }
   export function loadRouting(root: string): RoutingRegistry
   ```
@@ -922,8 +922,7 @@ export interface RoutingDomain {
   rules: unknown;
   skills: unknown;
   agent: unknown;
-  risk_floor: unknown;
-  hook_guidance: unknown;
+  hint: string | null;
   sample_path: string | null;
 }
 
@@ -953,8 +952,7 @@ export function loadRouting(root: string): RoutingRegistry {
         rules: d['rules'] ?? null,
         skills: d['skills'] ?? null,
         agent: d['agent'] ?? null,
-        risk_floor: d['risk_floor'] ?? null,
-        hook_guidance: d['hook_guidance'] ?? null,
+        hint: typeof d['hint'] === 'string' ? d['hint'] : null,
         sample_path: typeof d['sample_path'] === 'string' ? d['sample_path'] : null,
       };
     }),
@@ -1088,11 +1086,14 @@ by hand instead of through the harness is a review defect.
   // src/kernel/route.ts (internal)
   export type RouteSection =
     | { domain: null; excluded: boolean }
-    | { domain: string; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; excluded: false };
+    | { domain: string; rules: string[]; skills: string[]; agent: string | null; risk_floor: RiskTier | null; hook_guidance: string; excluded: false };   // risk_floor and hook_guidance derived
   export function routeByPath(file: string, regs: Registries): RouteSection
+  export function renderGuidance(domain: RoutingDomain): string          // 'rules/<a>.md+<b>.md | skill:<s> | agent:<agent> (<hint>)' — the one renderer for hook and CLI
+  export function floorOf(domain: RoutingDomain, regs: Registries): RiskTier | null   // the one intent whose `domain` is this row
   ```
 - `resolve` throws `KernelError` when a declared fact's section cannot be built; it never fabricates a section. An empty `facts` object answers `{}`.
 - Tests below call `resolve({ path }, ctx).route`; `ctx = { root, registries: lazyRegistries(root) }`.
+- Route guidance parity (design "Route guidance", step one of two): while `routing.json` still carries `hook_guidance`, `route.test.ts` asserts `renderGuidance(row)` equals the stored string for every row, and `floorOf(row)` equals the stored `risk_floor`. This PR moves the mid-string parentheticals of `ios-release`, `android-release` and `mobile` to the end of their stored strings and updates the three literals in `hooks/test-route.sh`; the four parentheticals are also written as `hint` now so the renderer has its input. Step two is Task 13.
 
 - [ ] **Step 1: Failing tests against the shipped registry**
 
@@ -1153,7 +1154,7 @@ import type { KernelContext } from './context';
 
 export type RoutePathAnswer =
   | { domain: null; excluded: boolean }
-  | { domain: string; rules: unknown; skills: unknown; agent: unknown; risk_floor: unknown; hook_guidance: unknown; excluded: false };
+  | { domain: string; rules: string[]; skills: string[]; agent: string | null; risk_floor: RiskTier | null; hook_guidance: string; excluded: false };
 
 export function routePath(ctx: KernelContext, file: string): RoutePathAnswer {
   const reg = loadRouting(ctx.root);
@@ -1183,8 +1184,8 @@ export function routePath(ctx: KernelContext, file: string): RoutePathAnswer {
         rules: dom.rules,
         skills: dom.skills,
         agent: dom.agent,
-        risk_floor: dom.risk_floor,
-        hook_guidance: dom.hook_guidance,
+        risk_floor: floorOf(dom, regs),
+        hook_guidance: renderGuidance(dom),
         excluded: false,
       };
     }
@@ -1389,7 +1390,7 @@ Projections: `model --work` -> `.model`; `risk --signals` -> `.risk` (legacy key
 
 ### Task 13: swap the `scripts/kernel.sh` shim
 
-**Files:** Modify `scripts/kernel.sh` (whole file), `scripts/test-kernel.sh` (`relocated_kernel` fixture), `scripts/checks/70-runtime.sh` (C26d greps `scripts/kernel.sh` for the `hitl: budget-exhausted` literal: change its target path to `src/kernel/admit.ts`, same literal, same message).
+**Files:** Modify `scripts/kernel.sh` (whole file), `scripts/test-kernel.sh` (`relocated_kernel` fixture), `scripts/checks/70-runtime.sh` (C26d greps `scripts/kernel.sh` for the `hitl: budget-exhausted` literal: change its target path to `src/kernel/admit.ts`, same literal, same message); `registries/routing.json` and `scripts/checks/{20-registries,40-decision-registries}.sh` for the route-guidance step two (design "Route guidance", deviation 9): delete `hook_guidance` and `risk_floor` from the ten domain rows (the `hint` fields landed in Task 7); C6/C7/C8 read `agent`, `skills[]`, `rules[]` directly; C14's rules-versus-guidance half, C16's intent-versus-domain floor row and C8's domain `risk_floor` tier row are deleted; `docs/CONTRIBUTING.md` names `hint` instead of `hook_guidance`; release note: MINOR.
 
 - [ ] **Step 1: Replace `scripts/kernel.sh` with the shim**
 
@@ -1501,19 +1502,30 @@ export function render(decision: HookDecision, io: Io): number   // context/bloc
 export interface HookContext { io: Io; root: string; now: () => number; spawn: typeof spawnSync }
 export function bypassMarker(cwd: string): string | null             // <gitdir>/ENGINEOS_BYPASS
 export function bypassActive(cwd: string, env: NodeJS.ProcessEnv): boolean   // env ENGINEOS_BYPASS=1 > flag file (ENGINEOS_BYPASS_FLAG or ~/.claude/engineos.bypass) > marker
-export function telemetryDir(cwd: string): string | null            // only when the repo has .engineos/; creates <gitdir>/engineos-telemetry
-export function telemetry(dir: string, sid: string, event: string, data: Record<string, unknown>, env): void   // best effort, never throws; no-op when ENGINEOS_TELEMETRY=0
-export function spanOpen(dir, id, env): void; export function spanClose(dir, id, env): number | null
-export function span(dir, sid, kind, fields: SpanFields, env): void   // SpanFields from journal/schema.ts; sanitizes per row class (slug -> hookSlug, enum -> member or drop, int -> non-negative or drop), then journal/appendLine with tokens 0
+// src/hooks/telemetry.ts — the span lifecycle (design "Span lifecycle"). Callers pass facts, never flags.
+export interface Sink { /* opaque */ }
+export function telemetrySink(env: HookEnvelope, ctx: HookContext): Sink | null   // gate decided once: .engineos/ present, ENGINEOS_TELEMETRY != 0, not bypassed; creates <gitdir>/engineos-telemetry
+export interface SpanFacts { kind: SpanKind; capability: CapabilityId; modelTier: ModelTier; status?: SpanStatus; fields?: SpanFields }
+export function withSpan<T>(sink: Sink | null, facts: SpanFacts, fn: () => { result: T; status: SpanStatus; fields?: SpanFields }): T
+export function spanIdFrom(env: HookEnvelope): string                              // tool_use_id, else sha1(type:description) 12 hex; slugged
+export function openSpan(sink: Sink | null, id: string): void
+export function closeSpan(sink: Sink | null, id: string, facts: SpanFacts): void  // no marker -> no span
+export function event(sink: Sink | null, id: TelemetryEventId, data: EventData): void
+// internal: interface SpanWriter { appendSpan; appendEvent; openMarker; closeMarker } — file adapter (journal/appendLine over the schema table, per-row sanitizer) and memory adapter for tests
+// src/registry/capabilities.ts, policy.ts, models.json loader — literal unions pinned to the JSON by unit test
+export type CapabilityId = 'author-spec' | 'implement' | 'validate' | 'document' | 'security-review' | 'route'
+export type TelemetryEventId = 'route' | 'decision-rules' | 'verify' | 'hitl'
+export type SpanKind = 'router' | 'coordinator' | 'agent' | 'tool' | 'model' | 'verification'
+export type SpanStatus = 'OK' | 'BLOCKED' | 'FAILED' | 'DEGRADED'
 export const hookSlug = (v: string) => string; export const hookPathSlug = (v: string) => string | null
 ```
-**Invariants:** telemetry writes only when the consumer repo carries `.engineos/`; every writer swallows its own errors; slug classes exact; `spanClose` clamps negative durations to 0. `render` is the only function in `src/` that writes a hook's stdout or chooses its exit code; `output.ts` has no imports so `src/cli.ts`'s node guard can call `render(message(...), io)` for the deviation-2 `systemMessage` — this task re-points the guard's `skip` branch (Task 3) to it and deletes the inline `writeJson`. `output.test.ts` asserts the exact JSON text and exit code of each of the five kinds; no other test in `src/hooks/` asserts stdout. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `output.test.ts`, `bypass.test.ts`, `telemetry.test.ts` covering each of its 13 assertions; remove the suite's CI step in the same PR.
+**Invariants:** the sink is the only place the opt-in gate, the slug classes, the clock, the clamp, `run_id = trace_id = session` and `tokens 0` live; every write swallows its own errors and a null sink makes every call a no-op; `closeSpan` without a marker writes nothing; `spanIdFrom` is the one id derivation for the announce pair. Each literal-union type has a test asserting its members equal the registry's ids; `check_C27f` is deleted in this PR (deviation 6). `render` is the only function in `src/` that writes a hook's stdout or chooses its exit code; `output.ts` has no imports so `src/cli.ts`'s node guard can call `render(message(...), io)` for the deviation-2 `systemMessage` — this task re-points the guard's `skip` branch (Task 3) to it and deletes the inline `writeJson`. `output.test.ts` asserts the exact JSON text and exit code of each of the five kinds; no other test in `src/hooks/` asserts stdout. Replace `hooks/test-lib-common.sh` with `src/hooks/envelope.test.ts`, `output.test.ts`, `bypass.test.ts`, `telemetry.test.ts` (lifecycle against the memory writer) covering each of its 13 assertions; remove the suite's CI step in the same PR.
 **Commit:** `feat(hooks): port the hook envelope, decision output, bypass and telemetry library`.
 
 ### Task 17: hook library, part 2 — scaffold, runner, cache, manifests as data
 
-**Files:** Create `src/hooks/scaffold.ts`, `src/hooks/runner.ts`, `src/hooks/cache.ts`, `registries/layout-manifest.json`, `registries/docs-ledger.json` + tests. Modify `hooks/layout-manifest.sh` and `hooks/docs-ledger.sh` to read the JSON (they stay until Wave 6 because `hooks/test-layout.sh` and `hooks/test-docs.sh` source them). Modify `hooks/scaffold-layout.sh` to stay as is (sourced by `init-project.sh` until Task 26).
-**Source:** `hooks/scaffold-layout.sh`, `hooks/lib-runner.sh`, `hooks/route-before-change.sh` cache section, `hooks/layout-manifest.sh`, `hooks/docs-ledger.sh`.
+**Files:** Create `src/hooks/scaffold.ts`, `src/hooks/runner.ts`, `src/hooks/classify-failure.ts`, `src/hooks/cache.ts`, `registries/layout-manifest.json`, `registries/docs-ledger.json` + tests. Modify `hooks/layout-manifest.sh` and `hooks/docs-ledger.sh` to read the JSON (they stay until Wave 6 because `hooks/test-layout.sh` and `hooks/test-docs.sh` source them). Modify `hooks/scaffold-layout.sh` to stay as is (sourced by `init-project.sh` until Task 26).
+**Source:** `hooks/scaffold-layout.sh`, `hooks/lib-runner.sh`, `hooks/stop-verify.sh:93-98` (node floor) and `:141-148` (timeout, infra skip), `scripts/kernel.sh` `cmd_repair` situation arm, `hooks/route-before-change.sh` cache section, `hooks/layout-manifest.sh`, `hooks/docs-ledger.sh`.
 **Interfaces:**
 ```ts
 export interface ManifestEntry { dir: string; seeds: { src: string; dest: string }[] }   // src starting with '@' is repo-relative; else templates/project-layout/<src>
@@ -1522,16 +1534,24 @@ export type RunnerKind = 'nx' | 'npm-family'
 export function runnerSelect(root: string): { kind: RunnerKind; run: string; exec: string }
 export function runnerHandle(sel, pkgDir: string): string | null
 export function runnerHasTarget(sel, handle: string, target: string): boolean
-export function runnerRun(sel, handle: string, target: string, timeoutSeconds: number): { code: number; output: string }
-export function runnerInfraSkip(sel, target: string, output: string): boolean
+export function runnerRun(sel, handle: string, target: string, timeoutSeconds: number, env: NodeJS.ProcessEnv): { code: number; output: string; timedOut: boolean }   // facts only; no judgment
+// src/hooks/classify-failure.ts — the Situation judgment as one table (design "Situation classifier")
+export type Situation = 'red' | 'infra' | 'flaky'          // pinned to policy.repair.by_situation by unit test
+export type InfraReason = 'node-too-old' | 'runner-missing' | 'target-absent' | 'timeout'
+export type Evidence =
+  | { kind: 'environment'; nodeMajor: number }
+  | { kind: 'runner'; found: boolean }
+  | { kind: 'run'; runner: RunnerKind; target: string; code: number; output: string; timedOut: boolean }
+export type Verdict = { situation: 'red' } | { situation: 'infra'; reason: InfraReason }
+export function classify(evidence: Evidence): Verdict | null   // null: nothing to judge
 export function runnerEnv(env: NodeJS.ProcessEnv, nodeMajorOnPath: number, exists: (p: string) => boolean): NodeJS.ProcessEnv
 //   port of hooks/lib-common.sh ensure_modern_node (lines 84-100): when nodeMajorOnPath < 20 and
 //   $NVM_DIR/alias/default resolves to a versions/node/<v>/bin with node >= 20, return env with that bin prepended to PATH; else env unchanged
 export function routeCachePaths(gitDir: string, sid: string, routingSig: string, buster: string, rel: string): { route: string; output: string } | null   // null on ../ or ./ segments
 ```
-**Invariants:** scaffold `lstat`s each component, refuses symlinks and `..`, `mkdir` one level at a time, checks both existence and link-ness before copying a seed, returns silently on refusal; `runnerInfraSkip` regexes copied verbatim (`cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task` for nx; `missing script:|command "<t>" not found|find a script named "<t>"` for npm-family); `runnerSelect` kind is `nx` only when `nx.json` exists (the `have_jq` condition disappears: JSON is native). `runnerEnv` is the only place the node-20 PATH fix lives; `stop-verify` and `post-edit-check` pass its result as `env` to `runnerRun`, so ESLint 9 / vitest see the newer node the way they do today. Unit test: PATH node 16 + nvm default v22 -> PATH starts with the v22 bin; PATH node 20 -> env unchanged; no nvm dir -> env unchanged.
+**Invariants:** scaffold `lstat`s each component, refuses symlinks and `..`, `mkdir` one level at a time, checks both existence and link-ness before copying a seed, returns silently on refusal; the target-absent rows of the classifier table carry the regexes verbatim (`cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task` for nx; `missing script:|command "<t>" not found|find a script named "<t>"` for npm-family) and `runner.ts` exports no judgment; `classify` rows in order: environment `nodeMajor < 18` -> infra `node-too-old`; runner `found: false` -> infra `runner-missing`; run `timedOut` -> infra `timeout` (deviation 7); run `code != 0` matching the runner's pattern -> infra `target-absent`; run `code != 0` otherwise -> red; anything else -> null. `Situation` members equal `policy.repair.by_situation[].situation` by test; `classify` never returns `flaky`. `runnerSelect` kind is `nx` only when `nx.json` exists (the `have_jq` condition disappears: JSON is native). `runnerEnv` is the only place the node-20 PATH fix lives; `stop-verify` and `post-edit-check` pass its result as `env` to `runnerRun`, so ESLint 9 / vitest see the newer node the way they do today. Unit test: PATH node 16 + nvm default v22 -> PATH starts with the v22 bin; PATH node 20 -> env unchanged; no nvm dir -> env unchanged.
 **Acceptance:** `hooks/test-layout.sh` still green (through the unchanged bash hook), unit tests for the symlink cases mirror its sections 4-8.
-**Commit:** `feat(hooks): port scaffold, runner and route cache`.
+**Commit:** `feat(hooks): port scaffold, runner, the situation classifier and route cache`. Split scaffold + manifests into a Task 17b PR if the whole passes 400 lines.
 
 ### Task 18-25: the eight registered hooks, one PR each
 
@@ -1554,13 +1574,13 @@ Common shape for every hook task:
 | 18 | `ensure-project-layout` | 96 | `hooks/test-layout.sh` | bypass marker removed and stale `ENGINEOS_UNRECORDED.*` (+7 days) reaped BEFORE the self-repo skip; route cache wiped every start; telemetry reaped by `policy.json .telemetry.retention_days`; `ENGINEOS_SCAFFOLD` tri-state; exact hint text; always exit 0; grep/sed `cwd` fallback becomes lenient JSON decode | C29 (`scaffold-layout.sh` sourced -> `./scaffold` imported), C22c (`--event` ids), C27c (`exec.jsonl`, `engineos-telemetry/spans`) |
 | 19 | `mark-unrecorded` | 51 | `hooks/test-governance.sh` | extension allowlist `ts tsx js jsx py go rs sql` shared constant; skips `*/.engineos/*`; self_dirs from `routing.json` resolved against the plugin root; marker `ENGINEOS_UNRECORDED.<sid>`; silent | C22c if listed as a writer |
 | 20 | `record-verify` | 34 | `hooks/test-governance.sh` | bypass, then `stop_hook_active` guard; `.deferred` marker silences; block reason text verbatim with the `touch "<path>"` suggestion, returned as `block(reason)` (the adapter renders `{"decision":"block"}` and exits 0) | C22c if listed as a writer |
-| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached fast path only when project and change notes are empty — the cache stores the `HookDecision` JSON, not the rendered payload, and the hit path returns it to the adapter to render (cache format is internal, wiped every SessionStart); bypass checks before any kernel call; default guide `base.md+git.md only`; never sets `permissionDecision` | C22c (`--event` ids) |
-| 22 | `prompt-advisor` | 118 | `hooks/test-prompt-advisor.sh` | calls `resolveTask` in-process; guidance strings verbatim (copy from the jq program lines 64-115); telemetry ids only, never prompt text; `route` id slugged, default `none`; risk allowlisted to low/medium/high; span `--model-tier cheap` | C18f (`resolve-task` literal: the TS imports `resolveTask` from `../kernel/resolve-task`, which contains it), C22c, C27c |
-| 23 | `announce-agent-dispatch` | 39 | `hooks/test-agent-announce.sh` | opens a span keyed by tool-use id; banner text verbatim; under an unusable node prints the `systemMessage` (not in the silent set) | C27c (`hook_span_open`, `--capability-id` literals) |
-| 24 | `announce-agent-return` | 77 | `hooks/test-agent-announce.sh` | status floor derived only from structure (error flag, top-level `.status`, first token of a string response); `model_tier` from `agents.json`; closes the span | C27c (`hook_span`, `exec-journal` literals) |
-| 25 | `stop-verify` | 203 | `hooks/test-verify.sh`, `hooks/test-bypass.sh` | reads stdin and transcript leniently (never exits on decode failure); bypass then loop guard; runner spawned with `runnerEnv` (node-20 PATH fix); node < 18 on the runner PATH after that fix is an infra skip; `Edit|Write|NotebookEdit` tool_use only; `ts tsx js jsx` only; targets `lint typecheck` (+`test` when `ENGINEOS_VERIFY_TESTS=1`); timeouts 90 s / 180 s; infra-skip after a non-zero run; one `block(reason)` with the repair-bound text from `policy.json .repair` — the bash file's second, jq-less literal with different reason text disappears with jq; telemetry once per stop cycle | C20d (`repair.max_fix_attempts_per_check` literal, no hardcoded bound), C22c, C27c |
+| 21 | `route-before-change` | 129 | `hooks/test-route.sh`, `hooks/test-bypass.sh` | cache key `sid + routing.json mtime-size + ENGINEOS_ROUTE_CACHE_BUSTER`; atomic tmp+rename; `__ENGINEOS_EXCLUDED__` sentinel; cached fast path only when project and change notes are empty — the cache stores the `HookDecision` JSON, not the rendered payload, and the hit path returns it to the adapter to render (cache format is internal, wiped every SessionStart); bypass checks before any kernel call; default guide `base.md+git.md only`; reads `route.hook_guidance` from the kernel section, renders nothing itself; never sets `permissionDecision`. Wave 6 route e2e keeps the ten literal guidance strings | C22c (`--event` ids) |
+| 22 | `prompt-advisor` | 118 | `hooks/test-prompt-advisor.sh` | calls `resolveTask` in-process; guidance strings verbatim (copy from the jq program lines 64-115); telemetry ids only, never prompt text; `route` id slugged, default `none`; risk allowlisted to low/medium/high; the resolve call runs inside `withSpan(sink, { kind: 'router', capability: 'route', modelTier: 'cheap' }, ...)` | C18f (`resolve-task` literal: the TS imports `resolveTask` from `../kernel/resolve-task`, which contains it), C22c, C27c |
+| 23 | `announce-agent-dispatch` | 39 | `hooks/test-agent-announce.sh` | `openSpan(sink, spanIdFrom(env))` after the banner; banner text verbatim; under an unusable node prints the `systemMessage` (not in the silent set) | C27c (`hook_span_open`, `--capability-id` literals) |
+| 24 | `announce-agent-return` | 77 | `hooks/test-agent-announce.sh` | status floor derived only from structure (error flag, top-level `.status`, first token of a string response); `model_tier` from `agents.json`; `closeSpan(sink, spanIdFrom(env), { kind: 'agent', capability: 'implement', ... })` — same derivation as Task 23 by construction | C27c (`hook_span`, `exec-journal` literals) |
+| 25 | `stop-verify` | 203 | `hooks/test-verify.sh`, `hooks/test-bypass.sh` | reads stdin and transcript leniently (never exits on decode failure); bypass then loop guard; runner spawned with `runnerEnv` (node-20 PATH fix); every judgment goes through `classify` (Task 17): environment evidence after the PATH fix, runner evidence, then one run evidence per target; `Edit|Write|NotebookEdit` tool_use only; `ts tsx js jsx` only; targets `lint typecheck` (+`test` when `ENGINEOS_VERIFY_TESTS=1`); timeouts 90 s / 180 s; verdict rendering: `red` -> one `block(reason)` whose text is the kernel's in-process `repairSection({ check: target, attempt: 1 }).reason` plus the failure summary (the hook reads no `policy.repair` field itself, and the bash file's second, jq-less literal disappears with jq); infra `node-too-old` / `runner-missing` / `timeout` -> `message` naming target and reason (deviation 7); infra `target-absent` -> continue silently; the gate runs inside `withSpan(sink, { kind: 'verification', capability: 'validate', modelTier: 'cheap' }, ...)` and `event(sink, 'verify', { failed, targets, situation, reason? })` once per stop cycle; `policy.telemetry.events` `verify` row gains the two keys in this PR | C20d re-pointed: `src/hooks/stop-verify.ts` imports the kernel `repair` section and carries no `[0-9]+ fix attempts` literal; C22b (new keys round-trip), C22c, C27c |
 
-Also port `post-edit-check` (81 lines, unregistered) as Task 25b in the same PR as Task 25 if the size allows; suite `hooks/test-post-edit.sh`; returns `fail(stderr)`, which `render` maps to stderr + `exit 2`.
+Also port `post-edit-check` (81 lines, unregistered) as Task 25b in the same PR as Task 25 if the size allows; suite `hooks/test-post-edit.sh`; judges through the same `classify` (a `red` verdict is the only failure); returns `fail(stderr)`, which `render` maps to stderr + `exit 2`.
 
 ### Task 26: `init` (moved here from wave 4: it needs `scaffold.ts`)
 
@@ -1612,15 +1632,15 @@ Each replaces its `.sh` with a shim, commits as `refactor(<area>): port <unit> t
 **Source:** `scripts/validate-engineos.sh` (82), `scripts/checks/lib.sh` (91).
 **Interfaces:**
 ```ts
-export interface CheckResult { ok: boolean; message: string; skipped?: boolean }
-export interface Check { id: string; run(ctx: CheckContext): CheckResult[] }
+import { CheckResult, Finding, render } from './findings'   // Task 33c lands first; the harness never prints a sentence of its own
+export interface Check<C extends CheckId = CheckId> { id: C; codes: readonly string[]; run(ctx: CheckContext): CheckResult[] }
 export const CHECKS: readonly Check[]        // index.ts; duplicate ids rejected by a unit test that asserts Set size === length (and by a `satisfies` type on a literal id union)
 export function orderIds(ids: string[]): string[]   // numeric part numerically, then letter suffix
 export function runValidate(argv: string[], io: Io): number   // --only, --list; exit 0/1/2
 export function skipOnce(ctx, token, message), skipPending(ctx, token, message), deferralsOf(ctx, rule)
 ```
-**Invariants:** `--only C17` selects `C17`, `C17b`, `C17c`, `C17e`; unknown id -> exit 2; output lines `ok   <msg>` / `FAIL <msg>` / `skip <msg>` and `passed N, failed N`; `skip_pending` touches neither counter and is gated on the artifact's primary path only.
-**Acceptance:** `bash scripts/test-validate-engineos.sh` — the harness cases (`hok`/`hno`); the 141 mutation cases pass as each family lands.
+**Invariants:** `--only C17` selects `C17`, `C17b`, `C17c`, `C17e`; unknown id -> exit 2; every output line is `render(result)` — `ok   <title>` / `FAIL <title>: [code] [code:subject] ...` / `skip <title>: [code:subject]` — then `passed N, failed N` counted by `status`; `skipOnce` yields one `fail` result with `precondition-missing:<token>` per family; `skipPending` yields a `skip` result with `artifact-pending:<path>`, touches neither counter and is gated on the artifact's primary path only (deviation 8).
+**Acceptance:** `bash scripts/test-validate-engineos.sh` — the harness cases (`hok`/`hno`); each family PR ports its own mutation cases to code assertions (Task 33c), so the bash cases shrink family by family instead of passing as substrings.
 **Commit:** `feat(checks): explicit check registry and validate harness`.
 
 ### Task 33b: mirror runner and table (`src/checks/mirror.ts`, `mirrors.ts`)
@@ -1637,7 +1657,7 @@ mirror halves port as rows.
 
 - [ ] **Step 1: Failing tests** — `mirror.test.ts`: one case per runner rule using `tempRoot(t)` + fixture docs and a fixture registry object (missing section, empty section, empty list, element present, element absent, reverse direction finds an undeclared element, `{n}` equal, `{n}` unequal, `{n}` ambiguous, `scope: 'file'` searches the whole file); `mirrors.test.ts`: every `MIRRORS[].doc` exists in the checkout and every `registry` path resolves against `registries/`.
 - [ ] **Step 2: Run** — `npm test`, new files fail.
-- [ ] **Step 3: Implement** — slice by anchor to the next `^## ` line; substitute placeholders and compile to a `RegExp` with metacharacters escaped outside the placeholder; collect failures as `{ id, reason }`.
+- [ ] **Step 3: Implement** — slice by anchor to the next `^## ` line; substitute placeholders and compile to a `RegExp` with metacharacters escaped outside the placeholder; collect failures as `finding(row.check, row.id, subject)` (Task 33c), the subject being the missing element or the unequal number.
 - [ ] **Step 4: Run tests** — `npm test`, all pass.
 - [ ] **Step 5: Commit**
 
@@ -1649,20 +1669,36 @@ git commit -m "feat(checks): mirror runner and the registry-to-doc pair table"
 The families that follow port each mirror half as `runMirrors(rowsOf('<id>'))`
 inside the existing check; the non-mirror assertions port as code beside it.
 
+### Task 33c: findings module (`src/checks/findings.ts`)
+
+Amended 2026-09-04 (architecture review, candidate 8). Lands FIRST in Wave 5,
+before Task 33: the harness imports `render` and the families import
+`finding`, so nothing is written twice. The letter keeps the 33-series
+together; the order is 33c, 33, 33b, then 34-41.
+
+**Files:** Create `src/checks/findings.ts`, `src/checks/findings.test.ts`.
+**Source:** the 259 `*_bad="$*_bad <slug>"` accumulations and their aggregated `bad` lines across `scripts/checks/*.sh`; `skip_once` / `skip_pending` in `scripts/checks/lib.sh`; the `case_` contract in `scripts/test-validate-engineos.sh:59`.
+**Interfaces:** the `Finding`, `CheckResult`, `HARNESS_FINDINGS`, `finding`, `result` and `render` contract in the design ("Findings"), verbatim. `CodeOf<C>` is derived from each family's `as const` code list registered on the `Check`.
+**Invariants:** `render` is the only function in `src/checks/` and `src/validate/` that builds an `ok`/`FAIL`/`skip` line; a code matches `^[a-z][a-z0-9-]*$`; codes are unique within a check (asserted in `index.test.ts` over `CHECKS[].codes`), free across checks; `status` is derived, never passed; a `subject` is rendered after a colon and never contains whitespace-only text.
+**Tests:** `findings.test.ts` — `result` derives each status; `render` yields the three line shapes byte-exact; a code outside the check's list is a `tsc` error (a `// @ts-expect-error` case); `HARNESS_FINDINGS` accepted for every check id.
+**Commit:** `feat(checks): findings module — checks report values, the harness renders`.
+
+**Family PR contract (Tasks 34-41), added by this task:** each family declares `const C<n>_FINDINGS = [...] as const` beside its checks and registers them as `codes`; every `bad` accumulation becomes `finding(...)`; the family's `case_` rows in `test-validate-engineos.sh` are ported to `<family>.test.ts` as `{ check, code, subject? }` assertions on `run(ctx)` over a mutated `relocatedRoot`, and deleted from the bash suite in the same PR; the family test asserts every declared code is produced by at least one case.
+
 ### Tasks 34-41: check families, one PR each
 
 | Task | Family | Source LOC | Checks | Notes |
 |---|---|---|---|---|
 | 34 | `10-rules` | 89 | C1 (becomes "node >= 18 present"), C2, C3, C5, C5b | C1's message changes: say so in release notes |
-| 35 | `20-registries` | 172 | C6, C7, C8, C14, C15, C15b | pure JSON |
+| 35 | `20-registries` | 172 | C6, C7, C8, C14, C15, C15b | pure JSON; C6/C7/C8 already read the structured fields since Task 13, C14 is JSON validity only |
 | 36 | `30-agents-skills` | 107 | C9, C10, C11, C12, C13, C31 | frontmatter via `src/gen/frontmatter.ts` |
-| 37 | `40-decision-registries` | 238 | C16, C19*, C21*, C23* | C16's nine pairs become `MIRRORS` rows (Task 33b) with today's grep strings as `element`/`pattern`; the gate-ladder row reads `rules/gates.md` for real (deviation 5); intent/routing FKs and JSON shape checks stay code |
+| 37 | `40-decision-registries` | 238 | C16, C19*, C21*, C23* | C16's nine pairs become `MIRRORS` rows (Task 33b) with today's grep strings as `element`/`pattern`; the gate-ladder row reads `rules/gates.md` for real (deviation 5); intent/routing FKs and JSON shape checks stay code; the floor-equality row is already gone (Task 13, deviation 9) |
 | 38 | `50-kernel` | 229 | C17*, C18* | call kernel functions in-process, not the shim |
 | 39 | `60-contracts` | 205 | C21b/c/e, handoff and change-record mirrors | C19b/c and C21b/e template and prose mirrors are rows; C21 and C21c walk `.engineos/archived/**` as code |
 | 40 | `70-runtime` part 1 | ~800 | C20*, C22*, C24*, C25*, C26* | C20c, C23, C24c, C25c, C26c prose mirrors are rows; canaries call `admit`/`breaker`/`hitl`/`repair`/telemetry in-process; C26d keeps the `hitl: budget-exhausted` literal coupling, now against `src/kernel/admit.ts` |
-| 41 | `70-runtime` part 2 | ~775 | C27*, C28, C29, C30 | C27d and C28 prose mirrors are rows; C27e is already gone (Task 14, deviation 4); C27 ports as policy well-formedness + writer existence; C29/C30 re-pointed to the TS modules and to shim file modes |
+| 41 | `70-runtime` part 2 | ~775 | C27*, C28, C29, C30 | C27d and C28 prose mirrors are rows; C27e (Task 14, deviation 4) and C27f (Task 16, deviation 6) are already gone; C27 ports as policy well-formedness + writer existence; C29/C30 re-pointed to the TS modules and to shim file modes |
 
-Each PR: `feat(checks): port family <name>`; acceptance `bash scripts/test-validate-engineos.sh` (all cases whose ids belong to ported families). When Task 41 lands, `scripts/checks/*.sh` are deleted and the shellcheck CI step drops `scripts/checks/*.sh`.
+Each PR: `feat(checks): port family <name>`; acceptance: the family's ported code assertions green in `<family>.test.ts`, and `bash scripts/test-validate-engineos.sh` green on what remains (Task 33c family contract). When Task 41 lands, `scripts/checks/*.sh` are deleted and the shellcheck CI step drops `scripts/checks/*.sh`.
 
 Barrier 5: handoff.
 
@@ -1672,7 +1708,7 @@ Barrier 5: handoff.
 
 ### Tasks 42-57: port the 16 suites to `node:test`
 
-One PR per suite (largest first: `test-validate-engineos.sh` 1076 -> `src/validate/validate.e2e.test.ts` may take two PRs; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box through the shared harness (Task 6b) — `runCli` for the drive, `tempRoot(t)` + `fixtureRepo` for the repo, `relocatedRoot` where a suite mutates a registry (`test-kernel.sh` `relocated_kernel`, `test-route.sh` fixtures), `envelope` and `transcript` for hook stdin — with assertions on stdout JSON and marker files. Suites that exercise a transcript (`test-verify.sh`) run each case in both transcript forms, default `input` and `{ legacy: true }`. No suite reintroduces `mkdtempSync` + `git init` inline; the harness is where that idiom lives. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
+One PR per suite (largest first: `test-validate-engineos.sh`, by then only its harness cases since the families ported theirs in Wave 5 -> `src/validate/validate.e2e.test.ts`, one PR; `test-kernel.sh` 1067 -> `src/kernel/kernel.e2e.test.ts`). Style: black-box through the shared harness (Task 6b) — `runCli` for the drive, `tempRoot(t)` + `fixtureRepo` for the repo, `relocatedRoot` where a suite mutates a registry (`test-kernel.sh` `relocated_kernel`, `test-route.sh` fixtures), `envelope` and `transcript` for hook stdin — with assertions on stdout JSON and marker files. Suites that exercise a transcript (`test-verify.sh`) run each case in both transcript forms, default `input` and `{ legacy: true }`. No suite reintroduces `mkdtempSync` + `git init` inline; the harness is where that idiom lives. Each PR deletes the `.sh` suite and its CI step and adds nothing to CI (the `npm test` step already runs `build/**/*.test.js`). E2E tests live beside the module they exercise, named `*.e2e.test.ts`, and run in the same `node --test build/` pass.
 
 Mapping: `test-route.sh`, `test-governance.sh`, `test-prompt-advisor.sh`, `test-install-hooks.sh` (keeps spawning `bash install.sh`), `test-layout.sh`, `test-verify.sh`, `test-bypass.sh`, `test-docs.sh` (reads `registries/docs-ledger.json`), `test-agent-announce.sh`, `test-post-edit.sh`, `test-exec-journal.sh`, `test-gen-agent-registry.sh`, `test-telemetry.sh`, `test-kernel.sh`, `test-validate-engineos.sh`. `test-lib-common.sh` was already replaced in Task 16.
 

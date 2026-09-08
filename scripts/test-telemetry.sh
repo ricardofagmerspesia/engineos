@@ -78,18 +78,24 @@ bash "$TS" validate "$tmp" >/dev/null 2>&1
 check "validate checks the final line even with no trailing newline" 0 $?
 rm -f "$tmp"
 
-# Missing jq -> hard error exit 1, matching exec-journal.sh's own precedent.
+# Missing runtime -> hard error, not a silent skip. The dependency is node now,
+# not jq: scripts/telemetry.sh is a shim over dist/engineos.cjs, so a PATH with
+# neither tool must still fail loudly and write nothing. The exact exit code is no
+# longer asserted (an unfound `exec node` leaves 127, where the bash CLI's own
+# err() left 1) — what matters is that the event is not silently lost.
 TMPBIN=$(mktemp -d)
 for b in cat dirname pwd printf mktemp; do ln -s "$(command -v "$b")" "$TMPBIN/$b" 2>/dev/null || true; done
 BASH_ABS="$(command -v bash)"
-out=$(PATH="$TMPBIN" "$BASH_ABS" "$TS" append /tmp/x --session s --event route --data '{}' 2>&1)
+sink=$(mktemp); rm -f "$sink"
+out=$(PATH="$TMPBIN" "$BASH_ABS" "$TS" append "$sink" --session s --event route --data '{}' 2>&1)
 rc=$?
 rm -rf "$TMPBIN"
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '"error"'; then
-  pass=$((pass+1)); printf 'ok   %s\n' "missing jq is a hard error, not a silent skip"
+if [ "$rc" -ne 0 ] && [ ! -s "$sink" ]; then
+  pass=$((pass+1)); printf 'ok   %s\n' "a missing runtime is a hard error, not a silent skip"
 else
-  fail=$((fail+1)); printf 'FAIL missing jq is a hard error — rc=%s out=%s\n' "$rc" "$out"
+  fail=$((fail+1)); printf 'FAIL a missing runtime is a hard error — rc=%s out=%s\n' "$rc" "$out"
 fi
+rm -f "$sink"
 
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"

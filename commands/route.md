@@ -32,10 +32,20 @@ route and stop.
    directory holding `scripts/kernel.sh` is accepted. It reads no personal
    configuration.
 
-   Then run `"$ENGINEOS_ROOT"/scripts/kernel.sh route-escalate --prompt "$ARGUMENTS"`
-   and print the kernel's answer as one line, substituting the printed root
-   (shell state does not survive between Bash calls). If the loop prints
-   nothing, report that the kernel is unreachable from this project and stop.
+   Then ask the kernel for the route in one `resolve` call, substituting the
+   printed root (shell state does not survive between Bash calls), and print
+   its `.route` answer as one line:
+
+   ```bash
+   "$ENGINEOS_ROOT"/scripts/kernel.sh resolve --facts "$(jq -nc --arg p "$ARGUMENTS" '{prompt: $p, escalate: true}')"
+   ```
+
+   `jq -nc` builds the payload so any quote or newline in the request is
+   escaped rather than breaking the JSON; `"escalate": true` selects the
+   route-escalation form (`escalate`, `reasons`, `intents`, `agents`,
+   `risk_floor`, `scale`, `ambiguous`) instead of the plain intent form. If the
+   loop prints nothing, report that the kernel is unreachable from this project
+   and stop.
 2. Dispatch the `router` agent via the Task tool with `model: opus`, passing
    `$ARGUMENTS` as the request. **Explicit invocation always dispatches**, even
    when `escalate` is `false` — the user asked for a plan, and the fast path in

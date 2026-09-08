@@ -145,13 +145,13 @@ case_ C5 "router row dropping a deferred rule is caught" \
       "router closure rule violated" \
       "sed -i.bak '/^| Backend work/s| + \`rules/observability.md\`||' CLAUDE.md"
 
-case_ C6 "guidance naming a nonexistent agent is caught" \
-      "hook_guidance names missing agents" \
+case_ C6 "a domain naming a nonexistent agent is caught" \
+      "routing.json names missing agents" \
       "python3 -c \"
 import json
 p='registries/routing.json'; d=json.load(open(p))
 for x in d['domains']:
-    if x['id']=='test': x['hook_guidance']=x['hook_guidance'].replace('agent:test-writer','agent:ghost-writer')
+    if x['id']=='test': x['agent']='ghost-writer'
 json.dump(d,open(p,'w'),indent=2)\""
 
 case_ C9 "agent whose frontmatter name drifts from filename is caught" \
@@ -192,15 +192,6 @@ import json
 p='registries/routing.json'; d=json.load(open(p))
 for x in d['domains']:
     if x['id']=='dba': x['sample_path']='/tmp/web/src/Button.tsx'
-json.dump(d,open(p,'w'),indent=2)\""
-
-case_ C14 "registry rules[] disagreeing with its guidance string is caught" \
-      "registry rules/guidance mismatch" \
-      "python3 -c \"
-import json
-p='registries/routing.json'; d=json.load(open(p))
-for x in d['domains']:
-    if x['id']=='frontend': x['rules'].remove('testing')
 json.dump(d,open(p,'w'),indent=2)\""
 
 case_ C14 "registry precedence out of map order is caught" \
@@ -431,9 +422,9 @@ case_ C18 "route capability's tier drifting off the router agent's model is caug
       "route capability binding broken" \
       "sed -i.bak 's|^model: opus|model: haiku|' agents/router.md"
 
-case_ C18b "router agent losing a required kernel call is caught" \
-      "router does not call the kernel" \
-      "sed -i.bak 's|kernel.sh waves|kernel.sh wavez|g' agents/router.md"
+case_ C18b "router agent losing a required kernel fact is caught" \
+      "router's kernel resolve call is missing" \
+      "sed -i.bak 's|kernel.sh resolve --facts|kernel.sh resolv --facts|g' agents/router.md"
 
 case_ C18c "router agent gaining Write is caught" \
       "router must not hold" \
@@ -534,9 +525,12 @@ p='registries/policy.json'; d=json.load(open(p))
 d['repair']['by_situation']=[s for s in d['repair']['by_situation'] if s['situation']!='flaky']
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ C20b "the stop-report-red ladder literal broken in kernel.sh is caught" \
+# The kernel executes from dist/engineos.cjs (scripts/kernel.sh is a shim), so a
+# behavioural canary mutates the bundle -- editing src/kernel/*.ts changes nothing
+# without a rebuild.
+case_ C20b "the stop-report-red ladder literal broken in the runtime is caught" \
       "repair ladder canary failed" \
-      "sed -i.bak 's|stop-report-red|stop-report|' scripts/kernel.sh"
+      "sed -i.bak 's|stop-report-red|stop-report|' dist/engineos.cjs"
 
 case_ C20c "until clean reintroduced into the CLAUDE.md verify-done row is caught" \
       "repair prose-mirror problems" \
@@ -806,11 +800,11 @@ json.dump(d,open(p,'w'),indent=2)\""
 # -- "no human needed" for an input it did not act on.
 case_ C26b "a declared situation the kernel no longer maps to a reason is caught" \
       "hitl canary" \
-      "sed -i.bak 's|if \$s == \"breaker-open\" then \"breaker-open\"|if false then \"breaker-open\"|' scripts/kernel.sh"
+      "sed -i.bak 's|inputs.situation === \"breaker-open\") reasons.push|false) reasons.push|' dist/engineos.cjs"
 
 case_ C26b "the high-risk reason removed from the kernel is caught" \
       "hitl canary" \
-      "sed -i.bak 's@if \$r == \"high\" then \"high-risk\"@if false then \"high-risk\"@' scripts/kernel.sh"
+      "sed -i.bak 's@inputs.risk === \"high\") reasons.push(\"high-risk\")@false) reasons.push(\"high-risk\")@' dist/engineos.cjs"
 
 # The ruling, pinned from the failing side: a resolve-task that folds hitl off a
 # bare route.risk_floor again would announce a human gate on every auth-guard
@@ -818,7 +812,7 @@ case_ C26b "the high-risk reason removed from the kernel is caught" \
 # exactly that regression, so C26b has to catch it.
 case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
       "hitl canary" \
-      "sed -i.bak 's@if \[ \"\$any_high\" = true \]; then@if [ -n \"\$floor\" ]; then@' scripts/kernel.sh"
+      "sed -i.bak 's@if (decisions.any_high \&\& ceiling !== null) {@if (floor !== null \&\& ceiling !== null) {@' dist/engineos.cjs"
 
 # The other ruling, same treatment: restoring the unconditional "A1" makes
 # autonomy_after RAISE A0 to A1 on weaker evidence and drop medium/A3 two
@@ -827,7 +821,7 @@ case_ C26b "resolve-task folding hitl off a bare risk floor is caught" \
 # tier-scoped assertions are load-bearing.
 case_ C26b "autonomy_after reverting to an unconditional A1 is caught" \
       "hitl canary" \
-      "sed -i.bak 's@autonomy_after: \$after,@autonomy_after: (if \$e == \"thin\" then \"A1\" else \$a end),@' scripts/kernel.sh"
+      "sed -i.bak 's@highWithThinEvidence: policy.autonomy.high_with_thin_evidence@highWithThinEvidence: \"A1\", risk: \"high\"@' dist/engineos.cjs"
 
 case_ C26c "a reason row deleted from rules/risk-autonomy.md is caught" \
       "hitl prose-mirror problems" \
@@ -852,23 +846,23 @@ json.dump(d,open(p,'w'),indent=2)\""
 
 case_ C26d "admit's reject message losing the hitl reason id is caught" \
       "hitl/backpressure coupling problems" \
-      "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' scripts/kernel.sh"
+      "sed -i.bak 's|(hitl: budget-exhausted)|(ask a human)|' src/kernel/admit.ts"
 
 # ---- C27: the agent-span exec journal ----
-# The registry half and the script half declare the same span vocabulary, so
-# either one moving alone is drift. Both directions get a case: a check that
-# only reads the registry would pass against a renamed constant.
-case_ C27 "a span kind renamed in the registry without exec-journal.sh is caught" \
-      "exec_journal block problems" \
+# The CLI used to restate the span vocabulary and the length bound as its own
+# bash constants, and C27a compared the two halves. src/journal/schema.ts
+# resolves every enumerated row from the registry that owns it instead, so there
+# is no second copy to drift: the pair of "renamed on one side only" cases that
+# stood here is gone with the constants, and a rename in the registry is caught
+# by the prose mirror below, which is now the only other place the vocabulary is
+# written down by hand.
+case_ C27d "a span kind renamed in the registry without the prose is caught" \
+      "exec-journal prose-mirror problems" \
       "python3 -c \"
 import json
 p='registries/policy.json'; d=json.load(open(p))
 d['telemetry']['exec_journal']['span_kinds']=[('verify' if k=='verification' else k) for k in d['telemetry']['exec_journal']['span_kinds']]
 json.dump(d,open(p,'w'),indent=2)\""
-
-case_ C27 "a span kind renamed in exec-journal.sh without the registry is caught" \
-      "exec_journal block problems" \
-      "sed -i.bak 's|^VALID_SPAN_KINDS=\"router |VALID_SPAN_KINDS=\"routing |' scripts/exec-journal.sh"
 
 case_ C27 "a home that no longer names the .exec.jsonl journal is caught" \
       "exec_journal block problems" \
@@ -886,31 +880,37 @@ p='registries/policy.json'; d=json.load(open(p),object_pairs_hook=collections.Or
 del d['telemetry']['exec_journal']['max_value_length']
 json.dump(d,open(p,'w'),indent=2)\""
 
-case_ C27 "the length bound drifting from the script's fallback is caught" \
+case_ C27 "the length bound drifting from the port's standalone fallback is caught" \
       "exec_journal block problems" \
-      "sed -i.bak 's|^MAX_VALUE_LEN_FALLBACK=\"256\"|MAX_VALUE_LEN_FALLBACK=\"512\"|' scripts/exec-journal.sh"
+      "sed -i.bak 's|MAX_VALUE_LENGTH_FALLBACK = 256;|MAX_VALUE_LENGTH_FALLBACK = 512;|' src/registry/policy-exec-journal.ts"
 
-# The invariant the whole schema exists for. is_slug weakened to accept
-# whitespace is a prompt-text channel straight to disk, and it is a one-line
+# The CLI executes from dist/engineos.cjs (scripts/exec-journal.sh is a shim),
+# so a behavioural canary mutates the bundle -- editing src/journal/*.ts changes
+# nothing without a rebuild. Same mechanism as C20b, one family down.
+#
+# Each mutation disarms ONE guard in the table walk rather than one field's
+# bespoke check, which is what the port made possible and what these cases are
+# now worth: a single edit to guardValue's slug arm turns every slug field into
+# a free-text channel at once.
+
+# The invariant the whole schema exists for. The slug class widened to accept
+# whitespace is a prompt-text channel straight to disk, and it is a one-token
 # edit, so it gets its own behavioral case rather than trusting the unit suite.
-case_ C27b "is_slug weakened to accept whitespace is caught by the live canary" \
+case_ C27b "the slug class widened to accept whitespace is caught by the live canary" \
       "exec-journal span canary failed" \
-      "python3 -c \"
-p='scripts/exec-journal.sh'; s=open(p).read()
-s=s.replace(\\\"''|*[!A-Za-z0-9@_./:-]*) return 1 ;;\\\", \\\"'') return 1 ;;\\\")
-open(p,'w').write(s)\""
+      "sed -i.bak 's|A-Za-z0-9@_./:-|^|' dist/engineos.cjs"
 
-case_ C27b "an unknown span_kind silently accepted is caught by the live canary" \
+case_ C27b "an unknown enum member silently accepted is caught by the live canary" \
       "exec-journal span canary failed" \
-      "sed -i.bak 's|in_list \"\$span_kind_val\" \"\$VALID_SPAN_KINDS\"|true|' scripts/exec-journal.sh"
+      "sed -i.bak 's|if (members.includes(value)) return;|return;|' dist/engineos.cjs"
 
 case_ C27b "the agent field losing its slug guard is caught by the canary" \
       "exec-journal span canary failed" \
-      "sed -i.bak '/^  check_slug_flag --agent /d' scripts/exec-journal.sh"
+      "sed -i.bak 's|flag: \"--agent\", guard: \"slug\"|flag: \"--agent\", guard: \"free\"|' dist/engineos.cjs"
 
 case_ C27b "the length bound no longer enforced on append is caught" \
       "exec-journal span canary failed" \
-      "sed -i.bak '/^    check_len \"\$1\" \"\$2\"\$/d' scripts/exec-journal.sh"
+      "sed -i.bak 's|if (text.length > maxLength) {|if (false) {|' dist/engineos.cjs"
 
 case_ C27c "the router span removed from prompt-advisor.sh is caught" \
       "exec-journal wiring problems" \
@@ -960,37 +960,16 @@ case_ C27d "the slug guard re-claiming that it classifies content is caught" \
       "exec-journal prose-mirror problems" \
       "sed -i.bak 's|it does not classify the content|a PII value cannot be written through those|' rules/observability.md"
 
-case_ C27e "append and validate guarding different field sets is caught" \
-      "exec-journal slug-guard set problems" \
-      "sed -i.bak '/^  check_slug_flag --agent /d' scripts/exec-journal.sh"
-
-case_ C27e "note becoming a guarded slug field is caught" \
-      "exec-journal slug-guard set problems" \
-      "python3 -c \"
-p='scripts/exec-journal.sh'; s=open(p).read()
-old='  check_slug_flag --route          '
-open(p,'w').write(s.replace(old, '  check_slug_flag --note           \\\"\\\$note_set\\\"           \\\"\\\$note_val\\\"\\n'+old, 1))\""
-
-# The case the previous round could not have written, because the check could
-# not have caught it. Both of C27e's original comparisons derive their halves
-# from the guards, so removing a field's guard from BOTH boundaries leaves the
-# two halves equal and the check green — which is how `timestamp` stayed a
-# newline-and-control-character channel to disk after `agent` was fixed. Two
-# edits, one invariant: "a declared string field guarded on neither boundary".
-# Removing only one of them would fire the parity comparison instead and prove
-# nothing about the coverage one, so the expected string names the finding only
-# the declaration-driven comparison can produce.
-case_ C27e "a declared string field guarded on NEITHER boundary is caught" \
-      "declared-slug-field-not-guarded-on-append:timestamp" \
-      "sed -i.bak '/^  check_slug_flag --timestamp /d' scripts/exec-journal.sh; sed -i.bak 's|(\[\.timestamp, \.run_id,|([.run_id,|' scripts/exec-journal.sh"
-
-# ... and the declaration is only worth having if it cannot fall behind the
-# code, so it is pinned against the object append actually emits. Otherwise the
-# blind spot would just move: a field added to the writer and forgotten in
-# EJ_SCHEMA_FIELDS would be invisible again.
-case_ C27e "a field the writer emits but the schema declaration drops is caught" \
-      "emitted-but-not-declared-in-EJ_SCHEMA_FIELDS:route" \
-      "sed -i.bak 's| route:slug||' scripts/exec-journal.sh"
+# C27e's three cases were removed with the check. It compared the field set
+# APPEND guards against the field set VALIDATE guards, class by class, because
+# the bash CLI restated the schema seven times and the two halves could disagree
+# -- --agent and then --timestamp really did. src/journal/schema.ts declares the
+# table once and both boundaries walk it, so "append and validate guard different
+# sets" is no longer a state the code can be in, and a negative case for it would
+# be asserting against a shape that cannot occur. src/journal/schema.test.ts
+# holds what is still assertable: that every row is covered, that note is the
+# only free-text one, and that each enumerated row resolves against the registry
+# that owns it.
 
 case_ C27f "a span writer passing an unregistered capability_id is caught" \
       "exec-journal capability_id problems" \

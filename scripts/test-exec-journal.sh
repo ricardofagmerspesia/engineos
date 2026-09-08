@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Tests for scripts/exec-journal.sh — the Phase 1 exec-journal schema's
 # append/validate CLI. Run: scripts/test-exec-journal.sh
+#
+# The CLI is a shim over dist/engineos.cjs now (plan Task 14), so these cases run
+# the bundle through the shim, exactly as a consumer does. They are behavioural
+# throughout — nothing here reads the script's text — so they survived the port
+# unchanged apart from one fixture that had been reading a bash constant.
+# src/journal/ carries the unit-level suites; this file is the public surface.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EJ="$ROOT/scripts/exec-journal.sh"
@@ -338,10 +344,14 @@ check "validate rejects a lowercased status, as append does" 1 $?
 
 # ... and the other direction, so the guard above cannot be satisfied by one
 # that rejects everything: every status and every tier the CLI declares must
-# still validate. Statuses are read from the constant and tiers from
-# registries/models.json (the CLI's own source), so renaming one moves this fixture.
+# still validate. Both lists are read from the registries the CLI itself reads —
+# statuses from policy.json.telemetry.exec_journal, tiers from models.json — so
+# renaming one moves this fixture. Statuses came from a constant in the CLI's own
+# text until the port; there is no constant left to read, which is the point:
+# src/journal/schema.ts resolves the vocabulary from the registry rather than
+# restating it.
 ev_bad=""
-for st in $(sed -n 's/^VALID_STATUSES="\(.*\)"$/\1/p' "$EJ"); do
+for st in $(jq -r '.telemetry.exec_journal.statuses[]' "$ROOT/registries/policy.json"); do
   printf '{"timestamp":"t","run_id":"r","capability_id":"c","agent":null,"model_tier":"build","status":"%s","tokens_in":0,"tokens_out":0,"duration_ms":1,"note":null}\n' "$st" > "$tmp"
   bash "$EJ" validate "$tmp" >/dev/null 2>&1 || ev_bad="$ev_bad status:$st"
 done

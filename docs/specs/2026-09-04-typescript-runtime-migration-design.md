@@ -80,21 +80,23 @@ src/
     json.ts           readJson with typed narrowing; error helpers per CLI convention
   registry/           one typed loader per registries/*.json; lazy, path-bound
   kernel/             one deep module: resolve(facts, ctx); concept modules private;
-                      cli.ts holds the projections (see "Kernel shape" below)
+                      cli.ts holds the projections (see "Kernel shape" below);
+                      route.ts renders hook guidance and derives the floor from the registry rows ("Route guidance" below)
   journal/            exec-journal and telemetry: schema.ts is the one field table; append, validate, usage and the hook writers derive from it
   hooks/
     envelope.ts       stdin decode into HookEnvelope (cwd, session_id, prompt, file, tool, transcript, stop_hook_active)
     bypass.ts         three-tier bypass: env > machine flag > per-repo marker
-    telemetry.ts      in-process writers for <sid>.jsonl, <sid>.exec.jsonl, spans/
+    telemetry.ts      span lifecycle: one Sink per hook (gate, clock, slugs, writer seam); withSpan / openSpan / closeSpan / event
     scaffold.ts       symlink-safe directory + seed creation, manifest as data
-    runner.ts         nx / npm-family detection, target probe, run with timeout, infra-skip regexes
+    runner.ts         nx / npm-family detection, target probe, run with timeout; returns facts, judges nothing
+    classify-failure.ts  the Situation judgment (red | infra) as one table over evidence: node floor, runner, run output, timeout
     cache.ts          route cache keyed by sid + routing.json signature + buster
     output.ts         HookDecision (silent | context | block | message | fail) + render(): the one writer of hook stdout and exit codes
     <hook-name>.ts    one per registered hook (8)
   gen/                agent-commands, agent-registry
   init/               project adoption
   evals/              deterministic + live tiers
-  checks/             one module per family + index.ts (explicit registry) + lib; mirror.ts runs the typed MirrorPair table in mirrors.ts
+  checks/             one module per family + index.ts (explicit registry) + lib; findings.ts: Finding, CheckResult, typed finding(), render(); mirror.ts runs the typed MirrorPair table in mirrors.ts
   bench/              runtime budgets
   report/             usage report
   testing/            test-only fixture harness (temp roots, fixture repos, relocated registries, envelopes, transcripts, two drives); never bundled
@@ -256,7 +258,8 @@ and `post-edit-check`. The re-exec above is the lesser half and only serves us.
 No internal subprocesses except `git` and the project's own runners
 (`npm`/`pnpm`/`yarn`/`nx`) in `stop-verify` and `post-edit-check`. Telemetry,
 spans and journal lines are written in-process through `journal/` and
-`hooks/telemetry.ts`. Timeouts on runners use `spawnSync`'s `timeout` option.
+`hooks/telemetry.ts`'s sink ("Span lifecycle" below). Timeouts on runners use
+`spawnSync`'s `timeout` option.
 
 ### Journal schema (amended 2026-09-04, architecture review)
 
@@ -320,7 +323,7 @@ claims to mirror (deviation 5). The port declares the relation once.
 // src/checks/mirrors.ts — the table; src/checks/mirror.ts — the runner
 export type Direction = 'doc-names-registry' | 'registry-names-doc' | 'both'
 export interface MirrorBase {
-  id: string                      // row id, reported on failure: [<id>: <reason>]
+  id: string                      // row id; it is the finding code under `check` ("Findings" below), so it must appear in that check's code list
   check: CheckId                  // the check that runs this row (`--only` and the mutation cases key on it)
   registry: RegistryPath          // typed against the loaders, e.g. 'policy.hitl.reasons[].id'
   doc: string                     // 'rules/risk-autonomy.md'
@@ -333,7 +336,7 @@ export type MirrorPair = MirrorBase & (
   | { kind: 'quotes'; pattern: string }   // one registry scalar equals the {n} capture, e.g. 'Cap concurrency at ~{n}'
 )
 export const MIRRORS = [ … ] satisfies readonly MirrorPair[]
-export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): MirrorFailure[]   // [] means the rows hold
+export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): Finding[]   // [] means the rows hold; subject is the missing element or the unequal number
 ```
 
 - The runner enforces, for every row and with no opt-out: the anchor section
@@ -359,6 +362,202 @@ export function runMirrors(rows: readonly MirrorPair[], ctx: CheckContext): Mirr
   file (needs its own check to stay honest and loses typed paths); one new
   check id for all mirrors (fifteen ids change meaning, mutation cases move);
   a single pattern kind (a scalar is not a list, and `both` has no meaning for it).
+
+### Span lifecycle (amended 2026-09-04, architecture review)
+
+Spans are emitted today through nine bash helpers whose ordering, id
+derivation and flag validity are the caller's job: the dispatch and return
+hooks derive the span id twice with a comment saying the two must match, the
+`ENGINEOS_TELEMETRY=0` guard is checked in five places, the duration clamp
+appears three times, and a wrong `--capability-id` is caught by a check that
+greps the writers after the fact. The port makes the lifecycle the interface.
+
+```ts
+// src/hooks/telemetry.ts
+export interface Sink { /* opaque: gate already decided, clock and writer bound */ }
+export function telemetrySink(env: HookEnvelope, ctx: HookContext): Sink | null
+//   null when the project has no .engineos/, ENGINEOS_TELEMETRY=0, or the session is bypassed; every call on null is a no-op
+export interface SpanFacts { kind: SpanKind; capability: CapabilityId; modelTier: ModelTier; status?: SpanStatus; fields?: SpanFields }
+export function withSpan<T>(sink: Sink | null, facts: SpanFacts, fn: () => { result: T; status: SpanStatus; fields?: SpanFields }): T
+//   times fn with ctx.now, clamps at 0, writes one span; the hook's own exceptions propagate, the write never throws
+export function spanIdFrom(env: HookEnvelope): string
+//   tool_use_id when present, else sha1(subagent_type + ':' + description) first 12 hex; slugged. The one derivation both announce hooks call
+export function openSpan(sink: Sink | null, id: string): void                    // start marker on disk, path-slugged name
+export function closeSpan(sink: Sink | null, id: string, facts: SpanFacts): void  // no marker -> no span; duration from the marker, clamped
+export function event(sink: Sink | null, id: TelemetryEventId, data: EventData): void
+// internal seam, not exported from the module's public surface
+interface SpanWriter { appendSpan(fields: SpanFields): void; appendEvent(id, data): void; openMarker(id, ms): void; closeMarker(id): number | null }
+```
+
+- `CapabilityId`, `TelemetryEventId`, `SpanKind`, `SpanStatus` and `ModelTier`
+  are literal unions exported by the registry loaders (`src/registry/`), each
+  pinned to its registry by a unit test that asserts the array of literals
+  equals the JSON. A wrong id is a compile error (deviation 6).
+- The sink owns: the opt-in gate, `hookSlug` on every field and `hookPathSlug`
+  on the marker name, the clock, the clamp, `run_id = trace_id = session`,
+  `tokens_in = tokens_out = 0`. Callers pass facts; none of them names a flag,
+  a file, or a slug class.
+- Two adapters satisfy `SpanWriter`: the file adapter (`<gitdir>/engineos-telemetry/`,
+  through `journal/appendLine` with the schema table) and a memory adapter for
+  tests. That is the real seam candidate 4 left implicit.
+- Consumers: `prompt-advisor` and `stop-verify` wrap their work in `withSpan`;
+  `announce-agent-dispatch` calls `openSpan(sink, spanIdFrom(env))`,
+  `announce-agent-return` calls `closeSpan(sink, spanIdFrom(env), facts)`.
+  The "must match exactly" comment has nothing left to say.
+- Tests: `telemetry.test.ts` drives the lifecycle against the memory writer
+  (gate null → no writes; open then close → one span with the clamped
+  duration; close without open → nothing; `spanIdFrom` with and without
+  `tool_use_id`; `event` rejects a key outside the event's declared keys).
+- Deletion test: remove the sink and the gate, clamp, slugs and id derivation
+  reappear in four hooks. Rejected: `openSpan`/`closeSpan` only (in-process
+  callers carry the ordering and write a marker for nothing); runtime id check
+  against the loaded registry (drops the span silently, keeps C27f alive).
+
+### Situation classifier (amended 2026-09-04, architecture review)
+
+The Validation gate's central check — is this failure the code's fault or the
+tooling's — is encoded four times today in three languages: `stop-verify.sh`
+exits silently below node 18, degrades without `jq`, `lib-runner.sh` carries a
+"target was never there" regex per adapter, and `kernel.sh repair --situation
+infra` answers a question the hook never asks it. Deviation 2 removes the `jq`
+encoding; this section collapses the other three into one module.
+
+```ts
+// src/hooks/classify-failure.ts
+export type Situation = 'red' | 'infra' | 'flaky'          // pinned to policy.repair.by_situation[].situation by unit test
+export type InfraReason = 'node-too-old' | 'runner-missing' | 'target-absent' | 'timeout'
+export type Evidence =
+  | { kind: 'environment'; nodeMajor: number }                                      // after runnerEnv's PATH fix
+  | { kind: 'runner'; found: boolean }
+  | { kind: 'run'; runner: RunnerKind; target: string; code: number; output: string; timedOut: boolean }
+export type Verdict = { situation: 'red' } | { situation: 'infra'; reason: InfraReason }
+export function classify(evidence: Evidence): Verdict | null                       // null: nothing to judge (green run, node fine, runner found)
+```
+
+- One table: the node floor (18), the runner presence, the per-runner
+  target-absent patterns (copied verbatim from `lib-runner.sh:88-95`, keyed by
+  `RunnerKind`) and the timeout row. `runner.ts` shrinks to select / handle /
+  hasTarget / run and returns `{ code, output, timedOut }`; it judges nothing,
+  so `runnerInfraSkip` is never written.
+- `flaky` is a member of `Situation` because the kernel's `repair` section
+  answers for it; `classify` never returns it — one run cannot observe a green
+  re-run, and `rules/testing.md` forbids producing one.
+- Consumers render the verdict, never re-judge: `stop-verify` blocks only on
+  `red`, with the reason text from the kernel's in-process `repairSection`
+  plus the failure summary; `node-too-old`, `runner-missing` and `timeout`
+  become a `message` decision naming the target and reason (deviation 7);
+  `target-absent` after a stale probe is "nothing to run" and continues
+  silently. `post-edit-check` imports the same `classify`.
+- Evidence reaches telemetry: the `verify` event carries `situation` and
+  `reason?` beside `failed` and `targets`; the verification span's status is
+  `FAILED` only for `red`.
+- Tests: `classify-failure.test.ts` is table-driven — one case per row, no
+  runner spawned; `Situation` members equal the policy list; `stop-verify.test.ts`
+  asserts the decision kind per verdict. The 2026-09-02 decision stands: the
+  Wave 6 `test-verify.sh` port still drives real `npm`, the classifier does not
+  reopen the fake-runner question.
+- Deletion test: remove the module and the floor, the regexes and the
+  timeout judgment reappear in two hooks and two adapters. Rejected:
+  `runnerInfraSkip` on the adapter (judgment split across two modules, and the
+  timeout and node rows have no adapter to live on); a fourth `Situation`
+  member for "skip" (the policy has three, and a stale probe is absence of
+  evidence, not a situation).
+
+### Findings (amended 2026-09-04, architecture review)
+
+A check today is a counter increment and a printed sentence. Families
+accumulate slugs into a `*_bad` variable 259 times and print one aggregated
+line per check; `test-validate-engineos.sh` asserts 141 substrings of those
+lines, so rewording a finding breaks the suite with no behaviour change, and
+C16's twenty-five assertions cannot be told apart. The port makes the finding
+the value and the line a rendering of it.
+
+```ts
+// src/checks/findings.ts
+export type CheckStatus = 'ok' | 'fail' | 'skip'
+export interface Finding { code: string; subject?: string }                   // code: ^[a-z][a-z0-9-]*$, unique within its check
+export interface CheckResult { check: CheckId; title: string; status: CheckStatus; findings: readonly Finding[] }
+export const HARNESS_FINDINGS = ['precondition-missing', 'artifact-pending'] as const   // allowed in every check
+export function finding<C extends CheckId>(check: C, code: CodeOf<C>, subject?: string): Finding   // CodeOf<C>: that check's declared list | HARNESS_FINDINGS
+export function result(check: CheckId, title: string, findings: readonly Finding[], opts?: { pending?: true }): CheckResult
+//   status: findings empty -> ok; pending -> skip; otherwise fail
+export function render(r: CheckResult): string    // 'ok   <title>' | 'FAIL <title>: [code] [code:subject] ...' | 'skip <title>: [code:subject]'
+```
+
+- Every family file declares its code lists beside its checks
+  (`const C16_FINDINGS = ['tier-unbound', 'work-type-unknown-tier', ...] as const`)
+  and registers them with the check in `index.ts`; `finding()` compiles only
+  for a code in that check's list. Codes are unique within a check and free to
+  recur across checks (`missing`, `not-executable`).
+- `render` is the only producer of validator lines; `src/validate/cli.ts`
+  prints what it returns and counts by `status`. `skipOnce` yields a `fail`
+  result carrying `precondition-missing:<token>` once per family; `skipPending`
+  yields a `skip` result carrying `artifact-pending:<path>` and touches
+  neither counter, exactly today's semantics.
+- Mirror rows ("Mirror table" above) are findings: the row `id` is the code,
+  the missing element or unequal number is the subject, `runMirrors` returns
+  `Finding[]`. The mirrors test asserts every row id is in its check's list.
+- Tests assert on values: `run(ctx)` then `findings.some(f => f.code === 'hook-not-executable')`.
+  Each family PR ports its mutation cases that way; a family test also asserts
+  every declared code is produced by at least one case, so a dead code is a
+  failing test. The Wave 6 e2e keeps the harness cases only: `--only`,
+  `--list`, exit codes, `passed N, failed N`, and one rendered line per status.
+- No new CLI surface: `--only <check id>` and `--list` remain the whole public
+  interface; finer selection is a test concern. A `--json` dump is a separate
+  decision, not taken here.
+- Deletion test: remove the module and each family reinvents an accumulator
+  and a sentence, and the tests go back to substrings. Rejected: keeping
+  `message` beside `findings` (two ways to report, the old one cheaper);
+  one global code union (~260 names with check prefixes, one file everyone
+  edits); `--only C16:<code>` (new versioned surface for a test-time need).
+
+### Route guidance (amended 2026-09-04, architecture review)
+
+`route-path` answers with seven fields; its one runtime caller reads two,
+`excluded` and `hook_guidance`. Every `routing.json` domain row carries the
+structured `rules[]`, `skills[]`, `agent` and, beside them, the string those
+were rendered into — a second dialect that C14 has to keep equal to the first,
+and that `test-route.sh` restates ten times. The row's `risk_floor` has no
+runtime reader: `resolve-task` floors from `intents.json`, and C16 only asserts
+the two tiers agree. The port keeps the answer and removes the second dialect.
+
+```ts
+// src/registry/routing.ts
+export interface RoutingDomain { id: string; match: { paths: string[]; basenames: string[] }; rules: string[]; skills: string[]; agent: string | null; hint: string | null; sample_path: string | null }
+// src/kernel/route.ts
+export function renderGuidance(domain: RoutingDomain): string
+//   'rules/<a>.md+<b>.md' + (skills ? ' | skill:<s>' per skill) + (agent ? ' | agent:<agent>') + (hint ? ' (<hint>)')
+export function floorOf(domain: RoutingDomain, regs: Registries): RiskTier | null   // the one intent whose `domain` is this row; a test asserts exactly one per domain
+export type RouteSection =
+  | { domain: null; excluded: boolean }
+  | { domain: string; rules: string[]; skills: string[]; agent: string | null; risk_floor: RiskTier | null; hook_guidance: string; excluded: false }   // last two derived
+```
+
+- One form in the registry. The four parentheticals no field held —
+  `postgres/oracle`, `kubernetes/gcp/cicd`, `signing` twice, `adapt to React
+  Native` — become `hint`; the renderer places them last, so the ios-release,
+  android-release and mobile lines change by a few characters.
+- The answer is unchanged in shape (COMPATIBILITY versions it): `hook_guidance`
+  and `risk_floor` stay in `route-path` and in `RouteSection`, derived. The
+  hook reads the section; hook and CLI share the one renderer.
+- Landing in two steps. Task 7 lands `renderGuidance`, `hint` support and a
+  parity test asserting the rendered string equals every stored
+  `hook_guidance`, moving the three mid-string parentheticals in the same PR.
+  Task 13, when `kernel.sh` becomes a shim and nothing reads the string from
+  the registry any more, deletes the two fields, adds the four hints, and
+  rewrites C6/C7/C8 to read the structured fields; C14's guidance-equality
+  half, C16's floor-equality row and C8's domain-tier row disappear
+  (deviation 9).
+- Tests: `route.test.ts` renders every fixture row; the Wave 6 route e2e keeps
+  its ten literal guidance strings — a registry edit that changes a line fails
+  a test on purpose, which a renderer-driven assertion could not do.
+- Deletion test: remove the renderer and the string returns to the registry
+  as data that must be kept equal to its neighbours by a check. Rejected:
+  rendering in the hook with the projection importing it (dependency
+  direction inverted, kernel depending on hooks); making the domain floor a
+  real input to `resolve({ path })` (new behaviour, a design of its own, not
+  a deepening); dropping the parentheticals (loses the leaf-specialist and
+  signing hints for no gain).
 
 ### Shims and compatibility
 
@@ -458,6 +657,31 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
    literal string and never opens `rules/gates.md`. As a mirror row it reads the
    `## The ladder` table for real. The check gets stricter; if the prose fails
    it, the PR that ports C16 fixes the prose, never the row.
+6. Check C27f (every `--capability-id` a span writer passes resolves against
+   `capabilities.json`) is deleted in the PR that ports the hook library. The
+   ids become a literal union pinned to the registry by a unit test, so a wrong
+   id fails `tsc` before it can reach a writer. C27c and C22c stay: they check
+   writer wiring, not ids.
+7. A verification target killed by its timeout is `infra`, not red. Today the
+   non-zero exit blocks like a failing check; the kernel's own `repair` answer
+   for `infra` says the check could not run and consumes no fix attempt. The
+   Stop gate now renders it as a visible `message` naming the target. The
+   `verify` telemetry event gains `situation` and `reason` keys in
+   `policy.telemetry.events`, and C20d re-points at `src/hooks/stop-verify.ts`
+   as a wiring check (imports the kernel `repair` section, carries no numeric
+   literal).
+8. A check reports findings, not a sentence. The `ok   ` / `FAIL ` / `skip `
+   prefixes, `--only`, `--list`, the exit codes and `passed N, failed N` stay
+   byte-exact; the tail of a FAIL line is rendered from the findings as
+   `[<code>]` / `[<code>:<subject>]` and its prose is not versioned surface.
+   The 141 mutation cases move from substring matches to code assertions,
+   family by family. Release notes say so.
+9. `routing.json` domain rows lose `hook_guidance` and `risk_floor` and gain an
+   optional `hint`. The `route-path` answer keeps all seven fields: the string
+   is rendered from `rules`, `skills`, `agent` and `hint`; the floor is the
+   owning intent's. Row fields are not the registry's top-level shape and no
+   consumer outside this repo reads them, so this is MINOR with a release note,
+   not a deprecation. Three rows' parentheticals move to the end of the line.
 
 ## Testing
 
@@ -498,6 +722,15 @@ exec node "$ROOT/dist/engineos.cjs" kernel "$@"
 - Mirror rows are tested as data: the runner once per rule against fixture
   docs, the table once for resolvable paths ("Mirror table" above). No check
   test re-asserts section slicing.
+- The Situation judgment is tested as a table ("Situation classifier" above):
+  one case per row against `classify`, no runner spawned; hook tests assert
+  which decision kind each verdict renders.
+- Checks are tested through their findings ("Findings" above): family tests
+  assert codes and subjects on `run(ctx)`, never on rendered lines; the
+  validator e2e asserts the harness surface only.
+- Route guidance is tested twice on purpose ("Route guidance" above): the
+  renderer against fixture rows in `route.test.ts`, and the ten rendered
+  lines as literals in the route e2e.
 
 ## Waves
 
@@ -511,7 +744,7 @@ description and excluded from the count as generated output (`rules/git.md`).
 | 2 | `journal` and `telemetry` CLIs + shims | parallel with wave 1 | `test-exec-journal.sh`, `test-telemetry.sh`; C22b, C27* |
 | 3 | hook library in 2 PRs (envelope/bypass/telemetry; scaffold/runner/cache); then 8 hooks, one PR each, each re-pointing the source-text check that grepped it (deviation 3); then `init` (it needs `scaffold.ts`); then `hooks.json` + `settings-merge` + installers | library serial; hooks in two batches of four | the 10 black-box hook suites + `test-install-hooks.sh`; `validate-engineos.sh` green at the barrier; one Windows run of the node hook form |
 | 4 | `gen agent-commands`, `gen agent-registry`, `evals`, `bench`, `usage-report`, `bypass` CLI | one PR each, all parallel after wave 0 | drift guards, `test-gen-agent-registry.sh`, `run-evals` step |
-| 5 | `validate` harness with explicit registry; then the 7 check families (`70-runtime` in two PRs) | harness first; families parallel | `test-validate-engineos.sh` (152 cases) |
+| 5 | findings module; `validate` harness with explicit registry; mirror runner; then the 7 check families (`70-runtime` in two PRs) | findings, harness, mirror runner serial; families parallel | `test-validate-engineos.sh` (152 cases) shrinking to its harness cases as each family ports its own |
 | 6 | port 16 suites to `node:test`; delete `.sh` tests; CI drops `shellcheck` and `jq`; installers require node only; `COMPATIBILITY.md`, release notes 1.7.0, README | one PR per suite | CI green with node and git only |
 
 Barrier at the end of each wave: integrate, run `validate-engineos.sh`, `bench`

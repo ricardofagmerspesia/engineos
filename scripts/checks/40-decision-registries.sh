@@ -132,7 +132,10 @@ check_C16() {
     [ -z "$hm_bad" ] && ok "hook_mirrored and domain agree on every intent" \
                      || bad "hook_mirrored/domain mismatch on:$hm_bad"
 
-    # every domain FK resolves; mirrored rules[] and risk_floor equal routing.json's
+    # every domain FK resolves and mirrored rules[] equal routing.json's. The
+    # floor comparison went with routing.json's domain risk_floor: intents.json
+    # is now the one home of the floor, and src/kernel/route.ts derives a
+    # domain's floor from the intent that claims it.
     fk_bad=""
     while IFS= read -r id; do
       dom=$(jq -r --arg i "$id" '.intents[] | select(.id==$i) | .domain' "$IJ")
@@ -140,11 +143,8 @@ check_C16() {
       irules=$(jq -r --arg i "$id" '.intents[] | select(.id==$i) | .rules | join(",")' "$IJ")
       drules=$(jq -r --arg d "$dom" '.domains[] | select(.id==$d) | .rules | join(",")' "$R")
       [ "$irules" = "$drules" ] || fk_bad="$fk_bad $id(rules:'$irules'!='$drules')"
-      ifloor=$(jq -r --arg i "$id" '.intents[] | select(.id==$i) | .risk_floor' "$IJ")
-      dfloor=$(jq -r --arg d "$dom" '.domains[] | select(.id==$d) | .risk_floor' "$R")
-      [ "$ifloor" = "$dfloor" ] || fk_bad="$fk_bad $id(floor:'$ifloor'!='$dfloor')"
     done < <(jq -r '.intents[] | select(.hook_mirrored == true) | .id' "$IJ")
-    [ -z "$fk_bad" ] && ok "every hook-mirrored intent matches its routing.json domain (rules, floor)" \
+    [ -z "$fk_bad" ] && ok "every hook-mirrored intent matches its routing.json domain (rules)" \
                      || bad "intent/routing mismatches:$fk_bad"
 
     # every routing domain claimed exactly once
