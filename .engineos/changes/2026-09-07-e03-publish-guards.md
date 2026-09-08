@@ -2,91 +2,91 @@
 name: 2026-09-07-e03-publish-guards
 status: active
 owner: Ricardo Fagmer
-spec: n/a — execução do épico E03 do plano "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, revisão 2), critério de aceite "uma alteração concorrente ou inválida não sobrescreve trabalho existente"
+spec: n/a — execution of epic E03 of the plan "EngineOS 2.0 — Production readiness plan" (2026-09-06, revision 2), acceptance criterion "a concurrent or invalid change does not overwrite existing work"
 domain: frontend
 ---
 
 ## What
 
-Publicação e rollback do console deixam de poder destruir trabalho que não é deles: guarda de revisão base por arquivo, lock de escrita entre processos, recusa de rollback sobre arquivo sujo, e o console entra na CI.
+The console's publish and rollback can no longer destroy work that is not theirs: a per-file base revision guard, a write lock across processes, refusal to roll back over a dirty file, and the console enters CI.
 
 ## Why
 
-O console edita uma **cópia**. `writeSkills` preservava as linhas não tocadas do arquivo byte a byte — o que parecia cuidado suficiente e não era. Entre a captura do draft e o clique em Publicar, o arquivo pode ser editado à mão, por outra sessão do console ou por uma operação de git; a descrição do draft então sobrescrevia a nova, **sem erro, sem diff e sem rastro**. É a pior forma de perda de dados: ninguém fica sabendo.
+The console edits a **copy**. `writeSkills` preserved the untouched lines of the file byte for byte — which looked like enough care and was not. Between the capture of the draft and the click on Publish, the file may be edited by hand, by another console session or by a git operation; the draft's description then overwrote the new one, **with no error, no diff and no trace**. It is the worst form of data loss: nobody finds out.
 
-Três variantes do mesmo problema estavam abertas:
+Three variants of the same problem were open:
 
-1. **Nenhuma revisão base.** Não havia como perguntar "este arquivo ainda é aquele contra o qual eu editei?".
-2. **Nenhuma serialização.** Dois `POST /api/publish` podem se intercalar — um duplo clique em Publicar basta. Dois pares `git add`/`git commit` disputando produzem commit com metade dos arquivos do outro request, ou um erro opaco de `index.lock` bem depois de o disco já ter sido tocado.
-3. **Rollback sobre árvore suja.** `git revert` ou aborta ou para no meio de um conflito, e nos dois casos o que está em risco é a edição não commitada do operador.
+1. **No base revision.** There was no way to ask "is this file still the one I edited against?".
+2. **No serialization.** Two `POST /api/publish` can interleave — a double click on Publish is enough. Two `git add`/`git commit` pairs competing produce a commit with half of the other request's files, or an opaque `index.lock` error well after the disk has already been touched.
+3. **Rollback over a dirty tree.** `git revert` either aborts or stops in the middle of a conflict, and in both cases what is at risk is the operator's uncommitted edit.
 
-E o quarto, que explica os três: **a CI não tocava no console.** Nenhum `grep console .github/workflows/ci.yml` retornava nada. Typecheck, lint e build rodavam só na máquina de quem editasse, e testes não existiam. Superfície que escreve no repositório e faz commit, sem verificação automatizada, é onde perda de trabalho nasce.
+And the fourth, which explains the three: **CI did not touch the console.** No `grep console .github/workflows/ci.yml` returned anything. Typecheck, lint and build ran only on the machine of whoever edited it, and tests did not exist. A surface that writes to the repository and makes commits, without automated verification, is where work loss is born.
 
 ## Scope
 
-- `console/src/lib/entities/types.ts` — campo `baseHash`.
-- `console/src/lib/entities/skills.ts` — `hashSource`, `detectBaseConflicts`, recusa em `writeSkills`.
-- `console/src/lib/publish-lock.ts` — novo.
+- `console/src/lib/entities/types.ts` — `baseHash` field.
+- `console/src/lib/entities/skills.ts` — `hashSource`, `detectBaseConflicts`, refusal in `writeSkills`.
+- `console/src/lib/publish-lock.ts` — new.
 - `console/src/lib/git.ts` — `pathsInCommit`, `dirtyPaths`.
 - `console/src/app/api/publish/route.ts`, `console/src/app/api/rollback/[historyId]/route.ts`.
-- `console/tsconfig.test.json`, `console/package.json` (script `test`), dois arquivos de teste.
-- `.github/workflows/ci.yml` — job `console`.
+- `console/tsconfig.test.json`, `console/package.json` (`test` script), two test files.
+- `.github/workflows/ci.yml` — `console` job.
 - `docs/CAPABILITIES.md`.
 
 ## Checklist
 
-- [x] Registrar a revisão base de cada draft por hash de conteúdo
-- [x] Recusar publicação quando o arquivo mudou desde a captura, nomeando os arquivos
-- [x] Tratar draft sem base registrada como desconhecido, não como confiável
-- [x] Serializar publicações concorrentes, inclusive entre processos
-- [x] Recusar rollback sobre arquivo com alteração não commitada
-- [x] Rebasear os drafts publicados para os bytes recém-escritos
-- [x] Testes de comportamento das guardas
-- [x] Console na CI: typecheck, lint, testes e build
-- [ ] Entidades editáveis de agentes, modelos, MCPs, routing e regras
-- [ ] Precedência ação → rota → agente → skill → padrão, com conflito exigindo resolução explícita
-- [ ] Configuração efetiva com origem de cada escolha e simulação de rota antes de publicar
-- [ ] Autenticação, RBAC e isolamento antes de hospedar
+- [x] Record the base revision of each draft by content hash
+- [x] Refuse publishing when the file changed since capture, naming the files
+- [x] Treat a draft with no recorded base as unknown, not as trusted
+- [x] Serialize concurrent publishes, including across processes
+- [x] Refuse rollback over a file with an uncommitted change
+- [x] Rebase the published drafts onto the just-written bytes
+- [x] Behavior tests for the guards
+- [x] Console in CI: typecheck, lint, tests and build
+- [ ] Editable entities for agents, models, MCPs, routing and rules
+- [ ] Precedence action → route → agent → skill → default, with a conflict requiring explicit resolution
+- [ ] Effective configuration with the origin of each choice and a route simulation before publishing
+- [ ] Authentication, RBAC and isolation before hosting
 
 ## What was made
 
-**Revisão base.** Cada draft carrega o sha256 do arquivo como ele estava quando o conteúdo foi capturado. Hash, não mtime: mtime se move quando uma ferramenta reescreve conteúdo idêntico e não se move em alguns filesystems dentro do mesmo segundo — nas duas direções ele responde a pergunta errada. A publicação chama `detectBaseConflicts` **antes** de validar e antes de qualquer escrita, e recusa nomeando os arquivos. `writeSkills` recusa de novo por conta própria: um chamador futuro não deve conseguir reintroduzir o caminho de sobrescrita silenciosa só esquecendo a pré-checagem.
+**Base revision.** Each draft carries the sha256 of the file as it was when the content was captured. Hash, not mtime: mtime moves when a tool rewrites identical content and does not move on some filesystems within the same second — in both directions it answers the wrong question. Publishing calls `detectBaseConflicts` **before** validating and before any write, and refuses naming the files. `writeSkills` refuses again on its own: a future caller must not be able to reintroduce the silent-overwrite path just by forgetting the pre-check.
 
-Draft sem `baseHash` — linhas gravadas antes da guarda existir — é recusado como base desconhecida. É a leitura fail-closed, e o `GET` **não** regrava a base de um draft existente: fazer isso aceitaria automaticamente o que estiver no disco agora e anularia a guarda inteira.
+A draft with no `baseHash` — rows written before the guard existed — is refused as an unknown base. It is the fail-closed reading, and the `GET` does **not** rewrite the base of an existing draft: doing that would automatically accept whatever is on disk right now and would nullify the whole guard.
 
-Publicação bem-sucedida rebaseia os drafts para os bytes que acabou de escrever, senão a segunda publicação do mesmo draft conflitaria com o arquivo que a primeira gravou — a guarda disparando contra o próprio sucesso do operador.
+A successful publish rebases the drafts onto the bytes it has just written, otherwise the second publish of the same draft would conflict with the file the first one wrote — the guard firing against the operator's own success.
 
-**Lock.** `mkdir` é a única primitiva atômica e fail-if-exists em toda plataforma onde isto roda, sem dependência, e — a parte que uma flag em memória não dá — exclui também uma **segunda instância** do console apontada para o mesmo repositório, que é precisamente o caso de publicação concorrente. Publicação e rollback tomam o mesmo lock, e ele é liberado mesmo quando o corpo lança: uma publicação que falha não pode travar todas as seguintes.
+**Lock.** `mkdir` is the only atomic and fail-if-exists primitive on every platform where this runs, with no dependency, and — the part an in-memory flag does not give — it also excludes a **second instance** of the console pointed at the same repository, which is precisely the concurrent-publish case. Publish and rollback take the same lock, and it is released even when the body throws: a publish that fails must not block all the following ones.
 
-Staleness por idade, não por checagem de pid: um pid não distingue processo morto de processo em outra máquina compartilhando o diretório, e errar aí significa quebrar uma publicação viva.
+Staleness by age, not by pid check: a pid does not distinguish a dead process from a process on another machine sharing the directory, and getting that wrong means breaking a live publish.
 
-**Rollback.** Antes de reverter, lista os caminhos do commit e recusa se algum tiver alteração não commitada. Depois do revert, ressincroniza o snapshot do disco; um draft que ainda segure a base pré-revert será recusado pela guarda de publicação, e esse é o resultado correto — o arquivo contra o qual ele foi editado não existe mais.
+**Rollback.** Before reverting, it lists the paths of the commit and refuses if any of them has an uncommitted change. After the revert, it resynchronizes the snapshot from disk; a draft still holding the pre-revert base will be refused by the publish guard, and that is the correct outcome — the file it was edited against no longer exists.
 
 ## Verification
 
-- `console: npm test` — **12 passed, 0 failed** (6 casos da guarda de base, 6 do lock).
-- `console: npx tsc --noEmit` limpo; `npx eslint .` limpo.
-- `scripts/validate-engineos.sh` e `scripts/test-kernel.sh` inalterados por esta mudança e verificados de novo sobre o pacote.
+- `console: npm test` — **12 passed, 0 failed** (6 cases for the base guard, 6 for the lock).
+- `console: npx tsc --noEmit` clean; `npx eslint .` clean.
+- `scripts/validate-engineos.sh` and `scripts/test-kernel.sh` unchanged by this change and verified again over the package.
 
-Um dos testes encontrou um defeito no código que ele testava, e vale registrar porque é o tipo de erro que só aparece assim: `acquire` lia o arquivo `owner` e calculava a idade do lock no **mesmo** `try`. Um lock sem `owner` — processo morto entre o `mkdir` e a escrita — lançava antes de a idade ser calculada, caía no default de idade 0 e **nunca podia ser reclamado**. O lock meio criado era o único caso para o qual a regra de staleness existia, e era o único que ela não cobria. Corrigido separando as duas leituras; há teste para ele.
+One of the tests found a defect in the code it was testing, and it is worth recording because it is the kind of error that only shows up that way: `acquire` read the `owner` file and computed the lock's age in the **same** `try`. A lock with no `owner` — a process dead between the `mkdir` and the write — threw before the age was computed, fell into the default age of 0 and **could never be reclaimed**. The half-created lock was the only case the staleness rule existed for, and it was the only one it did not cover. Fixed by separating the two reads; there is a test for it.
 
-Limitações declaradas:
+Declared limitations:
 
-- `npm run build` do console **não** foi executado nesta máquina: o `next build` baixa o binário SWC e a rede desta sessão recusou. Typecheck, lint e testes passam; o build roda no job `console` da CI, que também não teve execução real ainda.
-- As guardas cobrem a vertical de skills, a única que existe. Cada entidade nova precisa entrar em `detectBaseConflicts` — não há nada que force isso ainda.
-- Os handlers de rota não têm teste: são orquestração sobre os módulos testados, e testá-los exigiria subir o Next. `tsconfig.test.json` compila só `src/lib/entities` e `publish-lock`, deixando de fora o `store/` (seam do better-sqlite3, usa `import.meta`).
-- Continua sem autenticação, RBAC ou isolamento: o console segue não hospedável.
+- The console's `npm run build` was **not** executed on this machine: `next build` downloads the SWC binary and this session's network refused. Typecheck, lint and tests pass; the build runs in the CI `console` job, which also has not had a real run yet.
+- The guards cover the skills vertical, the only one that exists. Every new entity needs to enter `detectBaseConflicts` — there is nothing forcing that yet.
+- The route handlers have no test: they are orchestration over the tested modules, and testing them would require bringing up Next. `tsconfig.test.json` compiles only `src/lib/entities` and `publish-lock`, leaving out `store/` (the better-sqlite3 seam, which uses `import.meta`).
+- Still without authentication, RBAC or isolation: the console remains not hostable.
 
 ## Human decisions
 
 <!-- date | who | reasons (from registries/policy.json hitl.reasons) | approved/refused | note -->
-2026-09-07 | Ricardo Fagmer | escopo de execução | aprovado | "Go ahead" sobre a continuação de E03. Fatia escolhida pelo critério de aceite do próprio épico — "uma alteração concorrente ou inválida não sobrescreve trabalho existente" — que era o único item de E03 com risco de perda de dados.
+2026-09-07 | Ricardo Fagmer | execution scope | approved | "Go ahead" on the continuation of E03. The slice was chosen by the epic's own acceptance criterion — "a concurrent or invalid change does not overwrite existing work" — which was the only E03 item with a risk of data loss.
 
 ## Changes registered
 
-Commit desta unidade na branch `chore/e01-eol-baseline`, imediatamente após `9843fa1`.
+Commit of this unit on the `chore/e01-eol-baseline` branch, immediately after `9843fa1`.
 
 ## Notes
 
-- Ordem, de novo: acrescentar entidades editáveis antes destas guardas teria multiplicado por cinco a superfície capaz de sobrescrever trabalho em silêncio.
-- Padrão a reter: **quando a UI edita uma cópia, a identidade da origem faz parte do draft** — sem ela não existe conflito, existe só o último a gravar. [[draft-precisa-de-base]]
+- Order, again: adding editable entities before these guards would have multiplied by five the surface capable of overwriting work silently.
+- Pattern to keep: **when the UI edits a copy, the identity of the origin is part of the draft** — without it there is no conflict, there is only the last one to write. [[draft-precisa-de-base]]

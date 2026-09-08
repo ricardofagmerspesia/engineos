@@ -1,42 +1,42 @@
-# Empacotar a release a partir de um commit, por allowlist explícita
+# Package the release from a commit, by explicit allowlist
 
 Date: 2026-09-07
 Status: accepted
 
-Source: "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, rev. 2), épico E02; baseline em `.engineos/changes/2026-09-07-e01-baseline-e02-packaging.md`.
+Source: "EngineOS 2.0 — Production readiness plan" (2026-09-06, rev. 2), epic E02; baseline in `.engineos/changes/2026-09-07-e01-baseline-e02-packaging.md`.
 
 ## Context
 
-Até 07/09/2026 o repositório não tinha caminho de empacotamento: nem script em `scripts/`, nem alvo em `package.json`. O artefato distribuído era um ZIP do working tree, e por isso carregava dependências reinstaláveis, caches, dados locais do console e estado de desenvolvimento — inclusive, como a inspeção confirmou, duas worktrees de agente de 3,4 MB em `.claude/worktrees/`, que nem estavam no `.gitignore`.
+Until 2026-09-07 the repository had no packaging path: no script in `scripts/`, no target in `package.json`. The distributed artifact was a ZIP of the working tree, and it therefore carried reinstallable dependencies, caches, local console data and development state — including, as the inspection confirmed, two 3.4 MB agent worktrees in `.claude/worktrees/`, which were not even in `.gitignore`.
 
-Um artefato derivado do working tree tem duas propriedades ruins que se reforçam: ele varia conforme a máquina de quem empacota, e ele contém coisas que ninguém decidiu publicar. A segunda é a mais séria — é assim que estado local sai da máquina de alguém.
+An artifact derived from the working tree has two bad properties that reinforce each other: it varies with the machine of whoever packages it, and it contains things nobody decided to publish. The second is the more serious one — that is how local state leaves someone's machine.
 
 ## Options considered
 
-1. **`git archive` de um commit, com allowlist explícita de caminhos** (escolhida).
-   - Pros: o artefato é função de um commit, não de um diretório — dois empacotamentos do mesmo commit produzem o mesmo conteúdo; arquivo não rastreado é invisível por construção, então caches, `node_modules`, `.env` e worktrees não podem entrar nem por descuido; a allowlist é legível numa tela e revisável em PR — a pergunta "por que este caminho está na release?" tem resposta versionada.
-   - Cons: um caminho novo precisa ser adicionado à mão, e esquecer disso produz um pacote incompleto. Foi exatamente o que aconteceu na primeira execução: quatro checks liam `.engineos/{README,archived/README,changes/README,changes/_template}.md` e o pacote saiu com 108→102 checks. O custo é real, mas o modo de falha é ruidoso e detectado pelo smoke test — ao contrário do modo de falha oposto.
+1. **`git archive` of a commit, with an explicit path allowlist** (chosen).
+   - Pros: the artifact is a function of a commit, not of a directory — two packaging runs of the same commit produce the same content; an untracked file is invisible by construction, so caches, `node_modules`, `.env` and worktrees cannot get in even by oversight; the allowlist is readable on one screen and reviewable in a PR — the question "why is this path in the release?" has a versioned answer.
+   - Cons: a new path has to be added by hand, and forgetting to do so produces an incomplete package. That is exactly what happened on the first run: four checks read `.engineos/{README,archived/README,changes/README,changes/_template}.md` and the package came out with 108→102 checks. The cost is real, but the failure mode is noisy and caught by the smoke test — unlike the opposite failure mode.
 
-2. **`export-ignore` no `.gitattributes` (denylist)** (rejeitada).
-   - Pros: nenhum arquivo novo precisa ser declarado; `git archive` já respeita o atributo.
-   - Cons: inverte o ônus da prova. Um diretório novo entra na release por padrão, e alguém só descobre depois. A pergunta que importa numa auditoria de distribuição não é "o que eu quis excluir?", é "por que isto está aqui?" — e a denylist não responde. Mantém-se `export-ignore` como recurso adicional, nunca como mecanismo principal.
+2. **`export-ignore` in `.gitattributes` (denylist)** (rejected).
+   - Pros: no new file needs to be declared; `git archive` already honors the attribute.
+   - Cons: it inverts the burden of proof. A new directory enters the release by default, and somebody only finds out afterwards. The question that matters in a distribution audit is not "what did I mean to exclude?", it is "why is this here?" — and the denylist does not answer it. `export-ignore` is kept as an additional resource, never as the main mechanism.
 
-3. **ZIP do working tree com exclusões por padrão de nome** (rejeitada — é o estado anterior).
-   - Pros: nenhum trabalho.
-   - Cons: o conteúdo depende da máquina; a lista de exclusões nunca acompanha o que aparece no diretório; foi o que produziu o artefato com dependências e worktrees dentro.
+3. **ZIP of the working tree with exclusions by name pattern** (rejected — it is the previous state).
+   - Pros: no work.
+   - Cons: the content depends on the machine; the exclusion list never keeps up with what appears in the directory; it is what produced the artifact with dependencies and worktrees inside.
 
 ## Decision
 
-Opção 1. `scripts/package-release.sh` empacota a partir de um commit (`HEAD` por padrão, `--commit` para outro) via `git archive`, usando uma allowlist explícita, e recusa empacotar se `package.json` e `.claude-plugin/plugin.json` declararem versões diferentes.
+Option 1. `scripts/package-release.sh` packages from a commit (`HEAD` by default, `--commit` for another) via `git archive`, using an explicit allowlist, and refuses to package if `package.json` and `.claude-plugin/plugin.json` declare different versions.
 
-Duas consequências decorrem disso e são parte da decisão, não detalhe de implementação:
+Two consequences follow from that and are part of the decision, not an implementation detail:
 
-- **O teste roda sobre os bytes finais.** Extrair o ZIP, rodar `validate-engineos.sh`, `npm ci`, typecheck e testes ali dentro. Testar o working tree e publicar o ZIP são duas coisas diferentes; só a primeira dá evidência sobre a segunda se elas forem o mesmo conteúdo, e isso precisa ser demonstrado, não presumido.
-- **O empacotador verifica o que ele mesmo produziu**: ausência de CRLF nos formatos POSIX, bit de execução coerente, ausência de dependências e estado local, varredura de segredos, lockfiles e entrypoints. Emite `MANIFEST.txt` com sha256 por arquivo e `.sha256` do pacote.
+- **The test runs over the final bytes.** Extract the ZIP, run `validate-engineos.sh`, `npm ci`, typecheck and tests inside it. Testing the working tree and publishing the ZIP are two different things; only the first gives evidence about the second if they are the same content, and that needs to be demonstrated, not presumed.
+- **The packager verifies what it produced itself**: absence of CRLF in the POSIX formats, coherent execute bit, absence of dependencies and local state, secret scan, lockfiles and entrypoints. It emits `MANIFEST.txt` with a sha256 per file and a `.sha256` for the package.
 
 ## Consequences
 
-- Todo caminho novo que a release precisa entra na allowlist de `scripts/package-release.sh`, com o smoke test do artefato como rede.
-- O bit de execução autoritativo é o do índice do git, não o do filesystem: em Windows com `core.fileMode=false`, um `chmod +x` local não chega ao pacote. A verificação do empacotador reprovou exatamente esse caso no próprio commit que a introduziu (`d20b43f`), o que é a evidência de que ela funciona.
-- A varredura de segredos sobre o artefato não encontrar achado **não** é prova de ausência de segredo, e não deve ser citada como tal em relatório de prontidão.
-- Os espelhos de adaptador (`.agents/`, `.trae/`, `.windsurf/`, `.cursor/`) ficam fora por padrão e entram com `--with-ide-mirrors`, porque são superfície de outra ferramenta e não do runtime.
+- Every new path the release needs goes into the allowlist of `scripts/package-release.sh`, with the artifact smoke test as the net.
+- The authoritative execute bit is the one in the git index, not the one in the filesystem: on Windows with `core.fileMode=false`, a local `chmod +x` never reaches the package. The packager's verification rejected exactly that case in the very commit that introduced it (`d20b43f`), which is the evidence that it works.
+- The secret scan over the artifact finding nothing is **not** proof of the absence of a secret, and must not be cited as such in a readiness report.
+- The adapter mirrors (`.agents/`, `.trae/`, `.windsurf/`, `.cursor/`) stay out by default and go in with `--with-ide-mirrors`, because they are the surface of another tool and not of the runtime.

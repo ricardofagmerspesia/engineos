@@ -2,97 +2,97 @@
 name: 2026-09-07-e03-skill-enablement
 status: active
 owner: Ricardo Fagmer
-spec: n/a — execução do épico E03 do plano "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, revisão 2), item "comprovar que enabled=false é respeitado pelo adapter/runner"
+spec: n/a — execution of epic E03 of the plan "EngineOS 2.0 — Production readiness plan" (2026-09-06, revision 2), item "prove that enabled=false is honored by the adapter/runner"
 domain: llm
 ---
 
 ## What
 
-Faz `enabled: false` chegar ao runtime. O kernel passa a resolver a habilitação de skills, deixa de recomendar as desabilitadas nos três lugares onde responde sobre skills, e diz por que suprimiu. O console passa a resolver relações reais em vez de listas vazias fixas.
+Makes `enabled: false` reach the runtime. The kernel now resolves skill enablement, stops recommending disabled ones in the three places where it answers about skills, and says why it suppressed them. The console now resolves real relations instead of fixed empty lists.
 
 ## Why
 
-O plano pedia para "comprovar que `enabled=false` é respeitado pelo adapter/runner". A inspeção mostrou que não havia o que comprovar:
+The plan asked to "prove that `enabled=false` is honored by the adapter/runner". The inspection showed there was nothing to prove:
 
 ```
 grep -rn "enabled" --include='*.sh' --include='*.json' --include='*.ts' scripts hooks registries src
 (nenhum resultado)
 ```
 
-**Nada fora do console lia o campo.** Desabilitar uma skill mudava um arquivo e mais nada — e a interface apresentava como controle algo que não controlava coisa alguma. Um controle assim é pior que a ausência dele: o operador acredita ter desligado e não desligou.
+**Nothing outside the console read the field.** Disabling a skill changed a file and nothing else — and the interface presented as a control something that controlled nothing at all. A control like that is worse than its absence: the operator believes they turned something off and they did not.
 
-Havia um caso concreto no repositório: `skills/strategy/SKILL.md` já declarava `enabled: false`, e a skill continuava sendo recomendada por qualquer answer que a citasse.
+There was a concrete case in the repository: `skills/strategy/SKILL.md` already declared `enabled: false`, and the skill kept being recommended by any answer that cited it.
 
-O segundo achado é do mesmo tipo. `SkillEntity.usedByAgents` e `.dependsOnRules` eram `[]` fixos, com um comentário dizendo que o ticket de Agents os preencheria. O único caminho de *warn* da validação — "desabilitar esta skill afeta N agente(s)" — não podia disparar nunca, porque a lista era sempre vazia. O console deixava desabilitar uma skill que três agentes nomeiam e não dizia nada. Uma relação sempre vazia é pior que um campo ausente: a interface a apresenta como resposta.
+The second finding is of the same kind. `SkillEntity.usedByAgents` and `.dependsOnRules` were fixed `[]`, with a comment saying the Agents ticket would fill them. The only *warn* path of the validation — "disabling this skill affects N agent(s)" — could never fire, because the list was always empty. The console let you disable a skill that three agents name and said nothing. A relation that is always empty is worse than a missing field: the interface presents it as an answer.
 
 ## Scope
 
-- `scripts/kernel.sh` — resolvedor de habilitação, subcomando `skill-state`, filtro em `route-path`, `route-intent` e `resolve-task`.
-- `scripts/test-kernel.sh` — 14 casos novos.
-- `scripts/checks/85-skill-enablement.sh` — novo, checks `C34` e `C35`.
-- `console/src/lib/entities/relations.ts` — novo.
+- `scripts/kernel.sh` — enablement resolver, `skill-state` subcommand, filter in `route-path`, `route-intent` and `resolve-task`.
+- `scripts/test-kernel.sh` — 14 new cases.
+- `scripts/checks/85-skill-enablement.sh` — new, checks `C34` and `C35`.
+- `console/src/lib/entities/relations.ts` — new.
 - `console/src/lib/entities/skills.ts`, `console/src/app/api/skills/route.ts`.
 - `docs/COMPATIBILITY.md`, `docs/CAPABILITIES.md`.
 
 ## Checklist
 
-- [x] Resolver habilitação a partir da frontmatter, com ausência do campo significando habilitada
-- [x] Suprimir skill desabilitada nos três sítios de resposta, dizendo o motivo
-- [x] Expor a resolução como answer própria (`skill-state`) para console, check e hook lerem o mesmo
-- [x] Testes de comportamento, incluindo os casos negativos
-- [x] Checks de fronteira com regressão plantada verificada
-- [x] Relações reais no console, ativando o caminho de warn da validação
-- [x] Documentar o limite: o que o interruptor bloqueia e o que não bloqueia
-- [ ] Release note da MINOR (`skills_suppressed` e `skill-state` são superfície nova)
-- [ ] Entidades editáveis de agentes, modelos, MCPs, routing e regras no console
-- [ ] Precedência ação → rota → agente → skill → padrão, com conflito exigindo resolução explícita
-- [ ] Publicação condicional à revisão base e serialização de publicações concorrentes
-- [ ] Autenticação, RBAC e isolamento antes de hospedar o console
+- [x] Resolve enablement from the frontmatter, with absence of the field meaning enabled
+- [x] Suppress a disabled skill in the three answer sites, saying the reason
+- [x] Expose the resolution as its own answer (`skill-state`) so console, check and hook read the same thing
+- [x] Behavior tests, including the negative cases
+- [x] Boundary checks with a planted regression verified
+- [x] Real relations in the console, activating the validation's warn path
+- [x] Document the limit: what the switch blocks and what it does not block
+- [ ] Release note for the MINOR (`skills_suppressed` and `skill-state` are new surface)
+- [ ] Editable entities for agents, models, MCPs, routing and rules in the console
+- [ ] Precedence action → route → agent → skill → default, with a conflict requiring explicit resolution
+- [ ] Publishing conditional on the base revision and serialization of concurrent publishes
+- [ ] Authentication, RBAC and isolation before hosting the console
 
 ## What was made
 
-**Kernel.** `skill_state_json()` lê a frontmatter de cada `skills/*/SKILL.md` uma vez por processo e produz um mapa `{id: bool}`. Só a primeira frontmatter é lida, e só quando o arquivo começa com ela: uma linha `enabled:` no corpo é documentação, não configuração, e não pode desligar uma skill. Ausência do campo significa habilitada — é o contrato do console e o que mantém funcionando toda skill escrita antes de o campo existir.
+**Kernel.** `skill_state_json()` reads the frontmatter of each `skills/*/SKILL.md` once per process and produces a `{id: bool}` map. Only the first frontmatter is read, and only when the file starts with it: an `enabled:` line in the body is documentation, not configuration, and cannot turn a skill off. Absence of the field means enabled — it is the console's contract and what keeps every skill written before the field existed working.
 
-O filtro é aplicado em `route-path`, `route-intent` e `resolve-task`. Cada um monta o objeto de resposta por conta própria, então o filtro precisa estar nos três; `C34` existe justamente porque um quarto sítio adicionado sem ele devolveria a lista crua e o sintoma seria uma skill desabilitada aparecendo, não um erro.
+The filter is applied in `route-path`, `route-intent` and `resolve-task`. Each one assembles the answer object on its own, so the filter needs to be in all three; `C34` exists precisely because a fourth site added without it would return the raw list and the symptom would be a disabled skill showing up, not an error.
 
-A skill suprimida entra em `skills_suppressed` com `reason: "disabled"`. Não sai em silêncio: uma lista curta e uma lista filtrada são indistinguíveis para quem lê, e um controle cujo efeito não pode ser observado volta a ser decorativo por outro caminho.
+A suppressed skill enters `skills_suppressed` with `reason: "disabled"`. It does not leave silently: a short list and a filtered list are indistinguishable to whoever reads them, and a control whose effect cannot be observed becomes decorative again by another route.
 
-`kernel.sh skill-state [--id <s>]` expõe a resolução sozinha, para que console, check e hook leiam a mesma coisa em vez de cada um reparsear frontmatter do seu jeito.
+`kernel.sh skill-state [--id <s>]` exposes the resolution on its own, so that console, check and hook read the same thing instead of each one re-parsing frontmatter its own way.
 
-**Console.** `relations.ts` resolve `usedByAgents` por dois fundamentos independentes, e os dois são reais: uma registry que liga agente e skill ao mesmo domínio ou intent, e um agente cuja própria prosa nomeia a skill. Nenhum basta sozinho — as registries perdem o agente que invoca a skill diretamente, a prosa perde o agente ligado só por roteamento. `dependsOnRules` sai do corpo do SKILL.md. A correspondência é por token inteiro, nunca substring: `retro` não pode casar com "retrospective", porque isto alimenta um aviso sobre o qual o operador age, e um falso positivo aí ensina a ignorar o aviso.
+**Console.** `relations.ts` resolves `usedByAgents` from two independent foundations, and both are real: a registry that ties an agent and a skill to the same domain or intent, and an agent whose own prose names the skill. Neither is enough on its own — the registries miss the agent that invokes the skill directly, the prose misses the agent tied only by routing. `dependsOnRules` comes from the body of the SKILL.md. The match is by whole token, never substring: `retro` must not match "retrospective", because this feeds a warning the operator acts on, and a false positive there teaches people to ignore the warning.
 
-`GET /api/skills` sobrepõe as relações frescas ao draft armazenado. Elas são derivadas, não editadas — um draft gravado antes de um agente passar a referenciar a skill continuaria afirmando que ninguém a usa, e o aviso de desabilitação ficaria mudo exatamente para a skill que mais precisa dele.
+`GET /api/skills` overlays the fresh relations on top of the stored draft. They are derived, not edited — a draft written before an agent started referencing the skill would keep asserting that nobody uses it, and the disable warning would stay mute for exactly the skill that needs it most.
 
-Resultado real da resolução: `nestjs-patterns` → `backend-coordinator` + `architecture,backend,data,observability`; `react-patterns` → `frontend-coordinator,mobile-coordinator`; `retro` → `git,memory,testing`.
+Real result of the resolution: `nestjs-patterns` → `backend-coordinator` + `architecture,backend,data,observability`; `react-patterns` → `frontend-coordinator,mobile-coordinator`; `retro` → `git,memory,testing`.
 
 ## Verification
 
-- `scripts/test-kernel.sh` — **348 passed, 0 failed** (334 antes; 14 casos novos).
-- `scripts/validate-engineos.sh` — **111 passed, 1 failed**, sendo a falha o artefato de filesystem Windows já documentado.
-- `C35` verificado com regressão plantada: desabilitando `nestjs-patterns` (única skill do domínio `backend`), o check falha nomeando o domínio esvaziado; restaurado o arquivo, volta a passar.
-- Verificação ponta a ponta do enforcement, com `nestjs-patterns` desabilitada:
+- `scripts/test-kernel.sh` — **348 passed, 0 failed** (334 before; 14 new cases).
+- `scripts/validate-engineos.sh` — **111 passed, 1 failed**, the failure being the already documented Windows filesystem artifact.
+- `C35` verified with a planted regression: disabling `nestjs-patterns` (the only skill of the `backend` domain), the check fails naming the emptied domain; with the file restored, it passes again.
+- End-to-end verification of the enforcement, with `nestjs-patterns` disabled:
   `route-path` → `{"skills":[],"skills_suppressed":[{"id":"nestjs-patterns","reason":"disabled"}]}`;
-  `resolve-task` → mesmo par em `task_contract`. Restaurado, ambos voltam a `["nestjs-patterns"]` e `[]`.
-- `console: npx tsc --noEmit` limpo; `parseSkills` executado contra a árvore real produzindo as relações acima.
+  `resolve-task` → the same pair in `task_contract`. Restored, both go back to `["nestjs-patterns"]` and `[]`.
+- `console: npx tsc --noEmit` clean; `parseSkills` run against the real tree producing the relations above.
 
-Limitações declaradas, não convertidas em sucesso:
+Declared limitations, not converted into success:
 
-- Isto é enforcement de **recomendação**, não de execução. EngineOS não impede alguém de invocar uma skill desabilitada pelo nome: a ferramenta Skill lê o diretório e não há hook entre as duas coisas. Bloqueio real exige desinstalar a skill. Está dito em `docs/COMPATIBILITY.md` e em `docs/CAPABILITIES.md`, e não deve ser suavizado em material de release.
-- Os hooks ainda não consomem `skills_suppressed`; quem lê o par hoje é quem chama o kernel diretamente.
-- Nenhuma das outras entidades de E03 (agentes, modelos, MCPs, routing, regras) foi implementada. O console continua **parcial**.
-- Sem autenticação, RBAC ou isolamento: o console não pode ser hospedado.
+- This is enforcement of **recommendation**, not of execution. EngineOS does not prevent anyone from invoking a disabled skill by name: the Skill tool reads the directory and there is no hook between the two things. Real blocking requires uninstalling the skill. It is said in `docs/COMPATIBILITY.md` and in `docs/CAPABILITIES.md`, and it must not be softened in release material.
+- The hooks do not consume `skills_suppressed` yet; whoever reads the pair today is whoever calls the kernel directly.
+- None of the other E03 entities (agents, models, MCPs, routing, rules) was implemented. The console stays **partial**.
+- Without authentication, RBAC or isolation: the console cannot be hosted.
 
 ## Human decisions
 
 <!-- date | who | reasons (from registries/policy.json hitl.reasons) | approved/refused | note -->
-2026-09-07 | Ricardo Fagmer | escopo de execução | aprovado | Instrução "Implemente" sobre a próxima unidade anunciada: completar as entidades do console e comprovar que `enabled=false` tem efeito no runtime. Escopo desta fatia decidido pela evidência: não havia o que comprovar, então o trabalho virou implementar o ponto de aplicação antes de acrescentar entidades sobre um campo sem efeito.
+2026-09-07 | Ricardo Fagmer | execution scope | approved | Instruction "Implement" on the announced next unit: complete the console entities and prove that `enabled=false` has an effect in the runtime. The scope of this slice was decided by the evidence: there was nothing to prove, so the work became implementing the enforcement point before adding entities on top of a field with no effect.
 
 ## Changes registered
 
-Ver `git log --oneline` da branch `chore/e01-eol-baseline`; esta unidade é o commit de E03 imediatamente após `7ca8974`.
+See the `git log --oneline` of the `chore/e01-eol-baseline` branch; this unit is the E03 commit immediately after `7ca8974`.
 
 ## Notes
 
-- A ordem importou de novo. Acrescentar entidades de agentes e modelos ao console antes deste commit teria multiplicado interruptores sem efeito, em vez de consertar o que já existia.
-- `skills_suppressed` e `skill-state` são superfície pública nova, portanto MINOR sob `docs/COMPATIBILITY.md`. A release note ainda não existe e está no checklist.
-- Padrão que vale reter: **um campo de configuração sem leitor é uma promessa, não um controle** — e a forma de fechar a distância é um answer do kernel mais um check que afirme o par, não uma linha de documentação. [[config-sem-leitor]]
+- The order mattered again. Adding agent and model entities to the console before this commit would have multiplied switches with no effect, instead of fixing what already existed.
+- `skills_suppressed` and `skill-state` are new public surface, therefore MINOR under `docs/COMPATIBILITY.md`. The release note does not exist yet and is on the checklist.
+- Pattern worth keeping: **a configuration field with no reader is a promise, not a control** — and the way to close the distance is a kernel answer plus a check that asserts the pair, not a line of documentation. [[config-sem-leitor]]

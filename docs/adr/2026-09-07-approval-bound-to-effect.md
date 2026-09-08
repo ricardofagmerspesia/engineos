@@ -1,44 +1,44 @@
-# Aprovação humana vinculada ao efeito, não à sessão
+# Human approval bound to the effect, not to the session
 
 Date: 2026-09-07
 Status: proposed
 
-Source: "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, rev. 2), épicos E04 (aprovação persistida) e E10 (autorização na fronteira). Estende `2026-09-03-hitl-as-kernel-entity.md`, que fez do HITL uma entidade do kernel sem definir o que uma aprovação vincula.
+Source: "EngineOS 2.0 — Production readiness plan" (2026-09-06, rev. 2), epics E04 (persisted approval) and E10 (authorization at the boundary). Extends `2026-09-03-hitl-as-kernel-entity.md`, which made HITL a kernel entity without defining what an approval binds.
 
 ## Context
 
-O kernel já responde se um humano é necessário e por qual razão, a partir de um vocabulário fechado. O que ele não define é o que a resposta "sim, aprovado" cobre. Sem isso, três coisas ficam em aberto, e todas são falhas de segurança e não de ergonomia:
+The kernel already answers whether a human is needed and for which reason, from a closed vocabulary. What it does not define is what the answer "yes, approved" covers. Without that, three things are left open, and all of them are security failures rather than ergonomic ones:
 
-- Um agente pode obter aprovação para uma ação barata e reutilizá-la para uma cara.
-- Uma aprovação obtida antes de um `pause` pode ser reaproveitada depois do `resume`, quando a permissão já foi revogada.
-- Uma aprovação pode ser pedida duas vezes para a mesma ação, o que treina o operador a aprovar sem ler — o modo de falha mais caro dos três, porque destrói o valor de todos os gates.
+- An agent can obtain approval for a cheap action and reuse it for an expensive one.
+- An approval obtained before a `pause` can be reused after the `resume`, when the permission has already been revoked.
+- An approval can be asked twice for the same action, which trains the operator to approve without reading — the most expensive failure mode of the three, because it destroys the value of every gate.
 
 ## Options considered
 
-1. **Aprovação vinculada à tupla (ação, argumentos, destino, `config_version`)** (escolhida).
-   - Pros: mudar qualquer elemento invalida a aprovação, então não existe reuso silencioso; a mesma tupla não é perguntada duas vezes, então o operador lê o que aprova; a aprovação é auditável — o registro diz exatamente o que foi permitido, não "o usuário disse sim às 14h".
-   - Cons: um argumento que muda de forma inócua (um retry com o mesmo efeito) invalida a aprovação e pode gerar nova pergunta. Mitigação: a chave de idempotência do efeito, não o texto do argumento, é o que entra na tupla quando o efeito declara uma.
+1. **Approval bound to the tuple (action, arguments, target, `config_version`)** (chosen).
+   - Pros: changing any element invalidates the approval, so there is no silent reuse; the same tuple is not asked twice, so the operator reads what they approve; the approval is auditable — the record says exactly what was permitted, not "the user said yes at 2pm".
+   - Cons: an argument that changes innocuously (a retry with the same effect) invalidates the approval and may produce a new question. Mitigation: the effect's idempotency key, not the argument text, is what enters the tuple when the effect declares one.
 
-2. **Aprovação por sessão ou por janela de tempo** (rejeitada).
-   - Pros: menos interrupção; trivial de implementar.
-   - Cons: é exatamente a escalada de privilégio que o gate existe para impedir. "Aprovado nos próximos 30 minutos" significa que o próximo efeito irreversível não foi aprovado por ninguém.
+2. **Approval per session or per time window** (rejected).
+   - Pros: less interruption; trivial to implement.
+   - Cons: it is exactly the privilege escalation the gate exists to prevent. "Approved for the next 30 minutes" means the next irreversible effect was approved by nobody.
 
-3. **Aprovação por classe de risco** (rejeitada).
-   - Pros: alinha com `gates.by_risk`, que já existe.
-   - Cons: a classe é o que decide *se* perguntar, não o que a resposta cobre. Duas ações de risco alto e efeitos completamente diferentes compartilhariam uma aprovação.
+3. **Approval per risk class** (rejected).
+   - Pros: aligns with `gates.by_risk`, which already exists.
+   - Cons: the class is what decides *whether* to ask, not what the answer covers. Two high-risk actions with completely different effects would share one approval.
 
 ## Decision
 
-Opção 1. Uma aprovação registra `{ação, argumentos ou chave de idempotência, destino, config_version, quem, quando, razão do vocabulário HITL}` e é válida apenas para essa tupla.
+Option 1. An approval records `{action, arguments or idempotency key, target, config_version, who, when, reason from the HITL vocabulary}` and is valid only for that tuple.
 
-- **Invalidação:** qualquer alteração na tupla invalida. Revogação de permissão invalida aprovações pendentes, inclusive de execuções retomadas.
-- **Não repetir:** uma aprovação válida para a mesma tupla não é perguntada de novo.
-- **Reverificação na execução:** a autorização é checada de novo no momento do efeito, inclusive após `pause`/`resume`. Aprovação não substitui autorização; são gates distintos.
-- **Escopo por tipo de efeito:** leitura, escrita reversível e efeito irreversível são categorias diferentes. Uma aprovação de escrita reversível não cobre um efeito irreversível.
-- **Credenciais ficam fora do contexto do modelo.** A aprovação autoriza uma ação; ela não entrega segredo a um prompt.
+- **Invalidation:** any change to the tuple invalidates it. Revoking a permission invalidates pending approvals, including those of resumed executions.
+- **Do not repeat:** an approval that is valid for the same tuple is not asked again.
+- **Re-verification at execution:** authorization is checked again at the moment of the effect, including after `pause`/`resume`. Approval does not replace authorization; they are distinct gates.
+- **Scope per effect type:** read, reversible write and irreversible effect are different categories. An approval for a reversible write does not cover an irreversible effect.
+- **Credentials stay out of the model's context.** The approval authorizes an action; it does not hand a secret to a prompt.
 
 ## Consequences
 
-- Configuração declarativa não é prova de bloqueio. Um teste que demonstre a ação sendo negada na fronteira real é o que fecha este gate — checagem que só existe em JSON não conta.
-- O registro de mudança (`.engineos/changes/`) já tem a seção "Human decisions" com o vocabulário de `policy.json hitl.reasons`; ela passa a ser a forma humana deste mesmo contrato. Um tier que exigiu humano e não registra nada não passou pelo gate.
-- Enquanto E04 não persistir aprovações ligadas a efeitos, o produto tem gates escritos e não gates aplicados, e `docs/CAPABILITIES.md` deve dizer isso.
+- Declarative configuration is not proof of blocking. A test that demonstrates the action being denied at the real boundary is what closes this gate — a check that only exists in JSON does not count.
+- The change record (`.engineos/changes/`) already has the "Human decisions" section with the vocabulary from `policy.json hitl.reasons`; it becomes the human form of this same contract. A tier that required a human and records nothing has not passed its gate.
+- Until E04 persists approvals bound to effects, the product has written gates and not enforced gates, and `docs/CAPABILITIES.md` must say so.
