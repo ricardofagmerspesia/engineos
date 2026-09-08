@@ -18,9 +18,5 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }),
   );
 
-  // TODO: nav link — layout.tsx (sibling shell unit's scope) needs to wrap
-  // {children} with <Providers> for TanStack Query to work on any screen,
-  // and should add nav links to /skills, /publish, /history once this
-  // provider is wired in.
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

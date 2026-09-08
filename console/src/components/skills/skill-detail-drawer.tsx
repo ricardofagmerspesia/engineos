@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useId, useState } from "react";
 import type { SkillEntity, SkillPatch, ValidationIssue } from "../types";
 import { Drawer } from "../ui/drawer";
 import { Tabs, TabPanel } from "../ui/tabs";
@@ -25,15 +25,11 @@ const TABS = [
 
 export function SkillDetailDrawer({ skill, onClose, onSave, pending, validationIssues }: SkillDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState("details");
+  // Seeded once, never synced from props: the caller keys this component on the
+  // selected skill id, so opening another row remounts it and the draft resets
+  // with the mount instead of through an effect that mirrors server state.
   const [description, setDescription] = useState(skill?.description ?? "");
-
-  // Reset the draft textarea whenever a different skill (or a fresher copy
-  // of the same one) is opened, so a prior edit never leaks into the next
-  // row's drawer.
-  useEffect(() => {
-    setDescription(skill?.description ?? "");
-    setActiveTab("details");
-  }, [skill?.id, skill?.description]);
+  const tabsId = useId();
 
   if (!skill) return null;
 
@@ -46,9 +42,9 @@ export function SkillDetailDrawer({ skill, onClose, onSave, pending, validationI
         {skill.parseError ? <span className="text-xs text-red-700">{skill.parseError}</span> : null}
       </div>
 
-      <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={TABS} activeId={activeTab} onChange={setActiveTab} label="Skill details" idPrefix={tabsId} />
 
-      <TabPanel id="details" activeId={activeTab}>
+      <TabPanel id="details" activeId={activeTab} idPrefix={tabsId}>
         <ValidationIssuesList issues={validationIssues} />
 
         <div className="mt-3">
@@ -60,7 +56,7 @@ export function SkillDetailDrawer({ skill, onClose, onSave, pending, validationI
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={5}
-            className="mt-1 w-full rounded-md border border-slate-300 p-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+            className="focus-ring mt-1 w-full rounded-md border border-slate-300 p-2 text-sm"
           />
         </div>
 
@@ -79,7 +75,7 @@ export function SkillDetailDrawer({ skill, onClose, onSave, pending, validationI
             type="button"
             disabled={!isDirty || pending}
             onClick={() => onSave({ description })}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="focus-ring rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Saving…" : "Save description"}
           </button>
@@ -98,15 +94,12 @@ export function SkillDetailDrawer({ skill, onClose, onSave, pending, validationI
         </dl>
       </TabPanel>
 
-      <TabPanel id="relationships" activeId={activeTab}>
+      <TabPanel id="relationships" activeId={activeTab} idPrefix={tabsId}>
         <div className="space-y-4">
           <section>
             <h3 className="text-sm font-semibold text-slate-700">Used by agents</h3>
             {skill.usedByAgents.length === 0 ? (
-              <EmptyState
-                title="No agents reference this skill yet"
-                description="This is expected until the Agents ticket lands — it isn't a bug."
-              />
+              <EmptyState title="No agent under agents/ declares this skill." />
             ) : (
               <ul className="mt-2 flex flex-wrap gap-1.5">
                 {skill.usedByAgents.map((agentId) => (
@@ -137,11 +130,8 @@ export function SkillDetailDrawer({ skill, onClose, onSave, pending, validationI
         </div>
       </TabPanel>
 
-      <TabPanel id="raw-source" activeId={activeTab}>
-        <p className="text-sm text-slate-600">
-          Raw content view lands with the Rules/Agents tickets — no endpoint exists yet to read full file content.
-          Source paths as of the last publish:
-        </p>
+      <TabPanel id="raw-source" activeId={activeTab} idPrefix={tabsId}>
+        <p className="text-sm text-slate-600">The console does not read full file content. Source paths:</p>
         <ul className="mt-2 space-y-1 font-mono text-xs text-slate-700">
           {skill.sourcePaths.map((path) => (
             <li key={path} className="rounded bg-slate-50 px-2 py-1">

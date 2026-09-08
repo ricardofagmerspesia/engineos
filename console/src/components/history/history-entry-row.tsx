@@ -41,7 +41,7 @@ export function HistoryEntryRow({ entry, onRollback }: HistoryEntryRowProps) {
           type="button"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
-          className="flex flex-1 items-center gap-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-500"
+          className="focus-ring-inset flex flex-1 items-center gap-2 text-left"
         >
           <ChevronRightIcon className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
           <span>
@@ -53,7 +53,7 @@ export function HistoryEntryRow({ entry, onRollback }: HistoryEntryRowProps) {
         <button
           type="button"
           onClick={() => onRollback(entry.id)}
-          className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+          className="focus-ring shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
         >
           Rollback to here
         </button>
