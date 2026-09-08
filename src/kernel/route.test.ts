@@ -312,7 +312,7 @@ function byOf(section: EscalateRouteSection, id: string): string | null {
 // reason vocabulary and the threshold stay the shipped ones, so a synthetic case
 // still proves something about the policy the kernel actually runs on.
 function escalate(prompt: string, rows: IntentRow[]): EscalateRouteSection {
-  const fixture: Registries = { ...regs, intents: { intents: rows } };
+  const fixture: Registries = { ...regs, intents: { version: regs.intents.version, intents: rows } };
   return routeEscalate(prompt, fixture);
 }
 

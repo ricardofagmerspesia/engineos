@@ -67,7 +67,12 @@ export function byteOrder(a: string, b: string): number {
 // The point of registries/routing.json is that the CLAUDE.md table, the hook map
 // and the registry can no longer drift apart in silence.
 export function checkC14(ctx: CheckContext): CheckResult[] {
-  return [jsonValidity(ctx), ...routingCoherence(ctx), ...decisionRuleCoherence(ctx)];
+  return [
+    jsonValidity(ctx),
+    ...routingCoherence(ctx),
+    ...decisionRuleCoherence(ctx),
+    ...capabilityCoherence(ctx),
+  ];
 }
 
 // -------------------------------------------------------------------- internals
@@ -146,7 +151,128 @@ function decisionRuleCoherence(ctx: CheckContext): CheckResult[] {
     result('C14', 'every decision rule requires or prefers something', emptyOutcomes(rules)),
     result('C14', 'every decision rule signal is a valid regex', invalidSignals(rules)),
     result('C14', 'verification policy agrees across registry, verification rule and gate', verificationDrift(ctx, rules)),
+    result('C14', 'every decision rule source names a file that exists', missingSources(ctx, rules)),
   ];
+}
+
+// C14 pinned ONE rule's source (rule-verification, below). Every other `source`
+// was prose nobody joined to the tree, so a rule could cite rules/no-such.md and
+// validate clean — the citation is the only thing that makes a registry row
+// arguable, and a dangling one is worse than none.
+//
+// The token class is deliberately narrow: a source is a sentence, not a path, so
+// only the eight prose-layer directories and the three root markdown files are
+// recognised. A source with no such token ("adapted from the analyzed corpus")
+// reports nothing.
+//
+// The leading lookbehind rather than \b: `decision-rules/rules.json` inside a
+// prose source would otherwise match at the `rules` of `decision-rules` and be
+// reported as a missing `rules/rules.json`, which is a finding about the regex
+// rather than about the tree.
+const SOURCE_TOKEN =
+  /(?<![A-Za-z0-9_/-])(?:(?:rules|docs|commands|skills|agents|templates|registries|patterns)\/[A-Za-z0-9._\/-]+|(?:CLAUDE|AGENTS|README)\.md\b)/g;
+
+function missingSources(ctx: CheckContext, rules: readonly Row[]): Finding[] {
+  const missing: Finding[] = [];
+  rules.forEach((rule, index) => {
+    const declared = rule['source'];
+    if (typeof declared !== 'string') return;
+    for (const token of sortedUnique(sourceTokens(declared))) {
+      if (sourceResolves(ctx, token)) continue;
+      missing.push(finding('C14', 'source-file-missing', `${ruleName(rule, index)}:${token}`));
+    }
+  });
+  return missing;
+}
+
+function sourceTokens(source: string): string[] {
+  return (source.match(SOURCE_TOKEN) ?? [])
+    // Trailing sentence punctuation belongs to the prose, not to the path.
+    .map((token) => token.replace(/[./-]+$/, ''))
+    .filter((token) => token !== '');
+}
+
+// A skill is cited by its directory (`skills/adr`); the file that carries it is
+// SKILL.md. Everything else is cited by the path it lives at.
+function sourceResolves(ctx: CheckContext, token: string): boolean {
+  if (ctx.exists(token)) return true;
+  return !token.endsWith('.md') && ctx.exists(`${token}/SKILL.md`);
+}
+
+// -------------------------------------- capability <-> agent referential joins
+// rules/observability.md: a span's `capability_id` is "always an id from
+// registries/capabilities.json". Nothing joined the two registries, so an agent
+// row could carry an id no capability defines — and the claim held only by
+// convention.
+//
+// Read raw, like the rest of C14: loadCapabilities refuses a malformed row, and
+// one bad row must not hide the join for every other one.
+function capabilityCoherence(ctx: CheckContext): CheckResult[] {
+  if (!ctx.exists(CAPABILITIES) || !ctx.exists(AGENTS)) return [];
+  const capabilities = capabilityRows(ctx);
+  const agents = agentCapabilityRows(ctx);
+  if (capabilities === null || agents === null) return [];
+  const declaredIds = new Set(capabilities.map((row) => row.id));
+  const agentNames = new Set(agents.map((row) => row.name));
+  const dangling: Finding[] = [];
+  for (const agent of agents) {
+    for (const id of sortedUnique(agent.capabilityIds)) {
+      if (declaredIds.has(id)) continue;
+      dangling.push(finding('C14', 'dangling-capability-id', `${agent.name}:${id}`));
+    }
+  }
+  const unknownAgents: Finding[] = [];
+  for (const capability of capabilities) {
+    if (capability.agent === null || agentNames.has(capability.agent)) continue;
+    unknownAgents.push(finding('C14', 'unknown-capability-agent', `${capability.id}:${capability.agent}`));
+  }
+  return [
+    result('C14', 'agent capability_ids resolve to capabilities.json', dangling),
+    result('C14', 'capability agents exist in agents.json', unknownAgents),
+  ];
+}
+
+interface CapabilityBinding {
+  readonly id: string;
+  readonly agent: string | null;
+}
+
+function capabilityRows(ctx: CheckContext): CapabilityBinding[] | null {
+  const document = readable(() => readJsonFile(join(ctx.root, CAPABILITIES)));
+  if (document === null) return null;
+  const rows: unknown = isRecord(document) ? document['capabilities'] : undefined;
+  if (!Array.isArray(rows)) return [];
+  const bindings: CapabilityBinding[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const id = row['id'];
+    if (typeof id !== 'string' || id === '') continue;
+    const agent = row['agent'];
+    bindings.push({ id, agent: typeof agent === 'string' && agent !== '' ? agent : null });
+  }
+  return bindings;
+}
+
+interface AgentCapabilities {
+  readonly name: string;
+  readonly capabilityIds: string[];
+}
+
+// A row without `capability_ids` declares none, which is a valid answer: most
+// agents bind to no workflow capability at all.
+function agentCapabilityRows(ctx: CheckContext): AgentCapabilities[] | null {
+  const document = readable(() => readJsonFile(join(ctx.root, AGENTS)));
+  if (document === null) return null;
+  const rows: unknown = isRecord(document) ? document['agents'] : undefined;
+  if (!Array.isArray(rows)) return [];
+  const agents: AgentCapabilities[] = [];
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const name = row['name'];
+    if (typeof name !== 'string' || name === '') continue;
+    agents.push({ name, capabilityIds: stringArray(row['capability_ids']) });
+  }
+  return agents;
 }
 
 type Row = Record<string, unknown>;

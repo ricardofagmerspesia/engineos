@@ -176,6 +176,57 @@ test('rules/gates.md losing the deferral to the verification rule is caught', (t
   assert.ok(hasFinding(found, 'verification-gate-prose-missing', 'rules/gates.md'));
 });
 
+test('a decision rule source naming a file that does not exist is caught', (t) => {
+  const found = findingsFor(t, 'C14', (root) => {
+    editJson(root, 'registries/decision-rules.json', (document) => {
+      rule(document, 'rule-fanout')['source'] = 'rules/no-such.md';
+    });
+  });
+  assert.ok(hasFinding(found, 'source-file-missing', 'rule-fanout:rules/no-such.md'));
+});
+
+// The sweep reads a sentence, not a path. Prose with no path token reports
+// nothing, and a token embedded in a longer word (`decision-rules/rules.json`)
+// is not mistaken for `rules/rules.json`.
+test('a prose source, with or without an embedded path-like token, is clean', (t) => {
+  const found = findingsFor(t, 'C14', (root) => {
+    editJson(root, 'registries/decision-rules.json', (document) => {
+      rule(document, 'rule-fanout')['source'] = 'adapted from the corpus (decision-rules/rules.json)';
+    });
+  });
+  assert.deepEqual(found, []);
+});
+
+test('an agent capability_id that no capability defines is caught', (t) => {
+  const found = findingsFor(t, 'C14', (root) => {
+    editJson(root, 'registries/agents.json', (document) => {
+      first(document, 'agents')['capability_ids'] = ['ghost-capability'];
+    });
+  });
+  assert.ok(found.some((entry) =>
+    entry.code === 'dangling-capability-id' && (entry.subject ?? '').endsWith(':ghost-capability')));
+});
+
+// Absent means "binds no workflow capability", which is what most agent rows
+// mean; only a declared id that resolves to nothing is a finding.
+test('agent rows declaring no capability_ids at all are clean', (t) => {
+  const found = findingsFor(t, 'C14', (root) => {
+    editJson(root, 'registries/agents.json', (document) => {
+      for (const row of rows(document, 'agents')) delete row['capability_ids'];
+    });
+  });
+  assert.deepEqual(found, []);
+});
+
+test('a capability bound to an agent absent from agents.json is caught', (t) => {
+  const found = findingsFor(t, 'C14', (root) => {
+    editCapability(root, 'route', (row) => {
+      row['agent'] = 'ghost-agent';
+    });
+  });
+  assert.ok(hasFinding(found, 'unknown-capability-agent', 'route:ghost-agent'));
+});
+
 // -------------------------------------------------------------------- C15
 
 test('C15 passes on an unmutated checkout', (t) => {

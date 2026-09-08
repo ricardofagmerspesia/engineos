@@ -11,6 +11,6 @@ export type { WaveViolation, WavesFacts, WavesSection } from './waves';
 export type { EscalateRouteSection, SuppressedIntent } from './route';
 // Carried by the route sections and by TaskContractSection, so a consumer of
 // either needs the member type the barrel already implies.
-export type { SkillLookupSection, SkillState, SkillStateSection, SuppressedSkill } from './skill-state';
+export type { SkillLookupSection, SkillReading, SkillState, SkillStateSection, SuppressedSkill } from './skill-state';
 export type { DecisionMatch, DecisionsFacts, DecisionsSection } from './decisions';
 export type { ScaleFacts, ScaleSection } from './scale';
