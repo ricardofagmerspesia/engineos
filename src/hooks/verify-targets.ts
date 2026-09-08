@@ -40,13 +40,20 @@ export function hasVerifyExtension(file: string): boolean {
 // walk ascends. Looping src/lib/git.ts findUp once per name would instead exhaust
 // the whole ascent for the first name, so a nested project.json beside a distant
 // package.json would resolve to the wrong package.
-export function findUpAny(start: string, names: readonly string[]): string | null {
+//
+// `stop` bounds the ascent: the walk probes `stop` itself and then gives up
+// rather than climbing past it, and a `start` that is neither `stop` nor under
+// it is refused without a single probe. Callers that pass no `stop` keep bash's
+// unbounded walk to the filesystem root.
+export function findUpAny(start: string, names: readonly string[], stop?: string): string | null {
+  if (stop !== undefined && start !== stop && !start.startsWith(`${stop}/`)) return null;
   let dir = start;
   let previous = '';
   while (dir !== '/' && dir !== previous && dir !== '') {
     for (const name of names) {
       if (existsSync(`${dir}/${name}`)) return dir;
     }
+    if (dir === stop) return null;
     previous = dir;
     dir = parentOf(dir);
   }

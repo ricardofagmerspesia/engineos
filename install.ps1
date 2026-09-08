@@ -55,8 +55,14 @@ if ($isGitRepo) {
         }
     }
 } else {
+    # Dependency and build output is not "secrets in the repo": JSDoc URLs inside
+    # dependencies (e.g. @types/node) match the credential-in-URL pattern, so
+    # scanning them would abort a zip install on pure false positives.
     Get-ChildItem $RepoDir -Recurse -File |
-        Where-Object { $_.FullName -notmatch '\\.git\\' } |
+        Where-Object {
+            $_.FullName -notmatch '\\.git\\' -and
+            $_.FullName -notmatch '\\(node_modules|dist-release|build|\.next)\\'
+        } |
         ForEach-Object {
             try {
                 $text = Get-Content $_.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue

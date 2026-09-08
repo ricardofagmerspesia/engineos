@@ -71,6 +71,39 @@ test('findUpAny answers null when no ancestor carries any marker', (t) => {
   assert.equal(findUpAny(join(root, 'deep'), ['engineos-marker-that-never-exists.json']), null);
 });
 
+// The Stop gate's ceiling (src/hooks/stop-verify.ts packageDirs): consent is
+// given per working tree, so the ascent must stop at the root that consented.
+test('findUpAny probes the stop directory but never ascends above it', (t) => {
+  const root = tempRoot(t);
+  const inner = join(root, 'inner');
+  mkdirSync(join(inner, 'src'), { recursive: true });
+  writeFileSync(join(root, 'package.json'), '{}\n');
+  // Reachable by the unbounded walk, refused by the bounded one.
+  assert.equal(findUpAny(join(inner, 'src'), ['package.json']), root);
+  assert.equal(findUpAny(join(inner, 'src'), ['package.json'], inner), null);
+  // The stop level itself is still probed before the walk gives up.
+  writeFileSync(join(inner, 'package.json'), '{}\n');
+  assert.equal(findUpAny(join(inner, 'src'), ['package.json'], inner), inner);
+  assert.equal(findUpAny(inner, ['package.json'], inner), inner);
+});
+
+test('findUpAny refuses a start outside the stop without probing', (t) => {
+  const root = tempRoot(t);
+  const stop = join(root, 'adopted');
+  const sibling = join(root, 'sibling');
+  mkdirSync(stop, { recursive: true });
+  mkdirSync(sibling, { recursive: true });
+  writeFileSync(join(sibling, 'package.json'), '{}\n');
+  assert.equal(findUpAny(sibling, ['package.json']), sibling);
+  assert.equal(findUpAny(sibling, ['package.json'], stop), null);
+  // A shared string prefix is not containment: `<stop>-other` is a directory of
+  // its own, and a bare startsWith would have admitted it.
+  const lookalike = `${stop}-other`;
+  mkdirSync(lookalike, { recursive: true });
+  writeFileSync(join(lookalike, 'package.json'), '{}\n');
+  assert.equal(findUpAny(lookalike, ['package.json'], stop), null);
+});
+
 test('isDirectory and isFile answer false rather than throwing on a missing path', (t) => {
   const root = tempRoot(t);
   writeFileSync(join(root, 'a.ts'), '');

@@ -15,8 +15,8 @@
 // kernel's repair section (../kernel/repair), which is the one reader of
 // registries/policy.json .repair.max_fix_attempts_per_check — this hook is a
 // shim over that answer, never a private copy of the numbers.
-import { dirname, join } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
+import { readFileSync, realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
@@ -104,7 +104,7 @@ export function verify(
     return message(infraLine(tooOld.reason, targetsFor(ctx.io.env), `node ${environment.nodeMajor} cannot start the toolchain`));
   }
 
-  const packages = packageDirs(files);
+  const packages = packageDirs(files, root);
   if (packages.length === 0) return silent;
 
   const targets = targetsFor(ctx.io.env);
@@ -184,13 +184,68 @@ function filePathOf(entry: Record<string, unknown>): string {
   return typeof fallback === 'string' ? fallback : '';
 }
 
-function packageDirs(files: readonly string[]): string[] {
+// Adoption is consent, and it was given for THIS working tree only: the marker
+// the gate reads is `.engineos/` at `root`, so a package.json ABOVE the root or
+// beside it never consented to having its scripts run. Unbounded, the ascent
+// reached them — a second, non-adopted checkout touched in the same session, or
+// a package.json planted in a world-writable directory above a scratch file,
+// had its `lint`/`typecheck` executed with no tool-permission prompt in front
+// of it. `root` is therefore both the ascent's ceiling and the containment test
+// on what came back.
+//
+// Containment is decided on PHYSICAL paths, in two layers. The lexical `stop`
+// handed to findUpAny bounds the WALK — cheap, and it stops the ascent before it
+// probes anything above the root. The realpath comparison below decides the
+// containment itself, because a lexical prefix is not one: a committed symlink
+// `<root>/vendor -> /outside` names a directory that resolves out of the tree
+// while every string form of it still reads as being under `root`, and
+// existsSync follows the link, so the lexical test alone admitted `/outside`'s
+// package.json and ran its scripts. Both sides are realpath'd, so a root reached
+// through a symlinked form — macOS `/tmp` -> `/private/tmp`, a `~/projects` that
+// is a volume link — still verifies rather than silently skipping: the walk
+// starts from the file's physical directory and the ceiling is the root's.
+//
+// Fails closed at every step: an unresolvable root verifies nothing, and an
+// owner whose realpath cannot be taken or lands outside is dropped rather than
+// entered.
+function packageDirs(files: readonly string[], root: string): string[] {
+  let stopReal: string;
+  try {
+    stopReal = realpathSync(root);
+  } catch {
+    return [];
+  }
   const dirs = new Set<string>();
   for (const file of files) {
-    const owner = findUpAny(dirname(file), PACKAGE_MARKERS);
-    if (owner !== null) dirs.add(owner);
+    const owner = findUpAny(startDir(file), PACKAGE_MARKERS, stopReal);
+    if (owner === null) continue;
+    if (containedIn(stopReal, owner)) dirs.add(owner);
   }
   return [...dirs].sort();
+}
+
+// The physical directory the walk starts from, so findUpAny compares one path
+// form against another. A directory that does not exist has no realpath — the
+// transcript names files the session may since have moved — and the lexical
+// resolve is the fallback; the owner check is what covers that walk, since a
+// lexical ascent from a non-existent path can still cross a symlink.
+function startDir(file: string): string {
+  const dir = dirname(file);
+  try {
+    return realpathSync(dir);
+  } catch {
+    return resolve(dir);
+  }
+}
+
+function containedIn(stopReal: string, owner: string): boolean {
+  let ownerReal: string;
+  try {
+    ownerReal = realpathSync(owner);
+  } catch {
+    return false;
+  }
+  return ownerReal === stopReal || ownerReal.startsWith(`${stopReal}${sep}`);
 }
 
 function runLadder(

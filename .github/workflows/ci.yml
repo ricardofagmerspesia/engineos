@@ -154,6 +154,10 @@ jobs:
   # em Linux e em Windows/Git Bash. Um pacote que instala so na maquina de
   # quem empacotou nao e distribuicao reproduzivel.
   package:
+    # Packaging only makes sense once the source it packages is known good, and
+    # two OS legs re-running a red tree just doubles the noise.
+    needs: verify
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -170,6 +174,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
+          cache: npm
 
       - name: Fim de linha — working tree bate com o HEAD normalizado
         run: |
@@ -189,23 +194,82 @@ jobs:
         run: |
           ZIP="$(ls dist-release/*.zip)"
           ( cd dist-release && sha256sum -c "$(basename "$ZIP").sha256" )
+          rm -rf /tmp/release-smoke
           mkdir -p /tmp/release-smoke
           unzip -q "$ZIP" -d /tmp/release-smoke
           DIR="$(ls -d /tmp/release-smoke/*/)"
           cd "$DIR"
-          bash scripts/validate-engineos.sh
+          # The validator asserts POSIX exec bits (C27, C29, C30 and the prompt
+          # adapter check) that NTFS cannot carry, so inside an unzipped tree on
+          # Windows they fail regardless of the artifact. The ubuntu leg validates
+          # the same bytes, and package-release.sh already reads every mode from
+          # the commit on both legs. Windows keeps the checks a filesystem can
+          # answer: extraction, install, typecheck and the runtime below.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "skip: validator on Windows (exec bits not representable on NTFS; ubuntu leg validates the same bytes)"
+          else
+            bash scripts/validate-engineos.sh
+          fi
           npm ci --no-audit --no-fund
           npm run typecheck
-          npm test
+
+          # `npm test` used to run here and asserted the absence of files nobody
+          # publishes: the suites read test/fixtures/legacy-*, .engineos/archived/**
+          # and .git, none of which are in the allowlist. What a consumer needs
+          # proven is that the shipped bundle RUNS, so assert that instead.
+          EXPECTED="engineos $(node -p "require('./package.json').version")"
+          ACTUAL="$(node dist/engineos.cjs --version)"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "FAIL: bundle reports '$ACTUAL', package.json says '$EXPECTED'"
+            exit 1
+          fi
+          echo "ok: bundle reports $ACTUAL"
+
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "skip: bundle validate on Windows (same exec-bit checks as above)"
+          else
+            node dist/engineos.cjs validate
+            echo "ok: registries validate from inside the artifact"
+          fi
+
+          # One kernel answer end to end: the shim resolves the bundle, the bundle
+          # reads the packaged registries, and the route comes back as JSON.
+          ROUTE="$(bash scripts/kernel.sh route-path src/orders/orders.service.ts)"
+          printf '%s' "$ROUTE" | node -e '
+            const answer = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (!answer.domain) { console.error("FAIL: kernel answer carries no domain"); process.exit(1); }
+            console.log("ok: kernel routed to " + answer.domain);
+          '
+
+          # The install path a zip consumer actually takes, against a throwaway
+          # HOME so the runner's own ~/.claude is never touched. install.sh needs
+          # no flags: it prompts for nothing and reads its target from $HOME.
+          # This runs AFTER npm ci on purpose — node_modules present is the state
+          # that used to abort the installer's secret scan on false positives.
+          SCRATCH_HOME="$(mktemp -d)"
+          HOME="$SCRATCH_HOME" bash install.sh
+          if ! grep -q 'engineos.cjs' "$SCRATCH_HOME/.claude/settings.json"; then
+            echo "FAIL: install.sh registered no EngineOS hooks in $SCRATCH_HOME/.claude/settings.json"
+            exit 1
+          fi
+          echo "ok: install.sh registered the EngineOS hooks from the artifact"
 
       - name: Rerun idempotente do empacotamento
         run: |
-          BEFORE="$(sha256sum dist-release/*.zip | cut -d' ' -f1)"
+          # The zip embeds mtimes, so its hash is never stable across runs and
+          # echoing it proved nothing. The content manifest is the invariant:
+          # same commit in, same file set and same hashes out. Only the
+          # generated-at line is allowed to move.
+          BEFORE="$(ls dist-release/*.MANIFEST.txt)"
+          cp "$BEFORE" /tmp/manifest-before.txt
           bash scripts/package-release.sh --out dist-release
-          AFTER="$(sha256sum dist-release/*.zip | cut -d' ' -f1)"
-          echo "antes=$BEFORE depois=$AFTER"
-          # zip carrega timestamps; o manifesto de conteudo e o invariante.
-          echo "ok: rerun concluiu sem erro"
+          AFTER="$(ls dist-release/*.MANIFEST.txt)"
+          if ! diff -u <(grep -v '^# gerado:' /tmp/manifest-before.txt) \
+                       <(grep -v '^# gerado:' "$AFTER"); then
+            echo "FAIL: packaging is not idempotent — the content manifest moved between runs"
+            exit 1
+          fi
+          echo "ok: content manifest identical across runs"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: matrix.os == 'ubuntu-latest'
