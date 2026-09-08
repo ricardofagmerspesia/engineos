@@ -1,6 +1,16 @@
 # PRD: AI Engineering Environment ("EngineOS")
 
-**Status:** Draft v1 · **Owner:** Ricardo Fagmer · **Date:** 2026-06-11
+**Status:** Draft v1 (2026-06-11) — **desatualizado em relação ao código desde 07/09/2026** · **Owner:** Ricardo Fagmer
+
+> **Leia antes:** este PRD registra a intenção original do produto, não o estado atual.
+> O que está implementado, o que está parcial e o que é apenas desenho está em
+> [`docs/CAPABILITIES.md`](CAPABILITIES.md), medido sobre o snapshot `99b5eec`.
+> Três *non-goals* da seção 3 já não são verdadeiros (adaptadores para outras
+> ferramentas, entrada de marketplace e automação de CI existem no repositório) e
+> estão listados como divergências naquele documento. A reescrita do escopo é
+> trabalho do épico E01 do plano de adequação para produção e ainda não foi feita:
+> nenhuma capacidade deve ser anunciada a partir deste arquivo.
+
 **Scope:** Global (`~/.claude`), distributed to a 2–10 person team via a versioned git repo.
 **Stacks:** TypeScript/Node (NestJS), React/Next, AI/LLM apps, with a stack-agnostic base layer.
 

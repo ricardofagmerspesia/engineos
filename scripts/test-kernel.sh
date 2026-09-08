@@ -1072,6 +1072,72 @@ run risk --signals '{"floors":["destructive-ddl-dml"]}'
 assert_ok "risk with a floor and no inputs is still answerable"
 assert_eq "floor alone -> high" "$(jqval .risk)" "high"
 
+# ------------------------------------------------- skill enablement (E03)
+
+echo "-- skill-state and disabled-skill suppression --"
+
+# The disable switch had no reader outside the console: a skill turned off in
+# the UI was still handed to the model by every routing answer. These cases are
+# the proof that it now has one, and the regression that keeps it having one.
+
+run skill-state
+assert_ok "skill-state answers without arguments"
+assert_eq "every skill under skills/ is listed" \
+  "$(jqval '.skills | length')" "$(find "$ROOT/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')"
+
+FIRST_SKILL=$(ls "$ROOT/skills" | head -1)
+run skill-state --id "$FIRST_SKILL"
+assert_eq "a skill that exists reports exists:true" "$(jqval .exists)" "true"
+run skill-state --id no-such-skill-anywhere
+assert_eq "an unknown id reports exists:false" "$(jqval .exists)" "false"
+assert_eq "an unknown id is not reported as disabled" "$(jqval .enabled)" "true"
+
+# Fixture: a full-enough tree where ONE skill that a routing domain actually
+# references is disabled. It must be a skill some domain names, or the case
+# proves nothing about routing.
+SKD_DOMAIN=$(jq -r '[.domains[] | select((.skills | length) > 0)][0].id' "$REG/routing.json")
+SKD_SKILL=$(jq -r --arg d "$SKD_DOMAIN" '.domains[] | select(.id==$d) | .skills[0]' "$REG/routing.json")
+SKD_PATH=$(jq -r --arg d "$SKD_DOMAIN" '.domains[] | select(.id==$d) | .sample_path' "$REG/routing.json")
+case "$SKD_SKILL" in ''|null) echo "no routing domain declares a skill — fixture cannot be built" >&2; exit 2 ;; esac
+
+SKD="$TMPROOT/skilldis"
+mkdir -p "$SKD/scripts" "$SKD/registries" "$SKD/skills/$SKD_SKILL"
+cp "$KERNEL" "$SKD/scripts/kernel.sh"
+cp "$REG"/*.json "$SKD/registries/"
+printf -- '---\nname: %s\nenabled: false\n---\n\nbody\n' "$SKD_SKILL" > "$SKD/skills/$SKD_SKILL/SKILL.md"
+
+OUT=$(bash "$SKD/scripts/kernel.sh" skill-state --id "$SKD_SKILL" 2>&1); RC=$?
+assert_eq "frontmatter enabled:false is read as disabled" "$(jqval .enabled)" "false"
+
+OUT=$(bash "$SKD/scripts/kernel.sh" route-path "$SKD_PATH" 2>&1); RC=$?
+assert_ok "route-path still answers with a disabled skill in the domain"
+assert_eq "route-path drops the disabled skill from skills" \
+  "$(jqvalc "[.skills[] | select(. == \"$SKD_SKILL\")]")" "[]"
+assert_eq "route-path says WHY it dropped it, instead of returning a silently short list" \
+  "$(jqval '.skills_suppressed[0].reason')" "disabled"
+assert_eq "the suppressed entry names the skill" \
+  "$(jqval '.skills_suppressed[0].id')" "$SKD_SKILL"
+
+# Same tree, skill re-enabled by removing the key entirely: absence means
+# enabled, which is what keeps every skill written before this field existed
+# working.
+printf -- '---\nname: %s\n---\n\nbody\n' "$SKD_SKILL" > "$SKD/skills/$SKD_SKILL/SKILL.md"
+OUT=$(bash "$SKD/scripts/kernel.sh" route-path "$SKD_PATH" 2>&1); RC=$?
+assert_eq "absence of the enabled key means enabled" \
+  "$(jqvalc "[.skills[] | select(. == \"$SKD_SKILL\")]")" "[\"$SKD_SKILL\"]"
+assert_eq "nothing is suppressed when the skill is enabled" "$(jqvalc .skills_suppressed)" "[]"
+
+# An `enabled:` line in the BODY is documentation, not configuration. A parser
+# that scanned the whole file would let a code sample switch a skill off.
+printf -- '---\nname: %s\n---\n\nExample frontmatter:\n\nenabled: false\n' "$SKD_SKILL" > "$SKD/skills/$SKD_SKILL/SKILL.md"
+OUT=$(bash "$SKD/scripts/kernel.sh" skill-state --id "$SKD_SKILL" 2>&1); RC=$?
+assert_eq "an enabled: line in the body does not disable the skill" "$(jqval .enabled)" "true"
+
+# A file with no frontmatter at all must not be misread as a disable.
+printf -- '# %s\n\nenabled: false\n' "$SKD_SKILL" > "$SKD/skills/$SKD_SKILL/SKILL.md"
+OUT=$(bash "$SKD/scripts/kernel.sh" skill-state --id "$SKD_SKILL" 2>&1); RC=$?
+assert_eq "a SKILL.md without frontmatter stays enabled" "$(jqval .enabled)" "true"
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -52,6 +52,32 @@ export function revertCommit(cwd: string, sha: string): string {
   return runGit(cwd, ['rev-parse', 'HEAD']);
 }
 
+/**
+ * Paths a commit touched (`git show --name-only`), repo-relative. Rollback uses
+ * it to know which working-tree files a revert is about to rewrite.
+ */
+export function pathsInCommit(cwd: string, sha: string): string[] {
+  const out = runGit(cwd, ['show', '--name-only', '--pretty=format:', sha]);
+  return out.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+}
+
+/**
+ * Of `paths`, the ones with uncommitted modifications (`git status --porcelain`).
+ *
+ * A `git revert` over a dirty working tree either refuses or leaves a conflict
+ * mid-flight, and in both cases the operator's uncommitted edit is what is at
+ * risk. Rollback checks this first and refuses with the file list, rather than
+ * letting git decide how much damage to do.
+ */
+export function dirtyPaths(cwd: string, paths: string[]): string[] {
+  if (paths.length === 0) return [];
+  const out = runGit(cwd, ['status', '--porcelain', '--', ...paths]);
+  return out
+    .split('\n')
+    .map((line) => line.slice(3).trim())
+    .filter((line) => line !== '');
+}
+
 /** Fail-closed discard of `paths` (`git checkout -- <paths>`) — used to roll back a failed publish attempt before any commit happens. */
 export function checkoutPaths(cwd: string, paths: string[]): void {
   runGit(cwd, ['checkout', '--', ...paths]);

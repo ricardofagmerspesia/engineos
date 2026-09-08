@@ -2,23 +2,49 @@ import { NextResponse } from 'next/server';
 import path from 'node:path';
 
 import { CONSOLE_ROOT, REPO_ROOT } from '@/lib/config';
-import { writeSkills } from '@/lib/entities/skills';
+import { detectBaseConflicts, hashSource, writeSkills } from '@/lib/entities/skills';
 import { applyFileChanges } from '@/lib/fs-writer';
 import { checkoutPaths, commit, getCurrentBranch } from '@/lib/git';
 import { logMutation } from '@/lib/logs';
-import { appendHistory, getSnapshot, listEntities, replaceSnapshot } from '@/lib/store';
+import { PublishLockedError, withPublishLock } from '@/lib/publish-lock';
+import { appendHistory, getSnapshot, listEntities, replaceSnapshot, upsertEntity } from '@/lib/store';
 import { validateSkill } from '@/lib/validate/skills';
+import type { BaseConflict } from '@/lib/entities/skills';
 import type { SkillEntity, ValidationIssue } from '@/lib/entities/types';
 
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
 type PublishResult =
   | { ok: true; commitSha: string; summary: string }
-  | { ok: false; reason: string; errors?: ValidationIssue[] };
+  | { ok: false; reason: string; errors?: ValidationIssue[]; conflicts?: BaseConflict[] };
+
+const CONFLICT_EXPLANATION: Record<BaseConflict['reason'], string> = {
+  changed: 'changed on disk since this draft was captured',
+  'unknown-base': 'draft has no recorded base revision (written before the guard existed) — reopen the skill to recapture it',
+  missing: 'source file no longer exists',
+};
 
 // POST /api/publish — design §6.4. Every branch is fail-closed: no real file
 // stays modified on disk unless a commit actually lands.
+//
+// Serialized against rollback and against a second publish (including one from
+// another console process) by the repository write lock: the read-check-write
+// sequence below is not safe to interleave, and a double-click on Publish is
+// enough to interleave it.
 export function POST(): NextResponse<PublishResult> {
+  try {
+    return withPublishLock(CONSOLE_ROOT, 'publish', publishOnce);
+  } catch (error) {
+    if (error instanceof PublishLockedError) {
+      logMutation(CONSOLE_ROOT, { path: '(lock)', action: 'publish-blocked', result: 'error', detail: error.message });
+      return NextResponse.json({ ok: false, reason: error.message });
+    }
+    const reason = error instanceof Error ? error.message : 'Unknown error during publish.';
+    return NextResponse.json({ ok: false, reason });
+  }
+}
+
+function publishOnce(): NextResponse<PublishResult> {
   const branch = getCurrentBranch(REPO_ROOT);
   if (PROTECTED_BRANCHES.has(branch)) {
     const reason = 'Publish refuses to run on main/master — checkout a feature branch first.';
@@ -41,6 +67,20 @@ export function POST(): NextResponse<PublishResult> {
 
   if (changed.length === 0) {
     return NextResponse.json({ ok: false, reason: 'No changes to publish.' });
+  }
+
+  // The base-revision guard, before validation and before any write. The
+  // console edits a copy; if the file moved on since this draft captured it,
+  // publishing would discard whoever moved it — with no error and no diff.
+  // Refuse and name the files instead.
+  const conflicts = detectBaseConflicts(REPO_ROOT, changed);
+  if (conflicts.length > 0) {
+    const detail = conflicts
+      .map((conflict) => `${conflict.sourcePath} (${CONFLICT_EXPLANATION[conflict.reason]})`)
+      .join('; ');
+    const reason = `Publish refused — ${conflicts.length} file(s) no longer match the revision this draft was based on: ${detail}`;
+    logMutation(CONSOLE_ROOT, { path: '(base guard)', action: 'publish-blocked', result: 'error', detail: reason });
+    return NextResponse.json({ ok: false, reason, conflicts });
   }
 
   // Re-validate authoritatively (inline validation on PUT is advisory only).
@@ -95,9 +135,23 @@ export function POST(): NextResponse<PublishResult> {
     const paths = changes.map((change) => change.path);
     const commitSha = commit(REPO_ROOT, paths, `feat(engineos): publish config changes\n\n${summaryLines}`);
 
+    // The published bytes are the new base. Without this, a second publish of
+    // the same draft would conflict with the file this publish just wrote —
+    // the guard would fire on the operator's own successful write.
+    const hashByPath = new Map(changes.map((change) => [change.path, hashSource(change.after)]));
+    const rebased = draftSkills.map((entity) => {
+      const nextHash = hashByPath.get(path.join(REPO_ROOT, entity.sourcePaths[0] ?? ''));
+      return nextHash ? { ...entity, baseHash: nextHash } : entity;
+    });
+    for (const entity of rebased) {
+      if (hashByPath.has(path.join(REPO_ROOT, entity.sourcePaths[0] ?? ''))) {
+        upsertEntity(entity);
+      }
+    }
+
     // Snapshot must reflect the *entire* kind, not just what changed, so
     // untouched rows stay a no-op diff on the next GET /api/diff.
-    replaceSnapshot('skill', draftSkills);
+    replaceSnapshot('skill', rebased);
 
     const summary = `Updated ${actuallyChanged.length} skill(s):\n${summaryLines}`;
     appendHistory({
