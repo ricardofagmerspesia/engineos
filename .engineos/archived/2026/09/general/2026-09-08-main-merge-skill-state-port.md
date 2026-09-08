@@ -1,9 +1,10 @@
 ---
 name: 2026-09-08-main-merge-skill-state-port
 status: done
+completed: 2026-09-08
 owner: Ricardo Fagmer
-spec: docs/specs/2026-09-08-hook-hardening.md (conflict resolution for PR #70; no new feature beyond porting main's skill-state to the TypeScript kernel)
-domain: kernel
+spec: docs/specs/2026-09-08-hook-hardening.md
+domain: general
 ---
 
 ## What
@@ -14,6 +15,8 @@ main's bash kernel tests for it to node:test, gate the jq-version-dependent
 telemetry parity cases, and pin the actions in the CI jobs main added.
 
 ## Why
+This record closes the conflict-resolution wave for PR #70 under the hook-hardening
+spec; the skill-state port adds no feature beyond what main already declared public.
 PR #70 (`fix/hook-hardening` -> `main`) was CONFLICTING. main had added
 `skill-state` to the bash kernel the stack had already replaced with a shim, and
 modified `scripts/test-kernel.sh`, which the stack had deleted. Taking main's bash
