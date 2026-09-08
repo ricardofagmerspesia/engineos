@@ -107,3 +107,5 @@ approved in this wave: U5–U11.
   @types/node 18.19.130); the dependabot typescript 7.0.2 bump had landed in the lock only and
   `npm ci` failed on main. Own commit 88c67dc; dist rebuilt with esbuild 0.28.2 in the same commit.
 - Branch rebased onto origin/main (88ad7db) after PR #70 turned out merged; opened PR #78.
+- M scripts/package-release.sh — CRLF check spells the CR as `git grep -P '\r'`; a raw CR byte in
+  argv did not survive MSYS -> git.exe on the Windows leg and matched every text file (4fa7dd2).
