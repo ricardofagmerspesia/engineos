@@ -135,6 +135,59 @@ test('a file that belongs to no package checks nothing', (t) => {
   assert.deepEqual(calls, []);
 });
 
+// Consent is given per working tree, and the tree is the session cwd. An
+// unbounded ascent ran the scripts of whatever package.json it met above it,
+// with no tool-permission prompt in front of them.
+test('a package.json above the session cwd is never run', (t) => {
+  if (skipWithoutGit(t)) return;
+  const outer = tempRoot(t);
+  writeFileSync(join(outer, 'package.json'), scripts({ typecheck: 'exit 1' }));
+  const cwd = join(outer, 'app');
+  mkdirSync(join(cwd, 'src'), { recursive: true });
+  const file = join(cwd, 'src', 'x.ts');
+  writeFileSync(file, 'export const x = 1;\n');
+  const { spawn, calls } = spawnWith(() => ({ status: 1 }));
+  assert.deepEqual(verify(editOf(cwd, file), context(), spawn), silent);
+  assert.deepEqual(calls, []);
+});
+
+test('an edit inside a dependency under node_modules never runs its scripts', (t) => {
+  if (skipWithoutGit(t)) return;
+  const cwd = tempRoot(t);
+  writeFileSync(join(cwd, 'package.json'), '{}\n');
+  const dependency = join(cwd, 'node_modules', 'evil');
+  mkdirSync(join(dependency, 'src'), { recursive: true });
+  writeFileSync(join(dependency, 'package.json'), scripts({ typecheck: 'exit 1' }));
+  const file = join(dependency, 'src', 'x.ts');
+  writeFileSync(file, 'export const x = 1;\n');
+  const { spawn, calls } = spawnWith(() => ({ status: 1 }));
+  assert.deepEqual(verify(editOf(cwd, file), context(), spawn), silent);
+  assert.deepEqual(calls, []);
+});
+
+test('an envelope with no cwd bounds nothing and runs nothing', (t) => {
+  if (skipWithoutGit(t)) return;
+  const { file } = pkg(t, { 'package.json': scripts({ typecheck: 'exit 1' }) });
+  const { spawn, calls } = spawnWith(() => ({ status: 1 }));
+  assert.deepEqual(verify(editOf('', file), context(), spawn), silent);
+  assert.deepEqual(calls, []);
+});
+
+test('a package in a sibling checkout is never run', (t) => {
+  if (skipWithoutGit(t)) return;
+  const outer = tempRoot(t);
+  const cwd = join(outer, 'here');
+  mkdirSync(cwd, { recursive: true });
+  const sibling = join(outer, 'there');
+  mkdirSync(join(sibling, 'src'), { recursive: true });
+  writeFileSync(join(sibling, 'package.json'), scripts({ typecheck: 'exit 1' }));
+  const file = join(sibling, 'src', 'x.ts');
+  writeFileSync(file, 'export const x = 1;\n');
+  const { spawn, calls } = spawnWith(() => ({ status: 1 }));
+  assert.deepEqual(verify(editOf(cwd, file), context(), spawn), silent);
+  assert.deepEqual(calls, []);
+});
+
 test('bypass silences the per-edit check', (t) => {
   if (skipWithoutGit(t)) return;
   const { dir, file } = pkg(t, { 'package.json': scripts({ typecheck: 'exit 1' }) });

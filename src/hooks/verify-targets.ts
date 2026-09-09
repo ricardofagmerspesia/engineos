@@ -6,8 +6,8 @@
 // infra-vs-red judgment; this file is what is left over once those two have
 // their halves, and it exists so ./stop-verify.ts and ./post-edit-check.ts carry
 // one copy of it instead of two.
-import { existsSync, statSync } from 'node:fs';
-import { delimiter } from 'node:path';
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { runnerEnv, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
 import { isRecord } from '../lib/json';
 
@@ -18,6 +18,9 @@ export const VERIFY_EXTENSIONS: readonly string[] = ['ts', 'tsx', 'js', 'jsx'];
 
 // bash find_up's marker list for "the package this file belongs to".
 export const PACKAGE_MARKERS: readonly string[] = ['package.json', 'project.json'];
+
+// The one directory name under a project whose package.json files are not the project's.
+const NODE_MODULES = 'node_modules';
 
 // How many lines of a failure summary reach the operator (bash `head -80`).
 export const SUMMARY_LINES = 80;
@@ -45,19 +48,84 @@ export function hasVerifyExtension(file: string): boolean {
 // rather than climbing past it, and a `start` that is neither `stop` nor under
 // it is refused without a single probe. Callers that pass no `stop` keep bash's
 // unbounded walk to the filesystem root.
+//
+// Every path decision goes through node:path rather than `/` string surgery,
+// because the `/`-only form was silently dead on Windows: stop-verify hands this
+// a `realpathSync(root)` of `C:\Users\...`, a start of `C:\Users\...\src` never
+// matched the `${stop}/` prefix, so every file answered null and the Stop gate
+// verified nothing while reading as green. `relative`/`dirname` also handle the
+// mixed `C:/Users` forms Git Bash gives node. Consequence, accepted: a RELATIVE
+// `start` now resolves against the process cwd instead of converging to `.` —
+// every caller passes an absolute path already (startDir below, and
+// post-edit-check's own start is one of these).
 export function findUpAny(start: string, names: readonly string[], stop?: string): string | null {
-  if (stop !== undefined && start !== stop && !start.startsWith(`${stop}/`)) return null;
-  let dir = start;
-  let previous = '';
-  while (dir !== '/' && dir !== previous && dir !== '') {
+  const from = resolve(start);
+  const ceiling = stop === undefined ? undefined : resolve(stop);
+  if (ceiling !== undefined && !isWithin(ceiling, from)) return null;
+  let dir = from;
+  for (;;) {
     for (const name of names) {
-      if (existsSync(`${dir}/${name}`)) return dir;
+      if (existsSync(join(dir, name))) return dir;
     }
-    if (dir === stop) return null;
-    previous = dir;
-    dir = parentOf(dir);
+    // Compared through `relative`, not `===`: win32 `relative` is case-insensitive
+    // while `===` is not, and a start admitted as `c:\repo\src` against a ceiling
+    // of `C:\repo` would otherwise climb straight past it.
+    if (ceiling !== undefined && relative(ceiling, dir) === '') return null;
+    const parent = dirname(dir);
+    // The filesystem root is its own parent, on every platform and every drive.
+    if (parent === dir) return null;
+    dir = parent;
   }
-  return null;
+}
+
+// `path` is `ceiling` itself or somewhere beneath it. Decided on the first
+// segment of `relative`, not a string prefix: `<stop>-other` answers
+// `../<stop>-other` and is refused, while a directory legitimately NAMED
+// `..hidden` answers `..hidden/...` and must not be — a bare startsWith('..')
+// silently left every file under such a name unverified.
+function isWithin(ceiling: string, path: string): boolean {
+  const inside = relative(ceiling, path);
+  if (inside === '') return true;
+  if (isAbsolute(inside)) return false;
+  return inside !== '..' && !inside.startsWith(`..${sep}`);
+}
+
+// The physical directory a walk starts from, so findUpAny compares one path form
+// against another. A directory that does not exist has no realpath — a hook's
+// transcript names files the session may since have moved — and the lexical
+// resolve is the fallback; the containment check is what covers that walk, since
+// a lexical ascent from a non-existent path can still cross a symlink.
+export function startDir(file: string): string {
+  const dir = dirname(file);
+  try {
+    return realpathSync(dir);
+  } catch {
+    return resolve(dir);
+  }
+}
+
+// Containment decided on PHYSICAL paths, because a lexical prefix is not one: a
+// committed symlink `<root>/vendor -> /outside` names a directory that resolves
+// out of the tree while every string form of it still reads as being under
+// `root`, and existsSync follows the link. Fails closed — a path whose realpath
+// cannot be taken is not contained.
+//
+// "Under the root" is also not "part of the project": a dependency's
+// package.json under node_modules is inside the consented tree and was never
+// consented to, and its `lint`/`typecheck` scripts are not lifecycle scripts, so
+// `npm ci --ignore-scripts` does nothing about them. An owner reached through a
+// node_modules segment is therefore refused too.
+export function containedIn(root: string, candidate: string): boolean {
+  let rootReal: string;
+  let candidateReal: string;
+  try {
+    rootReal = realpathSync(root);
+    candidateReal = realpathSync(candidate);
+  } catch {
+    return false;
+  }
+  if (!isWithin(rootReal, candidateReal)) return false;
+  return !relative(rootReal, candidateReal).split(sep).includes(NODE_MODULES);
 }
 
 export function isDirectory(path: string): boolean {
@@ -143,16 +211,6 @@ export function firstLines(text: string, limit: number): string {
 }
 
 // ------------------------------------------------------------------ internals
-
-// bash `case "$d" in */*) d="${d%/*}"; [ -n "$d" ] || d="/" ;; *) d="." ;; esac`.
-// The same string surgery src/lib/git.ts keeps private: path.dirname would resolve
-// past the "." a relative path converges to, and the walk would not terminate.
-function parentOf(dir: string): string {
-  const cut = dir.lastIndexOf('/');
-  if (cut === -1) return '.';
-  const head = dir.slice(0, cut);
-  return head === '' ? '/' : head;
-}
 
 function majorOf(version: string): number {
   const parsed = Number.parseInt(version.replace(/^v/, ''), 10);

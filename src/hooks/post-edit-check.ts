@@ -7,19 +7,24 @@
 // PostToolUse(Edit|Write) in hooks/hooks.json.
 //
 // Tool-aware: biome or eslint for lint, nx or a package script for typecheck,
-// pnpm/yarn/npm for the runner. Scoped to the changed package, never the repo.
+// pnpm/yarn/npm for the runner. Scoped to the changed package, never the repo,
+// and the hunt for that package is bounded to the session cwd by the same
+// two-layer containment the Stop gate uses — a lexical ceiling on the walk plus a
+// realpath check on what came back — so a package.json above or beside the
+// consented tree never has its scripts run
+// (docs/specs/2026-09-08-hook-path-containment.md).
 // Failure goes to stderr with exit 2 (the `fail` decision) so Claude sees it and
 // fixes it — and ONLY for a `red` verdict: the infra-vs-red judgment is
 // ./classify-failure.ts's, exactly as it is for the Stop gate.
 //
 // Port of hooks/post-edit-check.sh.
-import { dirname } from 'node:path';
+import { realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { fail, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { classify } from './classify-failure';
 import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
-import { PACKAGE_MARKERS, PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, execRun, failureBlock, findUpAny, firstLines, hasVerifyExtension, isFile, verifyEnvironment } from './verify-targets';
+import { PACKAGE_MARKERS, PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, containedIn, execRun, failureBlock, findUpAny, firstLines, hasVerifyExtension, isFile, startDir, verifyEnvironment } from './verify-targets';
 
 const TYPECHECK_TARGET = 'typecheck';
 
@@ -56,16 +61,35 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
   if (!hasVerifyExtension(env.file)) return silent;
   if (!isFile(env.file)) return silent;
 
-  const start = dirname(env.file);
-  const packageDir = findUpAny(start, PACKAGE_MARKERS);
+  // The session's cwd is the tree the operator consented to, so it is both the
+  // ascent's ceiling and the containment test on what came back. Fail closed: a
+  // cwd with no physical path bounds nothing, and an unbounded walk would run
+  // whatever package.json it met above it — with no tool-permission prompt in
+  // front of the scripts.
+  // realpathSync('') answers the hook process's own cwd, an implicit ceiling the
+  // envelope never named — so the empty field is refused before it gets there.
+  if (env.cwd === '') return silent;
+  let stopReal: string;
+  try {
+    stopReal = realpathSync(env.cwd);
+  } catch {
+    return silent;
+  }
+
+  const start = startDir(env.file);
+  const packageDir = findUpAny(start, PACKAGE_MARKERS, stopReal);
   if (packageDir === null) return silent;
-  const root = findUpAny(start, WORKSPACE_MARKERS) ?? packageDir;
+  if (!containedIn(stopReal, packageDir)) return silent;
+  // A workspace root that resolves outside the cwd is dropped rather than
+  // entered: the scoped run falls back to the package, which is contained.
+  const workspace = findUpAny(start, WORKSPACE_MARKERS, stopReal);
+  const root = workspace !== null && containedIn(stopReal, workspace) ? workspace : packageDir;
 
   const environment = verifyEnvironment(ctx.io.env);
   const selection = runnerSelect(root);
   const failures: Failure[] = [
     ...typecheck(selection, packageDir, root, environment.env, spawn),
-    ...lint(selection, env.file, start, root, environment.env, spawn),
+    ...lint(selection, env.file, start, root, stopReal, environment.env, spawn),
   ];
   if (failures.length === 0) return silent;
   // bash accumulated each block behind a newline and printed the lot with
@@ -100,11 +124,16 @@ function lint(
   file: string,
   start: string,
   root: string,
+  stop: string,
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
 ): Failure[] {
   for (const linter of LINTERS) {
-    if (findUpAny(start, linter.configs) === null) continue;
+    // Bounded and contained like the package hunt: a biome.json above the
+    // session cwd, or reached through a symlink out of it, must not decide that
+    // this edit gets linted.
+    const configDir = findUpAny(start, linter.configs, stop);
+    if (configDir === null || !containedIn(stop, configDir)) continue;
     const exec = selection.exec.split(' ').filter((part) => part !== '');
     const command = exec[0] ?? '';
     if (command === '') return [];

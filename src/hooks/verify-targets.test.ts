@@ -6,6 +6,7 @@ import { tempRoot } from '../testing/harness';
 import type { RunnerSelection, SpawnSyncLike } from './runner';
 import {
   PROBE_TIMEOUT_SECONDS,
+  containedIn,
   execRun,
   failureBlock,
   findUpAny,
@@ -102,6 +103,52 @@ test('findUpAny refuses a start outside the stop without probing', (t) => {
   mkdirSync(lookalike, { recursive: true });
   writeFileSync(join(lookalike, 'package.json'), '{}\n');
   assert.equal(findUpAny(lookalike, ['package.json'], stop), null);
+});
+
+// The sibling case the way the hooks meet it: the refused start is a directory
+// INSIDE the lookalike checkout, so `<stop>-other/src` shares the prefix without
+// ever being under `<stop>`.
+test('findUpAny refuses a start in a sibling checkout that shares the stop prefix', (t) => {
+  const root = tempRoot(t);
+  const stop = join(root, 'repo');
+  const sibling = join(root, 'repo-other');
+  mkdirSync(join(stop, 'src'), { recursive: true });
+  mkdirSync(join(sibling, 'src'), { recursive: true });
+  writeFileSync(join(sibling, 'package.json'), '{}\n');
+  assert.equal(findUpAny(join(sibling, 'src'), ['package.json'], stop), null);
+  // The sibling's package is genuinely there — only the ceiling refuses it.
+  assert.equal(findUpAny(join(sibling, 'src'), ['package.json']), sibling);
+});
+
+test('an unbounded walk terminates at the filesystem root instead of looping', (t) => {
+  const root = tempRoot(t);
+  mkdirSync(join(root, 'a', 'b', 'c'), { recursive: true });
+  // A marker that cannot exist anywhere above the temp root either, so the walk
+  // has to reach `/` (or the drive root) and give up on its own.
+  assert.equal(findUpAny(join(root, 'a', 'b', 'c'), ['engineos-marker-that-never-exists.json']), null);
+});
+
+test('a directory whose own name starts with two dots is still inside the stop', (t) => {
+  const root = tempRoot(t);
+  const hidden = join(root, '..hidden', 'src');
+  mkdirSync(hidden, { recursive: true });
+  writeFileSync(join(root, '..hidden', 'package.json'), '{}\n');
+  // `relative` answers `..hidden/src`; a prefix test on `..` refused it and left
+  // every file under it silently unverified.
+  assert.equal(findUpAny(hidden, ['package.json'], root), join(root, '..hidden'));
+  assert.equal(findUpAny(join(root, '...'), ['package.json'], root), null);
+});
+
+test('containedIn refuses a package reached through node_modules', (t) => {
+  const root = tempRoot(t);
+  const dependency = join(root, 'node_modules', 'evil');
+  mkdirSync(dependency, { recursive: true });
+  mkdirSync(join(root, 'packages', 'api'), { recursive: true });
+  writeFileSync(join(dependency, 'package.json'), '{}\n');
+  assert.equal(containedIn(root, join(root, 'packages', 'api')), true);
+  assert.equal(containedIn(root, root), true);
+  assert.equal(containedIn(root, dependency), false);
+  assert.equal(containedIn(root, join(root, '..')), false);
 });
 
 test('isDirectory and isFile answer false rather than throwing on a missing path', (t) => {
