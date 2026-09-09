@@ -1,4 +1,5 @@
-import { loadRegistry } from '../registry/load';
+import { loadAgents, type Agent } from '../registry/agents';
+import { loadCapabilities, type CapabilitiesRegistry } from '../registry/capabilities';
 import { loadDecisionRules, type DecisionRulesRegistry } from '../registry/decision-rules';
 import { loadIntents, type IntentsRegistry } from '../registry/intents';
 import { loadModels, type ModelsRegistry } from '../registry/models';
@@ -18,17 +19,17 @@ export type { IntentRow, IntentsRegistry } from '../registry/intents';
 // (src/checks/mirrors.ts) can spell "registry file" in its own types instead of
 // subtracting a key that is not one.
 //
-// The two registries typed `unknown` have no typed loader yet: a later task lands
-// one each and replaces the placeholder. Keeping the keys here keeps the frozen
-// shape whole while the loaders arrive one at a time.
+// Every key now resolves through its own typed loader. `agents` is the one lenient
+// loader (src/registry/agents.ts documents why a throw there would cost the
+// dispatch banner); the other six refuse a malformed registry.
 export interface RegistryFiles {
   readonly routing: RoutingRegistry;
   readonly intents: IntentsRegistry;
   readonly models: ModelsRegistry;
   readonly policy: PolicyRegistry;
   readonly decisionRules: DecisionRulesRegistry;
-  readonly capabilities: unknown;
-  readonly agents: unknown;
+  readonly capabilities: CapabilitiesRegistry;
+  readonly agents: Agent[];
 }
 
 export interface Registries extends RegistryFiles {
@@ -52,8 +53,8 @@ export function lazyRegistries(root: string): Registries {
   const models = memo(() => loadModels(root));
   const policy = memo(() => loadPolicy(root));
   const decisionRules = memo(() => loadDecisionRules(root));
-  const capabilities = memo(() => loadRegistry(root, 'capabilities.json'));
-  const agents = memo(() => loadRegistry(root, 'agents.json'));
+  const capabilities = memo(() => loadCapabilities(root));
+  const agents = memo(() => loadAgents(root));
   // Memoized for the reason bash kept SKILL_STATE_CACHE: resolve-task reads the
   // state at three answer sites, and walking skills/ once per site would turn a
   // routing answer into N directory scans.
@@ -64,8 +65,8 @@ export function lazyRegistries(root: string): Registries {
     get models(): ModelsRegistry { return models(); },
     get policy(): PolicyRegistry { return policy(); },
     get decisionRules(): DecisionRulesRegistry { return decisionRules(); },
-    get capabilities(): unknown { return capabilities(); },
-    get agents(): unknown { return agents(); },
+    get capabilities(): CapabilitiesRegistry { return capabilities(); },
+    get agents(): Agent[] { return agents(); },
     get skillState(): SkillState { return skillState(); },
   };
 }

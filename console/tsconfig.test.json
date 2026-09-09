@@ -30,7 +30,11 @@
   // purpose: it is the better-sqlite3 seam and uses import.meta, neither of
   // which belongs in a node --test build of pure logic.
   "include": [
+    "src/lib/contained-path.ts",
+    "src/lib/contained-path.test.ts",
     "src/lib/entities/**/*.ts",
+    "src/lib/kernel.ts",
+    "src/lib/kernel-args.test.ts",
     "src/lib/publish-lock.ts",
     "src/lib/publish-lock.test.ts",
     "src/lib/request-origin.ts",

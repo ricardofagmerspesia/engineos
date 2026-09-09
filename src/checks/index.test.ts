@@ -9,6 +9,9 @@ test('every declared check id is registered exactly once', () => {
   const registered = CHECKS.map((check) => check.id);
   assert.deepEqual(orderIds(registered), orderIds([...CHECK_IDS]));
   assert.equal(new Set(registered).size, registered.length);
+  // The deepEqual above compares sorted id lists, which a duplicate id paired
+  // with a missing one could satisfy. The lengths cannot both drift that way.
+  assert.equal(CHECKS.length, CHECK_IDS.length);
 });
 
 test('every check declares a non-empty code list of valid, unique codes', () => {
