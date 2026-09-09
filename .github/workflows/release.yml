@@ -1,0 +1,106 @@
+# Publishes a GitHub Release from a pushed tag.
+#
+# The human gate is the tag itself: nothing here fires until someone pushes
+# `vX.Y.Z`. There is deliberately no workflow_dispatch, so the tag is the only
+# entry point, and nothing is published to npm or any other registry.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# The only workflow in this repository that may write: creating a Release and
+# uploading its assets needs it. Everything else stays on `contents: read`.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # fetch-depth: 0 — package-release.sh records the commit and the release
+      # notes are generated from history, neither of which survives a shallow clone.
+      # persist-credentials is off: this is the one job holding a write-capable
+      # token, and checkout would otherwise leave it in .git/config for every
+      # later process on the runner. Only the `gh` step needs it, via env.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # No `npm ci` here on purpose: package-release.sh archives the committed
+      # dist/ straight out of git and never runs node_modules code, so installing
+      # dependencies would only hand their lifecycle scripts a write-capable job.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+
+      # A tag only proves someone could push. Requiring the tagged commit to be
+      # on main is what makes the tag stand for a reviewed state, and it stops a
+      # tag on an arbitrary commit from running that commit's own workflow file.
+      - name: Tagged commit is on main
+        run: |
+          # fetch-depth: 0 above already brought origin/main; a fetch here would
+          # need the credential that persist-credentials: false withheld.
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "FAIL: $GITHUB_SHA is not an ancestor of origin/main; release tags must point at merged history"
+            exit 1
+          fi
+          echo "ok: $GITHUB_SHA is on main"
+
+      # A tag that disagrees with package.json ships an artifact whose internal
+      # version contradicts its download name. Fail before anything is built.
+      - name: Tag matches package.json
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "FAIL: tag '$GITHUB_REF_NAME' does not match package.json version '$VERSION' (expected tag 'v$VERSION')"
+            exit 1
+          fi
+          echo "ok: tag $GITHUB_REF_NAME matches package.json $VERSION"
+          # Delimiter form so this line stays injection-safe even if the
+          # equality check above is ever relaxed.
+          {
+            echo "VERSION<<ENGINEOS_EOF"
+            echo "$VERSION"
+            echo "ENGINEOS_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the release artifact
+        run: bash scripts/package-release.sh --out dist-release
+
+      # The checksum the Release publishes must be verified against the bytes it
+      # publishes, on this runner, before anyone downloads either.
+      - name: Verify the checksum
+        run: |
+          ( cd dist-release && sha256sum -c ./*.zip.sha256 )
+
+      # `gh` ships on the runner and speaks to this repository with the job token.
+      # A third-party release action would add one more SHA-pinned supply-chain
+      # dependency for what the CLI already does.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES_FILE="docs/release-notes/${VERSION}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            gh release create "$GITHUB_REF_NAME" \
+              dist-release/*.zip \
+              dist-release/*.sha256 \
+              dist-release/*.MANIFEST.txt \
+              --title "EngineOS $GITHUB_REF_NAME" \
+              --notes-file "$NOTES_FILE"
+          else
+            echo "note: $NOTES_FILE is absent, falling back to generated notes"
+            gh release create "$GITHUB_REF_NAME" \
+              dist-release/*.zip \
+              dist-release/*.sha256 \
+              dist-release/*.MANIFEST.txt \
+              --title "EngineOS $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

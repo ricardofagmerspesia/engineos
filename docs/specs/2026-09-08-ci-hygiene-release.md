@@ -105,6 +105,32 @@ contains `engineos.cjs` — the same assertion the Linux leg makes for install.s
   `--generate-notes` otherwise. `timeout-minutes: 20`.
 - No publish to npm or any registry. No `workflow_dispatch`.
 
+## Amended at the security re-pass
+
+`security-reviewer` returned MERGE WITH FIXES (2 MEDIUM, 4 LOW, 2 INFO). Applied:
+
+- `release.yml`: `persist-credentials: false` on checkout and no `npm ci`
+  (`package-release.sh` archives the committed `dist/` and runs no
+  `node_modules` code), so the write-capable token never sits in `.git/config`
+  beside dependency lifecycle scripts. A `Tagged commit is on main` step asserts
+  `git merge-base --is-ancestor "$GITHUB_SHA" origin/main`, so a tag on an
+  arbitrary commit cannot run that commit's own workflow with `contents: write`.
+  `VERSION` reaches `$GITHUB_ENV` in delimiter form.
+- `ci.yml`: PSScriptAnalyzer pinned (`-RequiredVersion 1.25.0 -Repository
+  PSGallery`), the one previously unpinned third-party dependency in CI.
+- `install.ps1`: `[ValidateNotNullOrEmpty()]` on `-ClaudeDir`, the value made
+  absolute against the caller's location, a target inside the repository
+  refused (it would rewrite the repo's own `CLAUDE.md`), and the two success
+  strings now print the real path instead of a `~/.claude` literal.
+
+Accepted residuals, recorded here and in the change record: no tag protection
+or rulesets are available on the repository's GitHub plan, so "the tag is the
+human gate" rests on push access (two collaborators); the secret gates in
+`install.ps1`, `install.sh` and `package-release.sh` read an undecodable file as
+clean (pre-existing, unchanged by this unit); the release checksum is produced
+and verified by the same job (provenance attestation needs a plan that allows
+`attestations: write`).
+
 ## Unit A: workflows and dependabot (devops-coordinator)
 
 Files: `.github/workflows/ci.yml`, `.github/workflows/release.yml` (new),
@@ -118,7 +144,11 @@ Files: `.github/workflows/ci.yml`, `.github/workflows/release.yml` (new),
   grep switches to `^# generated:`. Package job Windows leg adds, after the
   install.sh assertion: a PSScriptAnalyzer step (`Invoke-ScriptAnalyzer -Path
   install.ps1 -Severity Error,Warning -EnableExit`, installing the module with
-  `Install-Module PSScriptAnalyzer -Force -Scope CurrentUser` if absent) and an
+  `Install-Module PSScriptAnalyzer -Force -Scope CurrentUser` if absent;
+  **amended at the barrier:** `-ExcludeRule PSAvoidUsingWriteHost,
+  PSUseShouldProcessForStateChangingFunctions,PSAvoidUsingEmptyCatchBlock`, since
+  both agents reported those Warning-severity rules fire on the installer's
+  legitimate style) and an
   install.ps1 run against `$(mktemp -d)` asserting `settings.json` contains
   `engineos.cjs`. Both steps `if: matrix.os == 'windows-latest'`, `shell: pwsh`.
   `upload-artifact` gets `retention-days: 30`.
