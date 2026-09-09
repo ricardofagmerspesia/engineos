@@ -74,12 +74,20 @@ test('--only C17 runs its letter-suffixed sub-checks, --only C17c runs only C17c
   assert.ok(parent.includes(childLine), `--only C17 does not cover the sub-check line "${childLine}"`);
 });
 
-test('a clean tree validates green with the header and summary line intact', () => {
+// The exact result count IS the point, not just `failed 0`. A family that stops
+// emitting a result — a guard that returns [] where it used to report, a check
+// silently dropped from a registry — keeps every other assertion green and the
+// lost evidence is invisible. 113 is the registered checks' result count on this
+// tree; changing it is a deliberate edit here, never a side effect elsewhere.
+const RESULT_COUNT = 113;
+
+test('a clean tree validates green with the header and the exact result count', () => {
   const clean = validate([], checkoutRoot());
   const out = lines(clean.stdout);
   assert.equal(out[0], HEADER);
-  assert.match(out[out.length - 1] ?? '', /^passed \d+, failed 0$/);
+  assert.equal(out[out.length - 1], `passed ${RESULT_COUNT}, failed 0`);
   assert.equal(clean.status, 0, `the unfiltered run is not green: ${clean.stdout}${clean.stderr}`);
+  assert.equal(okLines(clean.stdout).length, RESULT_COUNT, 'every counted result printed an ok line');
 });
 
 // A planted failure must flip the exit code: copy the tree, break one invariant

@@ -57,9 +57,9 @@ export function originVerdict(signals: OriginSignals): OriginVerdict {
   }
 
   // Read verbs, once the authority is known to be loopback. Refusing OPTIONS
-  // would break the preflight that protects the rest. This is not the claim
-  // that reads are harmless — `GET /api/skills` writes to the store today
-  // (recorded for U11) — it is the claim that rule 0 already covers them.
+  // would break the preflight that protects the rest. Every GET handler is a
+  // pure read (the store seeds on the first PUT), and rule 0 already covers
+  // them.
   if (SAFE_METHODS.has(signals.method)) {
     return 'allow';
   }

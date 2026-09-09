@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { CloseIcon } from "./icon";
 
 type DrawerProps = {
@@ -10,6 +10,9 @@ type DrawerProps = {
   children: ReactNode;
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])';
+
 /** Side panel used for the Skills detail view. Handles the accessibility
  * floor a modal needs: role="dialog"/aria-modal, Escape to close, focus
  * moved into the panel on open and returned to the trigger on close, so
@@ -17,6 +20,7 @@ type DrawerProps = {
 export function Drawer({ open, onClose, title, children }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -35,6 +39,30 @@ export function Drawer({ open, onClose, title, children }: DrawerProps) {
     };
   }, [open, onClose]);
 
+  // aria-modal="true" promises assistive tech that everything outside the panel
+  // is inert. Without wrapping Tab at the edges that promise is false: the
+  // sequence walks straight out into the page behind the overlay.
+  function handlePanelKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Tab") return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === panel)) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   if (!open) return null;
 
   return (
@@ -44,19 +72,20 @@ export function Drawer({ open, onClose, title, children }: DrawerProps) {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="drawer-title"
+        aria-labelledby={titleId}
         tabIndex={-1}
+        onKeyDown={handlePanelKeyDown}
         className="absolute inset-y-0 right-0 flex w-full max-w-lg flex-col overflow-y-auto bg-white shadow-xl focus:outline-none"
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <h2 id="drawer-title" className="text-base font-semibold text-slate-900">
+          <h2 id={titleId} className="text-base font-semibold text-slate-900">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close panel"
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+            className="focus-ring rounded p-1 text-slate-500 hover:bg-slate-100"
           >
             <CloseIcon className="h-5 w-5" />
           </button>

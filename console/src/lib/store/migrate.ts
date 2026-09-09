@@ -8,6 +8,7 @@
 // only the module's own location is stable across all of them.
 
 import Database from 'better-sqlite3';
+import { CONSOLE_ROOT } from '@/lib/config';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +23,11 @@ const MIGRATIONS_DIR = join(MODULE_DIR, 'migrations');
 
 // Gitignored on purpose (`.gitignore`): this is local draft state, never
 // something to commit or share between operators.
-export const DEFAULT_DB_PATH = join(process.cwd(), '.data', 'console.sqlite');
+//
+// Anchored on `CONSOLE_ROOT` rather than on a second `process.cwd()` read:
+// config.ts is the one module allowed to ask where the app is running from, and
+// a module that reads cwd itself is a module the tests cannot point elsewhere.
+export const DEFAULT_DB_PATH = join(CONSOLE_ROOT, '.data', 'console.sqlite');
 
 function listMigrationFiles(): string[] {
   return readdirSync(MIGRATIONS_DIR)

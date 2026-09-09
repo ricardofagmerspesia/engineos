@@ -6,8 +6,9 @@ const MAX_DESCRIPTION_LENGTH = 2000;
  * Validates a (possibly not-yet-persisted) skill entity — used both inline on
  * PUT /api/skills/:id and authoritatively again at publish time (design §6.2/6.4).
  *
- * The `usedByAgents` warn path is wired now even though the field is always `[]`
- * until the Agents ticket lands, so that ticket doesn't have to reopen this file.
+ * The `usedByAgents` warn path is live: `entities/relations.ts` resolves the
+ * field against agents/, rules/ and the registries, so disabling a skill an
+ * agent still declares really does warn.
  */
 export function validateSkill(entity: SkillEntity): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
