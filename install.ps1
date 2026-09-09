@@ -15,9 +15,14 @@ $ErrorActionPreference = 'Stop'
 
 $RepoDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 # A relative -ClaudeDir would resolve against the caller's location, so it is made
-# absolute once here; a target inside the repository would let the installer
-# rewrite the repository's own CLAUDE.md, so that is refused outright.
-$ClaudeDir = [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $ClaudeDir))
+# absolute once here. Join-Path concatenates an absolute second argument on Windows
+# instead of replacing the first, so only a relative value is joined. A target
+# inside the repository would let the installer rewrite the repository's own
+# CLAUDE.md, so that is refused outright.
+if (-not [IO.Path]::IsPathRooted($ClaudeDir)) {
+    $ClaudeDir = Join-Path (Get-Location).Path $ClaudeDir
+}
+$ClaudeDir = [IO.Path]::GetFullPath($ClaudeDir)
 $RepoRoot  = [IO.Path]::GetFullPath($RepoDir)
 if ($ClaudeDir -eq $RepoRoot -or $ClaudeDir.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar)) {
     Write-Host "Refusing -ClaudeDir inside the repository: $ClaudeDir" -ForegroundColor Red
