@@ -36,6 +36,9 @@ export const C14_FINDINGS = [
   'verification-require-drift',
   'verification-rule-prose-missing',
   'verification-gate-prose-missing',
+  'source-file-missing',
+  'dangling-capability-id',
+  'unknown-capability-agent',
 ] as const;
 
 export const C15_FINDINGS = [

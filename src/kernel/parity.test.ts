@@ -403,11 +403,11 @@ test('skill-state answers identically to the pinned bash kernel', (t) => {
 // exactly what a caller trading four processes for one would not notice.
 test('resolve answers each section identically to the legacy projection that owns it', (t) => {
   if (MISSING_TOOL !== null) {
-    t.skip(`parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
+    skipOrFail(t, `parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
     return;
   }
   if (PINNED_PARSE_ERROR !== null) {
-    t.skip(PINNED_PARSE_ERROR);
+    skipOrFail(t, PINNED_PARSE_ERROR);
     return;
   }
   const root = stageFixture(t);
@@ -437,13 +437,27 @@ test('resolve answers each section identically to the legacy projection that own
 
 // ------------------------------------------------------------------ internals
 
+// Parity evidence must be impossible to lose silently where it is CLAIMED. The
+// two conditions this guards are honest skips on a developer machine — no jq on
+// PATH, or a bash that cannot parse the pinned kernel (macOS bash 3.2) — but in
+// CI the same skip means the suite compared nothing and still reported green,
+// and nobody would notice. ENGINEOS_REQUIRE_PARITY=1, set on the ci.yml verify
+// job, turns the skip into a failure there.
+//
+// armIsPorted's skips stay skips under it: an unported arm is a fact about the
+// migration's progress, not a machine unable to run the comparison.
+function skipOrFail(t: TestContext, reason: string): void {
+  if (process.env.ENGINEOS_REQUIRE_PARITY === '1') assert.fail(reason);
+  t.skip(reason);
+}
+
 function runArm(t: TestContext, arm: string, cases: string[][]): void {
   if (MISSING_TOOL !== null) {
-    t.skip(`parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
+    skipOrFail(t, `parity against the pinned bash kernel needs ${MISSING_TOOL} on PATH`);
     return;
   }
   if (PINNED_PARSE_ERROR !== null) {
-    t.skip(PINNED_PARSE_ERROR);
+    skipOrFail(t, PINNED_PARSE_ERROR);
     return;
   }
   const root = stageFixture(t);

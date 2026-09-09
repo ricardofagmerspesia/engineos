@@ -1,5 +1,5 @@
-import { isRecord, stringArray } from '../lib/json';
 import { loadRegistry } from './load';
+import { strictReader } from './strict';
 
 // Type-level mirror of the risk vocabulary. The runtime vocabulary still comes
 // from registries/policy.json (design "Kernel shape"); this only stops the three
@@ -47,32 +47,68 @@ export interface IntentRow {
 }
 
 export interface IntentsRegistry {
+  version: string;
   intents: IntentRow[];
 }
 
+const reader = strictReader('intents.json');
+
 export function loadIntents(root: string): IntentsRegistry {
-  const raw = loadRegistry(root, 'intents.json');
-  const r = isRecord(raw) ? raw : {};
-  const rows: unknown[] = Array.isArray(r['intents']) ? r['intents'] : [];
+  const document = reader.requireRecord(loadRegistry(root, 'intents.json'), '');
+  const rows = reader.requireRows(document['intents'], '.intents');
+  // An intents registry with no rows routes nothing at all, which is the same
+  // silent disappearance a malformed file used to produce.
+  if (rows.length === 0) reader.malformed('.intents must not be empty');
   return {
-    intents: rows.filter(isRecord).map((i) => ({
-      id: typeof i['id'] === 'string' ? i['id'] : '',
-      title: typeof i['title'] === 'string' ? i['title'] : '',
-      signals: stringArray(i['signals']),
-      rules: stringArray(i['rules']),
-      skills: stringArray(i['skills']),
-      agents: stringArray(i['agents']),
-      commands: stringArray(i['commands']),
-      mcp: stringArray(i['mcp']),
-      model_tier: typeof i['model_tier'] === 'string' ? i['model_tier'] : null,
-      risk_floor: isRiskTier(i['risk_floor']) ? i['risk_floor'] : null,
-      domain: typeof i['domain'] === 'string' ? i['domain'] : null,
-      // jq's `{note}` answers null for a row without one, so an absent note and
-      // a null note are the same answer downstream.
-      note: typeof i['note'] === 'string' ? i['note'] : null,
-      suppressible: i['suppressible'] === true,
-      suppressed_by: stringArray(i['suppressed_by']),
-      requires_dispatch_plan: i['requires_dispatch_plan'] === true,
-    })),
+    version: reader.requireString(document['version'], '.version'),
+    intents: rows.map((row, i) => {
+      const path = `.intents[${i}]`;
+      const id = reader.requireString(row['id'], `${path}.id`);
+      // The id is what suppressed_by, the router announcement and every
+      // decision rule name a row by; an empty one can be referenced by nothing.
+      if (id === '') reader.malformed(`${path}.id must not be empty`);
+      const signals = reader.requireStrings(row['signals'], `${path}.signals`);
+      // A row with no signal can never match, so it is a registry defect rather
+      // than a row the matcher simply skips.
+      if (signals.length === 0) reader.malformed(`${path}.signals must not be empty`);
+      return {
+        id,
+        title: reader.requireString(row['title'], `${path}.title`),
+        signals,
+        rules: reader.optionalStrings(row['rules'], `${path}.rules`),
+        skills: reader.optionalStrings(row['skills'], `${path}.skills`),
+        agents: reader.optionalStrings(row['agents'], `${path}.agents`),
+        commands: reader.optionalStrings(row['commands'], `${path}.commands`),
+        mcp: reader.optionalStrings(row['mcp'], `${path}.mcp`),
+        model_tier: reader.optionalString(row['model_tier'], `${path}.model_tier`),
+        risk_floor: riskFloor(row['risk_floor'], `${path}.risk_floor`),
+        domain: reader.optionalString(row['domain'], `${path}.domain`),
+        // jq's `{note}` answers null for a row without one, so an absent note and
+        // a null note are the same answer downstream.
+        note: reader.optionalString(row['note'], `${path}.note`),
+        suppressible: flag(row['suppressible'], `${path}.suppressible`),
+        suppressed_by: reader.optionalStrings(row['suppressed_by'], `${path}.suppressed_by`),
+        requires_dispatch_plan: flag(row['requires_dispatch_plan'], `${path}.requires_dispatch_plan`),
+      };
+    }),
   };
+}
+
+// The registry writes a floor or omits it. A present value outside the vocabulary
+// used to read as "no floor", which is the one answer a risk floor must never
+// silently become.
+function riskFloor(value: unknown, path: string): RiskTier | null {
+  if (value === undefined || value === null) return null;
+  if (isRiskTier(value)) return value;
+  // Returned rather than called for its throw: `reader` is an inferred const, so
+  // tsc does not apply never-returning control flow through the interface method.
+  return reader.malformed(`${path} must be low, medium or high`);
+}
+
+// Absent still defaults to false (the bash arm's `== true`); a present value that
+// is not a boolean is malformed rather than coerced to false, because coercing it
+// answers "not suppressible" for a row whose author meant the opposite.
+function flag(value: unknown, path: string): boolean {
+  if (value === undefined || value === null) return false;
+  return reader.requireBoolean(value, path);
 }
