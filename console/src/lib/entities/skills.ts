@@ -11,6 +11,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { resolveInside } from '../contained-path';
 import { parseMarkdownWithFrontmatter } from './frontmatter';
 import { loadGraph, resolveSkillRelations } from './relations';
 import type { SkillEntity } from './types';
@@ -171,7 +172,17 @@ export interface FileChange {
   after: string;
 }
 
-/** A string needs quoting when a plain (unquoted) line couldn't represent it unambiguously. */
+/**
+ * A string needs quoting when a plain (unquoted) line couldn't represent it
+ * unambiguously.
+ *
+ * The last four cases are about the file's readers, not this app's: `frontmatter.ts`
+ * happens to read `description: a: b` back as the literal `a: b`, but the block
+ * is YAML by declaration and a real YAML parser rejects that line outright. The
+ * console must not publish a frontmatter block only its own reader can parse,
+ * so a value carrying a mapping separator (`: `), an inline comment (` #`), or
+ * opening as a comment (`#`) or a sequence entry (`- `) gets quoted.
+ */
 function needsQuoting(value: string): boolean {
   return (
     value === '' ||
@@ -180,6 +191,10 @@ function needsQuoting(value: string): boolean {
     value.includes('\\') ||
     value.includes('\n') ||
     value.includes('\r') ||
+    value.includes(': ') ||
+    value.includes(' #') ||
+    value.startsWith('#') ||
+    value.startsWith('- ') ||
     value === 'true' ||
     value === 'false'
   );
@@ -220,7 +235,11 @@ export function writeSkills(basePath: string, entities: SkillEntity[]): FileChan
       throw new SkillWriteError(`skill "${entity.id}" has no sourcePaths to write to`);
     }
 
-    const absolutePath = path.join(basePath, sourcePath);
+    // `sourcePath` comes out of the draft store, not out of this codebase, so
+    // the join that turns it absolute is a containment check as well —
+    // `resolveInside` is the same function the publish route uses to match a
+    // computed change back to its entity, so neither side can drift.
+    const absolutePath = resolveInside(basePath, sourcePath);
     const before = readFileSync(absolutePath, 'utf8');
 
     // Second line of defence. Publish calls detectBaseConflicts first and

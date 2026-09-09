@@ -4,10 +4,25 @@
 # Requires: PowerShell 5.1+ (built into Windows 10/11) or PowerShell 7+
 # Symlinks/junctions may require Developer Mode or an elevated (admin) terminal.
 
+# CI runs this installer against a scratch directory, and PowerShell's $HOME is
+# read-only, so it cannot be redirected the way bash's HOME is for install.sh.
+param(
+    [ValidateNotNullOrEmpty()]
+    [string]$ClaudeDir = (Join-Path $HOME '.claude')
+)
+
 $ErrorActionPreference = 'Stop'
 
 $RepoDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ClaudeDir = Join-Path $HOME '.claude'
+# A relative -ClaudeDir would resolve against the caller's location, so it is made
+# absolute once here; a target inside the repository would let the installer
+# rewrite the repository's own CLAUDE.md, so that is refused outright.
+$ClaudeDir = [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $ClaudeDir))
+$RepoRoot  = [IO.Path]::GetFullPath($RepoDir)
+if ($ClaudeDir -eq $RepoRoot -or $ClaudeDir.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar)) {
+    Write-Host "Refusing -ClaudeDir inside the repository: $ClaudeDir" -ForegroundColor Red
+    exit 1
+}
 $Settings  = Join-Path $ClaudeDir 'settings.json'
 
 function Write-Red($msg)  { Write-Host $msg -ForegroundColor Red }
@@ -117,9 +132,9 @@ if ($alreadyCurrent) {
     }
     Set-Content -Path $ClaudeMdPath -Value $newContent -Encoding UTF8 -NoNewline
     if ($managed.Count -gt 0) {
-        Write-Green "Updated EngineOS import in ~/.claude/CLAUDE.md -> $ImportLine"
+        Write-Green "Updated EngineOS import in $ClaudeMdPath -> $ImportLine"
     } else {
-        Write-Green "Added EngineOS import to ~/.claude/CLAUDE.md (personal lines untouched)."
+        Write-Green "Added EngineOS import to $ClaudeMdPath (personal lines untouched)."
     }
 }
 

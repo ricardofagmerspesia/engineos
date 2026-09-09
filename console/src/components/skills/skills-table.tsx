@@ -25,7 +25,21 @@ export function SkillsTable({ skills, onRowClick, onToggleEnabled, pendingToggle
       <TableBody>
         {skills.map((skill) => (
           <TableRow key={skill.id} onClick={() => onRowClick(skill)}>
-            <TableCell className="font-medium text-slate-900">{skill.name}</TableCell>
+            <TableCell>
+              {/* The row's onClick is pointer-only; this button is what makes
+                  the drawer reachable by keyboard without giving the <tr> a
+                  role that would break the table's semantics. */}
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRowClick(skill);
+                }}
+                className="focus-ring text-left font-medium text-slate-900"
+              >
+                {skill.name}
+              </button>
+            </TableCell>
             <TableCell className="max-w-xs truncate text-slate-600">{skill.description}</TableCell>
             <TableCell>
               <StatusBadge status={skill.status} />

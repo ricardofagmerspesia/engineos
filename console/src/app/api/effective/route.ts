@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { REPO_ROOT } from '@/lib/config';
-import { KernelError, resolveTask, routePath, skillState } from '@/lib/kernel';
+import { KernelArgumentError, KernelError, resolveTask, routePath, skillState } from '@/lib/kernel';
 
 type EffectiveResult =
   | {
@@ -52,6 +52,13 @@ export function GET(request: NextRequest): NextResponse<EffectiveResult> {
       skillState: skillState(REPO_ROOT),
     });
   } catch (error) {
+    // Every other failure here answers 200 with `ok: false`, because it is a
+    // fact about the repository the operator asked about. A rejected argument
+    // is not: the request itself is malformed, so it gets a 4xx and the caller
+    // can tell the two apart without parsing the reason.
+    if (error instanceof KernelArgumentError) {
+      return NextResponse.json({ ok: false, reason: error.message }, { status: 400 });
+    }
     if (error instanceof KernelError) {
       return NextResponse.json({ ok: false, reason: error.message });
     }

@@ -1,4 +1,4 @@
-import type { EntityStatus, ValidationIssue } from "../types";
+import type { EntityStatus } from "../types";
 
 const STATUS_STYLES: Record<EntityStatus, string> = {
   active: "bg-emerald-100 text-emerald-800",
@@ -20,27 +20,6 @@ export function StatusBadge({ status }: { status: EntityStatus }) {
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}
     >
       {STATUS_LABEL[status]}
-    </span>
-  );
-}
-
-const LEVEL_STYLES: Record<ValidationIssue["level"], string> = {
-  error: "bg-red-100 text-red-800",
-  warn: "bg-amber-100 text-amber-800",
-};
-
-const LEVEL_LABEL: Record<ValidationIssue["level"], string> = {
-  error: "Error",
-  warn: "Warning",
-};
-
-/** Level is always spelled out as text, never conveyed by color alone. */
-export function ValidationLevelBadge({ level }: { level: ValidationIssue["level"] }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${LEVEL_STYLES[level]}`}
-    >
-      {LEVEL_LABEL[level]}
     </span>
   );
 }

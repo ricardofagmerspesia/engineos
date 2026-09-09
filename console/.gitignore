@@ -7,6 +7,6 @@ node_modules/
 next-env.d.ts
 *.tsbuildinfo
 
-# Lock de escrita no repositorio (publish/rollback) — estado de execucao.
+# Repository write lock (publish/rollback) — execution state, never committed.
 .publish.lock/
 .test-build/
