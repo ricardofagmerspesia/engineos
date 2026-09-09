@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import path from 'node:path';
 
 import { CONSOLE_ROOT, REPO_ROOT } from '@/lib/config';
+import { resolveInside } from '@/lib/contained-path';
 import { detectBaseConflicts, hashSource, writeSkills } from '@/lib/entities/skills';
 import { applyFileChanges } from '@/lib/fs-writer';
 import { checkoutPaths, commit, getCurrentBranch } from '@/lib/git';
@@ -23,6 +23,10 @@ const CONFLICT_EXPLANATION: Record<BaseConflict['reason'], string> = {
   'unknown-base': 'draft has no recorded base revision (written before the guard existed) — reopen the skill to recapture it',
   missing: 'source file no longer exists',
 };
+
+function sourceAbsolutePath(entity: SkillEntity): string {
+  return resolveInside(REPO_ROOT, entity.sourcePaths[0] ?? '');
+}
 
 // POST /api/publish — design §6.4. Every branch is fail-closed: no real file
 // stays modified on disk unless a commit actually lands.
@@ -112,9 +116,14 @@ function publishOnce(): NextResponse<PublishResult> {
   // which includes rows only flagged because no snapshot row existed yet.
   // Using `changed` here previously produced a commit message and history
   // entry claiming every entity was "updated" when only one file changed.
+  // Both sides of every path comparison below go through `resolveInside`, the
+  // same function `writeSkills` used to produce `change.path`. `path.join` and
+  // `path.resolve` agree on a relative source path but not on an absolute one,
+  // and a mismatch here silently drops an entity from the commit message and
+  // from the base-hash rebase further down.
   const changedPaths = new Set(changes.map((change) => change.path));
   const actuallyChanged = changed.filter((entity) =>
-    changedPaths.has(path.join(REPO_ROOT, entity.sourcePaths[0] ?? '')),
+    changedPaths.has(sourceAbsolutePath(entity)),
   );
 
   try {
@@ -140,11 +149,11 @@ function publishOnce(): NextResponse<PublishResult> {
     // the guard would fire on the operator's own successful write.
     const hashByPath = new Map(changes.map((change) => [change.path, hashSource(change.after)]));
     const rebased = draftSkills.map((entity) => {
-      const nextHash = hashByPath.get(path.join(REPO_ROOT, entity.sourcePaths[0] ?? ''));
+      const nextHash = hashByPath.get(sourceAbsolutePath(entity));
       return nextHash ? { ...entity, baseHash: nextHash } : entity;
     });
     for (const entity of rebased) {
-      if (hashByPath.has(path.join(REPO_ROOT, entity.sourcePaths[0] ?? ''))) {
+      if (hashByPath.has(sourceAbsolutePath(entity))) {
         upsertEntity(entity);
       }
     }

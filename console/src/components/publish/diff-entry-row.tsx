@@ -18,7 +18,7 @@ export function DiffEntryRow({ entry }: { entry: DiffEntry }) {
         type="button"
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-500"
+        className="focus-ring-inset flex w-full items-center gap-2 px-3 py-2 text-left"
       >
         <ChevronRightIcon className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
         <span className="flex-1">

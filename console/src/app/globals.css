@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* One definition of the keyboard focus indicator. The class group used to be
+   copy-pasted into every interactive component, so a change to the ring meant
+   editing sixteen call sites and any one of them silently drifting. */
+@layer components {
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500;
+  }
+
+  /* Inset variant for controls that fill a bordered container: an outward
+     offset would draw the ring on top of the container's own border. */
+  .focus-ring-inset {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-500;
+  }
+
+  /* For controls sitting on a red error surface, where slate has too little
+     contrast against the surrounding text. */
+  .focus-ring-danger {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700;
+  }
+}
