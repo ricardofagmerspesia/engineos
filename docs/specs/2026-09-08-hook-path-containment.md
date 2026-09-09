@@ -85,6 +85,28 @@ Files: `src/hooks/verify-targets.ts`, `src/hooks/verify-targets.test.ts`,
   files after `npx tsc -p tsconfig.json` (compiled tests run from `build/`;
   read `package.json` `scripts.test` for the exact form).
 
+## Amended at the security re-pass
+
+`security-reviewer` returned MERGE WITH FIXES. Applied at the barrier:
+
+- `post-edit-check`: `env.cwd === ''` returns `silent` before the realpath
+  (`realpathSync('')` answers the process cwd, an implicit ceiling); the
+  linter-config owner passes `containedIn` like the package and workspace.
+- `findUpAny` / `containedIn`: containment is decided on the FIRST SEGMENT of
+  `relative` (`isWithin`), so `..hidden/` is inside and `../x` is not; the
+  ceiling terminator compares through `relative`, which is case-insensitive on
+  win32, instead of `===`.
+- `containedIn` refuses an owner reached through a `node_modules` segment
+  (HIGH, pre-existing in both hooks: a dependency's `package.json` under the
+  consented tree had its `lint`/`typecheck` run on an edit inside it). Applies
+  to the Stop gate as well.
+- COMPATIBILITY wording softened: Windows behaviour is covered by unit tests
+  over `node:path` semantics, not by a Windows test run.
+
+Accepted residual: an owner that is git-untracked but not under `node_modules`
+(a vendored checkout) is still run; requiring a tracked `package.json` is a
+follow-up, not this unit.
+
 ## Barrier (orchestrator)
 
 `npm run build`, `npm run typecheck`, `node dist/engineos.cjs validate`,

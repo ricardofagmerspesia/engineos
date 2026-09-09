@@ -15,7 +15,7 @@
 // kernel's repair section (../kernel/repair), which is the one reader of
 // registries/policy.json .repair.max_fix_attempts_per_check — this hook is a
 // shim over that answer, never a private copy of the numbers.
-import { dirname, join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
@@ -24,7 +24,7 @@ import { classify, type InfraReason } from './classify-failure';
 import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunnerSelection, type SpawnSyncLike } from './runner';
 import { event, telemetrySink, withSpan, type EventData, type SpanFacts } from './telemetry';
 import type { SpanStatus } from '../registry/policy-exec-journal';
-import { PACKAGE_MARKERS, SUMMARY_LINES, failureBlock, findUpAny, firstLines, hasVerifyExtension, isDirectory, isFile, runnerCommand, runnerFound, verifyEnvironment } from './verify-targets';
+import { PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, findUpAny, firstLines, hasVerifyExtension, isDirectory, isFile, runnerCommand, runnerFound, startDir, verifyEnvironment } from './verify-targets';
 import { lazyRegistries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
 import { isRecord } from '../lib/json';
@@ -222,30 +222,6 @@ function packageDirs(files: readonly string[], root: string): string[] {
     if (containedIn(stopReal, owner)) dirs.add(owner);
   }
   return [...dirs].sort();
-}
-
-// The physical directory the walk starts from, so findUpAny compares one path
-// form against another. A directory that does not exist has no realpath — the
-// transcript names files the session may since have moved — and the lexical
-// resolve is the fallback; the owner check is what covers that walk, since a
-// lexical ascent from a non-existent path can still cross a symlink.
-function startDir(file: string): string {
-  const dir = dirname(file);
-  try {
-    return realpathSync(dir);
-  } catch {
-    return resolve(dir);
-  }
-}
-
-function containedIn(stopReal: string, owner: string): boolean {
-  let ownerReal: string;
-  try {
-    ownerReal = realpathSync(owner);
-  } catch {
-    return false;
-  }
-  return ownerReal === stopReal || ownerReal.startsWith(`${stopReal}${sep}`);
 }
 
 function runLadder(
