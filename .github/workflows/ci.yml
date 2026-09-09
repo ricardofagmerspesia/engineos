@@ -18,8 +18,12 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # Without a cap a hung step holds a runner for the six-hour default.
-    timeout-minutes: 20
+    env:
+      # The bash-parity suite skips itself on a machine whose bash cannot parse
+      # the pinned kernel. Here, that skip would be the only parity evidence
+      # quietly disappearing, so this makes it fail instead — see the
+      # skipOrFail helper in src/kernel/parity.test.ts.
+      ENGINEOS_REQUIRE_PARITY: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

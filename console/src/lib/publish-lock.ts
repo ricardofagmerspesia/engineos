@@ -11,7 +11,7 @@
 // Why mkdir. It is the one filesystem primitive that is atomic and
 // fail-if-exists on every platform this runs on, needs no dependency, and — the
 // part an in-process flag cannot give — also excludes a SECOND console process
-// pointed at the same repository, which is exactly the "publicação concorrente"
+// pointed at the same repository, which is exactly the concurrent-publication
 // case. A module-level boolean would silently allow that one through.
 //
 // Staleness is handled by age, not by pid liveness: a pid check cannot tell a

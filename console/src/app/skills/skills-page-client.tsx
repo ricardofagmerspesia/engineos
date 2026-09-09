@@ -89,7 +89,7 @@ export function SkillsPageClient() {
           <button
             type="button"
             onClick={() => skillsQuery.refetch()}
-            className="ml-2 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+            className="ml-2 underline focus-ring-danger"
           >
             Retry
           </button>
@@ -116,7 +116,10 @@ export function SkillsPageClient() {
         />
       ) : null}
 
+      {/* Keyed on the selection so a different skill remounts the drawer and
+          its description draft starts from that skill, with no reset effect. */}
       <SkillDetailDrawer
+        key={selectedSkill?.id ?? "none"}
         skill={selectedSkill}
         onClose={() => setSelectedId(null)}
         onSave={handleSave}

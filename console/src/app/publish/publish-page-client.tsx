@@ -39,7 +39,7 @@ export function PublishPageClient() {
         <button
           type="button"
           onClick={() => diffQuery.refetch()}
-          className="ml-2 underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          className="ml-2 underline focus-ring-danger"
         >
           Retry
         </button>
@@ -93,7 +93,7 @@ export function PublishPageClient() {
           type="button"
           disabled={hasBlockingError || publishMutation.isPending}
           onClick={() => publishMutation.mutate()}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 focus-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
           {publishMutation.isPending ? "Publishing…" : "Publish"}
         </button>

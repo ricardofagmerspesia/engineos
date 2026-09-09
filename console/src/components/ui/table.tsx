@@ -34,26 +34,17 @@ type TableRowProps = {
   className?: string;
 };
 
-/** When `onClick` is given the row is also keyboard-activatable (Enter/Space)
- * via a native button-role treatment, so "row click opens the drawer" works
- * without a mouse. */
+/** `onClick` is a pointer convenience only. The row deliberately carries no
+ * `role="button"`/`tabIndex`: overriding a `<tr>`'s role strips the implicit
+ * row/cell roles from its children, so the table stops being a table for
+ * assistive tech. Keyboard access belongs to a real control inside a cell —
+ * see the skill-name button in `skills-table.tsx`. */
 export function TableRow({ children, onClick, className = "" }: TableRowProps) {
   if (!onClick) {
     return <tr className={className}>{children}</tr>;
   }
   return (
-    <tr
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onClick();
-        }
-      }}
-      className={`cursor-pointer hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-500 ${className}`}
-    >
+    <tr onClick={onClick} className={`cursor-pointer hover:bg-slate-50 ${className}`}>
       {children}
     </tr>
   );

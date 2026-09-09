@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { REPO_ROOT } from '@/lib/config';
+import { parseSkills } from '@/lib/entities/skills';
 import { getEntity, upsertEntity } from '@/lib/store';
 import { parseSkillPatch } from '@/lib/validate/skill-patch';
 import { validateSkill } from '@/lib/validate/skills';
@@ -56,7 +58,11 @@ export async function PUT(
   { params }: RouteContext,
 ): Promise<NextResponse<SkillEntity | { errors: ValidationIssue[] }>> {
   const { id } = await params;
-  const existing = getEntity<SkillEntity>(id);
+  // GET /api/skills no longer seeds the store, so an untouched skill has no
+  // draft row yet: the id has to resolve against the files on disk too, and
+  // this write is what seeds it. Without the fallback the first edit of every
+  // skill would 404.
+  const existing = getEntity<SkillEntity>(id) ?? parseSkills(REPO_ROOT).find((skill) => skill.id === id);
 
   if (!existing || existing.kind !== 'skill') {
     return notFound(id);

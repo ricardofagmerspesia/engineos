@@ -225,6 +225,78 @@ function loadRegistry(root, name) {
   return readJsonFile(registryPath(root, name));
 }
 
+// src/registry/models.ts
+var MODEL_TIER_IDS = ["most-capable", "design", "build", "cheap"];
+function loadModels(root) {
+  const raw = loadRegistry(root, "models.json");
+  const r = isRecord(raw) ? raw : {};
+  return {
+    version: requireString(r["version"], "version"),
+    tiers: requireRows(r["tiers"], "tiers").map((tier, index) => ({
+      id: requireString(tier["id"], `tiers[${index}].id`),
+      model: requireString(tier["model"], `tiers[${index}].model`),
+      // The top of the ladder stores null; an absent key reads the same way,
+      // because that is what jq's `.escalates_to` answered for both.
+      escalates_to: optionalString(tier["escalates_to"], `tiers[${index}].escalates_to`)
+    })),
+    escalation_order: requireStringArray(r["escalation_order"], "escalation_order"),
+    work_types: requireRows(r["work_types"], "work_types").map((work, index) => ({
+      id: requireString(work["id"], `work_types[${index}].id`),
+      title: requireString(work["title"], `work_types[${index}].title`),
+      tier: requireString(work["tier"], `work_types[${index}].tier`)
+    }))
+  };
+}
+function fail2(field, expected) {
+  throw new KernelError(`registries/models.json: ${field} must be ${expected}`);
+}
+function requireString(value, field) {
+  if (typeof value !== "string" || value === "") fail2(field, "a non-empty string");
+  return value;
+}
+function optionalString(value, field) {
+  if (value === void 0 || value === null) return null;
+  if (typeof value !== "string" || value === "") fail2(field, "a non-empty string or null");
+  return value;
+}
+function requireRows(value, field) {
+  const rows3 = Array.isArray(value) ? value : fail2(field, "an array");
+  return rows3.map((row, index) => isRecord(row) ? row : fail2(`${field}[${index}]`, "an object"));
+}
+function requireStringArray(value, field) {
+  const items = Array.isArray(value) ? value : fail2(field, "an array");
+  return items.map((item, index) => requireString(item, `${field}[${index}]`));
+}
+
+// src/registry/agents.ts
+var DEFAULT_AGENT_TIER = "build";
+function isModelTierId(value) {
+  return typeof value === "string" && MODEL_TIER_IDS.some((id) => id === value);
+}
+function loadAgents(root) {
+  let document;
+  try {
+    document = loadRegistry(root, "agents.json");
+  } catch {
+    return [];
+  }
+  const rows3 = isRecord(document) ? document["agents"] : void 0;
+  if (!Array.isArray(rows3)) return [];
+  const agents = [];
+  for (const row of rows3) {
+    if (!isRecord(row)) continue;
+    const name = row["name"];
+    if (typeof name !== "string" || name === "") continue;
+    const tier = row["model_tier"];
+    agents.push({ name, model_tier: isModelTierId(tier) ? tier : null });
+  }
+  return agents;
+}
+function agentModelTier(root, name) {
+  const match = loadAgents(root).find((agent) => agent.name === name && agent.model_tier !== null);
+  return (match == null ? void 0 : match.model_tier) ?? DEFAULT_AGENT_TIER;
+}
+
 // src/registry/strict.ts
 function strictReader(file) {
   function malformed(what) {
@@ -275,28 +347,48 @@ function strictReader(file) {
   };
 }
 
+// src/registry/capabilities.ts
+var reader = strictReader("capabilities.json");
+function loadCapabilities(root) {
+  const document = reader.requireRecord(loadRegistry(root, "capabilities.json"), "");
+  return {
+    version: reader.requireString(document["version"], ".version"),
+    model_tiers: reader.requireStrings(document["model_tiers"], ".model_tiers"),
+    // Every field of a row is load-bearing: a capability without its agent or
+    // its tier cannot answer the question the registry exists to answer, so the
+    // loader refuses the row rather than defaulting it (as models.ts does).
+    capabilities: reader.requireRows(document["capabilities"], ".capabilities").map((row, i) => ({
+      id: reader.requireString(row["id"], `.capabilities[${i}].id`),
+      title: reader.requireString(row["title"], `.capabilities[${i}].title`),
+      agent: reader.requireString(row["agent"], `.capabilities[${i}].agent`),
+      model_tier: reader.requireString(row["model_tier"], `.capabilities[${i}].model_tier`),
+      risk_floor: reader.requireString(row["risk_floor"], `.capabilities[${i}].risk_floor`)
+    }))
+  };
+}
+
 // src/registry/decision-rules.ts
-var { requireRecord, requireString, requireNumber, requireStrings, requireRows, optionalString, optionalStrings } = strictReader("decision-rules.json");
+var { requireRecord, requireString: requireString2, requireNumber, requireStrings, requireRows: requireRows2, optionalString: optionalString2, optionalStrings } = strictReader("decision-rules.json");
 function loadDecisionRules(root) {
   const raw = loadRegistry(root, "decision-rules.json");
   const d = requireRecord(raw, "");
   return {
-    version: requireString(d["version"], ".version"),
+    version: requireString2(d["version"], ".version"),
     precedence: requireStrings(d["precedence"], ".precedence"),
-    conflict_policy: requireString(d["conflict_policy"], ".conflict_policy"),
-    rules: requireRows(d["rules"], ".rules").map((row, i) => {
+    conflict_policy: requireString2(d["conflict_policy"], ".conflict_policy"),
+    rules: requireRows2(d["rules"], ".rules").map((row, i) => {
       const at = `.rules[${i}]`;
       const then = requireRecord(row["then"], `${at}.then`);
       return {
-        id: requireString(row["id"], `${at}.id`),
+        id: requireString2(row["id"], `${at}.id`),
         priority: requireNumber(row["priority"], `${at}.priority`),
-        source: requireString(row["source"], `${at}.source`),
+        source: requireString2(row["source"], `${at}.source`),
         when: requireRecord(row["when"], `${at}.when`),
         then: {
           require: optionalStrings(then["require"], `${at}.then.require`),
-          gate: optionalString(then["gate"], `${at}.then.gate`),
-          risk: optionalString(then["risk"], `${at}.then.risk`),
-          prefer: optionalString(then["prefer"], `${at}.then.prefer`)
+          gate: optionalString2(then["gate"], `${at}.then.gate`),
+          risk: optionalString2(then["risk"], `${at}.then.risk`),
+          prefer: optionalString2(then["prefer"], `${at}.then.prefer`)
         },
         signals: optionalStrings(row["signals"], `${at}.signals`)
       };
@@ -308,74 +400,49 @@ function loadDecisionRules(root) {
 function isRiskTier(value) {
   return value === "low" || value === "medium" || value === "high";
 }
+var reader2 = strictReader("intents.json");
 function loadIntents(root) {
-  const raw = loadRegistry(root, "intents.json");
-  const r = isRecord(raw) ? raw : {};
-  const rows3 = Array.isArray(r["intents"]) ? r["intents"] : [];
+  const document = reader2.requireRecord(loadRegistry(root, "intents.json"), "");
+  const rows3 = reader2.requireRows(document["intents"], ".intents");
+  if (rows3.length === 0) reader2.malformed(".intents must not be empty");
   return {
-    intents: rows3.filter(isRecord).map((i) => ({
-      id: typeof i["id"] === "string" ? i["id"] : "",
-      title: typeof i["title"] === "string" ? i["title"] : "",
-      signals: stringArray(i["signals"]),
-      rules: stringArray(i["rules"]),
-      skills: stringArray(i["skills"]),
-      agents: stringArray(i["agents"]),
-      commands: stringArray(i["commands"]),
-      mcp: stringArray(i["mcp"]),
-      model_tier: typeof i["model_tier"] === "string" ? i["model_tier"] : null,
-      risk_floor: isRiskTier(i["risk_floor"]) ? i["risk_floor"] : null,
-      domain: typeof i["domain"] === "string" ? i["domain"] : null,
-      // jq's `{note}` answers null for a row without one, so an absent note and
-      // a null note are the same answer downstream.
-      note: typeof i["note"] === "string" ? i["note"] : null,
-      suppressible: i["suppressible"] === true,
-      suppressed_by: stringArray(i["suppressed_by"]),
-      requires_dispatch_plan: i["requires_dispatch_plan"] === true
-    }))
+    version: reader2.requireString(document["version"], ".version"),
+    intents: rows3.map((row, i) => {
+      const path = `.intents[${i}]`;
+      const id = reader2.requireString(row["id"], `${path}.id`);
+      if (id === "") reader2.malformed(`${path}.id must not be empty`);
+      const signals2 = reader2.requireStrings(row["signals"], `${path}.signals`);
+      if (signals2.length === 0) reader2.malformed(`${path}.signals must not be empty`);
+      return {
+        id,
+        title: reader2.requireString(row["title"], `${path}.title`),
+        signals: signals2,
+        rules: reader2.optionalStrings(row["rules"], `${path}.rules`),
+        skills: reader2.optionalStrings(row["skills"], `${path}.skills`),
+        agents: reader2.optionalStrings(row["agents"], `${path}.agents`),
+        commands: reader2.optionalStrings(row["commands"], `${path}.commands`),
+        mcp: reader2.optionalStrings(row["mcp"], `${path}.mcp`),
+        model_tier: reader2.optionalString(row["model_tier"], `${path}.model_tier`),
+        risk_floor: riskFloor(row["risk_floor"], `${path}.risk_floor`),
+        domain: reader2.optionalString(row["domain"], `${path}.domain`),
+        // jq's `{note}` answers null for a row without one, so an absent note and
+        // a null note are the same answer downstream.
+        note: reader2.optionalString(row["note"], `${path}.note`),
+        suppressible: flag(row["suppressible"], `${path}.suppressible`),
+        suppressed_by: reader2.optionalStrings(row["suppressed_by"], `${path}.suppressed_by`),
+        requires_dispatch_plan: flag(row["requires_dispatch_plan"], `${path}.requires_dispatch_plan`)
+      };
+    })
   };
 }
-
-// src/registry/models.ts
-var MODEL_TIER_IDS = ["most-capable", "design", "build", "cheap"];
-function loadModels(root) {
-  const raw = loadRegistry(root, "models.json");
-  const r = isRecord(raw) ? raw : {};
-  return {
-    version: requireString2(r["version"], "version"),
-    tiers: requireRows2(r["tiers"], "tiers").map((tier, index) => ({
-      id: requireString2(tier["id"], `tiers[${index}].id`),
-      model: requireString2(tier["model"], `tiers[${index}].model`),
-      // The top of the ladder stores null; an absent key reads the same way,
-      // because that is what jq's `.escalates_to` answered for both.
-      escalates_to: optionalString2(tier["escalates_to"], `tiers[${index}].escalates_to`)
-    })),
-    escalation_order: requireStringArray(r["escalation_order"], "escalation_order"),
-    work_types: requireRows2(r["work_types"], "work_types").map((work, index) => ({
-      id: requireString2(work["id"], `work_types[${index}].id`),
-      title: requireString2(work["title"], `work_types[${index}].title`),
-      tier: requireString2(work["tier"], `work_types[${index}].tier`)
-    }))
-  };
-}
-function fail2(field, expected) {
-  throw new KernelError(`registries/models.json: ${field} must be ${expected}`);
-}
-function requireString2(value, field) {
-  if (typeof value !== "string" || value === "") fail2(field, "a non-empty string");
-  return value;
-}
-function optionalString2(value, field) {
+function riskFloor(value, path) {
   if (value === void 0 || value === null) return null;
-  if (typeof value !== "string" || value === "") fail2(field, "a non-empty string or null");
-  return value;
+  if (isRiskTier(value)) return value;
+  return reader2.malformed(`${path} must be low, medium or high`);
 }
-function requireRows2(value, field) {
-  const rows3 = Array.isArray(value) ? value : fail2(field, "an array");
-  return rows3.map((row, index) => isRecord(row) ? row : fail2(`${field}[${index}]`, "an object"));
-}
-function requireStringArray(value, field) {
-  const items = Array.isArray(value) ? value : fail2(field, "an array");
-  return items.map((item, index) => requireString2(item, `${field}[${index}]`));
+function flag(value, path) {
+  if (value === void 0 || value === null) return false;
+  return reader2.requireBoolean(value, path);
 }
 
 // src/registry/policy.ts
@@ -533,28 +600,38 @@ function requireTierMap(value, path, item) {
 }
 
 // src/registry/routing.ts
+var reader3 = strictReader("routing.json");
 function loadRouting(root) {
-  const raw = loadRegistry(root, "routing.json");
-  const r = isRecord(raw) ? raw : {};
-  const ex = isRecord(r["excluded"]) ? r["excluded"] : {};
-  const domains = Array.isArray(r["domains"]) ? r["domains"] : [];
+  const document = reader3.requireRecord(loadRegistry(root, "routing.json"), "");
+  const excluded = reader3.requireRecord(document["excluded"], ".excluded");
+  const precedence = reader3.requireStrings(document["precedence"], ".precedence");
+  if (precedence.length === 0) reader3.malformed(".precedence must not be empty");
+  const domains = reader3.requireRows(document["domains"], ".domains");
+  if (domains.length === 0) reader3.malformed(".domains must not be empty");
   return {
-    precedence: stringArray(r["precedence"]),
+    version: reader3.requireString(document["version"], ".version"),
+    precedence,
     excluded: {
-      paths: stringArray(ex["paths"]),
-      basenames: stringArray(ex["basenames"]),
-      self_dirs: stringArray(ex["self_dirs"])
+      paths: reader3.optionalStrings(excluded["paths"], ".excluded.paths"),
+      basenames: reader3.optionalStrings(excluded["basenames"], ".excluded.basenames"),
+      self_dirs: reader3.optionalStrings(excluded["self_dirs"], ".excluded.self_dirs")
     },
-    domains: domains.filter(isRecord).map((d) => {
-      const m = isRecord(d["match"]) ? d["match"] : {};
+    domains: domains.map((row, i) => {
+      const path = `.domains[${i}]`;
+      const match = reader3.requireRecord(row["match"], `${path}.match`);
+      const id = reader3.requireString(row["id"], `${path}.id`);
+      if (id === "") reader3.malformed(`${path}.id must not be empty`);
       return {
-        id: typeof d["id"] === "string" ? d["id"] : "",
-        match: { paths: stringArray(m["paths"]), basenames: stringArray(m["basenames"]) },
-        rules: stringArray(d["rules"]),
-        skills: stringArray(d["skills"]),
-        agent: typeof d["agent"] === "string" ? d["agent"] : null,
-        hint: typeof d["hint"] === "string" ? d["hint"] : null,
-        sample_path: typeof d["sample_path"] === "string" ? d["sample_path"] : null
+        id,
+        match: {
+          paths: reader3.optionalStrings(match["paths"], `${path}.match.paths`),
+          basenames: reader3.optionalStrings(match["basenames"], `${path}.match.basenames`)
+        },
+        rules: reader3.optionalStrings(row["rules"], `${path}.rules`),
+        skills: reader3.optionalStrings(row["skills"], `${path}.skills`),
+        agent: reader3.optionalString(row["agent"], `${path}.agent`),
+        hint: reader3.optionalString(row["hint"], `${path}.hint`),
+        sample_path: reader3.optionalString(row["sample_path"], `${path}.sample_path`)
       };
     })
   };
@@ -584,47 +661,54 @@ function readSkillState(root) {
     if (!isFile(file)) continue;
     const head = readHead(file);
     if (head === null) continue;
-    state.set(id, enabledInFrontmatter(head));
+    state.set(id, frontmatterReading(head.text, head.truncated));
   }
   return state;
 }
 function isSkillEnabled(state, id) {
-  return state.get(id) !== false;
+  const reading = state.get(id);
+  return reading === void 0 || reading === "enabled";
 }
 function enabledSkills(declared4, state) {
   return declared4.filter((id) => isSkillEnabled(state, id));
 }
 function suppressedSkills(declared4, state) {
-  return declared4.filter((id) => !isSkillEnabled(state, id)).map((id) => ({ id, reason: "disabled" }));
+  return declared4.filter((id) => !isSkillEnabled(state, id)).map((id) => ({ id, reason: state.get(id) === "unreadable" ? "unreadable" : "disabled" }));
 }
 function skillStateSection(state) {
-  const skills = [...state.entries()].map(([id, enabled]) => ({ id, enabled })).sort(byId);
-  return {
-    skills,
+  const readings = [...state.entries()].sort(byEntryId);
+  const section = {
+    skills: readings.map(([id, reading]) => ({ id, enabled: reading === "enabled" })),
     // jq sorted this list independently of the first; filtering the already
     // sorted rows is the same answer with one comparator.
-    disabled: skills.filter((row) => !row.enabled).map((row) => row.id)
+    disabled: readings.filter(([, reading]) => reading !== "enabled").map(([id]) => id)
   };
+  const unreadable = readings.filter(([, reading]) => reading === "unreadable").map(([id]) => id);
+  if (unreadable.length > 0) section.unreadable = unreadable;
+  return section;
 }
 function skillLookupSection(state, id) {
-  return { id, exists: state.has(id), enabled: isSkillEnabled(state, id) };
+  const section = { id, exists: state.has(id), enabled: isSkillEnabled(state, id) };
+  if (state.get(id) === "unreadable") section.unreadable = true;
+  return section;
 }
-function enabledInFrontmatter(text3) {
+function frontmatterReading(text3, truncated) {
   const lines = text3.split("\n");
+  if (truncated) lines.pop();
   const opener = lines[0];
-  if (opener === void 0 || !FENCE.test(opener)) return true;
+  if (opener === void 0 || !FENCE.test(opener)) return "enabled";
   for (let i = 1; i < lines.length; i += 1) {
     const line = lines[i] ?? "";
-    if (FENCE.test(line)) return true;
+    if (FENCE.test(line)) return "enabled";
     if (!line.startsWith(ENABLED_KEY)) continue;
     const value = line.slice(ENABLED_KEY.length).replace(LEADING_BLANK, "").replace(TRAILING_BLANK, "");
-    return value !== "false";
+    return value === "false" ? "disabled" : "enabled";
   }
-  return true;
+  return truncated ? "unreadable" : "enabled";
 }
-function byId(a, b) {
-  if (a.id < b.id) return -1;
-  return a.id > b.id ? 1 : 0;
+function byEntryId(a, b) {
+  if (a[0] < b[0]) return -1;
+  return a[0] > b[0] ? 1 : 0;
 }
 function isDirectory(path) {
   try {
@@ -650,7 +734,8 @@ function readHead(path) {
   try {
     const buffer = Buffer.alloc(HEAD_BYTES);
     const read = (0, import_node_fs6.readSync)(fd, buffer, 0, HEAD_BYTES, 0);
-    return buffer.subarray(0, read).toString("utf8");
+    const truncated = read === HEAD_BYTES && (0, import_node_fs6.fstatSync)(fd).size > HEAD_BYTES;
+    return { text: buffer.subarray(0, read).toString("utf8"), truncated };
   } catch {
     return null;
   } finally {
@@ -665,8 +750,8 @@ function lazyRegistries(root) {
   const models = memo(() => loadModels(root));
   const policy = memo(() => loadPolicy(root));
   const decisionRules = memo(() => loadDecisionRules(root));
-  const capabilities = memo(() => loadRegistry(root, "capabilities.json"));
-  const agents = memo(() => loadRegistry(root, "agents.json"));
+  const capabilities = memo(() => loadCapabilities(root));
+  const agents = memo(() => loadAgents(root));
   const skillState = memo(() => readSkillState(root));
   return {
     get routing() {
@@ -737,9 +822,9 @@ function admitSection(facts, regs) {
     reason: `cap ${cap} reached and queue full (${facts.queued}/${maxQueued}) \u2014 stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)`
   };
 }
-function requireCount(value, flag) {
+function requireCount(value, flag2) {
   if (!Number.isInteger(value) || value < 0) {
-    throw new KernelError(`admit requires a numeric --${flag}`);
+    throw new KernelError(`admit requires a numeric --${flag2}`);
   }
 }
 
@@ -1572,12 +1657,12 @@ function parseFlags(cmd, args, allowed) {
   const out = /* @__PURE__ */ new Map();
   const rest = [...args];
   for (; ; ) {
-    const flag = rest.shift();
-    if (flag === void 0) break;
-    if (!allowed.includes(flag)) throw new KernelError(`${cmd}: unknown flag ${flag}`);
+    const flag2 = rest.shift();
+    if (flag2 === void 0) break;
+    if (!allowed.includes(flag2)) throw new KernelError(`${cmd}: unknown flag ${flag2}`);
     const value = rest.shift();
-    if (value === void 0) throw new KernelError(`${cmd}: ${flag} requires a value`);
-    out.set(flag, value);
+    if (value === void 0) throw new KernelError(`${cmd}: ${flag2} requires a value`);
+    out.set(flag2, value);
   }
   return out;
 }
@@ -1773,9 +1858,9 @@ function skillStateProjection(ctx, args) {
   let id = "";
   const rest = [...args];
   for (; ; ) {
-    const flag = rest.shift();
-    if (flag === void 0) break;
-    if (flag !== "--id") throw new KernelError(`skill-state: unknown argument ${flag}`);
+    const flag2 = rest.shift();
+    if (flag2 === void 0) break;
+    if (flag2 !== "--id") throw new KernelError(`skill-state: unknown argument ${flag2}`);
     const value = rest.shift();
     if (value === void 0) throw new KernelError("skill-state: --id requires a value");
     id = value;
@@ -2024,12 +2109,12 @@ function parseAppendArgs(argv2) {
   const fields = {};
   const pending = [...rest];
   for (; ; ) {
-    const flag = pending.shift();
-    if (flag === void 0) break;
+    const flag2 = pending.shift();
+    if (flag2 === void 0) break;
     const value = pending.shift();
     if (value === void 0) throw new JournalError("", { usage: true });
-    const spec = BY_FLAG.get(flag);
-    if (spec === void 0) throw new JournalError(`unknown arg: ${flag}`, { usage: true });
+    const spec = BY_FLAG.get(flag2);
+    if (spec === void 0) throw new JournalError(`unknown arg: ${flag2}`, { usage: true });
     fields[spec.name] = value;
   }
   return { file, fields };
@@ -2243,17 +2328,17 @@ var import_node_fs8 = require("node:fs");
 var import_node_path6 = require("node:path");
 
 // src/registry/policy-telemetry.ts
-var reader = strictReader("policy.json");
+var reader4 = strictReader("policy.json");
 function loadTelemetryPolicy(root) {
-  const document = reader.requireRecord(loadRegistry(root, "policy.json"), "");
-  const telemetry = reader.requireRecord(document["telemetry"], ".telemetry");
+  const document = reader4.requireRecord(loadRegistry(root, "policy.json"), "");
+  const telemetry = reader4.requireRecord(document["telemetry"], ".telemetry");
   return {
-    home: reader.requireString(telemetry["home"], ".telemetry.home"),
-    retention_days: reader.requireNumber(telemetry["retention_days"], ".telemetry.retention_days"),
-    value_pattern: reader.requireString(telemetry["value_pattern"], ".telemetry.value_pattern"),
-    events: reader.requireRows(telemetry["events"], ".telemetry.events").map((row, i) => ({
-      id: reader.requireString(row["id"], `.telemetry.events[${i}].id`),
-      keys: reader.requireStrings(row["keys"], `.telemetry.events[${i}].keys`)
+    home: reader4.requireString(telemetry["home"], ".telemetry.home"),
+    retention_days: reader4.requireNumber(telemetry["retention_days"], ".telemetry.retention_days"),
+    value_pattern: reader4.requireString(telemetry["value_pattern"], ".telemetry.value_pattern"),
+    events: reader4.requireRows(telemetry["events"], ".telemetry.events").map((row, i) => ({
+      id: reader4.requireString(row["id"], `.telemetry.events[${i}].id`),
+      keys: reader4.requireStrings(row["keys"], `.telemetry.events[${i}].keys`)
     }))
   };
 }
@@ -2330,9 +2415,9 @@ function parseAppendFlags(args) {
   let index = 0;
   while (index < args.length) {
     if (args.length - index < 2) throw new TelemetryUsageError();
-    const flag = args[index] ?? "";
-    if (!APPEND_FLAGS.includes(flag)) throw new TelemetryUsageError();
-    values.set(flag, args[index + 1] ?? "");
+    const flag2 = args[index] ?? "";
+    if (!APPEND_FLAGS.includes(flag2)) throw new TelemetryUsageError();
+    values.set(flag2, args[index + 1] ?? "");
     index += 2;
   }
   const session = values.get("--session") ?? "";
@@ -3430,35 +3515,6 @@ function firstString(...values) {
   return null;
 }
 
-// src/registry/agents.ts
-var DEFAULT_AGENT_TIER = "build";
-function isModelTierId(value) {
-  return typeof value === "string" && MODEL_TIER_IDS.some((id) => id === value);
-}
-function loadAgents(root) {
-  let document;
-  try {
-    document = loadRegistry(root, "agents.json");
-  } catch {
-    return [];
-  }
-  const rows3 = isRecord(document) ? document["agents"] : void 0;
-  if (!Array.isArray(rows3)) return [];
-  const agents = [];
-  for (const row of rows3) {
-    if (!isRecord(row)) continue;
-    const name = row["name"];
-    if (typeof name !== "string" || name === "") continue;
-    const tier = row["model_tier"];
-    agents.push({ name, model_tier: isModelTierId(tier) ? tier : null });
-  }
-  return agents;
-}
-function agentModelTier(root, name) {
-  const match = loadAgents(root).find((agent) => agent.name === name && agent.model_tier !== null);
-  return (match == null ? void 0 : match.model_tier) ?? DEFAULT_AGENT_TIER;
-}
-
 // src/hooks/announce-agent-return.ts
 function run7(env, ctx) {
   const bypassed = bypassActive(env.cwd, ctx.io.env, ctx.spawn);
@@ -3492,8 +3548,8 @@ function run7(env, ctx) {
 function responseStatus(raw) {
   const payload = isRecord(raw) ? raw : {};
   const response = payload["tool_response"];
-  const flag = isRecord(response) ? response["is_error"] : null;
-  if (alternative(flag, payload["is_error"]) === true) return "FAILED";
+  const flag2 = isRecord(response) ? response["is_error"] : null;
+  if (alternative(flag2, payload["is_error"]) === true) return "FAILED";
   if (isRecord(response)) {
     const status = response["status"];
     return typeof status === "string" ? allowlisted(status) : "OK";
@@ -4488,7 +4544,7 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
     io2.err("engineos: not a git repository \u2014 bypass has no effect here\n");
     return EXIT_FAILURE2;
   }
-  const flag = bypassFlagPath(io2.env);
+  const flag2 = bypassFlagPath(io2.env);
   switch (action) {
     case "on":
       try {
@@ -4510,15 +4566,15 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
       }
       if (io2.env["ENGINEOS_BYPASS"] === "1") {
         io2.err("engineos: repo marker cleared, but ENGINEOS_BYPASS=1 still bypasses everything \u2014 unset it to restore\n");
-      } else if ((0, import_node_fs24.existsSync)(flag)) {
-        io2.err(`engineos: repo marker cleared, but ${flag} still bypasses everything \u2014 delete it to restore
+      } else if ((0, import_node_fs23.existsSync)(flag2)) {
+        io2.err(`engineos: repo marker cleared, but ${flag2} still bypasses everything \u2014 delete it to restore
 `);
       } else {
         io2.out("engineos: active \u2014 routing, agent dispatch, and Stop gates restored\n");
       }
       return EXIT_OK3;
     case "status":
-      io2.out(`${statusLine(marker, flag, io2.env)}
+      io2.out(`${statusLine(marker, flag2, io2.env)}
 `);
       return EXIT_OK3;
     default:
@@ -4527,10 +4583,10 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
       return EXIT_USAGE2;
   }
 }
-function statusLine(marker, flag, env) {
+function statusLine(marker, flag2, env) {
   if (env["ENGINEOS_BYPASS"] === "1") return "bypassed (ENGINEOS_BYPASS=1)";
-  if ((0, import_node_fs24.existsSync)(flag)) return `bypassed (${flag})`;
-  return (0, import_node_fs24.existsSync)(marker) ? "bypassed (repo marker)" : "active";
+  if ((0, import_node_fs23.existsSync)(flag2)) return `bypassed (${flag2})`;
+  return (0, import_node_fs23.existsSync)(marker) ? "bypassed (repo marker)" : "active";
 }
 function reason(e) {
   return e instanceof Error ? e.message : String(e);
@@ -4697,30 +4753,8 @@ function readOrEmpty(path) {
 }
 
 // src/gen/agent-registry.ts
-var import_node_fs26 = require("node:fs");
-var import_node_path18 = require("node:path");
-
-// src/registry/capabilities.ts
-var reader2 = strictReader("capabilities.json");
-function loadCapabilities(root) {
-  const document = reader2.requireRecord(loadRegistry(root, "capabilities.json"), "");
-  return {
-    version: reader2.requireString(document["version"], ".version"),
-    model_tiers: reader2.requireStrings(document["model_tiers"], ".model_tiers"),
-    // Every field of a row is load-bearing: a capability without its agent or
-    // its tier cannot answer the question the registry exists to answer, so the
-    // loader refuses the row rather than defaulting it (as models.ts does).
-    capabilities: reader2.requireRows(document["capabilities"], ".capabilities").map((row, i) => ({
-      id: reader2.requireString(row["id"], `.capabilities[${i}].id`),
-      title: reader2.requireString(row["title"], `.capabilities[${i}].title`),
-      agent: reader2.requireString(row["agent"], `.capabilities[${i}].agent`),
-      model_tier: reader2.requireString(row["model_tier"], `.capabilities[${i}].model_tier`),
-      risk_floor: reader2.requireString(row["risk_floor"], `.capabilities[${i}].risk_floor`)
-    }))
-  };
-}
-
-// src/gen/agent-registry.ts
+var import_node_fs25 = require("node:fs");
+var import_node_path19 = require("node:path");
 var EXIT_OK5 = 0;
 var EXIT_FAILURE4 = 1;
 var DOCUMENT_DESCRIPTION = "Generated from agents/*.md frontmatter by scripts/gen-agent-registry.sh \u2014 do not hand-edit. capability_ids is a back-reference from registries/capabilities.json.";
@@ -7801,7 +7835,12 @@ function byteOrder3(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 function checkC14(ctx) {
-  return [jsonValidity(ctx), ...routingCoherence(ctx), ...decisionRuleCoherence(ctx)];
+  return [
+    jsonValidity(ctx),
+    ...routingCoherence(ctx),
+    ...decisionRuleCoherence(ctx),
+    ...capabilityCoherence(ctx)
+  ];
 }
 function jsonValidity(ctx) {
   const broken = [];
@@ -7870,8 +7909,82 @@ function decisionRuleCoherence(ctx) {
     result("C14", "decision rule ids are unique", duplicateIds(rules)),
     result("C14", "every decision rule requires or prefers something", emptyOutcomes(rules)),
     result("C14", "every decision rule signal is a valid regex", invalidSignals(rules)),
-    result("C14", "verification policy agrees across registry, verification rule and gate", verificationDrift(ctx, rules))
+    result("C14", "verification policy agrees across registry, verification rule and gate", verificationDrift(ctx, rules)),
+    result("C14", "every decision rule source names a file that exists", missingSources(ctx, rules))
   ];
+}
+var SOURCE_TOKEN = /(?<![A-Za-z0-9_/-])(?:(?:rules|docs|commands|skills|agents|templates|registries|patterns)\/[A-Za-z0-9._\/-]+|(?:CLAUDE|AGENTS|README)\.md\b)/g;
+function missingSources(ctx, rules) {
+  const missing = [];
+  rules.forEach((rule, index) => {
+    const declared4 = rule["source"];
+    if (typeof declared4 !== "string") return;
+    for (const token of sortedUnique2(sourceTokens(declared4))) {
+      if (sourceResolves(ctx, token)) continue;
+      missing.push(finding("C14", "source-file-missing", `${ruleName(rule, index)}:${token}`));
+    }
+  });
+  return missing;
+}
+function sourceTokens(source) {
+  return (source.match(SOURCE_TOKEN) ?? []).map((token) => token.replace(/[./-]+$/, "")).filter((token) => token !== "");
+}
+function sourceResolves(ctx, token) {
+  if (ctx.exists(token)) return true;
+  return !token.endsWith(".md") && ctx.exists(`${token}/SKILL.md`);
+}
+function capabilityCoherence(ctx) {
+  if (!ctx.exists(CAPABILITIES) || !ctx.exists(AGENTS2)) return [];
+  const capabilities = capabilityRows(ctx);
+  const agents = agentCapabilityRows(ctx);
+  if (capabilities === null || agents === null) return [];
+  const declaredIds = new Set(capabilities.map((row) => row.id));
+  const agentNames = new Set(agents.map((row) => row.name));
+  const dangling2 = [];
+  for (const agent of agents) {
+    for (const id of sortedUnique2(agent.capabilityIds)) {
+      if (declaredIds.has(id)) continue;
+      dangling2.push(finding("C14", "dangling-capability-id", `${agent.name}:${id}`));
+    }
+  }
+  const unknownAgents = [];
+  for (const capability of capabilities) {
+    if (capability.agent === null || agentNames.has(capability.agent)) continue;
+    unknownAgents.push(finding("C14", "unknown-capability-agent", `${capability.id}:${capability.agent}`));
+  }
+  return [
+    result("C14", "agent capability_ids resolve to capabilities.json", dangling2),
+    result("C14", "capability agents exist in agents.json", unknownAgents)
+  ];
+}
+function capabilityRows(ctx) {
+  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, CAPABILITIES)));
+  if (document === null) return null;
+  const rows3 = isRecord(document) ? document["capabilities"] : void 0;
+  if (!Array.isArray(rows3)) return [];
+  const bindings = [];
+  for (const row of rows3) {
+    if (!isRecord(row)) continue;
+    const id = row["id"];
+    if (typeof id !== "string" || id === "") continue;
+    const agent = row["agent"];
+    bindings.push({ id, agent: typeof agent === "string" && agent !== "" ? agent : null });
+  }
+  return bindings;
+}
+function agentCapabilityRows(ctx) {
+  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, AGENTS2)));
+  if (document === null) return null;
+  const rows3 = isRecord(document) ? document["agents"] : void 0;
+  if (!Array.isArray(rows3)) return [];
+  const agents = [];
+  for (const row of rows3) {
+    if (!isRecord(row)) continue;
+    const name = row["name"];
+    if (typeof name !== "string" || name === "") continue;
+    agents.push({ name, capabilityIds: stringArray(row["capability_ids"]) });
+  }
+  return agents;
 }
 function duplicateIds(rules) {
   const seen = /* @__PURE__ */ new Set();
@@ -7958,7 +8071,10 @@ var C14_FINDINGS = [
   "verification-source-drift",
   "verification-require-drift",
   "verification-rule-prose-missing",
-  "verification-gate-prose-missing"
+  "verification-gate-prose-missing",
+  "source-file-missing",
+  "dangling-capability-id",
+  "unknown-capability-agent"
 ];
 var C15_FINDINGS = [
   "missing",
@@ -8531,9 +8647,9 @@ function checkC22c(ctx) {
   if (fileMatches(ctx, SCAFFOLDER, /(reapIfStale|reapFilesBelow)\(.*, *[0-9]+, *now\)/)) {
     findings.push(finding("C22c", "hardcoded-retention-literal", SCAFFOLDER));
   }
-  for (const reader3 of ["skills/retro/SKILL.md", "scripts/usage-report.sh"]) {
-    if (!fileHas(ctx, reader3, TELEMETRY_SOURCE)) {
-      findings.push(finding("C22c", "lost-the-telemetry-source", reader3));
+  for (const reader5 of ["skills/retro/SKILL.md", "scripts/usage-report.sh"]) {
+    if (!fileHas(ctx, reader5, TELEMETRY_SOURCE)) {
+      findings.push(finding("C22c", "lost-the-telemetry-source", reader5));
     }
   }
   return [result("C22c", C22C_TITLE, findings)];
@@ -9888,13 +10004,13 @@ function runValidate2(argv2, io2, checks = CHECKS) {
 `);
     return EXIT_USAGE4;
   }
-  const byId2 = new Map(checks.map((check) => [check.id, check]));
+  const byId = new Map(checks.map((check) => [check.id, check]));
   const context2 = makeContext(resolveRoot(io2.env), io2);
   io2.out("== EngineOS integrity ==\n");
   let passed = 0;
   let failed = 0;
   for (const id of selected) {
-    const check = byId2.get(id);
+    const check = byId.get(id);
     if (check === void 0) continue;
     for (const checkResult of runCheck(check, context2, io2)) {
       io2.out(`${render2(checkResult)}

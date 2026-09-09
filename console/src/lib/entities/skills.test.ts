@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
+import { PathEscapesRootError } from '../contained-path.js';
+import { parseMarkdownWithFrontmatter } from './frontmatter.js';
 import { detectBaseConflicts, hashSource, parseSkills, writeSkills, SkillWriteError } from './skills.js';
 import type { SkillEntity } from './types.js';
 
@@ -107,6 +109,73 @@ test('an unchanged file lets the edit through and preserves every untouched line
     assert.match(changes[0]!.after, /description: my edit/);
     assert.match(changes[0]!.after, /name: demo/);
     assert.match(changes[0]!.after, /\nbody\n$/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Descriptions a plain frontmatter line cannot carry. `frontmatter.ts` reads
+// some of them back correctly by accident, so the reader is not the check being
+// made here: the block is YAML by declaration, and publishing a line a YAML
+// parser rejects hands every other consumer of the file a broken skill.
+const YAML_HOSTILE_DESCRIPTIONS: Array<[string, string]> = [
+  ['a mapping separator', 'Use when: the operator asks for it'],
+  ['an inline comment marker', 'Use for review #not for publishing'],
+  ['a leading comment marker', '#review, then publish'],
+  ['a leading sequence marker', '- review, then publish'],
+];
+
+function publishOne(root: string, description: string): string {
+  const [skill] = parseSkills(root);
+  assert.ok(skill);
+  const changes = writeSkills(root, [{ ...skill, description }]);
+  assert.equal(changes.length, 1);
+  return changes[0]!.after;
+}
+
+function frontmatterLine(after: string, key: string): string | undefined {
+  return after.split('\n').find((line) => line.startsWith(`${key}:`));
+}
+
+for (const [label, description] of YAML_HOSTILE_DESCRIPTIONS) {
+  test(`a description carrying ${label} is published quoted and reads back intact`, () => {
+    const root = fixtureTree({ demo: SKILL('first') });
+    try {
+      const after = publishOne(root, description);
+      assert.equal(frontmatterLine(after, 'description'), `description: ${JSON.stringify(description)}`);
+      assert.equal(parseMarkdownWithFrontmatter(after).data.description, description);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('a description needing no quoting is still written bare, so diffs stay minimal', () => {
+  const root = fixtureTree({ demo: SKILL('first') });
+  try {
+    const after = publishOne(root, 'Review the changes since a fixed point');
+    assert.equal(frontmatterLine(after, 'description'), 'description: Review the changes since a fixed point');
+    assert.equal(
+      parseMarkdownWithFrontmatter(after).data.description,
+      'Review the changes since a fixed point',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a sourcePath pointing out of the base is refused before any file is read', () => {
+  const root = fixtureTree({ demo: SKILL('first') });
+  try {
+    const [skill] = parseSkills(root);
+    assert.ok(skill);
+    const escaping: SkillEntity = {
+      ...skill,
+      sourcePaths: ['../outside/SKILL.md'],
+      description: 'my edit',
+    };
+
+    assert.throws(() => writeSkills(root, [escaping]), PathEscapesRootError);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

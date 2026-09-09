@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { KernelError } from '../lib/json';
 import { loadIntents } from './intents';
 import { resolveRoot } from './paths';
 
@@ -7,6 +11,7 @@ const root = resolveRoot(process.env, __dirname);
 
 test('loads every shipped intent with its signals', () => {
   const r = loadIntents(root);
+  assert.notEqual(r.version, '');
   assert.ok(r.intents.length > 0);
   for (const intent of r.intents) {
     assert.notEqual(intent.id, '', 'every row carries an id');
@@ -65,3 +70,85 @@ test('an absent suppression field defaults, and a non-true value never reads as 
     assert.ok(Array.isArray(row.suppressed_by), `intent ${row.id}`);
   }
 });
+
+// The audit's finding: an empty or malformed intents.json used to load as zero
+// intents, so every intent-driven answer — matched intents, rules to load, risk
+// floor, agents — came back empty with exit 0 and nothing said why.
+test('an empty intents registry is refused, never answered with no intents', () => {
+  assert.match(refusal(rootWith({})), /^registries\/intents\.json: /);
+});
+
+test('an intents registry that is not an object is refused', () => {
+  assert.match(refusal(rootWith([])), /registries\/intents\.json: the document must be an object/);
+});
+
+test('an empty intent list is refused: it matches nothing', () => {
+  assert.match(refusal(rootWith({ version: '1.0.0', intents: [] })), /\.intents must not be empty/);
+});
+
+test('a row without an id is refused, never given the empty id', () => {
+  const dir = rootWith({ version: '1.0.0', intents: [{ title: 'Backend', signals: ['NestJS'] }] });
+  assert.match(refusal(dir), /\.intents\[0\]\.id must be a string/);
+});
+
+test('a row with no signal is refused: it can never match', () => {
+  const dir = rootWith({ version: '1.0.0', intents: [{ id: 'backend', title: 'Backend', signals: [] }] });
+  assert.match(refusal(dir), /\.intents\[0\]\.signals must not be empty/);
+});
+
+// A floor outside the vocabulary used to read as "no floor", which is the one
+// answer a risk floor must never silently become.
+test('a risk floor outside the vocabulary is refused, not read as absent', () => {
+  const dir = rootWith({ version: '1.0.0', intents: [row({ risk_floor: 'urgent' })] });
+  assert.match(refusal(dir), /\.intents\[0\]\.risk_floor must be low, medium or high/);
+});
+
+test('a non-boolean suppression flag is refused, not coerced to false', () => {
+  assert.match(
+    refusal(rootWith({ version: '1.0.0', intents: [row({ suppressible: 'yes' })] })),
+    /\.intents\[0\]\.suppressible must be a boolean/,
+  );
+  assert.match(
+    refusal(rootWith({ version: '1.0.0', intents: [row({ requires_dispatch_plan: 1 })] })),
+    /\.intents\[0\]\.requires_dispatch_plan must be a boolean/,
+  );
+});
+
+test('a missing version and a non-array intents key are refused', () => {
+  assert.match(refusal(rootWith({ intents: [row()] })), /\.version must be a string/);
+  assert.match(refusal(rootWith({ version: '1.0.0', intents: {} })), /\.intents must be an array of objects/);
+});
+
+// Absent and null stay the same answer, so a minimal row still loads.
+test('a minimal row loads with every optional field defaulted', () => {
+  const loaded = loadIntents(rootWith({ version: '1.0.0', intents: [row()] })).intents[0];
+  assert.equal(loaded?.risk_floor, null);
+  assert.equal(loaded?.domain, null);
+  assert.equal(loaded?.model_tier, null);
+  assert.equal(loaded?.note, null);
+  assert.equal(loaded?.suppressible, false);
+  assert.equal(loaded?.requires_dispatch_plan, false);
+  assert.deepEqual(loaded?.suppressed_by, []);
+  assert.deepEqual(loaded?.rules, []);
+});
+
+function row(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return { id: 'backend', title: 'Backend work', signals: ['NestJS'], ...over };
+}
+
+function rootWith(intents: unknown): string {
+  const dir = mkdtempSync(join(tmpdir(), 'eos-'));
+  mkdirSync(join(dir, 'registries'));
+  writeFileSync(join(dir, 'registries', 'intents.json'), JSON.stringify(intents));
+  return dir;
+}
+
+function refusal(dir: string): string {
+  try {
+    loadIntents(dir);
+  } catch (e) {
+    if (e instanceof KernelError) return e.message;
+    throw e;
+  }
+  throw new Error('expected a KernelError, the loader accepted the registry');
+}
