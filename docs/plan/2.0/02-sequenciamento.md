@@ -1,64 +1,64 @@
-# EngineOS 2.0 — Sequenciamento, ondas e marcos
+# EngineOS 2.0 — Sequencing, waves and milestones
 
-Companheiro de `01-decomposicao-epicos.md`. Usa os mesmos IDs `E0X-Tn`.
+Companion to `01-decomposicao-epicos.md`. Uses the same `E0X-Tn` IDs.
 
-## 1. Princípio de sequenciamento
+## 1. Sequencing principle
 
-Três regras decidem a ordem, nesta precedência:
+Three rules decide the order, in this precedence:
 
-1. **Contrato antes de consumidor.** Nada que consome um contrato começa antes de o
-   contrato estar aceito. Isso põe `E01-T10` (config_version), `E04-T8` (ProviderAdapter)
-   e `E10-T1` (registry de tools) muito cedo, apesar de seus épicos serem "posteriores".
-2. **Fronteira de segurança antes de capacidade.** Autorização, ACL e aprovação
-   (`E10-T3`, `E10-T6`, `E07-T6`, `E08-T10`) precedem a capacidade que elas protegem.
-   Uma capacidade liberada antes da sua fronteira não é adiantamento: é dívida com juros.
-3. **O resto é paralelizável** e segue `rules/parallelism.md`: tarefas independentes com
-   escopos de arquivo disjuntos vão para a mesma onda, respeitando
+1. **Contract before consumer.** Nothing that consumes a contract starts before the
+   contract is accepted. That puts `E01-T10` (config_version), `E04-T8` (ProviderAdapter)
+   and `E10-T1` (tool registry) very early, despite their epics being "later".
+2. **Security boundary before capability.** Authorization, ACL and approval
+   (`E10-T3`, `E10-T6`, `E07-T6`, `E08-T10`) precede the capability they protect.
+   A capability released before its boundary is not an advance: it is debt with interest.
+3. **The rest is parallelizable** and follows `rules/parallelism.md`: independent tasks
+   with disjoint file scopes go into the same wave, respecting
    `policy.json` `parallelism.wave_concurrency_cap`.
 
-## 2. Grafo de dependências (caminho crítico em destaque)
+## 2. Dependency graph (critical path highlighted)
 
 ```mermaid
 graph LR
-  subgraph F0["F0 — Base confiavel"]
+  subgraph F0["F0 — Reliable base"]
     T1[E01-T1 snapshot]:::crit
-    T3[E01-T3 perfis]:::crit
-    T4[E01-T4 capacidades]:::crit
+    T3[E01-T3 profiles]:::crit
+    T4[E01-T4 capabilities]:::crit
     T10[E01-T10 ADR config_version]:::crit
-    P1[E02-T1 empacotador]
-    P8[E02-T8 E2E artefato]
-    V1[E06-T1 camadas de eval]
+    P1[E02-T1 packager]
+    P8[E02-T8 artifact E2E]
+    V1[E06-T1 eval layers]
   end
-  subgraph F1["F1 — Controle explicito"]
+  subgraph F1["F1 — Explicit control"]
     R1[E10-T1 registry schema]:::crit
-    R3[E10-T3 authz servidor]:::crit
-    C8[E03-T8 precedencia]
-    C12[E03-T12 publicacao transacional]:::crit
+    R3[E10-T3 server authz]:::crit
+    C8[E03-T8 precedence]
+    C12[E03-T12 transactional publication]:::crit
     C14[E03-T14 rollback]
   end
-  subgraph F2["F2 — Execucao governada"]
-    N1[E04-T1 maquina de estados]:::crit
-    N2[E04-T2 pinning config]:::crit
-    N7[E04-T7 aprovacao]:::crit
+  subgraph F2["F2 — Governed execution"]
+    N1[E04-T1 state machine]:::crit
+    N2[E04-T2 config pinning]:::crit
+    N7[E04-T7 approval]:::crit
     N8[E04-T8 ProviderAdapter]
     O1[E05-T1 spans]
-    O3[E05-T3 uso e custo]
-    R4[E10-T4 recheck execucao]
-    C15[E03-T15 enabled respeitado]:::crit
+    O3[E05-T3 usage and cost]
+    R4[E10-T4 execution recheck]
+    C15[E03-T15 enabled respected]:::crit
   end
-  subgraph F3["F3 — Conhecimento avaliado"]
-    M5[E07-T5 TTL e revogacao]
-    M6[E07-T6 ACL projeto]
+  subgraph F3["F3 — Evaluated knowledge"]
+    M5[E07-T5 TTL and revocation]
+    M6[E07-T6 project ACL]
     G1[E08-T1 golden set]
-    G10[E08-T10 ACL negativa]
+    G10[E08-T10 negative ACL]
   end
-  subgraph F4["F4 — Escala recuperavel"]
-    Q2[E09-T2 persistencia]
-    Q5[E09-T5 idempotencia]:::crit
-    Q10[E09-T10 caos]
+  subgraph F4["F4 — Recoverable scale"]
+    Q2[E09-T2 persistence]
+    Q5[E09-T5 idempotency]:::crit
+    Q10[E09-T10 chaos]
   end
-  subgraph F5["F5 — Liberacao"]
-    L[Relatorio de prontidao]:::crit
+  subgraph F5["F5 — Release"]
+    L[Readiness report]:::crit
   end
 
   T1 --> T3 --> T4 --> T10
@@ -84,138 +84,140 @@ graph LR
   classDef crit fill:#7a2020,stroke:#d05050,color:#fff;
 ```
 
-**Caminho crítico:** `E01-T1 → E01-T3 → E01-T4 → E01-T10 → E04-T1 → E04-T2 → E04-T7 →
-E03-T15 → prontidão`. Todo atraso nessa cadeia empurra a liberação. As demais cadeias têm
-folga e podem absorver interrupção.
+**Critical path:** `E01-T1 → E01-T3 → E01-T4 → E01-T10 → E04-T1 → E04-T2 → E04-T7 →
+E03-T15 → readiness`. Every delay in that chain pushes the release out. The other chains
+have slack and can absorb an interruption.
 
-Um segundo caminho quase crítico atravessa segurança:
-`E01-T4 → E10-T1 → E10-T3 → E10-T4 → E10-T11`. Ele não pode ser comprimido em troca de
-velocidade — as tarefas nele são A0 e exigem decisão humana.
+A second, near-critical path crosses security:
+`E01-T4 → E10-T1 → E10-T3 → E10-T4 → E10-T11`. It cannot be compressed in exchange for
+speed — the tasks in it are A0 and require a human decision.
 
-## 3. Ondas de execução
+## 3. Execution waves
 
-Cada onda é um conjunto de tarefas com escopos de arquivo disjuntos, despachável em
-paralelo conforme `rules/parallelism.md`. A barreira entre ondas exige handoff no formato
-de `templates/handoff.md`.
+Each wave is a set of tasks with disjoint file scopes, dispatchable in parallel per
+`rules/parallelism.md`. The barrier between waves requires a handoff in the format of
+`templates/handoff.md`.
 
-### F0 — Base confiável
+### F0 — Reliable base
 
-| Onda | Tarefas | Escopos disjuntos | Barreira |
+| Wave | Tasks | Disjoint scopes | Barrier |
 |---|---|---|---|
-| F0.1 | E01-T1, E01-T2 | git/working tree, inventário | Snapshot canônico fixado e assinado |
-| F0.2 | E01-T3, E06-T1 | `docs/`, `evals/` | Perfis definidos |
-| F0.3 | E01-T4, E01-T8, E06-T3 | `docs/CAPABILITIES.md`, adapters, `evals/*.jsonl` | Matriz de capacidades aceita |
+| F0.1 | E01-T1, E01-T2 | git/working tree, inventory | Canonical snapshot fixed and signed |
+| F0.2 | E01-T3, E06-T1 | `docs/`, `evals/` | Profiles defined |
+| F0.3 | E01-T4, E01-T8, E06-T3 | `docs/CAPABILITIES.md`, adapters, `evals/*.jsonl` | Capability matrix accepted |
 | F0.4 | E01-T5, E01-T9, E01-T12, E02-T1, E02-T3 | PRD, ADRs, `scripts/package.sh`, `.gitattributes` | — |
-| F0.5 | E01-T10, E01-T11, E02-T2, E02-T4, E06-T2 | ADRs de contrato, allowlist, bootstrap, formato de resultado | **Contratos aceitos** — libera F1 e F2 |
-| F0.6 | E01-T6, E01-T7, E01-T13, E02-T5, E02-T6 | versão, compatibilidade, rastreabilidade, manifesto, varredura | — |
-| F0.7 | E02-T7, E02-T8, E02-T9, E02-T10, E06-T9 | CI de plataformas, E2E, sincronismo, regressão | **Condição de saída F0** |
+| F0.5 | E01-T10, E01-T11, E02-T2, E02-T4, E06-T2 | contract ADRs, allowlist, bootstrap, result format | **Contracts accepted** — releases F1 and F2 |
+| F0.6 | E01-T6, E01-T7, E01-T13, E02-T5, E02-T6 | version, compatibility, traceability, manifest, scan | — |
+| F0.7 | E02-T7, E02-T8, E02-T9, E02-T10, E06-T9 | platform CI, E2E, sync, regression | **F0 exit condition** |
 
-Condição de saída F0: o artefato instala e valida nos sistemas suportados, a partir dos
-bytes da release, sem ajuste manual não documentado.
+F0 exit condition: the artifact installs and validates on the supported systems, from the
+release bytes, with no undocumented manual adjustment.
 
-### F1 — Controle explícito
+### F1 — Explicit control
 
-| Onda | Tarefas | Barreira |
+| Wave | Tasks | Barrier |
 |---|---|---|
-| F1.1 | E10-T1, E10-T5, E03-T1, E03-T2 | Schema de tools aceito |
-| F1.2 | E10-T3, E03-T4, E03-T5, E03-T18 | **Autorização decidida no servidor** |
-| F1.3 | E03-T3, E03-T6, E03-T7, E10-T2 | Grafo de relações real |
-| F1.4 | E03-T8, E03-T9, E03-T11 | Precedência resolvida |
-| F1.5 | E03-T10, E03-T12, E03-T13 | Publicação transacional |
-| F1.6 | E03-T14, E03-T16, E10-T7 | **Condição de saída F1** |
+| F1.1 | E10-T1, E10-T5, E03-T1, E03-T2 | Tool schema accepted |
+| F1.2 | E10-T3, E03-T4, E03-T5, E03-T18 | **Authorization decided on the server** |
+| F1.3 | E03-T3, E03-T6, E03-T7, E10-T2 | Real relations graph |
+| F1.4 | E03-T8, E03-T9, E03-T11 | Precedence resolved |
+| F1.5 | E03-T10, E03-T12, E03-T13 | Transactional publication |
+| F1.6 | E03-T14, E03-T16, E10-T7 | **F1 exit condition** |
 
-Condição de saída F1: configuração inválida não publica; conflito de revisão não sobrescreve
-trabalho; rollback restaura versão íntegra; console local não aceita origem não autorizada.
-`E03-T15` (efeito comprovado de `enabled=false`) fica em F2 porque depende do runner.
+F1 exit condition: an invalid configuration does not publish; a revision conflict does not
+overwrite work; rollback restores an intact version; the local console does not accept an
+unauthorized origin. `E03-T15` (proven effect of `enabled=false`) stays in F2 because it
+depends on the runner.
 
-`E03-T17` (perfil hospedado) permanece fora de escopo até F5 e o perfil segue declarado
-não suportado.
+`E03-T17` (hosted profile) remains out of scope until F5 and the profile stays declared
+unsupported.
 
-### F2 — Execução governada
+### F2 — Governed execution
 
-| Onda | Tarefas | Barreira |
+| Wave | Tasks | Barrier |
 |---|---|---|
-| F2.1 | E04-T1, E04-T8, E05-T2 | Máquina de estados e contrato de provider |
-| F2.2 | E04-T2, E04-T9, E05-T1 | Pinning e primeiro adapter |
-| F2.3 | E04-T3, E04-T4, E04-T5, E05-T7 | Admission, breaker e prazo ligados |
-| F2.4 | E04-T6, E04-T10, E05-T3 | Orçamento e custo reais |
-| F2.5 | E04-T7, E10-T4, E10-T6 | **Aprovação e reverificação** |
-| F2.6 | E04-T11, E05-T4, E05-T6, E05-T9, E10-T9 | Envelope, exportação, redação |
-| F2.7 | E03-T15, E04-T12, E10-T8, E10-T11, E06-T7 | Suítes adversariais |
-| F2.8 | E05-T5, E05-T8, E05-T10, E05-T11 | **Condição de saída F2** |
+| F2.1 | E04-T1, E04-T8, E05-T2 | State machine and provider contract |
+| F2.2 | E04-T2, E04-T9, E05-T1 | Pinning and first adapter |
+| F2.3 | E04-T3, E04-T4, E04-T5, E05-T7 | Admission, breaker and deadline wired |
+| F2.4 | E04-T6, E04-T10, E05-T3 | Real budget and cost |
+| F2.5 | E04-T7, E10-T4, E10-T6 | **Approval and re-verification** |
+| F2.6 | E04-T11, E05-T4, E05-T6, E05-T9, E10-T9 | Envelope, export, redaction |
+| F2.7 | E03-T15, E04-T12, E10-T8, E10-T11, E06-T7 | Adversarial suites |
+| F2.8 | E05-T5, E05-T8, E05-T10, E05-T11 | **F2 exit condition** |
 
-Condição de saída F2: orçamento, aprovação, falha e cancelamento aplicados de fato — cada um
-demonstrado por um teste que falha quando o controle é removido.
+F2 exit condition: budget, approval, failure and cancellation actually applied — each one
+demonstrated by a test that fails when the control is removed.
 
-### F3 — Conhecimento avaliado
+### F3 — Evaluated knowledge
 
-| Onda | Tarefas | Barreira |
+| Wave | Tasks | Barrier |
 |---|---|---|
-| F3.1 | E07-T1, E07-T2, E08-T1 | Chave de agrupamento e golden set |
-| F3.2 | E07-T3, E07-T4, E08-T2, E08-T4 | Promoção e ingestão |
-| F3.3 | E07-T5, E07-T6, E08-T3, E08-T10 | **ACL e revogação** |
-| F3.4 | E07-T7, E07-T8, E08-T5, E08-T6 | Recuperação medida |
-| F3.5 | E08-T7, E08-T8, E08-T9, E06-T5 | **Condição de saída F3** |
+| F3.1 | E07-T1, E07-T2, E08-T1 | Grouping key and golden set |
+| F3.2 | E07-T3, E07-T4, E08-T2, E08-T4 | Promotion and ingestion |
+| F3.3 | E07-T5, E07-T6, E08-T3, E08-T10 | **ACL and revocation** |
+| F3.4 | E07-T7, E07-T8, E08-T5, E08-T6 | Retrieval measured |
+| F3.5 | E08-T7, E08-T8, E08-T9, E06-T5 | **F3 exit condition** |
 
-Condição de saída F3: proveniência, autorização, atualização e regressão verificadas.
+F3 exit condition: provenance, authorization, update and regression verified.
 
-### F4 — Escala recuperável
+### F4 — Recoverable scale
 
-Só executa se o perfil distribuído entrar na release. Caso contrário, F4 é pulado e o perfil
-distribuído é declarado não suportado — não "planejado para breve".
+Executes only if the distributed profile goes into the release. Otherwise, F4 is skipped
+and the distributed profile is declared unsupported — not "planned for soon".
 
-| Onda | Tarefas | Barreira |
+| Wave | Tasks | Barrier |
 |---|---|---|
-| F4.1 | E09-T1, E09-T2 | ADR de banco/fila e persistência |
-| F4.2 | E09-T3, E09-T4, E09-T6 | Lease, retries e outbox |
-| F4.3 | E09-T5, E09-T7, E09-T8 | **Idempotência por efeito** |
-| F4.4 | E09-T9, E09-T10, E09-T11 | **Condição de saída F4** |
+| F4.1 | E09-T1, E09-T2 | Database/queue ADR and persistence |
+| F4.2 | E09-T3, E09-T4, E09-T6 | Lease, retries and outbox |
+| F4.3 | E09-T5, E09-T7, E09-T8 | **Idempotency per effect** |
+| F4.4 | E09-T9, E09-T10, E09-T11 | **F4 exit condition** |
 
-Condição de saída F4: recuperação, idempotência, carga e isolamento demonstrados em staging.
+F4 exit condition: recovery, idempotency, load and isolation demonstrated in staging.
 
-### F5 — Liberação e operação
+### F5 — Release and operation
 
-| Onda | Tarefas | Barreira |
+| Wave | Tasks | Barrier |
 |---|---|---|
-| F5.1 | E06-T8, E10-T10, E05-T8 (revisão) | Baseline vs piloto, rotação ensaiada |
-| F5.2 | Validação integrada de release (§5) | Roteiro completo executado |
-| F5.3 | Relatório de prontidão | **Liberação** |
+| F5.1 | E06-T8, E10-T10, E05-T8 (review) | Baseline vs pilot, rotation drilled |
+| F5.2 | Integrated release validation (§5) | Full walkthrough executed |
+| F5.3 | Readiness report | **Release** |
 
-## 4. Marcos
+## 4. Milestones
 
-| Marco | Conteúdo | Critério de passagem | Consequência de não passar |
+| Milestone | Content | Passing criterion | Consequence of not passing |
 |---|---|---|---|
-| **A — Release candidata do Core** | F0 + F1 | Artefato reproduzível; console completo; desabilitação com efeito comprovado no console; integrações anunciadas comprovadas | Não distribui. Nenhum consumidor externo instala |
-| **B — Runner e conhecimento homologados** | F2 + F3 | Controles aplicados na execução; observabilidade com dados reais; regressão bloqueante; ACL de memória e RAG comprovadas | Runner permanece desabilitado; capacidades de conhecimento não são anunciadas |
-| **C — Liberação dos perfis declarados** | F4 quando houver perfil distribuído, seguido de F5 | Todos os gates operacionais do perfil atendidos; relatório de prontidão assinado | Libera apenas o perfil que passou; o outro fica explicitamente não suportado |
+| **A — Core release candidate** | F0 + F1 | Reproducible artifact; complete console; disablement with proven effect in the console; announced integrations proven | Does not distribute. No external consumer installs |
+| **B — Runner and knowledge approved in staging** | F2 + F3 | Controls applied at execution; observability with real data; blocking regression; memory and RAG ACL proven | The runner stays disabled; knowledge capabilities are not announced |
+| **C — Release of the declared profiles** | F4 when there is a distributed profile, followed by F5 | All the profile's operational gates met; readiness report signed | Releases only the profile that passed; the other stays explicitly unsupported |
 
-Nenhum marco é atingido por conclusão de tarefas. Cada um exige a evidência descrita em
+No milestone is reached by task completion. Each one requires the evidence described in
 `03-templates-evidencia.md`.
 
-## 5. Validação integrada de release
+## 5. Integrated release validation
 
-Executar em homologação, com configuração equivalente ao perfil de produção e dados
-autorizados. O roteiro é uma sequência única — parar no meio não conta como parcial.
+Execute in staging, with a configuration equivalent to the production profile and
+authorized data. The walkthrough is a single sequence — stopping halfway does not count as
+partial.
 
-1. Cadastrar uma skill, um modelo e uma tool no console.
-2. Publicar a configuração e conferir o `config_version` resultante.
-3. Executar uma tarefa; conferir pós-condições e trace completo.
-4. Aplicar alteração concorrente durante a publicação e confirmar que nada foi sobrescrito.
-5. Revogar uma permissão e confirmar que a execução retomada a respeita.
-6. Interromper uma dependência e confirmar degradação prevista, não falha silenciosa.
-7. Recuperar a partir de um checkpoint, preservando aprovação e configuração.
-8. Repetir uma operação com efeito externo e confirmar idempotência.
-9. Plantar uma regressão de retrieval e confirmar que ela é detectada.
-10. Reverter a configuração para a versão anterior.
-11. Restaurar backup e confirmar preservação de dados e compatibilidade com a versão anterior suportada.
+1. Register a skill, a model and a tool in the console.
+2. Publish the configuration and check the resulting `config_version`.
+3. Execute a task; check postconditions and the full trace.
+4. Apply a concurrent change during the publication and confirm that nothing was overwritten.
+5. Revoke a permission and confirm that the resumed execution respects it.
+6. Interrupt a dependency and confirm the foreseen degradation, not a silent failure.
+7. Recover from a checkpoint, preserving approval and configuration.
+8. Repeat an operation with an external effect and confirm idempotency.
+9. Plant a retrieval regression and confirm that it is detected.
+10. Revert the configuration to the previous version.
+11. Restore a backup and confirm data preservation and compatibility with the previous supported version.
 
-## 6. Prazo
+## 6. Timeline
 
-Não estimado. Este documento não assume número de desenvolvedores nem fixa data.
-A estimativa deve ser feita por onda, depois da decomposição de F0.1 em tarefas com
-responsável nominal, e revisada ao fim de cada fase com dados reais de vazão.
+Not estimated. This document assumes no number of developers and fixes no date.
+The estimate has to be made per wave, after the decomposition of F0.1 into tasks with a
+named owner, and revised at the end of each phase with real throughput data.
 
-O que já é possível afirmar sem estimar: **F0 e F1 não são paralelizáveis entre si** no
-caminho crítico, porque F1 consome contratos aceitos em F0.5. Comprimir F0 para "ganhar
-tempo" desloca o trabalho para F1 com contrato instável, e o retrabalho aparece em F2 —
-tarde, caro e disfarçado de bug de runtime.
+What can already be stated without estimating: **F0 and F1 are not parallelizable with each
+other** on the critical path, because F1 consumes contracts accepted in F0.5. Compressing
+F0 to "gain time" moves the work into F1 with an unstable contract, and the rework shows up
+in F2 — late, expensive and disguised as a runtime bug.

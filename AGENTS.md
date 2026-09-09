@@ -53,10 +53,8 @@ Rules for routing:
   security, test, and the mobile store-release split) are mirrored
   deterministically by the `PreToolUse` hook `hooks/route-before-change.sh`.
   The canonical path→domain map is `registries/routing.json` (`match`/
-  `excluded` globs), resolved by `scripts/kernel.sh route-path`;
-  `hooks/routing-map.sh` is a compatibility shim kept only for its function
-  contracts — it carries no routing data of its own. This table is the human
-  mirror of the **registry**. **They no longer drift silently:**
+  `excluded` globs), resolved by `scripts/kernel.sh route-path`. This table is
+  the human mirror of the **registry**. **They no longer drift silently:**
   `scripts/validate-engineos.sh` fails CI if the table and the registry
   disagree. All other rows are request-driven and have no hook equivalent.
 - **Multi-match applies to this table only.** The hook emits exactly ONE route —
@@ -64,14 +62,10 @@ Rules for routing:
   ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
-- **The hooks need `jq`.** Without it, `route-before-change.sh`,
-  `mark-unrecorded.sh`, `record-verify.sh`, `task-scale-advisor.sh`,
-  `gate-advisor.sh`, and `route-advisor.sh` exit 0
-  silently — routing guidance and the change-record Stop gate simply do not fire.
-  If you are not seeing `[router] …` context on edits, check `jq` before assuming
-  the routing is wrong. Those six are the only ones that go silent:
-  `stop-verify.sh` and `post-edit-check.sh` degrade to grep/sed parsing and keep
-  running, and `ensure-project-layout.sh` keeps running via a grep fallback.
+- **Hooks do not run under Codex.** The `[router] …` context, the edit-time
+  route and both Stop gates are model discipline here — see
+  `templates/adapters/codex.md`. In Claude Code they need node >= 18 and are
+  registered in `hooks/hooks.json`.
 
 - **Bypass short-circuits everything below.** When `/engineos:bypass` is on, the
   `UserPromptSubmit` hook injects `[engineos] BYPASS ACTIVE` on every turn. On seeing
@@ -96,11 +90,10 @@ Rules for routing:
 | DBA / data layer (`*.sql`, migrations, schema, query perf, indexing) | `rules/architecture.md` + `rules/data.md`; agent `dba-coordinator` (writes migrations/queries, holds NO database MCP). Live schema/plan introspection is the read-only `postgres-specialist` / `oracle-specialist` leaves |
 | DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud) | `rules/architecture.md` + `rules/observability.md`; agent `devops-coordinator` (writes config, holds NO cloud MCP). Live cluster/cloud/CI introspection is the read-only `kubernetes-specialist` / `gcp-specialist` / `cicd-specialist` leaves |
 | Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials) | `rules/security.md`; dispatch `security-reviewer` |
-| System comprehension / onboarding docs ("document the system", "architecture docs", "docs for new devs", "understand the codebase") | `/analisy-architecture` + `rules/memory.md`; agent `architecture-analyst` (analyst) runs `patterns/1-Analisys` |
+| System comprehension / onboarding docs ("document the system", "architecture docs", "docs for new devs", "understand the codebase") | `/analyze-architecture` + `rules/memory.md`; agent `architecture-analyst` (analyst) runs `patterns/1-Analysis.md` |
 | Fill doc gaps by interview ("interview me about the system", "ask me about how X works", resolve open hypotheses) | `/talk-about-the-system` + `rules/memory.md`; `architecture-analyst` in INTERVIEW mode (`patterns/2-Interview-brainstorm.md`), interactive, folds answers back into `docs/` |
 | End-to-end API QA ("test all endpoints", "run the API test suite", "QA the system", Postman/Newman run) | agent `qa-tester` (qa) — non-interactive, skips MFA/email steps |
 | Multi-domain audit / system health check ("audit", "analyze the system", "what's broken across X") | `/engineos:audit <domain\|all>` — fans out to coordinators + MCP leaf specialists, consolidates into a status report |
-| Coordinated multi-domain change | `/engineos:implement <domain> <task>` — dispatches coordinators in implement mode (spec-gated) |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` + `rules/memory.md` — decision gets recorded, not just chatted |
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
@@ -113,7 +106,7 @@ Rules for routing:
 | Continuous improvement ("run a retro", "what should we improve", same correction recurring, monthly cadence) | skill `retro` — mines `.engineos/archived/`, `.engineos/skill-observations/log.md`, eval failures and integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR. Proposes only; a human merges |
 | Skill/rule friction observed mid-task ("log an observation", "watch for skill opportunities", "observation log", a loaded rule got violated, a correction reveals a missing rule, a skill section proves dead weight) | skill `task-observer` — appends to `.engineos/skill-observations/log.md`; capture only, `retro` consumes OPEN entries. Log at the moment of friction, don't wait for the retro |
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
-| Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs `scripts/kernel.sh route-escalate` and `risk` FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no agent is dispatched at all |
+| Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no agent is dispatched at all |
 | Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
 
 ## Output artifact — offer after every request
@@ -177,8 +170,9 @@ read it there, not here.
 ## Codebase Overview
 
 EngineOS is a prose constitution (`rules/`, `agents/`, `skills/`, `commands/`) projected
-into `registries/*.json`, executed by a deterministic TypeScript kernel and nine Claude
-Code hooks bundled into `dist/engineos.cjs`, and kept coherent by a 62-check validator.
+into `registries/*.json`, executed by a deterministic TypeScript kernel and the Claude
+Code hooks registered in `hooks/hooks.json`, bundled into `dist/engineos.cjs`, and kept
+coherent by a 68-check validator.
 
 **Stack**: TypeScript (esbuild to one committed CJS bundle, node >= 18), JSON registries,
 bash shims, Node built-in test runner; `console/` is a separate Next.js admin app.

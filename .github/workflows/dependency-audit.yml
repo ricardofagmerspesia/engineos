@@ -1,0 +1,48 @@
+# Blocking dependency audit on a fixed cadence.
+#
+# ci.yml runs `npm audit` on every pull request but lets it pass (a new upstream
+# advisory must not redden work that did not cause it, and the fix never lives in
+# that PR). Something still has to fail hard when an advisory lands, so this
+# workflow owns that job: weekly on Monday, and on demand.
+name: dependency-audit
+
+on:
+  schedule:
+    # Monday 07:00 UTC — a red run is waiting at the start of the week.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          cache: npm
+          # Both lockfiles are installed below, so both key the cache.
+          cache-dependency-path: |
+            package-lock.json
+            console/package-lock.json
+
+      - name: Install the root lockfile
+        run: npm ci
+
+      - name: Audit the root dependencies
+        run: npm audit --audit-level=high
+
+      # console/ carries its own lockfile and its own advisories; auditing only
+      # the root would leave the admin app's tree unwatched.
+      - name: Install the console lockfile
+        working-directory: console
+        run: npm ci
+
+      - name: Audit the console dependencies
+        working-directory: console
+        run: npm audit --audit-level=high

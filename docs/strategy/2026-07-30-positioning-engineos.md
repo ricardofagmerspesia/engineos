@@ -1,30 +1,30 @@
-# Positioning — autoridade percebida em torno do EngineOS
+# Positioning — perceived authority around EngineOS
 
-**Modo:** positioning · **Data:** 2026-07-30 · **Sujeito:** Ricardo Fagmer (Londrina/BR, 15+ anos JS/TS/Node/Nest, empregado, 20+ h/semana disponíveis)
-**Base de evidência congelada:** `docs/strategy/2026-07-30-grounding-brief.md`
+**Mode:** positioning · **Date:** 2026-07-30 · **Subject:** Ricardo Fagmer (Londrina/BR, 15+ years JS/TS/Node/Nest, employed, 20+ h/week available)
+**Frozen evidence base:** `docs/strategy/2026-07-30-grounding-brief.md`
 **Playbook:** `skills/strategy/references/04-positioning.md`
 
 ---
 
 ## Headline
 
-O perfil público não deixa de mostrar o trabalho forte — ele **afirma ativamente que o trabalho
-representativo dele é CRUD Java de 2013 a 2018**. Os seis repositórios *pinados* são uma escolha
-editorial deliberada, e o push público mais recente é de **2025-10-23**, nove meses atrás, enquanto
-83 commits em 7 semanas aconteceram num repositório privado. O caminho de menor esforço para maior
-ganho de percepção não é abrir o EngineOS: é publicar **um** artefato de enforcement extraído do que
-já existe em disco e repontar o perfil para ele — sem depender de alcance, porque o mecanismo é
-profundidade, não audiência.
+The public profile does not merely fail to show the strong work — it **actively asserts that his
+representative work is Java CRUD from 2013 to 2018**. The six *pinned* repositories are a deliberate
+editorial choice, and the most recent public push is from **2025-10-23**, nine months ago, while
+83 commits in 7 weeks happened in a private repository. The path of least effort to the largest gain
+in perception is not opening EngineOS: it is publishing **one** enforcement artifact extracted from
+what already exists on disk and re-pointing the profile at it — without depending on reach, because
+the mechanism is depth, not audience.
 
 ---
 
 ## Grounding
 
-### O que foi verificado hoje (fontes primárias, fetched 2026-07-30)
+### What was verified today (primary sources, fetched 2026-07-30)
 
-**`https://api.github.com/users/ricardofagmer`** (JSON bruto, fetched 2026-07-30):
+**`https://api.github.com/users/ricardofagmer`** (raw JSON, fetched 2026-07-30):
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
 | `bio` | "🚀IT professional for over 15 years working as developer with Javascript, Typescript, Node, Nest and **Angular**." |
 | `followers` / `following` | **6** / 11 |
@@ -35,330 +35,330 @@ profundidade, não audiência.
 | `twitter_username` | `null` |
 | `created_at` | 2014-09-15 |
 
-**`https://api.github.com/users/ricardofagmer/repos?sort=pushed`** (fetched 2026-07-30) — os 14
-repositórios públicos, com `stargazers_count`:
+**`https://api.github.com/users/ricardofagmer/repos?sort=pushed`** (fetched 2026-07-30) — the 14
+public repositories, with `stargazers_count`:
 
-| Repo | Linguagem | Fork | `pushed_at` | Stars |
+| Repo | Language | Fork | `pushed_at` | Stars |
 |---|---|---|---|---|
-| nest-model | TypeScript | não | 2025-10-23 | 0 |
-| cuboid-challenge-node | TypeScript | não | 2025-10-23 | 0 |
-| graphQL | TypeScript | não | 2024-12-18 | 0 |
-| angular-16 | — | não | 2023-10-16 | 0 |
-| react-template | — | não | 2022-05-02 | 0 |
-| react-adminlte-master-classes | JavaScript | não | 2022-02-04 | 0 |
-| some-tests ("interview-tests") | TypeScript | não | 2022-01-20 | 0 |
-| base-factory | — | não | 2021-11-26 | 0 |
-| treinee | — | não | 2021-10-26 | 0 |
-| ecommerce | JavaScript | não | 2021-10-07 | 0 |
-| pec | Java | não | 2018-02-07 | 0 |
-| equipamento_maven | — | não | 2017-08-28 | 0 |
-| agro | — | não | 2016-05-20 | 0 |
-| DatabaseAutoCompleteLibrary | Java | **sim** | 2013-11-28 | 0 |
+| nest-model | TypeScript | no | 2025-10-23 | 0 |
+| cuboid-challenge-node | TypeScript | no | 2025-10-23 | 0 |
+| graphQL | TypeScript | no | 2024-12-18 | 0 |
+| angular-16 | — | no | 2023-10-16 | 0 |
+| react-template | — | no | 2022-05-02 | 0 |
+| react-adminlte-master-classes | JavaScript | no | 2022-02-04 | 0 |
+| some-tests ("interview-tests") | TypeScript | no | 2022-01-20 | 0 |
+| base-factory | — | no | 2021-11-26 | 0 |
+| treinee | — | no | 2021-10-26 | 0 |
+| ecommerce | JavaScript | no | 2021-10-07 | 0 |
+| pec | Java | no | 2018-02-07 | 0 |
+| equipamento_maven | — | no | 2017-08-28 | 0 |
+| agro | — | no | 2016-05-20 | 0 |
+| DatabaseAutoCompleteLibrary | Java | **yes** | 2013-11-28 | 0 |
 
-Dois fatos que a brief não continha e que mudam a leitura:
+Two facts the brief did not contain and that change the reading:
 
-1. **Todos os 14 repositórios têm 0 stars.** Em 12 anos de conta (desde 2014-09-15), zero validação
-   externa registrada em qualquer artefato próprio.
-2. **O push público mais recente é 2025-10-23** — nove meses de silêncio público, exatamente o
-   período em que a atividade real explodiu (primeiro commit do EngineOS 2026-06-11, 83 commits em
-   7 semanas — brief §2).
+1. **All 14 repositories have 0 stars.** In 12 years of the account (since 2014-09-15), zero external
+   validation recorded on any artifact of his own.
+2. **The most recent public push is 2025-10-23** — nine months of public silence, exactly the
+   period in which the real activity exploded (first EngineOS commit 2026-06-11, 83 commits in
+   7 weeks — brief §2).
 
-**Repositórios pinados** (`https://github.com/ricardofagmer`, fetched 2026-07-30), na ordem exibida:
-`DatabaseAutoCompleteLibrary` (fork Java, último push **2013-11-28**), `agro` (2016), `equipamento_maven`
-(2017), `pec` (Java, 2018), `cuboid-challenge-node` (desafio de entrevista), `ecommerce` (2021).
-Badges exibidos: Pair Extraordinaire ×3, Pull Shark ×3, YOLO, Quickdraw.
+**Pinned repositories** (`https://github.com/ricardofagmer`, fetched 2026-07-30), in displayed order:
+`DatabaseAutoCompleteLibrary` (Java fork, last push **2013-11-28**), `agro` (2016), `equipamento_maven`
+(2017), `pec` (Java, 2018), `cuboid-challenge-node` (interview challenge), `ecommerce` (2021).
+Badges displayed: Pair Extraordinaire ×3, Pull Shark ×3, YOLO, Quickdraw.
 
-**`https://www.freelancermap.com/profile/ricardo-fagmer`** (fetched 2026-07-30, **página atualizada
-em 2024-10-30**): headline "Senior Software Engineer | JavaScript | TypeScript | Node | Nest |
-Angular | Nx"; empregador listado **Scalio**; disponibilidade "**100% available**"; inglês fluente.
+**`https://www.freelancermap.com/profile/ricardo-fagmer`** (fetched 2026-07-30, **page updated
+2024-10-30**): headline "Senior Software Engineer | JavaScript | TypeScript | Node | Nest |
+Angular | Nx"; employer listed **Scalio**; availability "**100% available**"; fluent English.
 
-**LinkedIn `ricardo-fagmer`**: `https://www.linkedin.com/in/ricardo-fagmer/` redireciona 301 para
-`https://br.linkedin.com/in/ricardo-fagmer`, que responde **HTTP 999** (bloqueio de scraping).
-Nada foi verificável ali.
+**LinkedIn `ricardo-fagmer`**: `https://www.linkedin.com/in/ricardo-fagmer/` 301-redirects to
+`https://br.linkedin.com/in/ricardo-fagmer`, which answers **HTTP 999** (scraping block).
+Nothing was verifiable there.
 
-### UNKNOWN — declarado, não inventado
+### UNKNOWN — declared, not invented
 
-| # | Fato | Efeito na conclusão |
+| # | Fact | Effect on the conclusion |
 |---|---|---|
-| 1 | **Contagem de conexões/seguidores no LinkedIn, headline atual, atividade de posts** — HTTP 999, não fetchável | Se houver audiência engajada relevante, a prioridade de canal da Ação 3 está invertida. É o maior furo do plano. |
-| 2 | **Empregador atual** — três sinais públicos conflitantes: freelancermap diz Scalio (página de 2024-10-30); o contexto de sessão traz o domínio `spesia.com.br`; um snippet de busca (2026-07-30) mencionou "rindus". Nenhum verificável por fonte primária | Não uso o empregador em nenhuma recomendação. O ponto que *importa* é que o registro público está contraditório e velho. |
-| 3 | **Cláusulas de IP / moonlighting do emprego atual** (brief §6) | Pode bloquear qualquer publicação derivada. Não é orientação jurídica — verificar com o contrato. |
-| 4 | **Audiência fora do GitHub** (newsletter, YouTube, X) | `twitter_username` é `null`; nada mais encontrado. Assumo zero audiência própria em todo o plano. |
-| 5 | **Se o time de 2–10 pessoas do PRD é real na empresa** (brief §6) | Se for real, adoção interna é rota de autoridade mais rápida que escrita pública, e este plano vira segunda prioridade. |
-| 6 | **Tamanho/atividade de r/brdev** — busca em PT (2026-07-30) não retornou nada relevante | Descartado como canal por falta de verificação, não por juízo de valor. |
-| 7 | **Histórico de tráfego/stars ao longo do tempo** dos repos | Só o estado atual (0 stars em todos) é verificável. |
+| 1 | **LinkedIn connection/follower count, current headline, posting activity** — HTTP 999, not fetchable | If there is a relevant engaged audience, the channel priority of Action 3 is inverted. It is the biggest hole in the plan. |
+| 2 | **Current employer** — three conflicting public signals: freelancermap says Scalio (page from 2024-10-30); the session context brings the `spesia.com.br` domain; a search snippet (2026-07-30) mentioned "rindus". None verifiable by a primary source | I use the employer in no recommendation. The point that *matters* is that the public record is contradictory and old. |
+| 3 | **IP / moonlighting clauses of the current job** (brief §6) | Can block any derivative publication. This is not legal advice — check with the contract. |
+| 4 | **Audience outside GitHub** (newsletter, YouTube, X) | `twitter_username` is `null`; nothing else found. I assume zero audience of his own throughout the plan. |
+| 5 | **Whether the PRD's 2–10 person team is real at the company** (brief §6) | If it is real, internal adoption is a faster authority route than public writing, and this plan becomes second priority. |
+| 6 | **Size/activity of r/brdev** — a PT search (2026-07-30) returned nothing relevant | Dropped as a channel for lack of verification, not by value judgment. |
+| 7 | **Traffic/stars history over time** for the repos | Only the current state (0 stars on all) is verifiable. |
 
-### O inventário honesto de conquista (o que está em disco)
+### The honest inventory of achievement (what is on disk)
 
-- `hooks/hooks.json` — **6 hooks realmente ligados**: `task-scale-advisor.sh` (`hooks/hooks.json:9`),
+- `hooks/hooks.json` — **6 hooks actually wired**: `task-scale-advisor.sh` (`hooks/hooks.json:9`),
   `route-before-change.sh` (`:20`), `mark-unrecorded.sh` (`:31`), `post-edit-check.sh` (`:35`),
   `stop-verify.sh` (`:46`), `record-verify.sh` (`:50`).
-- **13** arquivos em `rules/`, **18** agentes em `agents/`, **11** design specs em `docs/specs/`,
-  **22** change records arquivados em `.engineos/archived/` (14 em junho, 8 em julho).
-- Adaptador Cursor real: `templates/cursor/` + `docs/specs/2026-06-19-cursor-adapter-design.md`
-  (11.005 bytes) — prova de portabilidade entre ferramentas.
+- **13** files in `rules/`, **18** agents in `agents/`, **11** design specs in `docs/specs/`,
+  **22** change records archived in `.engineos/archived/` (14 in June, 8 in July).
+- Real Cursor adapter: `templates/cursor/` + `docs/specs/2026-06-19-cursor-adapter-design.md`
+  (11,005 bytes) — proof of portability across tools.
 - `LICENSE:1` — MIT, "Copyright (c) 2026 Ricardo Fagmer".
-- Contradições que importam para posicionamento: `docs/PRD.md:29` lista ferramentas não-Claude
-  (Cursor, Copilot) como **non-goal** explícito, e o adaptador Cursor foi mergeado mesmo assim, sem
-  ADR de superação; `.engineos/memory/` contém **apenas** `README.md` após 22 mudanças concluídas.
+- Contradictions that matter for positioning: `docs/PRD.md:29` lists non-Claude tools
+  (Cursor, Copilot) as an explicit **non-goal**, and the Cursor adapter was merged anyway, with no
+  superseding ADR; `.engineos/memory/` contains **only** `README.md` after 22 completed changes.
 
-### Contexto de mercado (fontes datadas)
+### Market context (dated sources)
 
-- **AGENTS.md é o baseline neutro do setor.** `https://agents.md` (fetched 2026-07-30): "simple,
-  open format for guiding coding agents", **stewarded pela Agentic AI Foundation / Linux Foundation**,
-  **60.000+ repositórios** open-source, 25+ ferramentas suportando (Codex, Cursor, Copilot Coding
+- **AGENTS.md is the industry's neutral baseline.** `https://agents.md` (fetched 2026-07-30): "simple,
+  open format for guiding coding agents", **stewarded by the Agentic AI Foundation / Linux Foundation**,
+  **60,000+** open-source repositories, 25+ tools supporting it (Codex, Cursor, Copilot Coding
   Agent, Gemini CLI, Jules, Devin, Junie, Zed, Warp, Windsurf…). Repo `agentsmd/agents.md`
-  (fetched 2026-07-30): **23.3k stars, 84 issues abertas, 78 PRs abertos** — discussão viva, não
-  arquivada. Formalização em agosto de 2025 (OpenAI, Google, Cursor, Factory, Sourcegraph), por
-  fontes secundárias de 2026.
-- **A fronteira "instrução vs. enforcement" é o debate ativo — e já é comentário mainstream.**
+  (fetched 2026-07-30): **23.3k stars, 84 open issues, 78 open PRs** — a live discussion, not
+  archived. Formalized in August 2025 (OpenAI, Google, Cursor, Factory, Sourcegraph), per 2026
+  secondary sources.
+- **The "instruction vs. enforcement" frontier is the active debate — and it is already mainstream commentary.**
   "From CLAUDE.md to Hooks: How to Make AI Agents Actually Follow Rules" (Medium, Ilia Popov,
-  **abr/2026**); "Agent Hooks: Deterministic Guardrails for AI-Generated Code" (bitbytebit
+  **Apr 2026**); "Agent Hooks: Deterministic Guardrails for AI-Generated Code" (bitbytebit
   substack); "An Empirical Study: AI Agent Rules Need Context and Layered Enforcement" (eunomia,
-  **2026-07-15**). Tese recorrente: instruções em markdown atingem 70–90% de compliance e caem sob
-  pressão de contexto; hooks executam fora da cadeia de raciocínio do modelo. `asdlc.io` formula a
-  regra que o EngineOS já encarna: se uma restrição pode ser imposta deterministicamente por uma
-  ferramenta do repo, ela **não** deve ser reescrita no agents.md — a ferramenta *é* a restrição.
-  **Consequência dura, conforme a regra §7 da brief:** a *tese* não tem vantagem de timing. O que
-  tem vantagem é a **evidência longitudinal** — 7 semanas, 83 commits, 22 change records sob gates
-  reais. Quem escreve sobre o tema argumenta; ele tem corpus.
-- **Canal PT-BR verificado:** TabNews (`tabnews.com.br`) publica ativamente sobre Claude Code e
-  agentes — ex.: "Claude Code vs Codex vs Gemini: Quem Venceu a Batalha dos Agentes de IA para
-  Desenvolvedores" e "Criei uma IDE de terminal pra trabalhar com agentes de IA (Claude Code,
-  Gemini CLI, Codex)" (busca 2026-07-30). O FAQ (`tabnews.com.br/faq`, fetched 2026-07-30) descreve
-  o ranking "Relevantes" por **tempo desde a publicação, avaliação positiva e engajamento em
-  comentários** — e **não menciona seguidores em nenhum ponto** do mecanismo de alcance. Isso
-  qualifica o canal sob a regra absoluta.
-- **Comunidade EN:** r/ClaudeCode com **4.200+ contribuidores semanais** no início de 2026, ~3× o
-  r/Codex (morphllm, "Claude Code Reddit: What Developers Actually Say (2026)"). Fonte secundária,
-  não confirmada em fonte primária — tratada como indicativa.
-- **Discurso PT-BR sobre governança de IA existe e está genérico:** "Engenharia com IA exige mais
+  **2026-07-15**). Recurring thesis: markdown instructions reach 70–90% compliance and degrade under
+  context pressure; hooks execute outside the model's reasoning chain. `asdlc.io` formulates the
+  rule EngineOS already embodies: if a constraint can be enforced deterministically by a repo tool,
+  it should **not** be restated in the agents.md — the tool *is* the constraint.
+  **Hard consequence, per rule §7 of the brief:** the *thesis* has no timing advantage. What has an
+  advantage is the **longitudinal evidence** — 7 weeks, 83 commits, 22 change records under real
+  gates. Those who write about the topic argue; he has a corpus.
+- **Verified PT-BR channel:** TabNews (`tabnews.com.br`) publishes actively about Claude Code and
+  agents — e.g.: "Claude Code vs Codex vs Gemini: Quem Venceu a Batalha dos Agentes de IA para
+  Desenvolvedores" and "Criei uma IDE de terminal pra trabalhar com agentes de IA (Claude Code,
+  Gemini CLI, Codex)" (search 2026-07-30). The FAQ (`tabnews.com.br/faq`, fetched 2026-07-30)
+  describes the "Relevantes" ranking by **time since publication, positive rating and engagement in
+  comments** — and **mentions followers nowhere** in the reach mechanism. That qualifies the channel
+  under the absolute rule.
+- **EN community:** r/ClaudeCode with **4,200+** weekly contributors in early 2026, ~3× that of
+  r/Codex (morphllm, "Claude Code Reddit: What Developers Actually Say (2026)"). Secondary source,
+  not confirmed by a primary source — treated as indicative.
+- **PT-BR discourse about AI governance exists and is generic:** "Engenharia com IA exige mais
   método, não menos. Sem governança, contexto e supervisão humana, o uso de IA tende a amplificar
-  erros" (Alura / iMasters / Accurate, 2026). Ou seja: em português há *tese* de governança e
-  quase nenhuma *implementação demonstrável*. É a lacuna onde ele cabe.
-- **Restrição de canal a respeitar:** listas do tipo *awesome-claude-code* rejeitam PRs cujo
-  propósito principal é promover projeto próprio (busca 2026-07-30). Participação tem de ser
-  contribuição substantiva, nunca link-drop.
+  erros" (Alura / iMasters / Accurate, 2026). In other words: in Portuguese there is governance
+  *thesis* and almost no demonstrable *implementation*. That is the gap he fits into.
+- **Channel constraint to respect:** lists of the *awesome-claude-code* type reject PRs whose main
+  purpose is promoting one's own project (search 2026-07-30). Participation has to be substantive
+  contribution, never a link-drop.
 
 ---
 
 ## Analysis
 
-### STEP 1 — O gap de percepção
+### STEP 1 — The perception gap
 
-**Hoje — o que um estranho conclui em 60 segundos** (só com o que foi verificado acima):
+**Today — what a stranger concludes in 60 seconds** (using only what was verified above):
 
-Abre `github.com/ricardofagmer`. Lê a bio: 15 anos, JavaScript, TypeScript, Node, Nest, **Angular**.
-Olha os seis pins: um **fork Java de 2013**, dois projetos de 2016–2017, um Java de 2018, um desafio
-de entrevista e um `ecommerce` de 2021. Bate o olho na atividade: último push público **out/2025**.
-Nota 6 seguidores e nenhuma star em nada. Se for a um segundo lugar, acha o freelancermap de
-**out/2024** dizendo "100% available" com Angular e Nx no headline.
+He opens `github.com/ricardofagmer`. He reads the bio: 15 years, JavaScript, TypeScript, Node, Nest,
+**Angular**. He looks at the six pins: a **2013 Java fork**, two projects from 2016–2017, a Java one
+from 2018, an interview challenge and an `ecommerce` from 2021. He glances at the activity: last
+public push **Oct 2025**. He notes 6 followers and no stars on anything. If he goes to a second
+place, he finds the freelancermap from **Oct 2024** saying "100% available" with Angular and Nx in
+the headline.
 
-Conclusão do estranho: *desenvolvedor sênior brasileiro, carreira longa, stack Angular/Node
-corporativa, portfólio de CRUD e ERP, produção pública desacelerando desde 2025, provavelmente
-disponível para contrato.* **Zero** sinal de IA, de agentes, de arquitetura, de governança de
-engenharia. Nada que sugira que essa pessoa é uma das que pensam com mais profundidade sobre como
-um time faz agentes de código obedecerem a padrões.
+The stranger's conclusion: *Brazilian senior developer, long career, corporate Angular/Node stack,
+CRUD and ERP portfolio, public output decelerating since 2025, probably available for contract.*
+**Zero** signal of AI, of agents, of architecture, of engineering governance. Nothing to suggest
+that this person is one of those who think most deeply about how a team makes coding agents obey
+standards.
 
-**A posição desejada em 12 meses — INFERIDA, não fornecida.**
+**The desired position in 12 months — INFERRED, not supplied.**
 
-> ⚠️ **Isto é inferência, não briefing.** Foi derivada de duas coisas: (a) ele selecionou
-> *reputação* **e** *adotantes* **e** *dinheiro* como resultados desejados (brief, cabeçalho), e
-> (b) construiu um sistema de **governança de engenharia em escala de time** — `docs/PRD.md:4`
-> escopa explicitamente "um time de 2–10 pessoas". Ele não construiu uma ferramenta pessoal de
-> produtividade; construiu um instrumento de conformidade coletiva. Isso implica uma posição, e a
-> posição implicada é:
+> ⚠️ **This is inference, not a briefing.** It was derived from two things: (a) he selected
+> *reputation* **and** *adopters* **and** *money* as desired outcomes (brief, header), and
+> (b) he built a system of **team-scale engineering governance** — `docs/PRD.md:4` explicitly
+> scopes "a team of 2–10 people". He did not build a personal productivity tool; he built an
+> instrument of collective compliance. That implies a position, and the implied position is:
 
-**"A pessoa que tem uma resposta funcionando — e auditável — para como um time faz agentes de código
-obedecerem aos seus padrões de engenharia de forma determinística."** Não influenciador de IA, não
-dev sênior genérico: **autoridade de praticante em governança de agentes**. Operacionalmente: o nome
-que um tech lead cita ao defender gates de agente numa reunião, e o nome que um time contrata para
-montar isso.
+**"The person who has a working — and auditable — answer for how a team makes coding agents obey its
+engineering standards deterministically."** Not an AI influencer, not a generic senior dev:
+**practitioner authority in agent governance**. Operationally: the name a tech lead cites when
+defending agent gates in a meeting, and the name a team hires to set that up.
 
-**Teste da inferência contra o repo.** *Sustentada em substância:* 6 hooks ligados
-(`hooks/hooks.json:9,20,31,35,46,50`), 13 rules, 18 agentes, 11 specs, 22 change records, adaptador
-Cursor provando portabilidade. *Não sustentada em prova social:* zero adotantes externos —
-estruturalmente zero, porque os dois caminhos de instalação documentados (`README.md:18` clone SSH;
-`README.md:24-25` plugin marketplace) apontam para um repositório que retorna **HTTP 404** (brief §3)
-— e nenhum segundo humano jamais exercitou as features de time (brief §5.1).
-**Correção honesta da posição:** o alvo de 12 meses tem de ser *autoridade no desenho e na imposição
-de governança de agentes*, **não** "líder de uma plataforma adotada". A segunda exige adotantes que
-ele não tem e não pode obter enquanto o repo é privado. Reivindicar a segunda seria exatamente o
-tipo de alegação que o playbook proíbe.
+**Testing the inference against the repo.** *Supported in substance:* 6 wired hooks
+(`hooks/hooks.json:9,20,31,35,46,50`), 13 rules, 18 agents, 11 specs, 22 change records, a Cursor
+adapter proving portability. *Not supported in social proof:* zero external adopters —
+structurally zero, because the two documented installation paths (`README.md:18` SSH clone;
+`README.md:24-25` plugin marketplace) point at a repository that returns **HTTP 404** (brief §3) —
+and no second human has ever exercised the team features (brief §5.1).
+**Honest correction of the position:** the 12-month target has to be *authority in the design and
+enforcement of agent governance*, **not** "leader of an adopted platform". The second requires
+adopters he does not have and cannot obtain while the repo is private. Claiming the second would be
+exactly the type of assertion the playbook forbids.
 
-**O gap, em uma frase:** entre "contractor Angular cuja produção pública parou em 2025" e "praticante
-de referência em governança de agentes" — e a distância **não** é de competência (essa está em
-disco), é **inteiramente de evidência transmissível**.
+**The gap, in one sentence:** between "Angular contractor whose public output stopped in 2025" and
+"reference practitioner in agent governance" — and the distance is **not** one of competence (that
+is on disk), it is **entirely one of transmissible evidence**.
 
-#### O UM sinal mais danoso
+#### The ONE most damaging signal
 
-**Os seis repositórios pinados.**
+**The six pinned repositories.**
 
-Não é "o trabalho bom está privado", e não é a bio. É o fato de que os pins — o único controle
-editorial que o GitHub oferece — declaram que seu trabalho mais representativo é um **fork Java cujo
-último push é 2013-11-28**, mais projetos de 2016–2018 e um desafio de entrevista.
+It is not "the good work is private", and it is not the bio. It is the fact that the pins — the only
+editorial control GitHub offers — declare that his most representative work is a **Java fork whose
+last push is 2013-11-28**, plus projects from 2016–2018 and an interview challenge.
 
-**Por que este custa mais que os outros dois candidatos:**
+**Why this one costs more than the other two candidates:**
 
-- **vs. "o artefato mais forte é invisível / os mais fracos são visíveis":** este é aquele candidato,
-  mas afiado no vetor que realmente transmite. O EngineOS ser invisível é uma **ausência de
-  evidência** — custa oportunidade, é neutro na leitura. Os pins são uma **afirmação positiva
-  errada** — custam credibilidade. Uma lacuna deixa o avaliador indeciso; uma alegação equivocada o
-  faz decidir contra. E o efeito é composto com o push público mais recente de 2025-10-23 e as 0
-  stars: o perfil lê como **carreira desacelerando**, no exato momento em que a produção real está
-  no pico da carreira. Nenhuma quantidade de trabalho privado corrige isso, porque a parte visível
-  é a única que transmite.
-- **vs. a bio nomeando Angular:** custa, mas é dano de *desatualização*, não de desqualificação —
-  um estranho que lê "15 anos JS/TS/Node/Nest" ainda lê sênior competente. Correção de uma linha,
-  e eu recomendo fazê-la; só não é o que mais dói.
-- **vs. MIT porém privado (`LICENSE:1` + HTTP 404):** este é **invisível ao estranho**. Ninguém
-  consegue ver o repositório, portanto ninguém percebe a contradição. É um defeito de
-  **distribuição** — pertence aos modos opportunity/monetization —, com dano de *percepção* próximo
-  de zero, porque não há nada a perceber.
+- **vs. "the strongest artifact is invisible / the weakest ones are visible":** this is that
+  candidate, but sharpened on the vector that actually transmits. EngineOS being invisible is an
+  **absence of evidence** — it costs opportunity, it is neutral in the reading. The pins are a
+  **wrong positive assertion** — they cost credibility. A gap leaves the evaluator undecided; a
+  mistaken claim makes him decide against. And the effect compounds with the most recent public push
+  of 2025-10-23 and the 0 stars: the profile reads as a **decelerating career**, at the exact moment
+  the real output is at the career's peak. No amount of private work corrects that, because the
+  visible part is the only part that transmits.
+- **vs. the bio naming Angular:** it costs, but it is damage from being *out of date*, not from
+  disqualification — a stranger who reads "15 years JS/TS/Node/Nest" still reads a competent senior.
+  A one-line fix, and I recommend making it; it just is not what hurts most.
+- **vs. MIT but private (`LICENSE:1` + HTTP 404):** this one is **invisible to the stranger**. Nobody
+  can see the repository, therefore nobody perceives the contradiction. It is a **distribution**
+  defect — it belongs to the opportunity/monetization modes — with *perception* damage close to
+  zero, because there is nothing to perceive.
 
-Os pins também são o mais danoso *e* o mais barato de corrigir entre os que causam dano real: mudar
-o que está pinado leva minutos e não exige nenhuma decisão sobre o repositório privado, sobre IP, ou
-sobre o emprego.
+The pins are also the most damaging *and* the cheapest to fix among those that cause real damage:
+changing what is pinned takes minutes and requires no decision about the private repository, about
+IP, or about the job.
 
-### STEP 2 — Três ações de autoridade repetíveis
+### STEP 2 — Three repeatable authority actions
 
-Todas usam matéria-prima **já existente em disco**. Nenhuma tem alcance como mecanismo. Todas
-sobrevivem a semanas puladas por desenho.
+All use raw material **already existing on disk**. None has reach as its mechanism. All survive
+skipped weeks by design.
 
 ---
 
-#### Ação 1 — Teardown de enforcement: "a regra que ninguém obedece vs. o hook que ninguém burla"
+#### Action 1 — Enforcement teardown: "the rule nobody obeys vs. the hook nobody bypasses"
 
 | | |
 |---|---|
-| **Frequência** | 1 publicação a cada 2 semanas, com **6 tópicos escritos e enfileirados de uma vez** (um por hook de `hooks/hooks.json`). O buffer é o que torna a cadência imune a semana pulada: pular não quebra a série, só consome estoque. |
-| **Canal** | **TabNews** como primário (PT). Verificado: publica ativamente sobre Claude Code/agentes, e o ranking "Relevantes" é por recência + avaliação + comentários, **sem seguidores no mecanismo** (`tabnews.com.br/faq`, fetched 2026-07-30). Espelho em EN no `dev.to` como secundário. |
-| **Formato** | Teardown com código real. Cada post pega **uma** regra de `rules/` e mostra os três níveis de compliance (explicação → lembrete → **enforcement**) com o hook concreto que a impõe — `post-edit-check.sh`, `route-before-change.sh`, `stop-verify.sh` etc. Inclui o que o hook **não** cobre. |
-| **Sinal** | **"Esta pessoa converte padrão de engenharia em mecanismo, não em opinião."** |
+| **Frequency** | 1 publication every 2 weeks, with **6 topics written and queued at once** (one per hook in `hooks/hooks.json`). The buffer is what makes the cadence immune to a skipped week: skipping does not break the series, it only consumes stock. |
+| **Channel** | **TabNews** as primary (PT). Verified: publishes actively about Claude Code/agents, and the "Relevantes" ranking is by recency + rating + comments, **with no followers in the mechanism** (`tabnews.com.br/faq`, fetched 2026-07-30). EN mirror on `dev.to` as secondary. |
+| **Format** | Teardown with real code. Each post takes **one** rule from `rules/` and shows the three levels of compliance (explanation → reminder → **enforcement**) with the concrete hook that enforces it — `post-edit-check.sh`, `route-before-change.sh`, `stop-verify.sh` etc. Includes what the hook does **not** cover. |
+| **Signal** | **"This person converts an engineering standard into a mechanism, not into an opinion."** |
 
-Por que funciona a 6 seguidores: o valor não está em quantas pessoas leem, está em que **o texto
-existe e é específico o bastante para ser citado**. Um teardown com o `.sh` real é referência; um
-post de tese é ruído. A matéria-prima está pronta — os 6 hooks estão escritos, testados e em uso.
+Why it works at 6 followers: the value is not in how many people read, it is in that **the text
+exists and is specific enough to be cited**. A teardown with the real `.sh` is a reference; a thesis
+post is noise. The raw material is ready — the 6 hooks are written, tested and in use.
 
 ---
 
-#### Ação 2 — Comparação mantida: o modelo de governança do EngineOS contra o baseline AGENTS.md
+#### Action 2 — Maintained comparison: the EngineOS governance model against the AGENTS.md baseline
 
 | | |
 |---|---|
-| **Frequência** | Toque **mensal** — página viva, não série. Atualiza quando a spec ou uma ferramenta muda. Semana pulada é irrelevante para um documento mantido. |
-| **Canal** | Um repositório **público próprio e novo** (ex.: `agent-governance-notes`) — **não** o EngineOS privado. Mais participação substantiva nas issues de `agentsmd/agents.md` (23.3k stars, 84 issues, 78 PRs abertos — fetched 2026-07-30), onde a fronteira instrução-vs-enforcement está em debate aberto. |
-| **Formato** | Tabela de comparação mantida + posição documentada sobre **o que o AGENTS.md deliberadamente não cobre**: enforcement determinístico, ciclo de vida de mudança em time, registro durável de decisão. Ancorada nos 6 hooks e nos 22 change records. |
-| **Sinal** | **"Esta pessoa conhece o cenário de padrões e sabe onde ficam as bordas dele."** |
+| **Frequency** | **Monthly** touch — a living page, not a series. Update when the spec or a tool changes. A skipped week is irrelevant for a maintained document. |
+| **Channel** | A **new public repository of his own** (e.g.: `agent-governance-notes`) — **not** the private EngineOS. Plus substantive participation in the issues of `agentsmd/agents.md` (23.3k stars, 84 issues, 78 open PRs — fetched 2026-07-30), where the instruction-vs-enforcement frontier is under open debate. |
+| **Format** | Maintained comparison table + documented position on **what AGENTS.md deliberately does not cover**: deterministic enforcement, team change lifecycle, durable decision record. Anchored in the 6 hooks and the 22 change records. |
+| **Signal** | **"This person knows the standards landscape and knows where its edges are."** |
 
-Guarda-corpos obrigatórios: listas *awesome-** rejeitam PR promocional (busca 2026-07-30) — logo,
-contribuição de conteúdo, jamais link-drop. E **nunca** afirmar adoção que não existe: a comparação
-é sobre *desenho*, não sobre base instalada.
+Mandatory guardrails: *awesome-** lists reject promotional PRs (search 2026-07-30) — therefore,
+content contribution, never a link-drop. And **never** claim adoption that does not exist: the
+comparison is about *design*, not about an installed base.
 
 ---
 
-#### Ação 3 — Estudo de caso longitudinal com números — inclusive os que o desabonam
+#### Action 3 — Longitudinal case study with numbers — including the ones that discredit him
 
 | | |
 |---|---|
-| **Frequência** | **Trimestral** (2–3 em 12 meses). Baixa frequência, peso alto; imune a semanas puladas por construção. |
-| **Canal** | Artigo no LinkedIn + cópia no repositório público da Ação 2. ⚠️ Tamanho da audiência no LinkedIn é **UNKNOWN** (#1) — e é justamente por isso que o formato é *artigo* e não *post*: o valor é ser encontrável e citável por um lead específico, não ser distribuído. |
-| **Formato** | Dados reais: 7 semanas, 83 commits, 22 change records, 11 specs, 1 autor — o que a governança custou e o que mudou. **Incluindo as falhas:** `.engineos/memory/` com só `README.md` após 22 mudanças; o non-goal de `docs/PRD.md:29` revertido pelo adaptador Cursor sem ADR de superação; drift de docs sobre a própria convenção de arquivamento. |
-| **Sinal** | **"Esta pessoa relata evidência contra si mesma."** |
+| **Frequency** | **Quarterly** (2–3 in 12 months). Low frequency, high weight; immune to skipped weeks by construction. |
+| **Channel** | LinkedIn article + copy in Action 2's public repository. ⚠️ Audience size on LinkedIn is **UNKNOWN** (#1) — and that is precisely why the format is an *article* and not a *post*: the value is being findable and citable by a specific lead, not being distributed. |
+| **Format** | Real data: 7 weeks, 83 commits, 22 change records, 11 specs, 1 author — what the governance cost and what changed. **Including the failures:** `.engineos/memory/` with only `README.md` after 22 changes; the non-goal of `docs/PRD.md:29` reversed by the Cursor adapter with no superseding ADR; docs drift about its own archiving convention. |
+| **Signal** | **"This person reports evidence against himself."** |
 
-Todo mundo que publica sobre governança de agentes mostra o caminho felizarrão. Um relato que abre
-os três lugares onde o próprio sistema falhou é raro o suficiente para ser **o** diferencial — e é a
-única forma de construir confiança sem prova social.
+Everybody who publishes about agent governance shows the rosy happy path. An account that opens up
+the three places where his own system failed is rare enough to be **the** differentiator — and it is
+the only way to build trust without social proof.
 
 ---
 
-**Checagem de sinais distintos (exigência do playbook).** As Ações 1 e 3 são ambas "escrever sobre o
-próprio sistema" e poderiam colidir — não colidem: a **1** é *nível-mecanismo, prospectiva*, ensina
-uma técnica reproduzível; a **3** é *nível-resultado, retrospectiva*, reporta evidência incluindo a
-negativa. Rigor ≠ honestidade. Os três sinais — **construtor de mecanismo · letrado no cenário ·
-auditor de si mesmo** — compõem exatamente a posição inferida: autoridade de praticante. Nenhum
-deles é "tem audiência".
+**Distinct-signal check (playbook requirement).** Actions 1 and 3 are both "write about my own
+system" and could collide — they do not: **1** is *mechanism-level, prospective*, it teaches a
+reproducible technique; **3** is *outcome-level, retrospective*, it reports evidence including the
+negative kind. Rigor ≠ honesty. The three signals — **mechanism builder · literate in the landscape ·
+auditor of himself** — compose exactly the inferred position: practitioner authority. None of them
+is "has an audience".
 
 ---
 
 ## The one action
 
-> ## Publicar UM artefato público: o teardown dos 6 hooks de enforcement — e repontar o perfil para ele.
-> **Prazo: 2026-08-13** (14 dias a partir de 2026-07-30).
+> ## Publish ONE public artifact: the teardown of the 6 enforcement hooks — and re-point the profile at it.
+> **Deadline: 2026-08-13** (14 days from 2026-07-30).
 
-Um entregável, indivisível, em três partes que só funcionam juntas:
+One deliverable, indivisible, in three parts that only work together:
 
-1. **Criar um repositório público novo** com o teardown de enforcement: os 6 hooks de
-   `hooks/hooks.json`, o que cada um impede, o `.sh` real, e a fronteira instrução-vs-enforcement
-   demonstrada em cima deles. Publica **o padrão e o raciocínio** — não o EngineOS inteiro (nada de
-   decisão sobre o repo privado, nada de exposição de IP).
-2. **Repontar o perfil:** despinar `DatabaseAutoCompleteLibrary` (2013), `agro`, `equipamento_maven`,
-   `pec`; pinar este artefato em primeiro.
-3. **Reescrever a bio:** trocar "Angular" pelo trabalho real (Node/Nest, React/Next, infraestrutura
-   de agentes LLM).
+1. **Create a new public repository** with the enforcement teardown: the 6 hooks of
+   `hooks/hooks.json`, what each one prevents, the real `.sh`, and the instruction-vs-enforcement
+   frontier demonstrated on top of them. It publishes **the pattern and the reasoning** — not the
+   whole of EngineOS (no decision about the private repo, no IP exposure).
+2. **Re-point the profile:** unpin `DatabaseAutoCompleteLibrary` (2013), `agro`, `equipamento_maven`,
+   `pec`; pin this artifact first.
+3. **Rewrite the bio:** swap "Angular" for the real work (Node/Nest, React/Next, LLM agent
+   infrastructure).
 
-**Por que este e não "tornar o EngineOS público":** abrir o repo é maior em teoria, mas está travado
-por um UNKNOWN que eu não posso resolver — cláusulas de IP/moonlighting (#3) — e não é orientação
-jurídica minha dar. Este artefato atravessa 14 dias sem essa decisão, e corrige **o sinal mais danoso
-(os pins) no mesmo movimento**. Esforço estimado 8–12 h, dentro de 20+ h/semana mesmo com uma semana
-perdida, porque a matéria-prima já está escrita e em produção.
+**Why this one and not "make EngineOS public":** opening the repo is bigger in theory, but it is
+blocked by an UNKNOWN I cannot resolve — IP/moonlighting clauses (#3) — and it is not mine to give
+legal advice on. This artifact crosses 14 days without that decision, and corrects **the most
+damaging signal (the pins) in the same move**. Estimated effort 8–12 h, within 20+ h/week even with
+one week lost, because the raw material is already written and in production.
 
-**Por que não é dependente de alcance:** o artefato precisa de **uma** pessoa certa lendo. A 6
-seguidores, um repositório específico e técnico é encontrável por busca e citável por quem já está
-no problema. O mecanismo é especificidade.
+**Why it is not reach-dependent:** the artifact needs **one** right person reading it. At 6
+followers, a specific and technical repository is findable by search and citable by whoever is
+already in the problem. The mechanism is specificity.
 
-### Sinais observáveis de sucesso
+### Observable signals of success
 
-1. **Inbound qualificado (o sinal que decide):** ao menos **um** contato — issue, comentário ou DM —
-   de alguém que **opera um setup de agentes para um time** (tech lead, staff, platform eng), com
-   pergunta sobre comportamento de hook, precedência de config ou ordem de gate. **Não** conta
-   "repo legal". Um contato desses a 6 seguidores **é** sucesso.
-2. **Tipo específico de pessoa engajando:** alguém de fora do Brasil, ou alguém do orbe
-   `agentsmd/agents.md`, referenciando o artefato.
-3. **Query começando a fazê-lo aparecer:** buscar `Claude Code hooks enforcement` ou
-   `hooks vs CLAUDE.md compliance` com o nome dele, ou buscar `ricardofagmer`, retorna este artefato
-   — e não o fork Java de 2013.
-4. **Marco medível de linha de base:** a **primeira star não-zero** em um repositório de autoria
-   própria. Barra baixa, mas seria o primeiro dado de validação externa em 12 anos de conta (hoje:
-   0 stars em 14 de 14).
+1. **Qualified inbound (the deciding signal):** at least **one** contact — issue, comment or DM —
+   from someone who **operates an agent setup for a team** (tech lead, staff, platform eng), with a
+   question about hook behavior, config precedence or gate order. "Cool repo" does **not** count. One
+   such contact at 6 followers **is** success.
+2. **A specific type of person engaging:** someone from outside Brazil, or someone from the
+   `agentsmd/agents.md` orbit, referencing the artifact.
+3. **A query starting to surface him:** searching `Claude Code hooks enforcement` or
+   `hooks vs CLAUDE.md compliance` with his name, or searching `ricardofagmer`, returns this artifact
+   — and not the 2013 Java fork.
+4. **Measurable baseline milestone:** the **first non-zero star** on a repository of his own
+   authorship. A low bar, but it would be the first external validation data point in 12 years of the
+   account (today: 0 stars on 14 of 14).
 
 ---
 
 ## What would falsify this
 
-1. **Se o LinkedIn tiver audiência engajada substantiva** (UNKNOWN #1 — HTTP 999 impediu verificar):
-   a prioridade de canal está invertida. LinkedIn passa a primário, TabNews a secundário, e a Ação 3
-   sobe de trimestral para mensal. **Este é o furo mais provável de derrubar o plano — resolva-o
-   primeiro, em 5 minutos, olhando o próprio perfil logado.**
-2. **Se o contrato de trabalho proibir publicar obra derivada** (UNKNOWN #3): até o teardown de hooks
-   está bloqueado. Aí só resta escrita genérica sem artefato de código, e o plano inteiro perde a
-   perna que o sustenta — porque o diferencial *é* o artefato. Não é orientação jurídica: verificar
-   o contrato.
-3. **Se o time de 2–10 pessoas do PRD for real** (UNKNOWN #5): adoção interna gera prova social mais
-   rápido que qualquer publicação, e este plano externo cai para segunda prioridade. Um segundo
-   humano usando o sistema vale mais que três artigos.
-4. **Se a tese "instrução vs. enforcement" saturar até o Q4/2026:** ela **já** é comentário
-   mainstream (Medium abr/2026; eunomia 2026-07-15). Se autores com mais credencial ocuparem o
-   espaço, só o **dado longitudinal** sobrevive como vantagem — e se 22 change records se mostrarem
-   corpus pequeno demais para interessar terceiros, a Ação 3 falha e a posição não se sustenta em
-   escrita.
-5. **Se após 3 artefatos em 90 dias houver zero inbound qualificado:** a hipótese central — que
-   profundidade vence alcance a 6 seguidores neste nicho — está errada. Pivô: contribuição
-   substantiva **dentro** de um repositório de alto tráfego já existente (issues do
-   `agentsmd/agents.md`), onde a distribuição é emprestada em vez de construída.
-6. **Se um adotante externo aparecer sem nenhuma das ações:** então o gargalo nunca foi percepção,
-   e sim visibilidade pura (o 404) — e o modo de distribuição, não este, tem a resposta.
+1. **If LinkedIn has a substantive engaged audience** (UNKNOWN #1 — HTTP 999 prevented verifying):
+   the channel priority is inverted. LinkedIn becomes primary, TabNews secondary, and Action 3 goes
+   from quarterly to monthly. **This is the hole most likely to take down the plan — resolve it
+   first, in 5 minutes, by looking at his own logged-in profile.**
+2. **If the employment contract forbids publishing derivative work** (UNKNOWN #3): even the hooks
+   teardown is blocked. Then only generic writing without a code artifact remains, and the whole plan
+   loses the leg that holds it up — because the differentiator *is* the artifact. This is not legal
+   advice: check the contract.
+3. **If the PRD's 2–10 person team is real** (UNKNOWN #5): internal adoption generates social proof
+   faster than any publication, and this external plan drops to second priority. A second human
+   using the system is worth more than three articles.
+4. **If the "instruction vs. enforcement" thesis saturates by Q4/2026:** it is **already** mainstream
+   commentary (Medium Apr 2026; eunomia 2026-07-15). If authors with more credentials occupy the
+   space, only the **longitudinal data** survives as an advantage — and if 22 change records turn out
+   to be too small a corpus to interest third parties, Action 3 fails and the position does not hold
+   up in writing.
+5. **If after 3 artifacts in 90 days there is zero qualified inbound:** the central hypothesis — that
+   depth beats reach at 6 followers in this niche — is wrong. Pivot: substantive contribution
+   **inside** an existing high-traffic repository (issues of `agentsmd/agents.md`), where
+   distribution is borrowed instead of built.
+6. **If an external adopter appears without any of the actions:** then the bottleneck was never
+   perception, but pure visibility (the 404) — and the distribution mode, not this one, has the
+   answer.
 
 ---
 
-**Confiança: média-alta.**
+**Confidence: medium-high.**
 
-*Alta* no STEP 1: o footprint público foi verificado em fontes primárias hoje (API do GitHub, perfil,
-freelancermap), e as 0 stars + push de 2025-10-23 + os pins de 2013 são fatos, não leitura. A escolha
-do *um* sinal mais danoso é juízo defensável, não medição.
-*Média* nos STEPs 2 e 3: comportamento de canal e resposta de inbound são previsões; o LinkedIn
-UNKNOWN é um furo real na priorização de canal; e r/ClaudeCode entrou por fonte secundária apenas.
-Rebaixa a confiança geral, e é por isso que a falsificação #1 vem primeiro.
+*High* on STEP 1: the public footprint was verified against primary sources today (GitHub API,
+profile, freelancermap), and the 0 stars + push of 2025-10-23 + the 2013 pins are facts, not a
+reading. The choice of the *one* most damaging signal is defensible judgment, not measurement.
+*Medium* on STEPs 2 and 3: channel behavior and inbound response are predictions; the LinkedIn
+UNKNOWN is a real hole in the channel prioritization; and r/ClaudeCode came in through a secondary
+source only. It lowers the overall confidence, and that is why falsification #1 comes first.
 
-Nada aqui é orientação jurídica ou financeira; onde toca contrato de trabalho e IP, verificar com
-o contrato e com quem seja de direito.
+Nothing here is legal or financial advice; where it touches the employment contract and IP, check
+with the contract and with whoever is properly qualified.

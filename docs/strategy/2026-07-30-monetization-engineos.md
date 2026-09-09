@@ -1,544 +1,544 @@
-# Monetization — receita escondida nos ativos que já existem no EngineOS
+# Monetization — revenue hidden in the assets that already exist in EngineOS
 
 Date: 2026-07-30 · Mode: monetization · Confidence: **medium**
-(inventário de ativos: alta — lido em disco e citado; preços: média — fontes datadas, mas
-majoritariamente agregadores secundários; demanda: **baixa** — nenhuma venda, nenhuma
-conversão histórica, audiência UNKNOWN.)
+(asset inventory: high — read on disk and cited; prices: medium — dated sources, but
+mostly secondary aggregators; demand: **low** — no sales, no historical
+conversion, audience UNKNOWN.)
 
-> **Isto não é consultoria financeira nem jurídica.** São faixas de estimativa com a
-> aritmética exposta para você mesmo ajustar as premissas. Nenhum número aqui é previsão.
-> Onde há contrato de trabalho, cláusula de PI, ou confidencialidade de cliente, a decisão
-> exige um advogado — este relatório apenas sinaliza onde o risco está.
+> **This is neither financial nor legal advice.** These are estimate ranges with the
+> arithmetic exposed so you can adjust the assumptions yourself. No number here is a forecast.
+> Where there is an employment contract, an IP clause, or client confidentiality, the decision
+> requires a lawyer — this report only flags where the risk is.
 
 ---
 
 ## Headline
 
-Os três ativos monetizáveis em 30 dias **não são o EngineOS** — são o gerador de
-documentação de sistema legado em português (`patterns/1-Analisys` +
-`agents/architecture-analyst.md`), o sistema de quality gates testado
-(`hooks/` + 5 suítes de teste) e o conhecimento de portabilidade Cursor
-(`docs/specs/2026-06-19-cursor-adapter-design.md`); todos vendem 1:1 para um comprador
-nomeado e **nenhum deles depende do repositório ser público nem de você ter audiência** —
-que é exatamente por que são os únicos ativáveis agora.
+The three assets monetizable in 30 days **are not EngineOS** — they are the legacy-system
+documentation generator in Portuguese (`patterns/1-Analisys` +
+`agents/architecture-analyst.md`), the tested quality gates system
+(`hooks/` + 5 test suites) and the Cursor portability knowledge
+(`docs/specs/2026-06-19-cursor-adapter-design.md`); all of them sell 1:1 to a named
+buyer and **none of them depends on the repository being public nor on you having an audience** —
+which is exactly why they are the only ones activatable now.
 
 ---
 
 ## Grounding
 
-### Projeto (lido, não inferido)
+### Project (read, not inferred)
 
-| Arquivo | O que prova |
+| File | What it proves |
 |---|---|
-| `CLAUDE.md` (9.190 bytes) | Constituição + tabela de roteamento de ~25 intents; 7 non-negotiables |
-| `rules/*.md` (12 arquivos, 492 linhas) | Padrões declarativos DO/DON'T; `rules/parallelism.md:1-57` e `rules/models.md:1-41` são doutrina própria, não repackaging |
-| `skills/*/SKILL.md` (8 skills, 558 linhas) | `skills/nestjs-patterns/SKILL.md` (100 linhas) é o maior; `skills/record-change/SKILL.md` (74) codifica o ciclo de governança |
-| `agents/*.md` (18 agentes, 1.205 linhas) | `agents/architecture-analyst.md` (120), `agents/mobile-coordinator.md` (112), `agents/ios-builder.md` (102), `agents/android-builder.md` (110), `agents/qa-tester.md` (109) |
-| `hooks/hooks.json:1-56` | 5 eventos ligados: UserPromptSubmit, PreToolUse, PostToolUse (2), Stop (2) |
-| `hooks/stop-verify.sh` (167 linhas) | Gate real: lint+typecheck+test escopado ao pacote alterado, detecção Nx, runner pnpm/yarn/npm por lockfile |
-| `hooks/routing-map.sh:10-72` | Mapa canônico path→domínio (security → tests → backend → dba → devops → frontend → llm) |
-| `hooks/test-verify.sh` (136), `test-layout.sh` (65), `test-governance.sh` (42), `test-route.sh` (38), `test-task-scale.sh` (37) | Os hooks têm suíte de teste própria — 941 linhas de shell no total em `hooks/` |
-| `install.sh` (171 linhas) | Secrets gate fail-closed sobre `git ls-files` |
-| `install.ps1` (293 linhas), `install.ps1:20-35` | Porta Windows com 14 padrões de regex de segredo — **e não está no git** (`git status` → `?? install.ps1`; `git ls-files` só devolve `install.sh`) |
-| `docs/specs/2026-06-19-cursor-adapter-design.md:29-53` | Schema de hooks do Cursor levantado empiricamente: nomes de evento, exit 2 = block, reuso do nesting `tool_input`, schema de saída por evento, matchers em regex JS, comandos sem namespace |
-| `templates/cursor/commands/{audit,implement,production-env}.md` | Camada de portabilidade já entregue — o método não está preso ao Claude Code |
-| `docs/specs/` (10 specs, 1.579 linhas) | `2026-06-19-project-layout-standard-plan.md` tem 645 linhas de plano executável |
-| `.engineos/archived/**` (22 registros) | `2026-06-17-review-findings-fixes.md` documenta uma review pré-adoção com 1 CRITICAL (secrets gate inoperante no macOS), 6 commits, 27 arquivos |
-| `docs/ADOPTION.md` (214 linhas) | Runbook de 9 passos com verificação por passo + tabela de troubleshooting |
-| `docs/START.md` (199), `README.md` (137), `docs/PRD.md` (176), `docs/CONTRIBUTING.md` (58) | Conteúdo de onboarding já escrito |
-| `templates/github/claude-review.yml`, `claude-security.yml` | Workflows de review em CI com prompt afinado (inclui a regra de PR ≤400 linhas) |
-| `templates/mcp.template.json`, `templates/permissions.template.json`, `docs/ADOPTION.md:94-122` | Baseline de MCP + allowlist + doutrina de credencial read-only |
-| `templates/project-claude.md`, `templates/project-layout/*` (4 arquivos) | Template de layout de projeto |
-| `patterns/1-Analisys` (51 linhas, **escrito em PT-BR**) | Prompt de análise arquitetural: gera "Arquitetura do Sistema", "Objetivo do Sistema" e README por módulo, com regra explícita de marcar inferência como "hipótese" |
-| `scripts/usage-report.sh:1-30` | Instrumento de medição: minera `~/.claude/projects/*.jsonl` por `[router] intent=` e invocação de skill |
-| `scripts/gen-agent-commands.sh` + `commands/agents/` (33 arquivos) | Geração de slash commands com alias humano |
-| `.github/workflows/ci.yml` | CI do próprio repo (shellcheck + testes de hook) |
-| `LICENSE:1-3` | MIT, copyright "Ricardo Fagmer" — autoria única confirmada (brief §2: 83 commits, 100% dele) |
+| `CLAUDE.md` (9,190 bytes) | Constitution + routing table of ~25 intents; 7 non-negotiables |
+| `rules/*.md` (12 files, 492 lines) | Declarative DO/DON'T standards; `rules/parallelism.md:1-57` and `rules/models.md:1-41` are original doctrine, not repackaging |
+| `skills/*/SKILL.md` (8 skills, 558 lines) | `skills/nestjs-patterns/SKILL.md` (100 lines) is the largest; `skills/record-change/SKILL.md` (74) codifies the governance cycle |
+| `agents/*.md` (18 agents, 1,205 lines) | `agents/architecture-analyst.md` (120), `agents/mobile-coordinator.md` (112), `agents/ios-builder.md` (102), `agents/android-builder.md` (110), `agents/qa-tester.md` (109) |
+| `hooks/hooks.json:1-56` | 5 events wired: UserPromptSubmit, PreToolUse, PostToolUse (2), Stop (2) |
+| `hooks/stop-verify.sh` (167 lines) | Real gate: lint+typecheck+test scoped to the changed package, Nx detection, pnpm/yarn/npm runner by lockfile |
+| `hooks/routing-map.sh:10-72` | Canonical path→domain map (security → tests → backend → dba → devops → frontend → llm) |
+| `hooks/test-verify.sh` (136), `test-layout.sh` (65), `test-governance.sh` (42), `test-route.sh` (38), `test-task-scale.sh` (37) | The hooks have their own test suite — 941 lines of shell in total in `hooks/` |
+| `install.sh` (171 lines) | Fail-closed secrets gate over `git ls-files` |
+| `install.ps1` (293 lines), `install.ps1:20-35` | Windows port with 14 secret regex patterns — **and it is not in git** (`git status` → `?? install.ps1`; `git ls-files` only returns `install.sh`) |
+| `docs/specs/2026-06-19-cursor-adapter-design.md:29-53` | Cursor hooks schema mapped empirically: event names, exit 2 = block, reuse of the `tool_input` nesting, per-event output schema, matchers in JS regex, commands without a namespace |
+| `templates/cursor/commands/{audit,implement,production-env}.md` | Portability layer already delivered — the method is not locked to Claude Code |
+| `docs/specs/` (10 specs, 1,579 lines) | `2026-06-19-project-layout-standard-plan.md` has 645 lines of executable plan |
+| `.engineos/archived/**` (22 records) | `2026-06-17-review-findings-fixes.md` documents a pre-adoption review with 1 CRITICAL (secrets gate inoperative on macOS), 6 commits, 27 files |
+| `docs/ADOPTION.md` (214 lines) | 9-step runbook with per-step verification + troubleshooting table |
+| `docs/START.md` (199), `README.md` (137), `docs/PRD.md` (176), `docs/CONTRIBUTING.md` (58) | Onboarding content already written |
+| `templates/github/claude-review.yml`, `claude-security.yml` | CI review workflows with a tuned prompt (includes the ≤400-line PR rule) |
+| `templates/mcp.template.json`, `templates/permissions.template.json`, `docs/ADOPTION.md:94-122` | MCP baseline + allowlist + read-only credential doctrine |
+| `templates/project-claude.md`, `templates/project-layout/*` (4 files) | Project layout template |
+| `patterns/1-Analisys` (51 lines, **written in PT-BR**) | Architectural analysis prompt: generates "Arquitetura do Sistema", "Objetivo do Sistema" and a README per module, with an explicit rule to mark inference as "hipótese" |
+| `scripts/usage-report.sh:1-30` | Measurement instrument: mines `~/.claude/projects/*.jsonl` for `[router] intent=` and skill invocation |
+| `scripts/gen-agent-commands.sh` + `commands/agents/` (33 files) | Slash command generation with a human alias |
+| `.github/workflows/ci.yml` | The repo's own CI (shellcheck + hook tests) |
+| `LICENSE:1-3` | MIT, copyright "Ricardo Fagmer" — single authorship confirmed (brief §2: 83 commits, 100% his) |
 
-### Web (fonte + data)
+### Web (source + date)
 
 - **Freelance Software Developer Rates by Country in 2026** — index.dev, **2026-05-27** (fetch):
-  Brasil US$30–55/h média, sênior **US$40–75/h**; EUA sênior US$100–150/h; "AI agent
-  developers" US$180–300/h; prêmio de 40–60% para AI/ML sobre generalista.
-- **AI Consulting Costs 2026** — Winder.AI, **2026-06-24** (fetch): boutique sênior
+  Brazil US$30–55/h average, senior **US$40–75/h**; US senior US$100–150/h; "AI agent
+  developers" US$180–300/h; 40–60% premium for AI/ML over generalist.
+- **AI Consulting Costs 2026** — Winder.AI, **2026-06-24** (fetch): senior boutique
   £200–400/h; **LLM application engineering £250–450/h**; offshore body-shop £40–120/h;
-  POC de escopo fechado £15.000–40.000 (2–4 semanas).
+  fixed-scope POC £15,000–40,000 (2–4 weeks).
 - **Quanto custa uma consultoria de IA no Brasil** — Waxi, **2026-06-28** (fetch):
-  diagnóstico + priorização **R$10.000–40.000** (3–6 semanas); primeiro caso de uso
-  R$30.000–120.000; **retainer mensal R$5.000–20.000**; declara explicitamente que hora
-  não é o formato dominante no Brasil (projeto fechado e mensalidade são).
-- **Cost of Code Audit Services in 2026** — DevCom, **2026-02-18** (fetch): audit estático
-  **US$5.000–8.000**, dinâmico US$8.000–16.000.
-- **AI Readiness Audit Pricing 2026** — Pertama Partners, publicado 2026-02-08,
-  **atualizado 2026-06-17** (fetch): organização <100 funcionários **SGD 15.000–35.000**,
-  2–3 semanas, 1–2 consultores. Multiplicadores regionais publicados (Malásia 70–80% do
-  baseline de Singapura, Vietnã/Filipinas 50–60%) — evidência de que a mesma entrega tem
-  preço geográfico, não absoluto.
-- **AI Training Cost in 2026** — TightSlice, **2026-07-01** (fetch): workshop custom
-  on-site **US$2.500–5.000 por time**; full-day role-specific **US$5.000 para até 12
-  pessoas**; coaching semanal intensivo US$1.500–3.000/mês.
-- **$100 million for open source** — GitHub Blog, **2026-07-20** (fetch): 70.000+
-  mantenedores, 280.000+ sponsors; ~40% do funding vem de organizações e cada patrocínio
-  organizacional vale ~15× o individual.
-- Buscas complementares (snippets, não fetchados — tratados como pista, não prova):
-  goLance *Node.js Developer Hourly Rate Guide 2026* (sênior ~US$128/h, topo US$218/h);
-  groovyweb *AI consulting rates 2026* (consultor solo US$80–200/h); *AI readiness audit*
-  small business US$2.000–8.000; *boilerplate income* (Jake's Insights, 2026-04-26:
-  boilerplates US$49–249, top sellers US$1.500–3.500/mês; taxa Gumroad 10% + ~2,9%+US$0,30);
-  setups de Claude Code vendidos a **US$27–97** (Medium, abr/2026); *Consultant Daily Rate*
-  (consultfees, 2026: day rate = 6–8× a hora, US$1.500–5.000/dia); fractional CTO advisory
-  leve US$4.000–8.000/mês; **<12% dos devs de open source ganham qualquer receita** com isso.
+  diagnosis + prioritization **R$10,000–40,000** (3–6 weeks); first use case
+  R$30,000–120,000; **monthly retainer R$5,000–20,000**; explicitly states that the hour
+  is not the dominant format in Brazil (fixed-price project and monthly fee are).
+- **Cost of Code Audit Services in 2026** — DevCom, **2026-02-18** (fetch): static audit
+  **US$5,000–8,000**, dynamic US$8,000–16,000.
+- **AI Readiness Audit Pricing 2026** — Pertama Partners, published 2026-02-08,
+  **updated 2026-06-17** (fetch): organization <100 employees **SGD 15,000–35,000**,
+  2–3 weeks, 1–2 consultants. Published regional multipliers (Malaysia 70–80% of the
+  Singapore baseline, Vietnam/Philippines 50–60%) — evidence that the same delivery is
+  priced geographically, not absolutely.
+- **AI Training Cost in 2026** — TightSlice, **2026-07-01** (fetch): custom on-site
+  workshop **US$2,500–5,000 per team**; full-day role-specific **US$5,000 for up to 12
+  people**; intensive weekly coaching US$1,500–3,000/month.
+- **$100 million for open source** — GitHub Blog, **2026-07-20** (fetch): 70,000+
+  maintainers, 280,000+ sponsors; ~40% of the funding comes from organizations and each
+  organizational sponsorship is worth ~15× an individual one.
+- Complementary searches (snippets, not fetched — treated as a lead, not proof):
+  goLance *Node.js Developer Hourly Rate Guide 2026* (senior ~US$128/h, top US$218/h);
+  groovyweb *AI consulting rates 2026* (solo consultant US$80–200/h); *AI readiness audit*
+  small business US$2,000–8,000; *boilerplate income* (Jake's Insights, 2026-04-26:
+  boilerplates US$49–249, top sellers US$1,500–3,500/month; Gumroad fee 10% + ~2.9%+US$0.30);
+  Claude Code setups sold at **US$27–97** (Medium, Apr 2026); *Consultant Daily Rate*
+  (consultfees, 2026: day rate = 6–8× the hour, US$1,500–5,000/day); light fractional CTO
+  advisory US$4,000–8,000/month; **<12% of open source devs earn any revenue** from it.
 
-### UNKNOWN (e o efeito de cada um na conclusão)
+### UNKNOWN (and the effect of each one on the conclusion)
 
-1. **Termos do vínculo empregatício: PI, exclusividade, moonlighting** — UNKNOWN (brief §6).
-   Efeito: se houver cláusula de cessão de PI ou exclusividade cobrindo trabalho no mesmo
-   campo, as rotas R1/R2/R7 **como desenhadas** ficam inválidas e a análise precisa ser
-   rerodada como "publicar por reputação, não por receita". Não dou orientação jurídica —
-   leia o contrato e, se houver dúvida, consulte um advogado **antes** de emitir a primeira
-   proposta.
-2. **Audiência fora do GitHub** (newsletter, YouTube, LinkedIn, comunidade) — UNKNOWN.
-   Único número medido: **6 seguidores no GitHub** (brief §4). Efeito: toda rota cujo
-   mecanismo é "vender para minha audiência" está **sem funding** e foi rebaixada abaixo
-   das rotas 1:1. Se existir uma audiência de, digamos, 2.000 pessoas em LinkedIn, R4 sobe
-   duas posições.
-3. **Renda atual e urgência de caixa** — UNKNOWN. Efeito: define o trade-off caixa ×
-   reputação. Se a urgência é caixa, a ordem abaixo está correta. Se não é, tornar o
-   repositório público primeiro tem retorno composto maior — mas isso é a saída do modo
-   *positioning*, não deste.
-4. **Se o "time de 2–10 pessoas" do `docs/PRD.md:4` é um time real do empregador** — UNKNOWN.
-   Efeito: é o lead mais quente possível e simultaneamente o de maior risco contratual.
-5. **Preço de treinamento in-company técnico no Brasil por turma fechada** — **UNKNOWN**
-   após 3 buscas distintas em português; nenhuma empresa brasileira de treinamento publica
-   tabela (ohub, Hashtag Treinamentos, BT Company, Instituto Minere, KPMG Business School:
-   todas "sob consulta"). Premissa usada onde precisei: razão Brasil/EUA de 35–50% derivada
-   do índice index.dev (BR US$30–55 vs EUA US$95–110).
-6. **Hora de consultoria de *engenharia de IA* no Brasil** — UNKNOWN. Só encontrei hora de
-   dev genérico e bandas de projeto de consultoria de IA. A tabela publicada da TICOOP
-   Brasil ("Arquiteto de Software (hora)") **não pôde ser buscada** — 302 para outro host.
-7. **Procedência do conteúdo derivado de `leo-curso`** — `.engineos/archived/2026/06/19/2026-06-19-leo-curso-extract.md`
-   registra que técnicas de material de curso de terceiro foram dobradas em
-   `skills/nestjs-patterns/SKILL.md`. Efeito: para qualquer coisa **vendida ou publicada**,
-   isso é uma questão de procedência aberta. O próprio registro diz que o framework
-   opinativo do curso foi deliberadamente **não** adotado, o que ajuda, mas não resolve.
-8. **Volumes de conversão** — não existe histórico (receita estruturalmente zero, brief §6).
-   Todo volume abaixo é **premissa declarada**, não projeção.
+1. **Terms of the employment relationship: IP, exclusivity, moonlighting** — UNKNOWN (brief §6).
+   Effect: if there is an IP assignment or exclusivity clause covering work in the same
+   field, routes R1/R2/R7 **as designed** become invalid and the analysis needs to be
+   re-run as "publish for reputation, not for revenue". I give no legal advice —
+   read the contract and, if in doubt, consult a lawyer **before** issuing the first
+   proposal.
+2. **Audience outside GitHub** (newsletter, YouTube, LinkedIn, community) — UNKNOWN.
+   The only measured number: **6 followers on GitHub** (brief §4). Effect: every route whose
+   mechanism is "sell to my audience" is **unfunded** and was demoted below
+   the 1:1 routes. If there is an audience of, say, 2,000 people on LinkedIn, R4 climbs
+   two positions.
+3. **Current income and cash urgency** — UNKNOWN. Effect: it sets the cash ×
+   reputation trade-off. If the urgency is cash, the order below is correct. If it is not,
+   making the repository public first has a larger compounding return — but that is the output
+   of the *positioning* mode, not this one.
+4. **Whether the "2–10 person team" of `docs/PRD.md:4` is a real team at the employer** — UNKNOWN.
+   Effect: it is the hottest possible lead and simultaneously the one with the greatest contractual risk.
+5. **Price of technical in-company training in Brazil per closed class** — **UNKNOWN**
+   after 3 distinct searches in Portuguese; no Brazilian training company publishes a
+   rate card (ohub, Hashtag Treinamentos, BT Company, Instituto Minere, KPMG Business School:
+   all "sob consulta"). Assumption used where I needed one: Brazil/US ratio of 35–50% derived
+   from the index.dev index (BR US$30–55 vs US US$95–110).
+6. **Hourly rate for *AI engineering* consulting in Brazil** — UNKNOWN. I only found generic
+   dev hourly rates and AI consulting project bands. TICOOP Brazil's published rate card
+   ("Arquiteto de Software (hora)") **could not be fetched** — 302 to another host.
+7. **Provenance of the content derived from `leo-curso`** — `.engineos/archived/2026/06/19/2026-06-19-leo-curso-extract.md`
+   records that techniques from a third party's course material were folded into
+   `skills/nestjs-patterns/SKILL.md`. Effect: for anything **sold or published**,
+   that is an open provenance question. The record itself says that the course's opinionated
+   framework was deliberately **not** adopted, which helps, but does not settle it.
+8. **Conversion volumes** — no history exists (structurally zero revenue, brief §6).
+   Every volume below is a **declared assumption**, not a projection.
 
 ---
 
 ## Analysis
 
-### STEP 1 — Inventário dos ativos não monetizados
+### STEP 1 — Inventory of the unmonetized assets
 
-Classificados pelo que a monetização exige deles, não pelo que são tecnicamente.
+Classified by what monetization requires of them, not by what they technically are.
 
-#### Classe A — Conhecimento de problema difícil já resolvido (o mais subvalorizado)
+#### Class A — Knowledge of a hard problem already solved (the most undervalued)
 
-- **A1. Gate de verificação que funciona em monorepo real** — `hooks/stop-verify.sh`.
-  Não é "um hook": é a solução de quatro falhas que fazem os gates dos outros times
-  serem desligados na segunda semana. Detecção de existência de target Nx via
-  `nx show project --json` com guarda ancorada contra falso-positivo de cache
-  (`hooks/stop-verify.sh:99-134`); extração de campo com `jq` **opcional**
-  (`:11-19`); `timeout` portável com fallback `gtimeout`/no-op (`:60-62`); dedupe de
-  diretórios de pacote seguro para caminhos com espaço (`:70-81`); escopo restrito a
-  chamadas Edit/Write do transcript, para que apenas *ler* um arquivo não arraste o
-  pacote para a suíte (`:31-41`). Alguém está pagando hoje para descobrir isso.
-- **A2. Schema de hooks do Cursor levantado empiricamente** —
-  `docs/specs/2026-06-19-cursor-adapter-design.md:29-53`. Nomes de evento, `exit 2` como
-  mecanismo de block, reuso do nesting `tool_input` do Claude Code, schema de saída
-  **diferente por evento** (`{permission,user_message,agent_message,updated_input}` vs
-  `{additional_context}` vs `{followup_message}`), matchers em regex **JavaScript** e não
-  POSIX, comandos sem namespace. Este é o ativo de conhecimento com maior diferencial e
-  menor concorrência no inventário — e ele prova, junto com
-  `templates/cursor/commands/*.md` já entregues, que **o método não está preso ao Claude
-  Code**. Isso muda a conversa de venda: você não está vendendo dependência de um vendor.
-- **A3. Arquitetura "single-source core + thin adapters"** —
-  `docs/specs/2026-06-19-cursor-adapter-design.md:55-68`: lógica pura em
-  `hooks/lib/<name>.core.sh`, adaptadores finos por host. É decisão de design reusável,
-  não código.
-- **A4. Secrets gate fail-closed, em duas linguagens** — `install.sh` (sobre
-  `git ls-files`, ou seja, só arquivos rastreados) e `install.ps1:20-35` (14 padrões:
+- **A1. Verification gate that works in a real monorepo** — `hooks/stop-verify.sh`.
+  It is not "a hook": it is the solution to four failures that get other teams' gates
+  switched off in the second week. Nx target existence detection via
+  `nx show project --json` with an anchored guard against a cache false positive
+  (`hooks/stop-verify.sh:99-134`); field extraction with **optional** `jq`
+  (`:11-19`); portable `timeout` with a `gtimeout`/no-op fallback (`:60-62`); package
+  directory dedupe safe for paths with spaces (`:70-81`); scope restricted to
+  Edit/Write calls from the transcript, so that merely *reading* a file does not drag the
+  package into the suite (`:31-41`). Somebody is paying today to find this out.
+- **A2. Cursor hooks schema mapped empirically** —
+  `docs/specs/2026-06-19-cursor-adapter-design.md:29-53`. Event names, `exit 2` as the
+  block mechanism, reuse of Claude Code's `tool_input` nesting, output schema
+  **different per event** (`{permission,user_message,agent_message,updated_input}` vs
+  `{additional_context}` vs `{followup_message}`), matchers in **JavaScript** regex and not
+  POSIX, commands without a namespace. This is the knowledge asset with the greatest
+  differentiation and the least competition in the inventory — and it proves, together with
+  the already-delivered `templates/cursor/commands/*.md`, that **the method is not locked to
+  Claude Code**. That changes the sales conversation: you are not selling vendor dependence.
+- **A3. "Single-source core + thin adapters" architecture** —
+  `docs/specs/2026-06-19-cursor-adapter-design.md:55-68`: pure logic in
+  `hooks/lib/<name>.core.sh`, thin adapters per host. It is a reusable design decision,
+  not code.
+- **A4. Fail-closed secrets gate, in two languages** — `install.sh` (over
+  `git ls-files`, that is, tracked files only) and `install.ps1:20-35` (14 patterns:
   `sk-ant-`, `sk-proj-`, AKIA, `gh[opsu]_`, `github_pat_`, `glpat-`, `AIza`, `ATATT`,
-  `xox[baprs]-`, chave privada PEM, `private_key_id`, e URL com credencial embutida). O
-  registro `2026-06-17-review-findings-fixes.md` mostra que este gate **já estava quebrado
-  no macOS** e foi consertado — isto é conhecimento cicatrizado, não teórico.
-- **A5. Doutrina de fan-out paralelo e tiers de modelo** — `rules/parallelism.md` (57
-  linhas: gatilhos, congelamento de contrato antes do fan-out, escopo de arquivo disjunto,
-  cap de ~6 agentes por wave, grafo de agentes plano) e `rules/models.md` (41 linhas:
-  quatro tiers, precedência dispatch > frontmatter > sessão, regras de escalonamento).
-  Escrito 2026-07-30; é a peça mais nova e a mais difícil de encontrar publicada.
+  `xox[baprs]-`, PEM private key, `private_key_id`, and URL with embedded credential). The
+  `2026-06-17-review-findings-fixes.md` record shows that this gate **was already broken
+  on macOS** and was fixed — this is scar-tissue knowledge, not theoretical.
+- **A5. Parallel fan-out and model tier doctrine** — `rules/parallelism.md` (57
+  lines: triggers, contract freezing before fan-out, disjoint file scope,
+  cap of ~6 agents per wave, flat agent graph) and `rules/models.md` (41 lines:
+  four tiers, dispatch > frontmatter > session precedence, escalation rules).
+  Written 2026-07-30; it is the newest piece and the hardest to find published.
 
-#### Classe B — Conteúdo que já é 80% de um artefato pago
+#### Class B — Content that is already 80% of a paid artifact
 
-- **B1. `docs/ADOPTION.md` (214 linhas)** — runbook de 9 passos, cada um com "o que faz" e
-  "como verificar", mais tabela de troubleshooting com causa-raiz
-  (`docs/ADOPTION.md:189-200`) e tabela specialist→MCP→credencial (`:102-109`). Isto é
-  literalmente o roteiro de um workshop de meio dia, já escrito.
-- **B2. `docs/START.md` (199 linhas)** — manual de operação diária, com modelo mental em
-  diagrama (`docs/START.md:12-27`).
-- **B3. 10 design specs (1.579 linhas)** em `docs/specs/`, incluindo um plano executável de
-  645 linhas (`2026-06-19-project-layout-standard-plan.md`).
-- **B4. 22 registros de mudança arquivados** em `.engineos/archived/**` — cada um com
-  What/Why/Scope/Verification/Changes-registered. Este é o corpus que prova disciplina de
-  processo a um comprador cético, e é o tipo de evidência que quase ninguém consegue
-  mostrar.
-- **B5. `patterns/1-Analisys` (51 linhas, em português)** — prompt de análise arquitetural
-  com regras anti-invenção explícitas ("Nunca invente comportamento que não exista no
-  código", "Inferências devem ser marcadas explicitamente como 'hipótese'") e três
-  artefatos de saída definidos. Combinado com `agents/architecture-analyst.md` (120
-  linhas) e `patterns/2-Interview-brainstorm.md`, é um serviço embalado esperando um
-  cliente. **O ativo mais vendável do repositório inteiro** — e o único já em PT-BR.
+- **B1. `docs/ADOPTION.md` (214 lines)** — a 9-step runbook, each with "what it does" and
+  "how to verify", plus a troubleshooting table with root cause
+  (`docs/ADOPTION.md:189-200`) and a specialist→MCP→credential table (`:102-109`). This is
+  literally the script of a half-day workshop, already written.
+- **B2. `docs/START.md` (199 lines)** — daily operation manual, with a mental model in a
+  diagram (`docs/START.md:12-27`).
+- **B3. 10 design specs (1,579 lines)** in `docs/specs/`, including an executable plan of
+  645 lines (`2026-06-19-project-layout-standard-plan.md`).
+- **B4. 22 archived change records** in `.engineos/archived/**` — each one with
+  What/Why/Scope/Verification/Changes-registered. This is the corpus that proves process
+  discipline to a skeptical buyer, and it is the type of evidence that almost nobody can
+  show.
+- **B5. `patterns/1-Analisys` (51 lines, in Portuguese)** — architectural analysis prompt
+  with explicit anti-invention rules ("Nunca invente comportamento que não exista no
+  código", "Inferências devem ser marcadas explicitamente como 'hipótese'") and three
+  defined output artifacts. Combined with `agents/architecture-analyst.md` (120
+  lines) and `patterns/2-Interview-brainstorm.md`, it is a packaged service waiting for a
+  client. **The most sellable asset in the entire repository** — and the only one already in PT-BR.
 
-#### Classe C — Processo e ferramental que funciona
+#### Class C — Process and tooling that works
 
-- **C1. Sistema de quality gates completo** — `hooks/hooks.json` liga 5 eventos;
-  `hooks/route-before-change.sh` (64) + `hooks/routing-map.sh` (72) fazem roteamento
-  determinístico por padrão de caminho; `hooks/post-edit-check.sh` (84) roda lint+typecheck
-  escopado; `hooks/mark-unrecorded.sh` (33) + `hooks/record-verify.sh` (26) forçam o
-  registro de mudança; `hooks/ensure-project-layout.sh` (59) + `hooks/layout-manifest.sh`
-  (17) fazem scaffold; `hooks/task-scale-advisor.sh` (45) sugere fan-out. **Com 5 suítes
-  de teste** (`hooks/test-*.sh`, 318 linhas somadas). Um processo com testes é um produto.
-- **C2. Instalador multiplataforma** — `install.sh` (171) + `install.ps1` (293),
-  idempotentes, com merge não-destrutivo em `~/.claude/settings.json` e backup
-  write-once. **Risco imediato: `install.ps1` está UNTRACKED** — existe apenas nesta
-  máquina. É o único ativo do inventário que pode ser perdido com um `git clean` ou um
-  HD queimado.
-- **C3. Templates de review em CI** — `templates/github/claude-review.yml` e
-  `claude-security.yml`, com prompt afinado (proíbe achado inventado, exige file:line,
-  sinaliza PR >400 linhas).
-- **C4. Baseline de MCP + allowlist de permissões** — `templates/mcp.template.json`,
-  `templates/permissions.template.json`, e a doutrina de credencial read-only
-  (`docs/ADOPTION.md:94-122`). Note que a allowlist **não** auto-aprova ferramentas de
-  escrita de MCP — decisão de menor privilégio, defensável em venda.
-- **C5. Camada de portabilidade Cursor entregue** —
+- **C1. Complete quality gates system** — `hooks/hooks.json` wires 5 events;
+  `hooks/route-before-change.sh` (64) + `hooks/routing-map.sh` (72) do deterministic
+  routing by path pattern; `hooks/post-edit-check.sh` (84) runs scoped lint+typecheck;
+  `hooks/mark-unrecorded.sh` (33) + `hooks/record-verify.sh` (26) force the
+  change record; `hooks/ensure-project-layout.sh` (59) + `hooks/layout-manifest.sh`
+  (17) do scaffolding; `hooks/task-scale-advisor.sh` (45) suggests fan-out. **With 5 test
+  suites** (`hooks/test-*.sh`, 318 lines combined). A process with tests is a product.
+- **C2. Cross-platform installer** — `install.sh` (171) + `install.ps1` (293),
+  idempotent, with non-destructive merge into `~/.claude/settings.json` and write-once
+  backup. **Immediate risk: `install.ps1` is UNTRACKED** — it exists only on this
+  machine. It is the only asset in the inventory that can be lost to a `git clean` or a
+  burned-out drive.
+- **C3. CI review templates** — `templates/github/claude-review.yml` and
+  `claude-security.yml`, with a tuned prompt (forbids invented findings, requires file:line,
+  flags PRs >400 lines).
+- **C4. MCP baseline + permissions allowlist** — `templates/mcp.template.json`,
+  `templates/permissions.template.json`, and the read-only credential doctrine
+  (`docs/ADOPTION.md:94-122`). Note that the allowlist does **not** auto-approve MCP write
+  tools — a least-privilege decision, defensible in a sale.
+- **C5. Cursor portability layer delivered** —
   `templates/cursor/commands/{audit,implement,production-env}.md`.
-- **C6. Gerador de slash commands** — `scripts/gen-agent-commands.sh` → 33 arquivos em
+- **C6. Slash command generator** — `scripts/gen-agent-commands.sh` → 33 files in
   `commands/agents/`.
 
-#### Classe D — Integrações já construídas
+#### Class D — Integrations already built
 
-- **D1. 5 leaf specialists ligados a MCP** — `agents/postgres-specialist.md`,
+- **D1. 5 leaf specialists wired to MCP** — `agents/postgres-specialist.md`,
   `agents/oracle-specialist.md`, `agents/kubernetes-specialist.md`,
-  `agents/gcp-specialist.md`, `agents/cicd-specialist.md`, com o contrato
-  "`UNKNOWN — no access` em vez de adivinhar" (`docs/ADOPTION.md:90-92`).
-- **D2. Agentes de release de loja** — `agents/ios-builder.md` (102) e
-  `agents/android-builder.md` (110): pipeline de preflight → bump → gates → build assinado
-  → upload de track/TestFlight. Cobre uma dor caríssima e mal documentada.
-- **D3. Espelho web→mobile** — `agents/mobile-coordinator.md` (112) +
+  `agents/gcp-specialist.md`, `agents/cicd-specialist.md`, with the contract
+  "`UNKNOWN — no access` instead of guessing" (`docs/ADOPTION.md:90-92`).
+- **D2. Store release agents** — `agents/ios-builder.md` (102) and
+  `agents/android-builder.md` (110): preflight → bump → gates → signed build
+  → track/TestFlight upload pipeline. Covers a very expensive and poorly documented pain.
+- **D3. Web→mobile mirror** — `agents/mobile-coordinator.md` (112) +
   `docs/specs/2026-07-13-elias-web-to-mobile-mirror-design.md`.
-- **D4. QA end-to-end de API** — `agents/qa-tester.md` (109): Docker limpo, inventário de
-  endpoints em JSON, coleção Postman, run headless com Newman.
+- **D4. End-to-end API QA** — `agents/qa-tester.md` (109): clean Docker, endpoint
+  inventory in JSON, Postman collection, headless run with Newman.
 
-#### Classe E — Dados e benchmarks que só ele tem — **HOPE, NÃO ATIVO**
+#### Class E — Data and benchmarks only he has — **HOPE, NOT AN ASSET**
 
-Aqui o playbook exige honestidade e a resposta é desconfortável:
+Here the playbook demands honesty and the answer is uncomfortable:
 
-- `scripts/usage-report.sh` é o instrumento correto — mina transcripts locais por
-  `[router] intent=` e por invocação de skill. **Mas nenhuma saída dele está armazenada em
-  lugar algum do repositório.**
-- `.engineos/memory/` contém **apenas `README.md`** (1.273 bytes) depois de 22 mudanças
-  concluídas (confirma brief §5.3).
-- Portanto: "benchmarks que só eu tenho" é **hope**, não ativo. Não existe um único número
-  medido de antes/depois — nem tempo de review, nem taxa de retrabalho, nem
-  falhas-pegas-por-hook por semana, embora `docs/PRD.md:147-157` defina exatamente essas
-  métricas. O corpus de 22 registros é evidência de *disciplina*, não de *ganho*.
-- Consequência comercial direta: **nenhuma proposta pode prometer ganho percentual.** Toda
-  proposta deve vender entrega concreta (documento, auditoria, ambiente instalado), nunca
-  ROI. Isso também significa que instrumentar a próxima mudança com
-  `scripts/usage-report.sh` cria o primeiro ativo de dados — mas isso é construção, e o
-  playbook proíbe rotas que precisam ser construídas antes de faturar.
+- `scripts/usage-report.sh` is the right instrument — it mines local transcripts for
+  `[router] intent=` and for skill invocation. **But none of its output is stored
+  anywhere in the repository.**
+- `.engineos/memory/` contains **only `README.md`** (1,273 bytes) after 22 completed
+  changes (confirms brief §5.3).
+- Therefore: "benchmarks only I have" is **hope**, not an asset. There is not a single
+  measured before/after number — not review time, not rework rate, not
+  failures-caught-per-hook per week, even though `docs/PRD.md:147-157` defines exactly those
+  metrics. The corpus of 22 records is evidence of *discipline*, not of *gain*.
+- Direct commercial consequence: **no proposal can promise a percentage gain.** Every
+  proposal must sell a concrete delivery (document, audit, installed environment), never
+  ROI. That also means that instrumenting the next change with
+  `scripts/usage-report.sh` creates the first data asset — but that is construction, and the
+  playbook forbids routes that need to be built before invoicing.
 
-#### Não-ativos (registrados para você parar de contá-los)
+#### Non-assets (recorded so you stop counting them)
 
-- **Audiência**: 6 seguidores no GitHub (brief §4). Não é canal.
-- **Repositório**: privado — os dois caminhos de instalação documentados
-  (`README.md:18`, `README.md:24-25`) não funcionam para ninguém além de você (brief §3).
-  Zero adotantes possíveis hoje.
-- **Marketplace de plugin** (`.claude-plugin/marketplace.json`, `plugin.json` v1.2.0):
-  pronto, e inerte enquanto o repo for privado.
-
----
-
-### STEP 2 — Uma rota por ativo (ativável em <30 dias, sem investimento novo)
-
-Todo preço abaixo carrega fonte + data. Todo volume é premissa declarada.
-Câmbio usado onde comparo moedas: **US$1 ≈ R$5,40** — premissa, não cotação verificada
-(não pesquisei taxa de câmbio; ajuste você mesmo).
+- **Audience**: 6 followers on GitHub (brief §4). Not a channel.
+- **Repository**: private — the two documented installation paths
+  (`README.md:18`, `README.md:24-25`) do not work for anyone but you (brief §3).
+  Zero possible adopters today.
+- **Plugin marketplace** (`.claude-plugin/marketplace.json`, `plugin.json` v1.2.0):
+  ready, and inert while the repo is private.
 
 ---
 
-#### R1 — Serviço de escopo fechado: instalar e adotar o ambiente em um time
+### STEP 2 — One route per asset (activatable in <30 days, with no new investment)
 
-- **Ativo:** C1 + C2 + C4 + C3 + B1 (`hooks/`, `install.sh`/`install.ps1`,
+Every price below carries a source + date. Every volume is a declared assumption.
+Exchange rate used where I compare currencies: **US$1 ≈ R$5.40** — an assumption, not a verified
+quote (I did not research the exchange rate; adjust it yourself).
+
+---
+
+#### R1 — Fixed-scope service: install and adopt the environment in a team
+
+- **Asset:** C1 + C2 + C4 + C3 + B1 (`hooks/`, `install.sh`/`install.ps1`,
   `templates/mcp.template.json`, `templates/github/*.yml`, `docs/ADOPTION.md`).
-- **Modelo:** serviço de escopo fechado, preço fixo. Entrega: ambiente instalado, gates
-  ligados e provados, `CLAUDE.md` de projeto escrito, 1 MCP read-only conectado, 2 CI
-  workflows ativos, 1h de handoff gravada.
-- **Esforço:** 14–20h (o runbook já existe; o trabalho é o delta do projeto do cliente).
-  Cabe em **uma semana** das 20h+.
-- **Preço e aritmética:**
-  - Brasil: 16h × R$220–350/h = **R$3.500–5.600**. A hora ancora em index.dev (sênior BR
-    US$40–75/h ≈ R$216–405/h, 2026-05-27). Como pacote fechado — formato dominante no
-    Brasil segundo Waxi (2026-06-28) — **R$6.000–12.000** fica dentro do piso da banda de
-    "diagnóstico" publicada (R$10.000–40.000) e abaixo dela, o que é a posição correta
-    para um primeiro cliente sem case.
-  - Internacional remoto: 16h × US$100–180/h = **US$1.600–2.900**; como fixed-fee, a banda
-    de "AI readiness audit small business" US$2.000–8.000 (busca, 2026) e o piso Pertama
-    <100 funcionários SGD 15.000–35.000 (2026-06-17) mostram que **US$2.500–4.000** é
-    conservador, não agressivo.
-  - Volume premissa: 1–2 fechamentos em 30 dias, e **só** se houver um lead quente já
-    existente.
-  - **Faixa: R$6.000–24.000 (BR) ou US$2.500–8.000 (intl) em 30 dias.**
-- **Dependências e bloqueios:** é a rota com **maior sobreposição com o emprego** — o
-  comprador natural é o time de 2–10 pessoas do `docs/PRD.md:4`, que pode ser o time do
-  empregador (UNKNOWN #4). Vender para o próprio empregador é onde cláusula de
-  moonlighting morde mais forte. Não avance nisso sem ler o contrato.
+- **Model:** fixed-scope service, fixed price. Delivery: installed environment, gates
+  wired and proven, project `CLAUDE.md` written, 1 read-only MCP connected, 2 CI
+  workflows active, 1h of recorded handoff.
+- **Effort:** 14–20h (the runbook already exists; the work is the delta of the client's project).
+  It fits in **one week** of the 20h+.
+- **Price and arithmetic:**
+  - Brazil: 16h × R$220–350/h = **R$3,500–5,600**. The hourly rate anchors on index.dev (BR senior
+    US$40–75/h ≈ R$216–405/h, 2026-05-27). As a fixed package — the dominant format in
+    Brazil per Waxi (2026-06-28) — **R$6,000–12,000** sits within and below the floor of the
+    published "diagnosis" band (R$10,000–40,000), which is the correct position
+    for a first client with no case study.
+  - International remote: 16h × US$100–180/h = **US$1,600–2,900**; as a fixed fee, the
+    "AI readiness audit small business" band US$2,000–8,000 (search, 2026) and the Pertama
+    floor for <100 employees SGD 15,000–35,000 (2026-06-17) show that **US$2,500–4,000** is
+    conservative, not aggressive.
+  - Assumed volume: 1–2 closes in 30 days, and **only** if there is an already existing
+    hot lead.
+  - **Range: R$6,000–24,000 (BR) or US$2,500–8,000 (intl) in 30 days.**
+- **Dependencies and blockers:** it is the route with the **greatest overlap with the job** — the
+  natural buyer is the 2–10 person team of `docs/PRD.md:4`, which may be the
+  employer's team (UNKNOWN #4). Selling to your own employer is where a moonlighting
+  clause bites hardest. Do not advance on this without reading the contract.
 
 ---
 
-#### R2 — Auditoria paga: governança de engenharia assistida por IA
+#### R2 — Paid audit: AI-assisted engineering governance
 
-- **Ativo:** A1 + C1 + `commands/audit.md` + `agents/audit-consolidator.md` + C6.
-- **Modelo:** auditoria paga, preço fixo, entregável escrito (relatório com
-  STATUS + plano de remediação, exatamente o formato que `docs/ADOPTION.md:158-162` já
-  descreve). Escopo: o setup de Claude Code/Cursor do time do cliente — o que roteia, o
-  que verifica, o que vaza segredo, o que não é reprodutível em máquina nova.
-- **Esforço:** 8–12h por auditoria. Duas por mês cabem folgadamente nas 20h+.
-- **Preço e aritmética:**
-  - Piso de mercado citado: audit **estático** de código US$5.000–8.000 (DevCom,
-    2026-02-18); *AI readiness audit* small business US$2.000–8.000 (busca, 2026); Pertama
-    <100 funcionários SGD 15.000–35.000 por 2–3 semanas com 1–2 consultores (2026-06-17).
-    Um solo entregando em 1 semana precisa ficar **abaixo** de todos esses pisos.
-  - Brasil: **R$4.000–9.000** por auditoria (10h × R$400–900/h efetiva). Consistente com a
-    banda de diagnóstico Waxi R$10.000–40.000 sendo escopo maior (3–6 semanas).
-  - Internacional: **US$1.500–4.000** por auditoria (10h × US$150–400/h; a referência de
-    LLM application engineering em boutique é £250–450/h — Winder.AI, 2026-06-24 — então
-    US$150–400 é posicionamento de solo sem marca, não desconto de pânico).
-  - Volume premissa: 1–2 em 30 dias.
-  - **Faixa: R$4.000–18.000 (BR) ou US$1.500–8.000 (intl).**
-- **Dependências e bloqueios:** requer que o comprador **já** use Claude Code ou Cursor —
-  pool de prospects menor, especialmente em Londrina. O relatório de auditoria pertence ao
-  cliente e é confidencial; qualquer uso como case exige autorização escrita.
+- **Asset:** A1 + C1 + `commands/audit.md` + `agents/audit-consolidator.md` + C6.
+- **Model:** paid audit, fixed price, written deliverable (report with
+  STATUS + remediation plan, exactly the format `docs/ADOPTION.md:158-162` already
+  describes). Scope: the client team's Claude Code/Cursor setup — what routes, what
+  verifies, what leaks a secret, what is not reproducible on a new machine.
+- **Effort:** 8–12h per audit. Two per month fit comfortably in the 20h+.
+- **Price and arithmetic:**
+  - Market floor cited: **static** code audit US$5,000–8,000 (DevCom,
+    2026-02-18); *AI readiness audit* small business US$2,000–8,000 (search, 2026); Pertama
+    <100 employees SGD 15,000–35,000 for 2–3 weeks with 1–2 consultants (2026-06-17).
+    A solo delivering in 1 week needs to stay **below** all of those floors.
+  - Brazil: **R$4,000–9,000** per audit (10h × R$400–900/h effective). Consistent with the
+    Waxi diagnosis band R$10,000–40,000 being a larger scope (3–6 weeks).
+  - International: **US$1,500–4,000** per audit (10h × US$150–400/h; the reference for
+    LLM application engineering at a boutique is £250–450/h — Winder.AI, 2026-06-24 — so
+    US$150–400 is positioning for a solo with no brand, not a panic discount).
+  - Assumed volume: 1–2 in 30 days.
+  - **Range: R$4,000–18,000 (BR) or US$1,500–8,000 (intl).**
+- **Dependencies and blockers:** it requires the buyer to **already** use Claude Code or Cursor —
+  a smaller prospect pool, especially in Londrina. The audit report belongs to the
+  client and is confidential; any use as a case study requires written authorization.
 
 ---
 
-#### R3 — Workshop com o conteúdo já escrito
+#### R3 — Workshop with the content already written
 
-- **Ativo:** B1 + B2 + `CLAUDE.md` (a tabela de router é o roteiro da aula) + A5.
-- **Modelo:** workshop de meio dia, taxa fechada por turma.
-- **Esforço:** 8–10h para virar `docs/ADOPTION.md` + `docs/START.md` em slides + 4h de
-  entrega = 12–14h. Cabe.
-- **Preço e aritmética:**
-  - EUA/intl: workshop on-site custom **US$2.500–5.000 por time**; full-day
-    role-specific **US$5.000 para até 12 pessoas** (TightSlice, 2026-07-01); busca
-    complementar dá half-day US$3.000–8.000 até ~25 pessoas.
-  - Brasil: **UNKNOWN** — nenhuma tabela publicada encontrada em 3 buscas (ohub, Hashtag
-    Treinamentos, BT Company, Instituto Minere, KPMG BS: todas "sob consulta"). Premissa
-    declarada: 35–50% do valor US, derivada da razão de hora BR/EUA da index.dev
-    (US$30–55 vs US$95–110). Isso dá **R$4.700–13.500 por turma fechada** a
-    US$2.500–5.000 × 35–50% × 5,40. **Trate como estimativa com premissa, não como preço
-    de mercado.**
-  - Volume premissa: 1 turma em 30 dias.
-  - **Faixa: R$4.700–13.500 (BR, premissa) ou US$2.500–5.000 (intl, com fonte).**
-- **Dependências:** precisa de um comprador corporativo com orçamento de treinamento —
-  ciclo de compra tipicamente mais longo que 30 dias no Brasil. É por isso que não está no
+- **Asset:** B1 + B2 + `CLAUDE.md` (the router table is the lesson script) + A5.
+- **Model:** half-day workshop, fixed fee per class.
+- **Effort:** 8–10h to turn `docs/ADOPTION.md` + `docs/START.md` into slides + 4h of
+  delivery = 12–14h. It fits.
+- **Price and arithmetic:**
+  - US/intl: custom on-site workshop **US$2,500–5,000 per team**; full-day
+    role-specific **US$5,000 for up to 12 people** (TightSlice, 2026-07-01); a complementary
+    search gives half-day US$3,000–8,000 for up to ~25 people.
+  - Brazil: **UNKNOWN** — no published rate card found in 3 searches (ohub, Hashtag
+    Treinamentos, BT Company, Instituto Minere, KPMG BS: all "sob consulta"). Declared
+    assumption: 35–50% of the US value, derived from the BR/US hourly ratio of index.dev
+    (US$30–55 vs US$95–110). That gives **R$4,700–13,500 per closed class** at
+    US$2,500–5,000 × 35–50% × 5.40. **Treat it as an estimate with an assumption, not as a
+    market price.**
+  - Assumed volume: 1 class in 30 days.
+  - **Range: R$4,700–13,500 (BR, assumption) or US$2,500–5,000 (intl, with a source).**
+- **Dependencies:** it needs a corporate buyer with a training budget —
+  a purchase cycle typically longer than 30 days in Brazil. That is why it is not in the
   top 3.
 
 ---
 
-#### R4 — Template licenciado / acesso pago ao pacote
+#### R4 — Licensed template / paid access to the package
 
-- **Ativo:** A5 + `CLAUDE.md` + `rules/` + `skills/` + `agents/` + C3 + C4 + C6 +
+- **Asset:** A5 + `CLAUDE.md` + `rules/` + `skills/` + `agents/` + C3 + C4 + C6 +
   `.claude-plugin/` v1.2.0.
-- **Modelo:** template licenciado (compra única) ou acesso pago.
-- **Esforço:** 6–10h — a maior parte não é empacotar, é **limpar**: `spesia` aparece em
-  13 linhas de 3 arquivos rastreados, incluindo um caminho de filesystem local
+- **Model:** licensed template (one-time purchase) or paid access.
+- **Effort:** 6–10h — most of it is not packaging, it is **cleaning**: `spesia` appears in
+  13 lines of 3 tracked files, including a local filesystem path
   (`docs/specs/2026-06-19-project-layout-standard-plan.md:594,607,617`;
   `docs/specs/2026-06-19-project-layout-standard-design.md:12,164-168`;
   `docs/specs/2026-06-19-cursor-adapter-design.md:17`).
-- **Preço e aritmética:**
-  - Setups documentados de Claude Code vendem a **US$27–97** (Medium, abr/2026);
-    boilerplates de dev a US$49–249, com top sellers em US$1.500–3.500/mês (Jake's
-    Insights, 2026-04-26). Taxa Gumroad: 10% + ~2,9% + US$0,30.
-  - A mesma fonte diz que 5–15 cópias no primeiro mês pressupõem "**qualquer tipo de
-    audiência existente**". **Você não tem audiência medida** — tem 6 seguidores no
-    GitHub (brief §4). Então a aritmética honesta é: US$97 × **0–10 cópias** = **US$0–970
-    bruto**, ~US$0–845 líquido depois das taxas.
-  - **Esta rota tem como mecanismo "vender para a minha audiência", e a audiência é
-    UNKNOWN além de 6 seguidores. Declarado explicitamente, como exige o brief.**
-- **Conflito estrutural que você precisa ver:** o movimento que resolve o canal fechado
-  (tornar o repositório público) é o mesmo que destrói a escassez desta rota — e sob **MIT
-  já declarado em `LICENSE`**, qualquer pessoa que receba uma cópia pode redistribuí-la e
-  revendê-la. Ou seja: o código nunca vai ser o fosso. Isso não é argumento contra
-  publicar; é argumento para que o preço fique nos **serviços** (R1, R2, R7), não no
-  arquivo.
+- **Price and arithmetic:**
+  - Documented Claude Code setups sell at **US$27–97** (Medium, Apr 2026);
+    dev boilerplates at US$49–249, with top sellers at US$1,500–3,500/month (Jake's
+    Insights, 2026-04-26). Gumroad fee: 10% + ~2.9% + US$0.30.
+  - The same source says that 5–15 copies in the first month presuppose "**any kind of
+    existing audience**". **You have no measured audience** — you have 6 followers on
+    GitHub (brief §4). So the honest arithmetic is: US$97 × **0–10 copies** = **US$0–970
+    gross**, ~US$0–845 net after fees.
+  - **This route has "sell to my audience" as its mechanism, and the audience is
+    UNKNOWN beyond 6 followers. Declared explicitly, as the brief requires.**
+- **Structural conflict you need to see:** the move that solves the closed channel
+  (making the repository public) is the same one that destroys this route's scarcity — and under
+  **MIT already declared in `LICENSE`**, anyone who receives a copy can redistribute and
+  resell it. In other words: the code is never going to be the moat. That is not an argument against
+  publishing; it is an argument for the price to sit in the **services** (R1, R2, R7), not in the
+  file.
 
 ---
 
-#### R5 — Artefato patrocinado / escrita técnica paga sobre o conhecimento do Cursor
+#### R5 — Sponsored artifact / paid technical writing about the Cursor knowledge
 
-- **Ativo:** A2 (`docs/specs/2026-06-19-cursor-adapter-design.md:29-53`) + A1 + A3.
-- **Modelo:** artigo pago / artefato patrocinado.
-- **Esforço:** 6–8h por peça.
-- **Preço e aritmética:** documentação de API/dev **US$0,20–0,40/palavra**; technical
-  writer sênior ~US$105/h, topo US$173/h (goLance, 2026 — snippet). Peça de 1.800
-  palavras = **US$360–720**. Volume premissa 1–2 em 30 dias = **US$360–1.440**.
-- **Dependências:** exige uma publicação que pague e um pitch aceito. Nenhuma relação
-  editorial está documentada no repositório — é prospecção fria. Alto diferencial, baixa
-  previsibilidade de prazo.
-
----
-
-#### R6 — Retainer de padrões de engenharia
-
-- **Ativo:** todo o corpo de `rules/` + C1 + B4 (o ciclo de registro é o que se opera
-  mensalmente).
-- **Modelo:** retainer mensal.
-- **Esforço:** 8–12h/mês.
-- **Preço:** retainer de operação/evolução de IA no Brasil **R$5.000–20.000/mês**
-  (Waxi, 2026-06-28); advisory leve de fractional CTO US$4.000–8.000/mês (busca, 2026);
-  piso brasileiro de mentoria citado em "abaixo de R$1.500/mês é difícil sustentar"
-  (Outsider School — **sem data verificável**, trate como fraco). Solo, primeiro contrato:
-  **R$2.500–6.000/mês** ou **US$800–2.500/mês**.
-- **Por que não é rota de 30 dias:** retainer é o **follow-on** de R1 ou R2, não a porta de
-  entrada. Ninguém assina mensalidade com quem ainda não entregou nada. Registre como o
-  destino, não como o primeiro passo.
+- **Asset:** A2 (`docs/specs/2026-06-19-cursor-adapter-design.md:29-53`) + A1 + A3.
+- **Model:** paid article / sponsored artifact.
+- **Effort:** 6–8h per piece.
+- **Price and arithmetic:** API/dev documentation **US$0.20–0.40/word**; senior technical
+  writer ~US$105/h, top US$173/h (goLance, 2026 — snippet). A 1,800-word
+  piece = **US$360–720**. Assumed volume 1–2 in 30 days = **US$360–1,440**.
+- **Dependencies:** it requires a publication that pays and an accepted pitch. No editorial
+  relationship is documented in the repository — it is cold prospecting. High differentiation, low
+  predictability of timeline.
 
 ---
 
-#### R7 — Serviço de documentação de sistema legado, em português
+#### R6 — Engineering standards retainer
 
-- **Ativo:** B5 (`patterns/1-Analisys`, 51 linhas em PT-BR) +
+- **Asset:** the whole body of `rules/` + C1 + B4 (the record cycle is what gets operated
+  monthly).
+- **Model:** monthly retainer.
+- **Effort:** 8–12h/month.
+- **Price:** AI operation/evolution retainer in Brazil **R$5,000–20,000/month**
+  (Waxi, 2026-06-28); light fractional CTO advisory US$4,000–8,000/month (search, 2026);
+  Brazilian mentoring floor cited as "abaixo de R$1.500/mês é difícil sustentar"
+  (Outsider School — **with no verifiable date**, treat it as weak). Solo, first contract:
+  **R$2,500–6,000/month** or **US$800–2,500/month**.
+- **Why it is not a 30-day route:** a retainer is the **follow-on** of R1 or R2, not the entry
+  door. Nobody signs a monthly fee with someone who has not delivered anything yet. Record it as
+  the destination, not as the first step.
+
+---
+
+#### R7 — Legacy-system documentation service, in Portuguese
+
+- **Asset:** B5 (`patterns/1-Analisys`, 51 lines in PT-BR) +
   `agents/architecture-analyst.md` (120) + `patterns/2-Interview-brainstorm.md` +
-  `/analisy-architecture` e `/talk-about-the-system` (`commands/`).
-- **Modelo:** serviço de escopo fechado, preço fixo por sistema. Entregável:
-  "Arquitetura do Sistema" + "Objetivo do Sistema" + `README.md` por módulo, com
-  inferências marcadas como hipótese e módulos órfãos / acoplamentos / violações
-  arquiteturais identificados — exatamente o que `patterns/1-Analisys` já especifica.
-- **Esforço:** 10–16h por sistema de até ~15 módulos. Duas entregas por mês cabem nas 20h+.
-- **Preço e aritmética:**
-  - Brasil: 13h × R$300–700/h efetiva = **R$4.000–9.000** por sistema. Referência de piso:
-    audit estático de código US$5.000–8.000 (DevCom, 2026-02-18) é entrega maior e mais
-    caro; a banda de diagnóstico brasileira R$10.000–40.000 (Waxi, 2026-06-28) é escopo
-    de 3–6 semanas. Posicionar em **R$4.500 (sistema pequeno) a R$9.000 (sistema com
-    integrações)** fica claramente abaixo de ambos — que é onde um primeiro fornecedor sem
-    case deve estar.
-  - Internacional remoto: **US$1.200–3.000** por sistema (13h × US$90–230/h; o day-rate
-    citado por consultfees, US$1.500–5.000/dia, mostra que 2 dias a US$1.500 é o piso
-    conservador da faixa).
-  - Volume premissa: 1–2 em 30 dias.
-  - **Faixa: R$4.500–18.000 (BR) ou US$1.200–6.000 (intl).**
-- **Por que esta rota é estruturalmente diferente das outras seis:**
-  1. **Não exige que o comprador use Claude Code, Cursor, ou adote nada.** Ele compra um
-     documento. Você usa suas ferramentas por baixo — é problema seu, não dele.
-  2. **Não exige repositório público** — o canal fechado (brief §3) é irrelevante aqui.
-  3. **Não exige audiência** — é venda 1:1 para prospect nomeado.
-  4. **Já está em português**, e a dor ("ninguém sabe como esse sistema funciona, o cara
-     que escreveu saiu") é universal e reconhecida por um gestor não-técnico em uma frase.
-  5. É a menor superfície de conflito com o emprego: você produz **documentação sobre o
-     sistema do cliente**, não altera o sistema dele e não entrega código seu — o que
-     reduz (não elimina) a colisão com cláusulas de PI. UNKNOWN #1 continua valendo.
-- **Bloqueio:** o cliente lhe dá acesso ao código-fonte dele. Isso exige NDA e o hábito de
-  nunca reciclar trechos de código de cliente em `skills/` — precedente já registrado no
-  repositório: `nestjs-patterns` absorveu material de terceiro (UNKNOWN #7).
+  `/analisy-architecture` and `/talk-about-the-system` (`commands/`).
+- **Model:** fixed-scope service, fixed price per system. Deliverable:
+  "Arquitetura do Sistema" + "Objetivo do Sistema" + a `README.md` per module, with
+  inferences marked as hypotheses and orphan modules / couplings / architectural
+  violations identified — exactly what `patterns/1-Analisys` already specifies.
+- **Effort:** 10–16h per system of up to ~15 modules. Two deliveries per month fit in the 20h+.
+- **Price and arithmetic:**
+  - Brazil: 13h × R$300–700/h effective = **R$4,000–9,000** per system. Floor reference:
+    static code audit US$5,000–8,000 (DevCom, 2026-02-18) is a larger and more
+    expensive delivery; the Brazilian diagnosis band R$10,000–40,000 (Waxi, 2026-06-28) is a scope
+    of 3–6 weeks. Positioning at **R$4,500 (small system) to R$9,000 (system with
+    integrations)** sits clearly below both — which is where a first supplier with no
+    case study should be.
+  - International remote: **US$1,200–3,000** per system (13h × US$90–230/h; the day rate
+    cited by consultfees, US$1,500–5,000/day, shows that 2 days at US$1,500 is the
+    conservative floor of the range).
+  - Assumed volume: 1–2 in 30 days.
+  - **Range: R$4,500–18,000 (BR) or US$1,200–6,000 (intl).**
+- **Why this route is structurally different from the other six:**
+  1. **It does not require the buyer to use Claude Code, Cursor, or to adopt anything.** He buys a
+     document. You use your tools underneath — that is your problem, not his.
+  2. **It does not require a public repository** — the closed channel (brief §3) is irrelevant here.
+  3. **It does not require an audience** — it is a 1:1 sale to a named prospect.
+  4. **It is already in Portuguese**, and the pain ("nobody knows how this system works, the guy
+     who wrote it left") is universal and recognized by a non-technical manager in one sentence.
+  5. It is the smallest surface of conflict with the job: you produce **documentation about the
+     client's system**, you do not change his system and you do not deliver code of your own — which
+     reduces (does not eliminate) the collision with IP clauses. UNKNOWN #1 still applies.
+- **Blocker:** the client gives you access to his source code. That requires an NDA and the habit of
+  never recycling snippets of client code into `skills/` — a precedent already recorded in the
+  repository: `nestjs-patterns` absorbed third-party material (UNKNOWN #7).
 
 ---
 
-#### Rotas CORTADAS (violam a regra dura: exigiriam construir antes de faturar)
+#### CUT routes (they violate the hard rule: they would require building before invoicing)
 
-- Curso gravado / cohort / SaaS / dashboard hospedado / "EngineOS Cloud" — todos exigem
-  produto novo. Fora.
-- **GitHub Sponsors / tier de apoio**: exige repositório público **e** audiência.
-  `<12%` dos devs de open source ganham qualquer receita com isso (busca, 2026); ~40% do
-  funding vem de organizações e cada patrocínio organizacional vale ~15× o individual
-  (GitHub Blog, 2026-07-20) — ou seja, o dinheiro vem de empresas que dependem do seu
-  código, e nenhuma depende do seu código hoje. Com 6 seguidores isto é jogada de
-  reputação de 6–12 meses, **não rota de receita de 30 dias**. Registrado, não recomendado.
-- Vender o pacote **antes** de limpar as 13 referências a `spesia` (R4): cortado até a
-  limpeza, independente de preço.
+- Recorded course / cohort / SaaS / hosted dashboard / "EngineOS Cloud" — all require
+  a new product. Out.
+- **GitHub Sponsors / support tier**: requires a public repository **and** an audience.
+  `<12%` of open source devs earn any revenue from it (search, 2026); ~40% of the
+  funding comes from organizations and each organizational sponsorship is worth ~15× an individual one
+  (GitHub Blog, 2026-07-20) — in other words, the money comes from companies that depend on your
+  code, and none depends on your code today. With 6 followers this is a 6–12 month
+  reputation play, **not a 30-day revenue route**. Recorded, not recommended.
+- Selling the package **before** cleaning the 13 references to `spesia` (R4): cut until the
+  cleanup, regardless of price.
 
 ---
 
-### STEP 3 — Ranking (velocidade de retorno × esforço de execução)
+### STEP 3 — Ranking (speed of return × execution effort)
 
-| # | Rota | Esforço | Faixa 30d (BR) | Por que nesta posição — dado o **seu** contexto |
+| # | Route | Effort | 30d range (BR) | Why this position — given **your** context |
 |---|---|---|---|---|
-| **1** | **R7 — documentação de legado em PT-BR** | 10–16h | R$4.500–18.000 | Única rota que não é bloqueada por **nenhuma** das suas três restrições reais: canal fechado, audiência UNKNOWN, e risco de PI do emprego. Vende 1:1, em português, para uma dor que não precisa de tradução técnica. |
-| **2** | **R2 — auditoria paga de governança** | 8–12h | R$4.000–18.000 | Maior preço por hora do inventário e produz um artefato escrito que se torna seu primeiro case. Fica em 2º porque o comprador precisa **já** usar Claude Code/Cursor — pool menor, e você não tem canal para encontrá-lo. |
-| **3** | **R1 — instalar/adotar em um time** | 14–20h | R$6.000–24.000 | Maior ticket dos três, mas o ciclo de fechamento é mais longo e o comprador natural é o time de 2–10 pessoas do PRD, potencialmente o do seu empregador — a maior exposição contratual do inventário (UNKNOWN #1 + #4). |
+| **1** | **R7 — legacy documentation in PT-BR** | 10–16h | R$4,500–18,000 | The only route not blocked by **any** of your three real constraints: closed channel, UNKNOWN audience, and the job's IP risk. It sells 1:1, in Portuguese, for a pain that needs no technical translation. |
+| **2** | **R2 — paid governance audit** | 8–12h | R$4,000–18,000 | The highest price per hour in the inventory, and it produces a written artifact that becomes your first case study. It is 2nd because the buyer needs to **already** use Claude Code/Cursor — a smaller pool, and you have no channel to find him. |
+| **3** | **R1 — install/adopt in a team** | 14–20h | R$6,000–24,000 | The biggest ticket of the three, but the closing cycle is longer and the natural buyer is the PRD's 2–10 person team, potentially your employer's — the greatest contractual exposure in the inventory (UNKNOWN #1 + #4). |
 
-**Onde começar: R7. A razão é propriedade da sua situação, não do tamanho da receita.**
+**Where to start: R7. The reason is a property of your situation, not of the size of the revenue.**
 
-Seu gargalo não é preço nem qualidade do ativo — é que **você não tem um canal**. O repo é
-privado, os dois caminhos de instalação do `README.md` retornam 404 para qualquer terceiro
-(brief §3), e a audiência medida é 6 seguidores. Qualquer rota cujo primeiro passo seja
-"as pessoas me encontram" está morta este mês. R7 é a única que começa com **você**
-encontrando cinco pessoas, e cuja entrega não exige que elas adotem nada seu.
+Your bottleneck is neither price nor asset quality — it is that **you have no channel**. The repo is
+private, the two installation paths in `README.md` return 404 for any third party
+(brief §3), and the measured audience is 6 followers. Any route whose first step is
+"people find me" is dead this month. R7 is the only one that starts with **you**
+finding five people, and whose delivery does not require them to adopt anything of yours.
 
-Somado a isso: você tem emprego, 20h+/semana e um histórico de 7 semanas cuja velocidade
-**já caiu pela metade uma vez** (brief §2). Isso desqualifica rotas com rampa longa e
-qualifica a que fecha em uma semana de trabalho. E R7 é a de menor superfície de colisão
-com o emprego, porque o entregável é documentação do sistema **do cliente** — o que reduz,
-sem eliminar, a exposição do UNKNOWN #1.
+On top of that: you have a job, 20h+/week and a 7-week history whose velocity
+**has already halved once** (brief §2). That disqualifies routes with a long ramp and
+qualifies the one that closes in one week of work. And R7 has the smallest surface of collision
+with the job, because the deliverable is documentation of the **client's** system — which reduces,
+without eliminating, the exposure of UNKNOWN #1.
 
-Se a sua urgência for **reputação** e não caixa, a ordem muda: publicar o repositório vira
-o primeiro passo e este ranking deve ser rerodado. Mas isso é decisão do modo *positioning*,
-e você não me disse que caixa não importa.
+If your urgency is **reputation** and not cash, the order changes: publishing the repository becomes
+the first step and this ranking must be re-run. But that is a decision of the *positioning* mode,
+and you did not tell me that cash does not matter.
 
 ---
 
 ## The one action
 
-**Até 2026-08-13 (14 dias), envie uma proposta única, de escopo e preço fechados, para
-5 prospects nomeados da sua própria rede** (LinkedIn `ricardo-fagmer`, ex-colegas,
-contatos de Londrina) oferecendo o entregável de `patterns/1-Analisys`:
+**By 2026-08-13 (14 days), send a single proposal, with fixed scope and price, to
+5 named prospects from your own network** (LinkedIn `ricardo-fagmer`, former colleagues,
+Londrina contacts) offering the `patterns/1-Analisys` deliverable:
 
-> "Documentação de arquitetura do seu sistema em 7 dias: um documento de arquitetura, um
-> documento de objetivo do sistema, e um README por módulo — com acoplamentos, módulos
-> órfãos e riscos técnicos identificados, e toda inferência marcada como hipótese.
-> **R$4.500** para um sistema de até 15 módulos. Pagamento na entrega."
+> "Documentation of your system's architecture in 7 days: an architecture document, a
+> system objective document, and a README per module — with couplings, orphan modules
+> and technical risks identified, and every inference marked as a hypothesis.
+> **R$4,500** for a system of up to 15 modules. Payment on delivery."
 
-Regras da ação, para ela permanecer **uma** ação: nenhuma linha de código nova, nenhuma
-página de vendas, nenhum post público, nenhuma mudança no repositório. Cinco mensagens.
-Antes de enviar a primeira, releia seu contrato de trabalho quanto a exclusividade e cessão
-de PI (UNKNOWN #1) — e se houver qualquer ambiguidade, fale com um advogado, não comigo.
+Rules of the action, so it stays **one** action: no new line of code, no
+sales page, no public post, no change in the repository. Five messages.
+Before sending the first one, re-read your employment contract regarding exclusivity and IP
+assignment (UNKNOWN #1) — and if there is any ambiguity, talk to a lawyer, not to me.
 
-**Sinal observável de sucesso:** ≥1 das 5 mensagens responde perguntando escopo, prazo ou
-preço até **2026-08-23**. Sucesso pleno: 1 contrato assinado a ≥R$3.000 até **2026-08-31**
-— o que também produz seu primeiro número real de receita, encerrando o "zero estrutural"
-do brief §6.
+**Observable signal of success:** ≥1 of the 5 messages replies asking about scope, timeline or
+price by **2026-08-23**. Full success: 1 contract signed at ≥R$3,000 by **2026-08-31**
+— which also produces your first real revenue number, ending the "structural zero"
+of brief §6.
 
-**Sinal de fracasso, igualmente informativo:** 0 respostas em 5. Isso não significa que o
-preço está errado — significa que você não tem comprador alcançável, e o problema muda de
-monetização para *positioning*. Nesse caso, pare de vender e vá tornar o repositório
-público.
+**Failure signal, equally informative:** 0 replies out of 5. That does not mean the
+price is wrong — it means you have no reachable buyer, and the problem moves from
+monetization to *positioning*. In that case, stop selling and go make the repository
+public.
 
-**Ação secundária de 5 minutos, não negociável e não substituível pela ação principal:**
-`git add install.ps1` e commite. 293 linhas do único instalador Windows do projeto existem
-apenas nesta máquina; é o único ativo do inventário que um `git clean` apaga.
+**Secondary 5-minute action, non-negotiable and not substitutable by the main action:**
+`git add install.ps1` and commit it. 293 lines of the project's only Windows installer exist
+only on this machine; it is the only asset in the inventory that a `git clean` erases.
 
 ---
 
 ## What would falsify this
 
-1. **O contrato de trabalho contém cláusula de exclusividade ou cessão de PI cobrindo
-   trabalho no mesmo campo.** Então R1, R2 e R7 são inválidas como desenhadas, o valor de
-   30 dias cai para ~zero, e a análise inteira precisa ser rerodada como "publicar por
-   reputação". Este é o falsificador mais provável e o mais barato de checar — leia o
-   contrato antes de enviar as 5 mensagens.
-2. **5 propostas → 0 respostas, e simultaneamente o repositório publicado ganha tração
-   orgânica** (>50 estrelas ou >5 issues de terceiros na primeira semana). Então o valor
-   está na distribuição, não em serviço 1:1, e o ranking se invertiria em favor de R4/R8.
-3. **Um prospect diz que o entregável de R7 vale menos de R$1.500.** Então a âncora
-   brasileira derivada de index.dev está errada para Londrina e todos os preços em BRL deste
-   relatório precisam ser rebaixados — o que também mata R1 e R2 na forma atual.
-4. **Existe uma audiência real e não declarada** (≥1.000 pessoas em qualquer canal que você
-   controle). Então UNKNOWN #2 se resolve para cima, R4 sobe para o top 3, e a rota mais
-   rápida deixa de ser 1:1.
-5. **Alguém publica, antes de você, um pacote aberto e mantido que já entrega o adaptador
-   Cursor com paridade de hooks.** Então A2 — o ativo de conhecimento com maior diferencial
-   do inventário — perde o prêmio de escassez, e R5 deixa de ter valor de venda.
-6. **`scripts/usage-report.sh` rodado sobre seus próprios transcripts produz um número de
-   ganho defensável** (ex.: falhas pegas por hook por semana, com tendência). Então a
-   Classe E deixa de ser hope, torna-se ativo, e passa a ser possível vender ROI — o que
-   muda tanto o preço quanto o discurso de todas as sete rotas para cima.
+1. **The employment contract contains an exclusivity or IP assignment clause covering
+   work in the same field.** Then R1, R2 and R7 are invalid as designed, the 30-day value
+   drops to ~zero, and the whole analysis needs to be re-run as "publish for
+   reputation". This is the most likely falsifier and the cheapest to check — read the
+   contract before sending the 5 messages.
+2. **5 proposals → 0 replies, and simultaneously the published repository gains organic
+   traction** (>50 stars or >5 third-party issues in the first week). Then the value
+   is in distribution, not in a 1:1 service, and the ranking would invert in favor of R4/R8.
+3. **A prospect says the R7 deliverable is worth less than R$1,500.** Then the Brazilian
+   anchor derived from index.dev is wrong for Londrina and every BRL price in this
+   report needs to be lowered — which also kills R1 and R2 in their current form.
+4. **There is a real and undeclared audience** (≥1,000 people on any channel you
+   control). Then UNKNOWN #2 resolves upward, R4 climbs into the top 3, and the fastest route
+   stops being 1:1.
+5. **Somebody publishes, before you, an open and maintained package that already delivers the
+   Cursor adapter with hook parity.** Then A2 — the knowledge asset with the greatest
+   differentiation in the inventory — loses its scarcity premium, and R5 stops having sale value.
+6. **`scripts/usage-report.sh` run over your own transcripts produces a defensible gain
+   number** (e.g.: failures caught per hook per week, with a trend). Then
+   Class E stops being hope, becomes an asset, and it becomes possible to sell ROI — which
+   moves both the price and the pitch of all seven routes upward.

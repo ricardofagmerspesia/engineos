@@ -1,5 +1,5 @@
 ---
-last_mapped: 2026-09-08T12:29:03Z
+last_mapped: 2026-09-08T20:15:49Z
 total_files: 862
 total_tokens: 1536759
 ---
@@ -13,7 +13,7 @@ Codex / Cursor / Copilot): a prose layer of rules, agents and skills; a
 machine-readable projection of that prose in `registries/*.json`; a
 deterministic TypeScript kernel that turns a prompt or a file path into a
 task contract; and a set of Claude Code hooks that inject that contract into
-the session and gate the Stop event. A validator (62 checks) keeps prose and
+the session and gate the Stop event. A validator (68 checks) keeps prose and
 registries from drifting.
 
 Two release lines matter for reading the code: 1.6.0 added the runtime
@@ -47,7 +47,7 @@ graph TB
         KER[kernel/ resolve, route, risk, hitl, admit, breaker, repair]
         HK[hooks/ 9 hook handlers]
         JR[journal/ exec-journal + telemetry]
-        CHK[checks/ 62 validator checks]
+        CHK[checks/ 68 validator checks]
         GEN[gen/ agents.json + commands/agents]
         INS[install/ init/ bypass/ evals/ bench/ report/]
     end
@@ -100,7 +100,7 @@ engineos/
   test/fixtures/         Pinned legacy bash CLIs + registries for byte-parity tests
   evals/                 Golden set (33 intent cases, 16 agent cases) + RUBRIC.md
   docs/                  BIG-PICTURE, METHODOLOGY, COMPATIBILITY, ADOPTION, START, adr/, specs/, release-notes/
-  console/               Standalone Next.js 15 admin console (skills vertical only; not in CI)
+  console/               Standalone Next.js 15 admin console (skills vertical only; CI job `console`)
   .engineos/             This repo's own governance store (21 active, 90 archived change records)
   .claude-plugin/        plugin.json + marketplace.json (plugin-mode install)
   .agents/ .trae/ .windsurf/   Byte-identical vendored copies of an unrelated "caveman" skill set
@@ -202,7 +202,7 @@ Wire formats (`output.ts`): `context` -> `{"hookSpecificOutput":{"hookEventName"
 
 ### `src/checks/` + `src/validate/`
 
-**Purpose**: the 62-check integrity harness behind `engineos validate` (`scripts/validate-engineos.sh`). Asserts the prose, registries, hooks and kernel agree.
+**Purpose**: the 68-check integrity harness behind `engineos validate` (`scripts/validate-engineos.sh`). Asserts the prose, registries, hooks and kernel agree.
 **Entry point**: `src/validate/cli.ts::runValidate` -> `src/checks/index.ts::CHECKS`.
 
 | Family | Checks | Asserts |
@@ -215,6 +215,9 @@ Wire formats (`output.ts`): `context` -> `{"hookSpecificOutput":{"hookEventName"
 | contracts | C19*, C21* | handoff template and archive contract triangles; walks every archived change record |
 | runtime governance | C20-C26 | repair / telemetry / constitution / backpressure / breaker / hitl blocks, each with live in-process kernel canaries |
 | runtime surface | C27-C30 | exec-journal round trips, span-writer wiring, adoption entrypoint, hook file modes |
+| portability | C32-C33 | adapter-mirror parity, LF policy |
+| skill enablement | C34-C35 | skills/skills_suppressed pair on every kernel answer, no routing domain emptied by disablement |
+| prose truth | C36-C37 | router-table /command and patterns/ references resolve; check-count claims equal CHECK_IDS.length |
 
 Pattern: checks never shell out. They call `runKernel`, `runTelemetry`, `runJournal` in-process against a `memoryIo` rooted at the checkout under test. Findings are typed codes (declaration-merged `CheckCodes`), graded ok / fail / skip. `mirrors.ts` is a declarative table of ~30 "registry value must appear under doc anchor" rows; empty anchor body or empty registry list is a failure, never a vacuous pass.
 
@@ -225,14 +228,14 @@ Pattern: checks never shell out. They call `runKernel`, `runTelemetry`, `runJour
 | `gen/` | `engineos gen agent-registry \| agent-commands` | agents/*.md frontmatter -> `registries/agents.json`; one alias command per agent name/alias with a `@generated` marker (marker removed = hand-customized, preserved) |
 | `install/` | `engineos settings-merge` | merges hooks.json + permissions template into `~/.claude/settings.json`; scrubs both old `.sh` and new node hook forms; atomic write, write-once `.engineos.bak` |
 | `init/` | `engineos init` (`scripts/init-project.sh`, `/engineos:init`) | scaffold `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}`; refuses inside the EngineOS checkout (exit 3) |
-| `evals/` | `engineos evals` | deterministic tier (always; 7 checks over `evals/*.jsonl`, coverage floor 25) + live tier (`ENGINEOS_EVAL_LIVE=1`, grades `[router]` announcement) |
+| `evals/` | `engineos evals` | deterministic tier (always; 7 assertions over `evals/*.jsonl`, coverage floor 25) + live tier (`ENGINEOS_EVAL_LIVE=1`, grades `[router]` announcement) |
 | `bench/` | `engineos bench` | five budgets: route-intent 250ms, resolve-task 500ms, prompt-advisor 600ms, route-before-change cache hit 150ms, always-on context 32000 bytes |
 | `report/` | `engineos usage-report [days]` | mines `~/.claude/projects` transcripts + telemetry for skill/agent/intent hit rates (input to `retro`) |
 | `testing/harness.ts` | test only | `tempRoot`, `fixtureRepo`, `relocatedRoot`, `runCli`, `runInProcess`; refuses paths inside the checkout; never bundled |
 
 ### `console/`
 
-Standalone Next.js 15 + React 19 + Drizzle/better-sqlite3 admin console for editing this repo's own `skills/`, `agents/`, `rules/` through draft -> validate -> diff -> publish -> rollback. Only the Skills vertical is wired; refuses to publish on main. Not referenced by root `package.json` or CI. Does not read `.engineos/` or telemetry.
+Standalone Next.js 15 + React 19 + Drizzle/better-sqlite3 admin console for editing this repo's own `skills/`, `agents/`, `rules/` through draft -> validate -> diff -> publish -> rollback. Only the Skills vertical is wired; refuses to publish on main. Not referenced by root `package.json`; CI runs typecheck, lint, tests and build in the `console` job. Does not read `.engineos/` or telemetry.
 
 ### `.engineos/` and `docs/`
 
@@ -314,7 +317,7 @@ graph LR
     SRC[src/**/*.ts] -->|scripts/build.mjs esbuild| DIST[dist/engineos.cjs]
     AGMD[agents/*.md] -->|engineos gen| AGJ[registries/agents.json]
     AGMD -->|engineos gen| CMDS[commands/agents/*.md]
-    DIST -->|engineos validate| V[62 checks over prose + registries + kernel]
+    DIST -->|engineos validate| V[68 checks over prose + registries + kernel]
     CI[.github/workflows/ci.yml] -->|drift guards| DIST & AGJ & CMDS
     CI --> V
     CI -->|evals, bench, shellcheck, install smoke| DIST
@@ -341,11 +344,10 @@ graph LR
 - esbuild target is node16 so the version guard can run on old node and re-exec; the real floor is 18 (20.10 for import attributes).
 - `src/checks` reads registries raw on purpose; the typed loaders would hide the malformations under test.
 - `rules/production-backend-standards.md` is a client-specific NestJS/TypeORM overlay (`@coresoft-sas/*`) loaded for all backend intents. Not generic policy.
-- CLAUDE.md and AGENTS.md both spell the comprehension row `/analisy-architecture` and `patterns/1-Analisys`; the real names are `/analyze-architecture` and `patterns/1-Analysis.md`.
 - `docs/release-notes/` has both `1.6.0.md` and `release-notes-1.6.0.md` with different content. `docs/PRD.md` is a stale June draft.
 - `.engineos/memory/` is empty despite 90 archived records; the distillation step has never run here.
 - `.agents/`, `.trae/`, `.windsurf/` are byte-identical vendored copies of an unrelated caveman skill set with no generator in this repo.
-- `console/` is unwired from CI and root build; only its Skills vertical exists.
+- `console/` is not part of the root build; only its Skills vertical exists.
 - No `haiku`-tier agent file exists; cheap-tier work happens only via dispatch-time model override.
 - No uninstall script. `settings.json.engineos.bak` is write-once.
 - `install.ps1` is not exercised by CI.

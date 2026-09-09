@@ -1,15 +1,15 @@
 # PRD: AI Engineering Environment ("EngineOS")
 
-**Status:** Draft v1 (2026-06-11) — **desatualizado em relação ao código desde 07/09/2026** · **Owner:** Ricardo Fagmer
+**Status:** Draft v1 (2026-06-11) — **out of date with respect to the code since 2026-09-07** · **Owner:** Ricardo Fagmer
 
-> **Leia antes:** este PRD registra a intenção original do produto, não o estado atual.
-> O que está implementado, o que está parcial e o que é apenas desenho está em
-> [`docs/CAPABILITIES.md`](CAPABILITIES.md), medido sobre o snapshot `99b5eec`.
-> Três *non-goals* da seção 3 já não são verdadeiros (adaptadores para outras
-> ferramentas, entrada de marketplace e automação de CI existem no repositório) e
-> estão listados como divergências naquele documento. A reescrita do escopo é
-> trabalho do épico E01 do plano de adequação para produção e ainda não foi feita:
-> nenhuma capacidade deve ser anunciada a partir deste arquivo.
+> **Read first:** this PRD records the original intent of the product, not the
+> current state. What is implemented, what is partial and what is design only is in
+> [`docs/CAPABILITIES.md`](CAPABILITIES.md), measured over snapshot `99b5eec`.
+> Three *non-goals* from section 3 are no longer true (adapters for other tools, a
+> marketplace entry and CI automation exist in the repository) and are listed as
+> divergences in that document. Rewriting the scope is work for epic E01 of the
+> production readiness plan and has not been done yet: no capability should be
+> announced from this file.
 
 **Scope:** Global (`~/.claude`), distributed to a 2–10 person team via a versioned git repo.
 **Stacks:** TypeScript/Node (NestJS), React/Next, AI/LLM apps, with a stack-agnostic base layer.

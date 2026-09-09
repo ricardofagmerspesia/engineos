@@ -1,48 +1,48 @@
-# Critérios para extrair um processo ou serviço separado
+# Criteria for extracting a separate process or service
 
 Date: 2026-09-07
 Status: proposed
 
-Source: "EngineOS 2.0 — Plano de adequação para produção" (06/09/2026, rev. 2), seção 4 e épico E09. Complementa `2026-09-04-typescript-runtime-over-bash.md`, que decidiu a linguagem do núcleo, não a topologia.
+Source: "EngineOS 2.0 — Production readiness plan" (2026-09-06, rev. 2), section 4 and epic E09. Complements `2026-09-04-typescript-runtime-over-bash.md`, which decided the language of the core, not the topology.
 
 ## Context
 
-O plano prevê filas, workers e execução distribuída (E09), mas também diz — corretamente — que componentes distribuídos devem ser implementados **quando exigidos pelas capacidades assumidas**, e não como pré-requisito universal de um framework de produção. Sem um critério escrito, essa frase resolve nada: toda equipe acha que a sua capacidade exige.
+The plan foresees queues, workers and distributed execution (E09), but it also says — correctly — that distributed components should be implemented **when the assumed capabilities require them**, and not as a universal prerequisite of a production framework. Without a written criterion, that sentence settles nothing: every team thinks its own capability requires it.
 
-O risco aqui é simétrico e vale nomear os dois lados. Extrair cedo demais compra latência de rede, um contrato a versionar, um modo de falha parcial e uma superfície de operação, tudo antes de existir carga que justifique. Extrair tarde demais deixa uma tarefa longa bloqueando o processo interativo e obriga a reescrever sob pressão de incidente.
+The risk here is symmetric and both sides are worth naming. Extracting too early buys network latency, a contract to version, a partial failure mode and an operational surface, all before there is load that justifies it. Extracting too late leaves a long task blocking the interactive process and forces a rewrite under incident pressure.
 
 ## Options considered
 
-1. **Módulos claros num runner local; extração quando um gatilho declarado dispara** (escolhida).
-   - Pros: a fronteira do módulo é o trabalho que a extração vai exigir de qualquer jeito, e ela é barata agora; o gatilho torna a decisão verificável em vez de opinativa; o perfil local — que é uso de produção legítimo — não paga por infraestrutura que não usa.
-   - Cons: exige disciplina para manter a fronteira limpa sem a pressão que a rede imporia. Um módulo que compartilha estado por variável global não vira serviço sem reescrita, e nada avisa.
+1. **Clear modules in a local runner; extraction when a declared trigger fires** (chosen).
+   - Pros: the module boundary is the work the extraction will demand anyway, and it is cheap now; the trigger makes the decision verifiable instead of a matter of opinion; the local profile — which is legitimate production use — does not pay for infrastructure it does not use.
+   - Cons: it requires discipline to keep the boundary clean without the pressure the network would impose. A module that shares state through a global variable does not become a service without a rewrite, and nothing warns you.
 
-2. **Serviços separados desde o início** (rejeitada).
-   - Pros: a fronteira é aplicada pela rede; escalar depois é configuração.
-   - Cons: o perfil declarado hoje é instalação local em `~/.claude` para 2–10 pessoas. Introduzir fila, broker e workers aí adiciona modos de falha que o produto não tem, e o plano é explícito em não obrigar migração de stack sem requisito registrado.
+2. **Separate services from the start** (rejected).
+   - Pros: the boundary is enforced by the network; scaling later is configuration.
+   - Cons: the profile declared today is a local installation in `~/.claude` for 2–10 people. Introducing a queue, a broker and workers there adds failure modes the product does not have, and the plan is explicit about not forcing a stack migration without a recorded requirement.
 
-3. **Decidir caso a caso, sem critério escrito** (rejeitada).
-   - Pros: flexibilidade.
-   - Cons: na prática significa que a decisão é tomada pela pessoa que estiver com o teclado, e o histórico não explica por quê.
+3. **Decide case by case, with no written criterion** (rejected).
+   - Pros: flexibility.
+   - Cons: in practice it means the decision is made by whoever is at the keyboard, and the history does not explain why.
 
 ## Decision
 
-Opção 1. O núcleo começa como módulos dentro de um runner local. Um módulo é extraído para processo ou serviço separado quando **pelo menos um** destes gatilhos é observado e registrado com dado, não com expectativa:
+Option 1. The core starts as modules inside a local runner. A module is extracted into a separate process or service when **at least one** of these triggers is observed and recorded with data, not with expectation:
 
-| Gatilho | Como se mede | Por que justifica |
+| Trigger | How it is measured | Why it justifies |
 |---|---|---|
-| **Concorrência** | Tarefas enfileiradas esperando enquanto há capacidade ociosa, medido em telemetria (E05) | O processo único virou o gargalo; escalar exige paralelismo real |
-| **Isolamento de falha** | Uma falha do módulo derruba ou trava o resto do runner | Contenção que só um limite de processo dá |
-| **Implantação independente** | O módulo precisa mudar em cadência diferente do núcleo, com evidência de releases bloqueadas | Acoplamento de implantação já está custando |
-| **Perfil de recurso** | Necessidade de memória, GPU ou tempo de execução incompatível com o processo interativo | Coabitação degrada o caminho interativo |
-| **Fronteira de segurança** | Necessidade de rodar sob credencial ou rede diferente da do núcleo | Menor privilégio exige separação real |
+| **Concurrency** | Queued tasks waiting while there is idle capacity, measured in telemetry (E05) | The single process has become the bottleneck; scaling requires real parallelism |
+| **Failure isolation** | A failure of the module takes down or hangs the rest of the runner | Containment that only a process boundary gives |
+| **Independent deployment** | The module needs to change at a different cadence from the core, with evidence of blocked releases | Deployment coupling is already costing |
+| **Resource profile** | Memory, GPU or execution-time need incompatible with the interactive process | Cohabitation degrades the interactive path |
+| **Security boundary** | Need to run under a different credential or network from the core | Least privilege requires real separation |
 
-Preferência linguística, elegância arquitetural e "vamos precisar um dia" não são gatilhos.
+Language preference, architectural elegance and "we are going to need it one day" are not triggers.
 
 ## Consequences
 
-- Enquanto nenhum gatilho dispara, E09 permanece **planejado** e o perfil distribuído não é liberado — recurso incompleto fica desabilitado e explicitamente não suportado.
-- Todo módulo é escrito para poder ser extraído: comunicação por contrato versionado, sem estado compartilhado implícito, com erros tipados. O custo dessa disciplina é o preço de não decidir a topologia cedo.
-- Quando um gatilho disparar, a extração entra por E09 com o que o épico exige: lease e heartbeat, idempotência por efeito, outbox onde uma transação precisa publicar evento, e teste de recuperação com worker morto após o efeito externo e antes do ack.
-- Um worker Python só entra se um requisito de integração ou operação o justificar, consumindo o mesmo contrato versionado — a decisão de linguagem do núcleo (`2026-09-04-typescript-runtime-over-bash.md`) não é revista por conveniência.
-- Fila não garante *exactly-once*. Qualquer garantia anunciada precisa dizer o que é realmente idempotente e onde não é.
+- While no trigger fires, E09 stays **planned** and the distributed profile is not released — an incomplete feature stays disabled and explicitly not supported.
+- Every module is written so that it can be extracted: communication through a versioned contract, no implicit shared state, with typed errors. The cost of that discipline is the price of not deciding the topology early.
+- When a trigger does fire, the extraction goes in through E09 with what the epic demands: lease and heartbeat, idempotency per effect, an outbox where a transaction needs to publish an event, and a recovery test with a worker killed after the external effect and before the ack.
+- A Python worker only goes in if an integration or operational requirement justifies it, consuming the same versioned contract — the decision about the language of the core (`2026-09-04-typescript-runtime-over-bash.md`) is not revisited out of convenience.
+- A queue does not guarantee *exactly-once*. Any announced guarantee needs to say what is really idempotent and where it is not.

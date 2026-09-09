@@ -12,6 +12,7 @@ import { CONTRACTS_CHECKS } from './contracts';
 import { DECISION_REGISTRIES_CHECKS } from './decision-registries';
 import { KERNEL_CHECKS } from './kernel';
 import { PORTABILITY_CHECKS } from './portability';
+import { PROSE_TRUTH_CHECKS } from './prose-truth';
 import { REGISTRIES_CHECKS } from './registries';
 import { RULES_CHECKS } from './rules';
 import { RUNTIME_GOVERNANCE_CHECKS } from './runtime-governance';
@@ -41,6 +42,7 @@ export const CHECKS: readonly Check[] = [
   ...RUNTIME_SURFACE_CHECKS,
   ...PORTABILITY_CHECKS,
   ...SKILL_ENABLEMENT_CHECKS,
+  ...PROSE_TRUTH_CHECKS,
 ];
 
 // Natural id order: the numeric part numerically, then the letter suffix

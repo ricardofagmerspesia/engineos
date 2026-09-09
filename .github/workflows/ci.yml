@@ -8,31 +8,45 @@ on:
 permissions:
   contents: read
 
+# Each ref keeps at most one live run. Only pull_request runs are cancelled on a
+# new push: a superseded PR run tells us nothing, while a push to main is the
+# record of what that commit did and must always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Without a cap a hung step holds a runner for the six-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # node >= 18 is the runtime; shellcheck covers install.sh and the bash shims
-      # that stay until 2.0. jq and python3 are no longer needed anywhere.
-      - name: Tools present
-        run: |
-          shellcheck --version
-          bash --version | head -1
-          node --version
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
           cache: npm
 
+      # node >= 18 is the runtime; shellcheck covers install.sh and the bash shims
+      # that stay until 2.0. jq and python3 are no longer needed anywhere.
+      # Runs after setup-node so the version printed is the one the jobs use.
+      - name: Tools present
+        run: |
+          shellcheck --version
+          bash --version | head -1
+          node --version
+
       - name: Node runtime — install, typecheck
         run: |
           npm ci
           npm run typecheck
 
+      # Advisories stay visible on the PR but do not block it: a new upstream CVE
+      # would otherwise redden unrelated work, and the fix never lives in that PR.
+      # The blocking cadence is push-to-main here plus dependency-audit.yml weekly.
       - name: Dependency audit
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: npm audit --audit-level=high
 
       # Before the tests: the *.e2e.test.ts suites spawn the committed bundle, so a
@@ -115,12 +129,15 @@ jobs:
             echo "FAIL: install aborted on a clean repo"; exit 1
           fi
 
-  # E03 — o console nao era tocado pela CI: typecheck, lint, testes e build
-  # rodavam so na maquina de quem editasse. Um console que publica e reverte
-  # arquivos do repositorio e faz commit e' superficie de escrita, e superficie
-  # de escrita sem verificacao automatizada e' onde perda de trabalho nasce.
+  # E03 — the console was not touched by CI: typecheck, lint, tests and build
+  # ran only on the machine of whoever edited it. A console that publishes and
+  # reverts repository files and makes commits is a write surface, and a write
+  # surface without automated verification is where work loss is born.
   console:
     runs-on: ubuntu-latest
+    # Next builds are the slowest step here; 15 minutes is well above the observed
+    # runtime and still far below the six-hour default.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: console
@@ -144,15 +161,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Testes das guardas de publicacao (revisao base e lock de escrita)
+      - name: Publish guard tests (base revision and write lock)
         run: npm test
 
       - name: Build
         run: npm run build
 
-  # E02 — o artefato publicado e testado com os bytes finais da release,
-  # em Linux e em Windows/Git Bash. Um pacote que instala so na maquina de
-  # quem empacotou nao e distribuicao reproduzivel.
+  # E02 — the published artifact is tested with the final bytes of the release,
+  # on Linux and on Windows/Git Bash. A package that installs only on the
+  # machine of whoever packaged it is not reproducible distribution.
   package:
     # Packaging only makes sense once the source it packages is known good, and
     # two OS legs re-running a red tree just doubles the noise.
@@ -176,21 +193,21 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - name: Fim de linha — working tree bate com o HEAD normalizado
+      - name: End of line - working tree matches the normalized HEAD
         run: |
-          # Sem .gitattributes cobrindo todo texto, um checkout Windows
-          # reescreve centenas de arquivos para CRLF e o diff vira ruido.
+          # Without .gitattributes covering all text, a Windows checkout
+          # rewrites hundreds of files to CRLF and the diff becomes noise.
           if ! git diff --quiet; then
-            echo "FALHA: checkout diverge do HEAD (provavel CRLF nao normalizado)"
+            echo "FAIL: checkout diverges from HEAD (CRLF probably not normalized)"
             git diff --stat | tail -20
             exit 1
           fi
-          echo "ok: checkout limpo em ${{ matrix.os }}"
+          echo "ok: clean checkout on ${{ matrix.os }}"
 
-      - name: Gerar artefato de release
+      - name: Generate the release artifact
         run: bash scripts/package-release.sh --out dist-release
 
-      - name: Extrair e validar os bytes finais
+      - name: Extract and validate the final bytes
         run: |
           ZIP="$(ls dist-release/*.zip)"
           ( cd dist-release && sha256sum -c "$(basename "$ZIP").sha256" )
@@ -240,7 +257,7 @@ jobs:
           fi
           echo "ok: install.sh registered the EngineOS hooks from the artifact"
 
-      - name: Rerun idempotente do empacotamento
+      - name: Idempotent packaging rerun
         run: |
           # The zip embeds mtimes, so its hash is never stable across runs and
           # echoing it proved nothing. The content manifest is the invariant:
@@ -250,17 +267,60 @@ jobs:
           cp "$BEFORE" /tmp/manifest-before.txt
           bash scripts/package-release.sh --out dist-release
           AFTER="$(ls dist-release/*.MANIFEST.txt)"
-          if ! diff -u <(grep -v '^# gerado:' /tmp/manifest-before.txt) \
-                       <(grep -v '^# gerado:' "$AFTER"); then
+          if ! diff -u <(grep -v '^# generated:' /tmp/manifest-before.txt) \
+                       <(grep -v '^# generated:' "$AFTER"); then
             echo "FAIL: packaging is not idempotent — the content manifest moved between runs"
             exit 1
           fi
           echo "ok: content manifest identical across runs"
 
+      # The Windows leg is the only place a real PowerShell exists, so it is the
+      # only place install.ps1 can be linted. Without this the installer's Windows
+      # half ships unverified while its Linux half is exercised above.
+      - name: Lint install.ps1 with PSScriptAnalyzer
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          # Pinned like every action in this file: PSGallery versions are immutable,
+          # so the pin is a real control, and -Force only skips the trust prompt.
+          $required = '1.25.0'
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -eq $required)) {
+            Install-Module PSScriptAnalyzer -RequiredVersion $required -Repository PSGallery -Force -Scope CurrentUser
+          }
+          Import-Module PSScriptAnalyzer -RequiredVersion $required
+          # Excluded rules are deliberate for a user-facing installer: Write-Host IS
+          # its output channel, New-Link is not a cmdlet a caller would -WhatIf, and
+          # the empty catch blocks guard best-effort probes. Everything else fails.
+          Invoke-ScriptAnalyzer -Path install.ps1 -Severity Error,Warning -EnableExit `
+            -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions,PSAvoidUsingEmptyCatchBlock
+
+      # A lint that never runs the script would have missed the secret-scan abort
+      # that install.sh hit. -ClaudeDir exists because PowerShell's $HOME is
+      # read-only, so a scratch profile cannot be faked through the environment.
+      - name: Run install.ps1 against a scratch directory
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $scratch = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid())
+          pwsh -NoProfile -File ./install.ps1 -ClaudeDir $scratch
+          $settings = Join-Path $scratch 'settings.json'
+          if (-not (Test-Path $settings)) {
+            Write-Error "FAIL: install.ps1 wrote no settings.json in $scratch"
+            exit 1
+          }
+          if (-not ((Get-Content $settings -Raw) -match 'engineos\.cjs')) {
+            Write-Error "FAIL: install.ps1 registered no EngineOS hooks in $settings"
+            exit 1
+          }
+          Write-Host "ok: install.ps1 registered the EngineOS hooks in $scratch"
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: matrix.os == 'ubuntu-latest'
         with:
           name: engineos-release
+          # The artifact is a CI convenience; the durable copy is the GitHub
+          # Release that release.yml creates from the tag.
+          retention-days: 30
           path: |
             dist-release/*.zip
             dist-release/*.sha256
