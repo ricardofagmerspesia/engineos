@@ -18,7 +18,9 @@
 // against that gate and neither does this port; the temp HOME is simply not a
 // place the gate looks.
 //
-// install.ps1 mirrors this logic and is unverified here (no PowerShell on CI).
+// install.ps1 mirrors this logic and is not exercised here: it is covered by the
+// package job's windows-latest leg in ci.yml, which lints it with PSScriptAnalyzer
+// and runs it for real against a scratch -ClaudeDir.
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

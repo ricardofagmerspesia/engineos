@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# package-release.sh — gera o artefato de distribuicao do EngineOS (E02).
+# package-release.sh — builds the EngineOS distribution artifact (E02).
 #
-# Principios (plano EngineOS 2.0, E02):
-#   - O pacote vem de um COMMIT, nunca do working tree: `git archive` nao
-#     enxerga node_modules, caches, banco do console, .env ou worktree suja.
-#   - Allowlist explicita de caminhos: o que nao esta listado nao entra.
-#   - LF garantido pelos atributos do repositorio; modo de execucao dos .sh
-#     verificado no artefato final.
-#   - Manifesto + checksum: todo arquivo publicado e rastreavel ao commit.
+# Principles (EngineOS 2.0 plan, E02):
+#   - The package comes from a COMMIT, never from the working tree: `git archive`
+#     does not see node_modules, caches, the console database, .env or a dirty
+#     worktree.
+#   - Explicit path allowlist: what is not listed does not get in.
+#   - LF guaranteed by the repository attributes; the exec mode of the .sh files
+#     is verified on the final artifact.
+#   - Manifest + checksum: every published file is traceable to the commit.
 #
-# Uso:
+# Usage:
 #   scripts/package-release.sh [--commit <ref>] [--out <dir>] [--with-ide-mirrors] [--no-verify]
 #
-# Saida em <out>/:
-#   engineos-<versao>-<shortsha>.zip
-#   engineos-<versao>-<shortsha>.zip.sha256
-#   engineos-<versao>-<shortsha>.MANIFEST.txt
+# Output in <out>/:
+#   engineos-<version>-<shortsha>.zip
+#   engineos-<version>-<shortsha>.zip.sha256
+#   engineos-<version>-<shortsha>.MANIFEST.txt
 
 set -euo pipefail
 
@@ -31,7 +32,7 @@ while [ $# -gt 0 ]; do
     --with-ide-mirrors) WITH_IDE_MIRRORS=1; shift ;;
     --no-verify) VERIFY=0; shift ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "argumento desconhecido: $1" >&2; exit 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -39,13 +40,13 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 # --- Allowlist -------------------------------------------------------------
-# Superficie de runtime + documentacao da release. Fora da lista, por decisao
-# explicita: .engineos (historico de desenvolvimento), .github (CI), node_modules
-# e build/ (reinstalaveis), dados locais do console.
+# Runtime surface + release documentation. Out of the list, by explicit
+# decision: .engineos (development history), .github (CI), node_modules and
+# build/ (reinstallable), local console data.
 PATHS=(
-  # Ativos de runtime que vivem sob .engineos/. O historico de mudancas
-  # (.engineos/archived, .engineos/changes/2026-*) e desenvolvimento e fica
-  # de fora; o template e os READMEs sao lidos pelos checks e pelas skills.
+  # Runtime assets that live under .engineos/. The change history
+  # (.engineos/archived, .engineos/changes/2026-*) is development material and
+  # stays out; the template and the READMEs are read by the checks and skills.
   .engineos/README.md
   .engineos/archived/README.md
   .engineos/changes/README.md
@@ -83,13 +84,13 @@ if [ "$WITH_IDE_MIRRORS" -eq 1 ]; then
   PATHS+=(.agents .cursor .trae .windsurf)
 fi
 
-# --- Identidade do artefato ------------------------------------------------
+# --- Artifact identity -----------------------------------------------------
 SHA="$(git rev-parse "$COMMIT")"
 SHORT="$(git rev-parse --short "$COMMIT")"
 VERSION="$(git show "$COMMIT:package.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
-[ -n "$VERSION" ] || { echo "erro: nao foi possivel ler a versao de package.json em $COMMIT" >&2; exit 1; }
+[ -n "$VERSION" ] || { echo "error: could not read the version from package.json at $COMMIT" >&2; exit 1; }
 
-# Manifests do plugin devem concordar com package.json (E01). The marketplace
+# Plugin manifests must agree with package.json (E01). The marketplace
 # manifest is the version a plugin-mode consumer actually resolves, so a bump
 # that misses it publishes one version under two numbers.
 PLUGIN_VERSION="$(git show "$COMMIT:.claude-plugin/plugin.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
@@ -109,28 +110,28 @@ ZIP="${OUT_DIR}/${BASE}.zip"
 MANIFEST="${OUT_DIR}/${BASE}.MANIFEST.txt"
 
 echo "commit .......... $SHA"
-echo "versao .......... $VERSION"
-echo "artefato ........ $ZIP"
+echo "version ......... $VERSION"
+echo "artifact ........ $ZIP"
 
-# --- Empacotamento ---------------------------------------------------------
+# --- Packaging -------------------------------------------------------------
 rm -f "$ZIP" "$ZIP.sha256" "$MANIFEST"
 # core.autocrlf/core.eol are forced off: the published bytes must be the commit's
 # bytes, whatever a Windows packager's global git config says about EOL.
 git -c core.autocrlf=false -c core.eol=lf archive --format=zip -9 --prefix="engineos-${VERSION}/" -o "$ZIP" "$COMMIT" -- "${PATHS[@]}"
 
-# --- Manifesto -------------------------------------------------------------
+# --- Manifest --------------------------------------------------------------
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 git -c core.autocrlf=false -c core.eol=lf archive --format=tar "$COMMIT" -- "${PATHS[@]}" | tar -x -C "$STAGE"
 
 {
   echo "# EngineOS release manifest"
-  echo "# version:  $VERSION"
-  echo "# commit:   $SHA"
-  echo "# gerado:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "# arquivos: $(find "$STAGE" -type f | wc -l | tr -d ' ')"
+  echo "# version:    $VERSION"
+  echo "# commit:     $SHA"
+  echo "# generated:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "# files:      $(find "$STAGE" -type f | wc -l | tr -d ' ')"
   echo "#"
-  echo "# sha256  caminho"
+  echo "# sha256  path"
   ( cd "$STAGE" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r f; do
       printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$f"
     done )
@@ -138,13 +139,13 @@ git -c core.autocrlf=false -c core.eol=lf archive --format=tar "$COMMIT" -- "${P
 
 ( cd "$OUT_DIR" && sha256sum "${BASE}.zip" > "${BASE}.zip.sha256" )
 
-# --- Verificacoes do artefato ---------------------------------------------
+# --- Artifact verification -------------------------------------------------
 if [ "$VERIFY" -eq 1 ]; then
-  echo "--- verificacao ---"
+  echo "--- verification ---"
   fail=0
 
-  # Bibliotecas carregadas com `source`: nao sao invocadas diretamente e por
-  # isso nao devem ter bit de execucao. Qualquer outro *.sh deve ter.
+  # Libraries loaded with `source`: they are never invoked directly and so must
+  # not carry the exec bit. Every other *.sh must.
   is_sourced_lib() {
     case "$1" in
       ./hooks/layout-manifest.sh|./hooks/scaffold-layout.sh) return 0 ;;
@@ -183,29 +184,29 @@ EOF
   if [ -n "$noexec" ]; then echo "FAIL missing exec bit:$noexec"; fail=1; else echo "ok   executable scripts carry mode 100755"; fi
   if [ -n "$wrongexec" ]; then echo "FAIL sourced library marked executable:$wrongexec"; fail=1; else echo "ok   sourced libraries carry mode 100644"; fi
 
-  # 3. Nada reinstalavel, de cache ou de estado local entrou.
+  # 3. Nothing reinstallable, cached or local state got in.
   junk="$( cd "$STAGE" && find . \( -name node_modules -o -name '.next' -o -name build -o -name '*.db' -o -name '*.sqlite*' -o -name '.env' -o -name '.env.*' -o -name '*.pem' -o -name '*.key' \) 2>/dev/null || true )"
-  if [ -n "$junk" ]; then echo "FALHA conteudo nao previsto: $(echo "$junk" | head -5)"; fail=1; else echo "ok   sem deps, caches ou estado local"; fi
+  if [ -n "$junk" ]; then echo "FAIL unexpected content: $(echo "$junk" | head -5)"; fail=1; else echo "ok   no deps, caches or local state"; fi
 
-  # 4. Varredura de segredos. Um achado exige triagem manual; ausencia de
-  #    achado nao e prova de ausencia de segredo.
+  # 4. Secret scan. A hit requires manual triage; the absence of a hit is not
+  #    proof of the absence of a secret.
   secrets="$( cd "$STAGE" && grep -rIlE '(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,})' . 2>/dev/null || true )"
-  if [ -n "$secrets" ]; then echo "ATENCAO possivel segredo em: $(echo "$secrets" | head -5)  (triagem manual obrigatoria)"; fail=1; else echo "ok   varredura de segredos sem achado"; fi
+  if [ -n "$secrets" ]; then echo "WARNING possible secret in: $(echo "$secrets" | head -5)  (manual triage required)"; fail=1; else echo "ok   secret scan found nothing"; fi
 
-  # 5. Lockfiles presentes: instalacao reproduzivel.
+  # 5. Lockfiles present: reproducible install.
   for lf in package-lock.json console/package-lock.json; do
-    if [ -f "$STAGE/$lf" ]; then echo "ok   lockfile $lf"; else echo "FALHA lockfile ausente: $lf"; fail=1; fi
+    if [ -f "$STAGE/$lf" ]; then echo "ok   lockfile $lf"; else echo "FAIL lockfile missing: $lf"; fail=1; fi
   done
 
-  # 6. Entrypoints do instalador presentes.
+  # 6. Installer entrypoints present.
   for f in install.sh install.ps1 .claude-plugin/plugin.json hooks/hooks.json; do
-    if [ -f "$STAGE/$f" ]; then echo "ok   $f"; else echo "FALHA ausente: $f"; fail=1; fi
+    if [ -f "$STAGE/$f" ]; then echo "ok   $f"; else echo "FAIL missing: $f"; fail=1; fi
   done
 
-  [ "$fail" -eq 0 ] || { echo "verificacao do artefato FALHOU"; exit 1; }
+  [ "$fail" -eq 0 ] || { echo "artifact verification FAILED"; exit 1; }
 fi
 
-echo "--- pronto ---"
+echo "--- done ---"
 echo "$ZIP"
 echo "$MANIFEST"
 echo "$(cat "$OUT_DIR/${BASE}.zip.sha256")"
