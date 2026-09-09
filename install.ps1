@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# EngineOS installer (PowerShell) — links the shared engineering environment into ~/.claude
+# EngineOS installer (PowerShell) - links the shared engineering environment into ~/.claude
 # Idempotent: safe to re-run after every `git pull`.
 # Requires: PowerShell 5.1+ (built into Windows 10/11) or PowerShell 7+
 # Symlinks/junctions may require Developer Mode or an elevated (admin) terminal.
@@ -15,9 +15,14 @@ $ErrorActionPreference = 'Stop'
 
 $RepoDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 # A relative -ClaudeDir would resolve against the caller's location, so it is made
-# absolute once here; a target inside the repository would let the installer
-# rewrite the repository's own CLAUDE.md, so that is refused outright.
-$ClaudeDir = [IO.Path]::GetFullPath((Join-Path (Get-Location).Path $ClaudeDir))
+# absolute once here. Join-Path concatenates an absolute second argument on Windows
+# instead of replacing the first, so only a relative value is joined. A target
+# inside the repository would let the installer rewrite the repository's own
+# CLAUDE.md, so that is refused outright.
+if (-not [IO.Path]::IsPathRooted($ClaudeDir)) {
+    $ClaudeDir = Join-Path (Get-Location).Path $ClaudeDir
+}
+$ClaudeDir = [IO.Path]::GetFullPath($ClaudeDir)
 $RepoRoot  = [IO.Path]::GetFullPath($RepoDir)
 if ($ClaudeDir -eq $RepoRoot -or $ClaudeDir.StartsWith($RepoRoot + [IO.Path]::DirectorySeparatorChar)) {
     Write-Host "Refusing -ClaudeDir inside the repository: $ClaudeDir" -ForegroundColor Red
@@ -150,7 +155,7 @@ function New-Link {
     if (Test-Path $Target) {
         $existing = Get-Item $Target -Force -ErrorAction SilentlyContinue
         if ($existing -and ($existing.LinkType -or ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint))) {
-            return $true   # already a link — idempotent
+            return $true   # already a link - idempotent
         }
         Write-Warn "skip: $Target exists and is not a symlink (local file with same name?)"
         return $false
@@ -175,7 +180,7 @@ function New-Link {
 
     try {
         New-Item -ItemType HardLink -Path $Target -Value $Value -ErrorAction Stop | Out-Null
-        Write-Warn "  (used hard link for '$($Target | Split-Path -Leaf)' — symlink needs Developer Mode or admin)"
+        Write-Warn "  (used hard link for '$($Target | Split-Path -Leaf)' - symlink needs Developer Mode or admin)"
         return $true
     } catch {
         Write-Warn "Could not create link '$Target': $_"
@@ -236,7 +241,7 @@ if (Test-Path $commandsSrc) {
 }
 
 # ---------- 4d. Link rules + patterns ----------
-# Agents/skills reference these by relative path (rules/*.md, patterns/*) — without
+# Agents/skills reference these by relative path (rules/*.md, patterns/*) - without
 # them installed alongside skills/agents/commands, those references resolve to
 # nothing on an installed machine.
 $rulesDest = Join-Path $ClaudeDir 'rules'
@@ -265,7 +270,7 @@ if (Test-Path $patternsSrc) {
 
 # ---------- 4e. Prune dangling links ----------
 # A rename in the repo (e.g. patterns/1-Analisys -> patterns/1-Analysis.md) otherwise
-# leaves a stale link whose target no longer exists — a slash command or reference
+# leaves a stale link whose target no longer exists - a slash command or reference
 # that still "exists" but silently resolves to nothing. Sweep the directories we
 # manage and drop any link/junction pointing at a target that no longer exists.
 foreach ($dir in @($skillsDest, $agentsDest, $commandsDest)) {
@@ -331,7 +336,7 @@ if ($nodeMajor -ge 18) {
 } else {
     # No node means no hooks.json parsing either, so there is no list to print
     # here without hand-copying one. Point at the source of truth instead.
-    Write-Warn "node >= 18 not found — hooks NOT registered. Install node and re-run:"
+    Write-Warn "node >= 18 not found - hooks NOT registered. Install node and re-run:"
     Write-Warn "  https://nodejs.org/en/download"
     Write-Warn "Or add every entry of $RepoDir\hooks\hooks.json to $Settings by hand,"
     Write-Warn 'replacing the "${CLAUDE_PLUGIN_ROOT}" placeholder with the repo path.'
@@ -348,7 +353,7 @@ Write-Warn "    only scripts/validate-engineos.sh uses it."
 
 # ---------- 7. MCP reminder ----------
 Write-Host ""
-Write-Host "MCP baseline: see templates/mcp.template.json — add servers with 'claude mcp add'"
+Write-Host "MCP baseline: see templates/mcp.template.json - add servers with 'claude mcp add'"
 Write-Host "or copy entries into settings.json. Use env var references, never literal tokens."
 Write-Host ""
 Write-Green "EngineOS installed. Restart Claude Code sessions to pick up changes."
