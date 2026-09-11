@@ -245,6 +245,33 @@
         "\\bretrieval\\b",
         "\\bembeddings?\\b"
       ]
+    },
+    {
+      "id": "rule-rag-corpus-safety",
+      "priority": 95,
+      "source": "rules/llm-apps.md RAG section; rules/security.md owns what counts as sensitive",
+      "when": {
+        "retrieval_over_shared_corpus": true
+      },
+      "then": {
+        "require": [
+          "retrieval-acl",
+          "pre-index-redaction"
+        ],
+        "gate": "design"
+      },
+      "signals": [
+        "\\brag\\b",
+        "\\bretrieval.?augmented\\b",
+        "\\bsemantic search\\b",
+        "\\bhybrid search\\b",
+        "\\bvector (db|database|store|index|search)\\b",
+        "\\b(pgvector|pinecone|qdrant|weaviate|milvus|chroma|opensearch)\\b",
+        "\\bknowledge base\\b",
+        "\\bbm25\\b",
+        "\\bre.?rank\\w*\\b",
+        "\\b(retriev\\w+|embeddings?|chunk\\w*)\\b.{0,40}\\b(corpus|documents?|docs|index|knowledge|tenant)\\b"
+      ]
     }
   ]
 }

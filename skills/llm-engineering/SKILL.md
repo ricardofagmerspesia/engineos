@@ -31,13 +31,24 @@ failed and what to try, not just "error":
 
 ## RAG checklist
 
-Chunking, metrics, hybrid retrieval, re-ranking, freshness and source citation are ruled by
-`rules/llm-apps.md` (RAG + Reliability sections). Team additions:
+Chunking, metrics, hybrid retrieval, re-ranking, freshness, source citation, retrieval ACL and
+pre-index redaction are ruled by `rules/llm-apps.md` (RAG + Reliability sections). Team additions:
 
-- Store the chunking version alongside the embedding, so re-chunking invalidates the right cache entries.
-- Pipeline shape: `query -> [dense search, lexical search] -> merge (RRF) -> re-rank -> top-N -> generator`.
-  Dense and lexical run in parallel; Reciprocal Rank Fusion merges without score calibration; the
-  re-ranker (cross-encoder or LLM pointwise) sees ~3-5x N candidates and returns N.
+- Store the chunking version and the redaction version alongside the embedding. A chunking-version
+  change is a cache concern — re-embed what changed, unaffected entries stay valid. A redaction-version
+  change is remediation: re-ingest the affected sources and delete the superseded chunks and vectors,
+  because the old vectors still carry the unredacted text.
+- Pipeline shape, two halves.
+  Ingestion: `parse -> redact -> chunk (+ acl metadata from source permissions, never from content) -> embed -> store`.
+  Query: `redact query -> [dense search | filter, lexical search | filter] -> merge (RRF) -> re-rank (filtered candidates only) -> top-N -> generator`.
+  Dense and lexical run in parallel, so the principal filter is drawn per branch: one filter stage ahead
+  of a fan-out has no single place to live, and an unfiltered branch leaks through the merge. Reciprocal
+  Rank Fusion merges without score calibration; the re-ranker (cross-encoder or LLM pointwise) sees
+  ~3-5x N candidates — all of them already filtered — and returns N. Redaction sits before chunking and
+  the filter before search because neither can be applied after the fact — see `rules/llm-apps.md` for why.
+- Check the cross-tenant case before any quality metric: a query scoped to one principal that returns
+  a single chunk belonging to another is a CRITICAL finding, and it stops the diagnosis below —
+  Recall@K measured on a leaking retriever describes nothing worth tuning.
 - Diagnose in this order, never the reverse: Recall@K low -> fix chunking/index/hybrid weights;
   Recall fine but Precision@K low -> add or tune the re-ranker; retrieval fine but groundedness
   low -> fix the generation prompt. Touching the prompt while Recall@K is low hides the real fault.

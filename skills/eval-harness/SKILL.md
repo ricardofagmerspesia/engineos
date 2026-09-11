@@ -29,6 +29,9 @@ this skill builds the machinery. Do not restate the rules here.
    { "id": "kebab-id", "input": {...}, "expected": {...}, "note": "why this case exists" }
    ```
    Must include: typical cases, edge cases (empty, long, ambiguous, adversarial/injection attempt), and known past failures.
+   For RAG features, must also include:
+   - One cross-tenant retrieval **pair**, same query, two principals: as principal B (the owner) it must return the target chunk at rank 1, and as principal A it must return zero hits — `expected.relevant_chunk_ids` empty, scored by a scorer asserting zero hits rather than low rank. Both halves are required; a zero-hit case on its own also passes against a retriever that is simply broken, so the positive control is what makes it evidence of a filter.
+   - One case whose source document carries PII, asserting on the indexed artifact — the retrieved chunk text and the stored payload contain the mask, not the raw value — as well as on the generated output. A clean answer over a chunk that still holds the PII means redaction ran on the wrong side of the index.
 3. **Pick scorers per field** — cheapest that proves correctness:
    - `exact` — enums, ids, booleans
    - `schema` — output parses against zod schema (always on)
@@ -55,3 +58,5 @@ this skill builds the machinery. Do not restate the rules here.
 - Judge never judges its own model family's output if avoidable; never judge without spot-check calibration.
 - Golden set grows: every production failure becomes a case in the same PR that fixes it.
 - A RAG eval that has no `retrieval` scorer is incomplete: it cannot tell a retrieval failure from a generation failure.
+- A RAG eval over a shared corpus that has no cross-tenant pair is incomplete: the zero-hit half alone cannot distinguish an ACL filter from a broken retriever, and without either half a retriever with no filter passes every other case.
+- A RAG eval whose PII case asserts only on the generated text is incomplete: it cannot see raw PII sitting in the chunk store or the vectors.
