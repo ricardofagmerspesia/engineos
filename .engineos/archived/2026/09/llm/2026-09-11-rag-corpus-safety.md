@@ -1,6 +1,7 @@
 ---
 name: 2026-09-11-rag-corpus-safety
-status: active
+status: done
+completed: 2026-09-11
 owner: llm-coordinator (hermsdorff); orchestrator for registry, reviewer and docs
 spec: docs/specs/2026-09-11-rag-corpus-safety-design.md
 domain: llm
@@ -88,6 +89,8 @@ basis.
 
 ## Changes registered
 Branch `feat/rag-acl-pii-rules`, based on `045b69d`.
+
+`09ca490` — feat(llm): require retrieval ACL and pre-index redaction for RAG
 
 ```
 M  agents/security-reviewer.md
