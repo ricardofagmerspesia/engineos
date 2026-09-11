@@ -76,6 +76,38 @@ inverted back out of the vector.
 - DO include source references in outputs so answers are verifiable.
 - DON'T stuff context: retrieval top-k is a tuned parameter, more ≠ better; tune K on Recall@K vs. Precision@K, not on vibes.
 
+### Ingestion
+
+- DO keep the raw source in a document store (object storage or equivalent) keyed by source id and content hash; the vector index is a derived, rebuildable projection, never the only copy.
+- DO parse per format with a dedicated parser — PDF layout preserved, HTML boilerplate stripped, tables kept as tables — and record the parser name and version in chunk metadata; a parser change is a re-index trigger under the freshness policy.
+- DO dedupe by content hash before embedding. Near-duplicate detection is optional and is judged on Precision@K, never on intuition.
+- DO carry a minimum chunk metadata set: source id, source URI, title, section path, offsets, created and updated timestamps, type or tags, ACL, chunking version, redaction version, parser version, embedding model and version.
+- DO make ingestion idempotent — upsert keyed by a chunk id derived from source id, offsets and versions — and incremental, re-ingesting changed sources only.
+- DO keep a full-rebuild path and rehearse it. An index that has never been rebuilt from the document store is not a projection, it is the only copy.
+- DO use one embedding model per index. A model change is a new index plus a swap — DON'T mix vectors from two models in one index.
+
+### Query pipeline
+
+- DO treat query rewrite — normalization, history-aware reference resolution, decomposition into sub-queries for multi-hop — as a model call whose output is untrusted: schema- and length-bounded before anything downstream sees it.
+- DO adopt a rewrite only when it raises Recall@K on the golden set. A rewrite is a prompt change and owes the same before/after numbers.
+- DO apply metadata filters (date range, type, tags, source) as structured pre-filters, alongside the principal filter and under the same pre-ranking rule.
+- DON'T let the model compose a filter from free text: filter values come from structured extraction validated against an allowlist.
+- DO assemble context under an explicit token budget: order by re-rank score, drop near-identical chunks, expand to the parent section when a chunk alone lacks context, and stamp every chunk with its source id.
+- DO truncate by dropping the lowest-ranked whole chunk, never mid-chunk — a half chunk separates a claim from the citation that backs it.
+- DO answer "not found in the sources" below a relevance threshold, never a completion from parametric memory. Tune the threshold on the golden set and keep the no-answer case in it.
+
+### Operations
+
+- DO keep app data, cache and sessions, raw documents and backups, and the vector index in separate stores with separate retention.
+- DO back up the document store and the chunk metadata; vectors are rebuilt from those, not restored.
+- DO give conversation history the shortest viable retention — it is PII-bearing, and the DBA row's data rules own retention and encryption at rest for what is stored.
+- DO choose the vector store by the architecture rules' monolith-first default: the existing relational store's vector extension first, a dedicated vector database only when a measured scale or latency need is recorded.
+- DO key the three cache layers distinctly: embedding on the content hash (permanent), retrieval result on normalized query hash + principal + index version (short TTL), answer on normalized query + principal + prompt version + index version (TTL bounded by the freshness policy).
+- DO tune the semantic-cache similarity threshold on the golden set: a hit that serves a wrong answer is an eval failure, not a cache miss.
+- DO capture explicit feedback (rating, correction) and implicit signals (retry, abandon) per answer, with trace id, prompt version and retrieved chunk ids.
+- DO route negative feedback and low-groundedness answers to a human review queue; every reviewed failure becomes a golden case in the PR that fixes it.
+- DO extend the per-call log of `## Reliability & cost` with per-stage latency (rewrite, retrieve, re-rank, generate) and the retrieved chunk ids with their scores. Correlation-id propagation and the log schema stay the observability rules' concern.
+
 ## Agents
 - DO give agents few, well-described tools (5–10 sharp tools beat 30 vague ones).
 - DO cap agent loops (max iterations, max cost) — runaway agents burn money.

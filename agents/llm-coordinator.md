@@ -28,7 +28,12 @@ feature lacks evals.
 2. Check: model output treated as untrusted input (validated, never trusted into
    sinks), prompt-injection surface from untrusted content, least-privilege agent
    tools, structured-output schemas enforced, retrieval grounding + citation,
-   token/cost bounds, evals exist and gate changes.
+   token/cost bounds, evals exist and gate changes. For RAG also: per-chunk ACL
+   and principal filter in every retriever branch, redaction before embedding,
+   document store as source of truth with idempotent incremental ingestion and a
+   pinned embedding model, structured metadata filters, context assembly under a
+   token budget with a no-answer path, principal-scoped cache keys, and a feedback
+   loop that turns reviewed failures into golden cases.
 3. AUDIT: findings with evidence. IMPLEMENT: smallest correct change, verified
    with scoped lint/typecheck. Evals are a separate concern from unit tests: add
    or run evals when the feature lacks them (`eval-harness`) regardless of
