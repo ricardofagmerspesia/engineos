@@ -1,6 +1,7 @@
 ---
 name: 2026-09-11-rag-pipeline-completeness
-status: active
+status: done
+completed: 2026-09-11
 owner: llm-coordinator (hermsdorff); orchestrator for agent method and docs
 spec: docs/specs/2026-09-11-rag-pipeline-completeness-design.md
 domain: llm
@@ -71,6 +72,8 @@ none required — risk medium (prose rules, `git revert` undoes, no data handled
 
 ## Changes registered
 Branch `feat/rag-acl-pii-rules`, second unit, based on `349bc7d`.
+
+`5180728` — feat(llm): cover RAG ingestion, query pipeline and operations
 
 ```
 M  agents/llm-coordinator.md
