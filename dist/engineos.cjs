@@ -4566,7 +4566,7 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
       }
       if (io2.env["ENGINEOS_BYPASS"] === "1") {
         io2.err("engineos: repo marker cleared, but ENGINEOS_BYPASS=1 still bypasses everything \u2014 unset it to restore\n");
-      } else if ((0, import_node_fs23.existsSync)(flag2)) {
+      } else if ((0, import_node_fs24.existsSync)(flag2)) {
         io2.err(`engineos: repo marker cleared, but ${flag2} still bypasses everything \u2014 delete it to restore
 `);
       } else {
@@ -4585,8 +4585,8 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
 }
 function statusLine(marker, flag2, env) {
   if (env["ENGINEOS_BYPASS"] === "1") return "bypassed (ENGINEOS_BYPASS=1)";
-  if ((0, import_node_fs23.existsSync)(flag2)) return `bypassed (${flag2})`;
-  return (0, import_node_fs23.existsSync)(marker) ? "bypassed (repo marker)" : "active";
+  if ((0, import_node_fs24.existsSync)(flag2)) return `bypassed (${flag2})`;
+  return (0, import_node_fs24.existsSync)(marker) ? "bypassed (repo marker)" : "active";
 }
 function reason(e) {
   return e instanceof Error ? e.message : String(e);
@@ -4753,8 +4753,8 @@ function readOrEmpty(path) {
 }
 
 // src/gen/agent-registry.ts
-var import_node_fs25 = require("node:fs");
-var import_node_path19 = require("node:path");
+var import_node_fs26 = require("node:fs");
+var import_node_path18 = require("node:path");
 var EXIT_OK5 = 0;
 var EXIT_FAILURE4 = 1;
 var DOCUMENT_DESCRIPTION = "Generated from agents/*.md frontmatter by scripts/gen-agent-registry.sh \u2014 do not hand-edit. capability_ids is a back-reference from registries/capabilities.json.";
@@ -7958,7 +7958,7 @@ function capabilityCoherence(ctx) {
   ];
 }
 function capabilityRows(ctx) {
-  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, CAPABILITIES)));
+  const document = readable(() => readJsonFile((0, import_node_path32.join)(ctx.root, CAPABILITIES)));
   if (document === null) return null;
   const rows3 = isRecord(document) ? document["capabilities"] : void 0;
   if (!Array.isArray(rows3)) return [];
@@ -7973,7 +7973,7 @@ function capabilityRows(ctx) {
   return bindings;
 }
 function agentCapabilityRows(ctx) {
-  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, AGENTS2)));
+  const document = readable(() => readJsonFile((0, import_node_path32.join)(ctx.root, AGENTS2)));
   if (document === null) return null;
   const rows3 = isRecord(document) ? document["agents"] : void 0;
   if (!Array.isArray(rows3)) return [];
