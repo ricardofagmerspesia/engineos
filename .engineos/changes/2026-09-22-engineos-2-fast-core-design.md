@@ -25,14 +25,27 @@ measurement, compatibility strategy and implementation waves.
 - [x] Obtain approval for all eight improvements and a breaking 2.0 target
 - [x] Write the architecture design and rejected alternatives
 - [ ] Owner reviews the persisted design
-- [ ] Create the implementation plan after approval
+- [x] Create the implementation plan after approval
 
 ## What was made
+Added eight implementation plans under docs/superpowers/plans/: a program plan
+carrying the frozen cross-wave interfaces F1-F7 and fourteen barrier
+reconciliations, plus one plan per delivery wave (74 tasks, 462 TDD steps).
+Wave 1 was authored inline; Waves 2-7 were authored by six parallel agents
+against the frozen contracts and integrated at a single barrier.
+
 Added the approved EngineOS 2.0 fast-core design with measurable acceptance
 criteria, frozen interfaces, unresolved-to-resolved scoping behavior, safety
 rules, migration requirements, verification strategy and seven delivery waves.
 
 ## Verification
+Ran the repository's own benchmark against this branch (documentation only):
+route-before-change (cache hit) FAILS at median 280.0ms against a 150ms budget.
+Measured the floor underneath it on the same host: bare node 54.8ms, one
+git rev-parse 29.7ms. Recorded as reconciliation R9 — a pre-existing regression,
+not one this work introduced, and evidence that the spec's 75ms target may sit
+below the achievable floor.
+
 Design self-review: checked for placeholders, internal contradictions, ambiguous
 requirements, missing error handling, public-surface impact and unbounded scope.
 No code or test suite changed in this design-only unit.
