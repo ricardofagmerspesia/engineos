@@ -2050,8 +2050,8 @@ var EXEC_JOURNAL_FIELDS = [
   { name: "agent", flag: "--agent", guard: "slug", json: "string", presence: "always" },
   { name: "model_tier", flag: "--model-tier", guard: "enum", json: "string", presence: "required", values: modelTiers },
   { name: "status", flag: "--status", guard: "enum", json: "string", presence: "required", values: statuses },
-  { name: "tokens_in", flag: "--tokens-in", guard: "int", json: "number", presence: "required" },
-  { name: "tokens_out", flag: "--tokens-out", guard: "int", json: "number", presence: "required" },
+  { name: "tokens_in", flag: "--tokens-in", guard: "int", json: "number", presence: "always" },
+  { name: "tokens_out", flag: "--tokens-out", guard: "int", json: "number", presence: "always" },
   { name: "duration_ms", flag: "--duration-ms", guard: "int", json: "number", presence: "required" },
   { name: "note", flag: "--note", guard: "free", json: "string", presence: "always" },
   { name: "trace_id", flag: "--trace-id", guard: "slug", json: "string", presence: "optional" },
@@ -3359,14 +3359,14 @@ function event(sink, id, data) {
 function writeSpan(sink, facts, durationMs, spanId) {
   const fields = {
     // run_id and trace_id are both the session, so every span of one session
-    // joins without four call sites repeating it. Tokens are 0 because a hook
-    // cannot see a subagent's usage; a caller that CAN (the headless runner)
-    // passes its own through facts.fields, which is spread after these.
+    // joins without four call sites repeating it. Tokens are DELIBERATELY absent:
+    // a hook cannot see a subagent's usage, and the schema emits an unset
+    // always-field as null. A zero here would read as "free" to every consumer.
+    // A caller that CAN observe usage (the headless runner) passes its own
+    // through facts.fields, which is spread after these.
     run_id: sink.session,
     trace_id: sink.session,
     span_kind: facts.kind,
-    tokens_in: 0,
-    tokens_out: 0,
     ...facts.fields ?? {},
     // Named facts last: a fields entry may override the defaults above, but it
     // cannot contradict the four values the signature made the caller state.
@@ -3535,10 +3535,10 @@ function run7(env, ctx) {
       // recorded as build. Absent or unregistered -> build (../registry/agents).
       modelTier: agentModelTier(ctx.root, agent),
       status: responseStatus(env.raw),
-      // tokens_in/tokens_out are 0 and cost_micros absent by construction:
-      // this hook never sees the subagent's usage. ./telemetry writes the
-      // zeros; rules/observability.md says so in prose so nobody reads a 0 as
-      // "free".
+      // tokens_in/tokens_out and cost_micros are absent by construction: this
+      // hook never sees the subagent's usage. The schema emits the two token
+      // fields as null, which is what an unknown is. Prose used to have to warn
+      // readers not to take the old zeros for "free"; the data says it now.
       fields: { agent }
     });
   } catch {
@@ -4566,7 +4566,7 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
       }
       if (io2.env["ENGINEOS_BYPASS"] === "1") {
         io2.err("engineos: repo marker cleared, but ENGINEOS_BYPASS=1 still bypasses everything \u2014 unset it to restore\n");
-      } else if ((0, import_node_fs23.existsSync)(flag2)) {
+      } else if ((0, import_node_fs24.existsSync)(flag2)) {
         io2.err(`engineos: repo marker cleared, but ${flag2} still bypasses everything \u2014 delete it to restore
 `);
       } else {
@@ -4585,8 +4585,8 @@ function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
 }
 function statusLine(marker, flag2, env) {
   if (env["ENGINEOS_BYPASS"] === "1") return "bypassed (ENGINEOS_BYPASS=1)";
-  if ((0, import_node_fs23.existsSync)(flag2)) return `bypassed (${flag2})`;
-  return (0, import_node_fs23.existsSync)(marker) ? "bypassed (repo marker)" : "active";
+  if ((0, import_node_fs24.existsSync)(flag2)) return `bypassed (${flag2})`;
+  return (0, import_node_fs24.existsSync)(marker) ? "bypassed (repo marker)" : "active";
 }
 function reason(e) {
   return e instanceof Error ? e.message : String(e);
@@ -4753,8 +4753,8 @@ function readOrEmpty(path) {
 }
 
 // src/gen/agent-registry.ts
-var import_node_fs25 = require("node:fs");
-var import_node_path19 = require("node:path");
+var import_node_fs26 = require("node:fs");
+var import_node_path18 = require("node:path");
 var EXIT_OK5 = 0;
 var EXIT_FAILURE4 = 1;
 var DOCUMENT_DESCRIPTION = "Generated from agents/*.md frontmatter by scripts/gen-agent-registry.sh \u2014 do not hand-edit. capability_ids is a back-reference from registries/capabilities.json.";
@@ -5198,12 +5198,97 @@ function isExecutable(path) {
 var import_node_child_process6 = require("node:child_process");
 var import_node_fs31 = require("node:fs");
 var import_node_os2 = require("node:os");
-var import_node_path23 = require("node:path");
+var import_node_path25 = require("node:path");
 var import_node_perf_hooks = require("node:perf_hooks");
+
+// src/bench/baseline.ts
+var import_node_path22 = require("node:path");
+
+// src/bench/host.ts
+var import_node_crypto2 = require("node:crypto");
+function collectHost(deps, engineosVersion) {
+  const cpus2 = deps.cpus();
+  const first = cpus2[0];
+  return {
+    platform: deps.platform(),
+    // A container with no readable cpu list reports `unknown` rather than
+    // crashing a measurement run that is otherwise valid.
+    cpuModel: first === void 0 ? "unknown" : first.model,
+    cpuCount: cpus2.length,
+    nodeVersion: deps.nodeVersion(),
+    engineosVersion
+  };
+}
+function hostId(meta) {
+  const material = `${meta.platform}|${meta.cpuModel}|${String(meta.cpuCount)}`;
+  const digest = (0, import_node_crypto2.createHash)("sha256").update(material).digest("hex").slice(0, 12);
+  return `${slug(meta.platform)}-${String(meta.cpuCount)}x-${digest}`;
+}
+function slug(value) {
+  const lowered = value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return lowered.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+}
+
+// src/bench/baseline.ts
+function baselinePath(root, meta) {
+  return (0, import_node_path22.join)(root, "docs", "perf", "baselines", `${hostId(meta)}.json`);
+}
+function writeBaseline(io2, root, report2) {
+  const path = baselinePath(root, report2.host);
+  io2.write(path, `${JSON.stringify(report2, null, 2)}
+`);
+  return path;
+}
+function readBaseline(io2, root, meta) {
+  const text3 = io2.read(baselinePath(root, meta));
+  if (text3 === null) return null;
+  try {
+    return JSON.parse(text3);
+  } catch {
+    throw new KernelError(`${baselinePath(root, meta)} is not valid JSON \u2014 re-record it with 'engineos bench baseline --write'`);
+  }
+}
+function compare(current, baseline, tolerance) {
+  const previous = new Map(baseline.scenarios.map((entry) => [entry.scenario, entry.p50Ms]));
+  const found = [];
+  for (const scenario of current.scenarios) {
+    const before = previous.get(scenario.scenario);
+    if (before === void 0) {
+      found.push({ scenario: scenario.scenario, reason: "no-baseline", currentP50Ms: scenario.p50Ms, baselineP50Ms: null });
+      continue;
+    }
+    if (scenario.p50Ms > before * (1 + tolerance)) {
+      found.push({ scenario: scenario.scenario, reason: "slower", currentP50Ms: scenario.p50Ms, baselineP50Ms: before });
+    }
+  }
+  return found;
+}
+
+// src/bench/lifecycle.ts
+function percentile(values, rank) {
+  if (values.length === 0) throw new KernelError("a percentile has no samples to rank");
+  const sorted2 = [...values].sort((a, b) => a - b);
+  const index = Math.ceil(rank / 100 * sorted2.length) - 1;
+  const clamped = Math.min(Math.max(index, 0), sorted2.length - 1);
+  const value = sorted2[clamped];
+  if (value === void 0) throw new KernelError("a percentile index fell outside its own series");
+  return value;
+}
+function summarize(scenario, samples, contextBytes, dispatches) {
+  const durations = samples.map((entry) => entry.durationMs);
+  return {
+    scenario,
+    p50Ms: percentile(durations, 50),
+    p95Ms: percentile(durations, 95),
+    dispatches,
+    contextBytes,
+    samples: samples.map((entry) => ({ ...entry }))
+  };
+}
 
 // src/bench/measure.ts
 var import_node_fs30 = require("node:fs");
-var import_node_path22 = require("node:path");
+var import_node_path23 = require("node:path");
 var NUMERIC = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
 function parseMultiplier(raw) {
   if (raw === void 0 || raw === "") return 1;
@@ -5241,11 +5326,11 @@ function medianMs(cmd, deps) {
   return median(durations);
 }
 function alwaysOnBytes(root) {
-  const claudeMd = (0, import_node_path22.join)(root, "CLAUDE.md");
+  const claudeMd = (0, import_node_path23.join)(root, "CLAUDE.md");
   let total = (0, import_node_fs30.statSync)(claudeMd).size;
   for (const line of (0, import_node_fs30.readFileSync)(claudeMd, "utf8").split(/\r?\n/)) {
     if (!line.startsWith("@rules/")) continue;
-    total += (0, import_node_fs30.statSync)((0, import_node_path22.join)(root, line.slice(1))).size;
+    total += (0, import_node_fs30.statSync)((0, import_node_path23.join)(root, line.slice(1))).size;
   }
   return total;
 }
@@ -5266,17 +5351,116 @@ function median(values) {
   return lower === void 0 ? upper : (lower + upper) / 2;
 }
 
-// src/bench/run.ts
+// src/bench/scenarios.ts
+var import_node_path24 = require("node:path");
 var PROMPT = "add a paginated orders endpoint and mirror the screen to mobile";
-var SESSION_ID = "performance-budget";
+var SESSION_ID = "lifecycle-benchmark";
+var SCENARIOS = [
+  {
+    name: "prompt-routing",
+    phase: "routing",
+    samples: 5,
+    warm: false,
+    hook: "hooks/prompt-advisor.sh",
+    payload: () => JSON.stringify({ prompt: PROMPT, cwd: "/tmp", session_id: SESSION_ID })
+  },
+  {
+    name: "direct-edit-cold",
+    phase: "routing",
+    samples: 5,
+    warm: false,
+    hook: "hooks/route-before-change.sh",
+    payload: (target) => JSON.stringify({ tool_input: { file_path: target }, cwd: "/tmp", session_id: SESSION_ID })
+  },
+  {
+    name: "direct-edit-warm",
+    phase: "routing",
+    samples: 7,
+    warm: true,
+    hook: "hooks/route-before-change.sh",
+    payload: (target) => JSON.stringify({ tool_input: { file_path: target }, cwd: "/tmp", session_id: SESSION_ID })
+  },
+  {
+    name: "agent-dispatch",
+    phase: "execution",
+    samples: 5,
+    warm: false,
+    hook: "hooks/announce-agent-dispatch.sh",
+    payload: () => JSON.stringify({ tool_input: { subagent_type: "backend-coordinator" }, cwd: "/tmp", session_id: SESSION_ID })
+  },
+  {
+    name: "agent-return",
+    phase: "integration",
+    samples: 5,
+    warm: false,
+    hook: "hooks/announce-agent-return.sh",
+    payload: () => JSON.stringify({ tool_input: { subagent_type: "backend-coordinator" }, cwd: "/tmp", session_id: SESSION_ID })
+  },
+  {
+    name: "final-gate",
+    phase: "verification",
+    samples: 3,
+    warm: false,
+    hook: "hooks/stop-verify.sh",
+    payload: () => JSON.stringify({ cwd: "/tmp", session_id: SESSION_ID })
+  }
+];
+function runScenario(scenario, root, env, deps) {
+  const target = (0, import_node_path24.join)(root, "src", "Button.tsx");
+  const command = {
+    command: [(0, import_node_path24.join)(root, scenario.hook)],
+    stdin: scenario.payload(target),
+    env: hookEnv(env),
+    samples: 1
+  };
+  if (scenario.warm) runOnce(command, deps);
+  const samples = [];
+  for (let i = 0; i < scenario.samples; i += 1) {
+    samples.push({
+      scenario: scenario.name,
+      phase: scenario.phase,
+      durationMs: medianMs(command, deps),
+      // Not observed by a hook-spawning benchmark. Wave 3's scheduler and a
+      // model-owning runner supply these; until then the honest value is null.
+      tokensIn: null,
+      tokensOut: null,
+      costMicros: null,
+      cacheHit: scenario.warm ? true : null,
+      retries: 0
+    });
+  }
+  return samples;
+}
+function hookEnv(env) {
+  return { ...env, ENGINEOS_BYPASS_FLAG: "/nonexistent/engineos.bypass", ENGINEOS_TELEMETRY: "0" };
+}
+
+// src/bench/run.ts
+var PROMPT2 = "add a paginated orders endpoint and mirror the screen to mobile";
+var SESSION_ID2 = "performance-budget";
 var HEADER = "== EngineOS runtime budgets ==";
+var LIFECYCLE_HEADER = "== EngineOS task lifecycle ==";
+var BASELINE_TOLERANCE = 0.1;
+var DEFAULT_HOST_DEPS = {
+  platform: () => (0, import_node_os2.platform)(),
+  cpus: () => (0, import_node_os2.cpus)().map((cpu) => ({ model: cpu.model })),
+  nodeVersion: () => process.version
+};
 var defaultSpawn2 = (command, args, options) => (0, import_node_child_process6.spawnSync)(command, args, options);
 var DEFAULT_DEPS2 = {
   spawn: defaultSpawn2,
   now: () => import_node_perf_hooks.performance.now(),
-  mkdtemp: () => (0, import_node_fs31.mkdtempSync)((0, import_node_path23.join)((0, import_node_os2.tmpdir)(), "engineos-bench-"))
+  mkdtemp: () => (0, import_node_fs31.mkdtempSync)((0, import_node_path25.join)((0, import_node_os2.tmpdir)(), "engineos-bench-"))
 };
-function runBench(_argv, io2, deps = DEFAULT_DEPS2) {
+function runBench(argv2, io2, deps = DEFAULT_DEPS2) {
+  const sub = argv2[0];
+  if (sub !== void 0) {
+    if (sub === "lifecycle") return runLifecycle(io2, deps);
+    if (sub === "baseline") return runBaseline(argv2.slice(1), io2, deps);
+    io2.err(`unknown bench subcommand: ${sub}
+`);
+    return 1;
+  }
   try {
     const multiplier = parseMultiplier(io2.env["ENGINEOS_PERF_MULTIPLIER"]);
     const root = resolveRoot(io2.env);
@@ -5300,16 +5484,93 @@ function runBench(_argv, io2, deps = DEFAULT_DEPS2) {
     throw e;
   }
 }
+function lifecycleReport(root, env, deps) {
+  const host = collectHost(DEFAULT_HOST_DEPS, true ? "1.7.0" : "unknown");
+  const contextBytes = alwaysOnBytes(root);
+  const scenarios = SCENARIOS.map(
+    (scenario) => (
+      // `dispatches` is 0 because a hook-spawning benchmark launches no agent, not
+      // because a measured task dispatched none. Wave 3 supplies the real count.
+      summarize(scenario.name, runScenario(scenario, root, env, deps), contextBytes, 0)
+    )
+  );
+  return { host, scenarios };
+}
+function runLifecycle(io2, deps) {
+  try {
+    const root = resolveRoot(io2.env);
+    const report2 = lifecycleReport(root, io2.env, deps);
+    const lines = [LIFECYCLE_HEADER];
+    for (const scenario of report2.scenarios) {
+      lines.push(`${scenario.scenario} p50=${scenario.p50Ms.toFixed(1)}ms p95=${scenario.p95Ms.toFixed(1)}ms`);
+    }
+    io2.out(`${lines.join("\n")}
+`);
+    return 0;
+  } catch (e) {
+    if (e instanceof KernelError) {
+      io2.err(`${e.message}
+`);
+      return 1;
+    }
+    throw e;
+  }
+}
+function runBaseline(argv2, io2, deps) {
+  try {
+    const root = resolveRoot(io2.env);
+    const report2 = lifecycleReport(root, io2.env, deps);
+    if (argv2.includes("--write")) {
+      io2.out(`${writeBaseline(fileBaselineIo(), root, report2)}
+`);
+      return 0;
+    }
+    const baseline = readBaseline(fileBaselineIo(), root, report2.host);
+    if (baseline === null) {
+      io2.err("no baseline for this host \u2014 record one with 'engineos bench baseline --write'\n");
+      return 1;
+    }
+    const found = compare(report2, baseline, BASELINE_TOLERANCE);
+    for (const regression of found) {
+      const before = regression.baselineP50Ms === null ? "none" : `${regression.baselineP50Ms.toFixed(1)}ms`;
+      io2.err(`${regression.scenario}: ${regression.reason} (${regression.currentP50Ms.toFixed(1)}ms vs ${before})
+`);
+    }
+    return found.length === 0 ? 0 : 1;
+  } catch (e) {
+    if (e instanceof KernelError) {
+      io2.err(`${e.message}
+`);
+      return 1;
+    }
+    throw e;
+  }
+}
+function fileBaselineIo() {
+  return {
+    read: (path) => {
+      try {
+        return (0, import_node_fs31.readFileSync)(path, "utf8");
+      } catch {
+        return null;
+      }
+    },
+    write: (path, text3) => {
+      (0, import_node_fs31.mkdirSync)((0, import_node_path25.dirname)(path), { recursive: true });
+      (0, import_node_fs31.writeFileSync)(path, text3);
+    }
+  };
+}
 function measureAll(root, env, deps) {
-  const kernel = (0, import_node_path23.join)(root, "scripts/kernel.sh");
-  const advisor = (0, import_node_path23.join)(root, "hooks/prompt-advisor.sh");
-  const routeIntent = medianMs({ command: [kernel, "route-intent", PROMPT], samples: 5 }, deps);
-  const resolveTask2 = medianMs({ command: [kernel, "resolve-task", "--prompt", PROMPT], samples: 5 }, deps);
+  const kernel = (0, import_node_path25.join)(root, "scripts/kernel.sh");
+  const advisor = (0, import_node_path25.join)(root, "hooks/prompt-advisor.sh");
+  const routeIntent = medianMs({ command: [kernel, "route-intent", PROMPT2], samples: 5 }, deps);
+  const resolveTask2 = medianMs({ command: [kernel, "resolve-task", "--prompt", PROMPT2], samples: 5 }, deps);
   const promptAdvisor = medianMs(
     {
       command: [advisor],
-      stdin: JSON.stringify({ prompt: PROMPT, cwd: "/tmp", session_id: SESSION_ID }),
-      env: hookEnv(env),
+      stdin: JSON.stringify({ prompt: PROMPT2, cwd: "/tmp", session_id: SESSION_ID2 }),
+      env: hookEnv2(env),
       samples: 5
     },
     deps
@@ -5327,13 +5588,13 @@ function routeBeforeChangeMedian(root, env, deps) {
   const tmp = deps.mkdtemp();
   try {
     runOnce({ command: ["git", "init", "-q", tmp], samples: 1 }, deps);
-    const target = (0, import_node_path23.join)(tmp, "src", "Button.tsx");
-    (0, import_node_fs31.mkdirSync)((0, import_node_path23.join)(tmp, "src"), { recursive: true });
+    const target = (0, import_node_path25.join)(tmp, "src", "Button.tsx");
+    (0, import_node_fs31.mkdirSync)((0, import_node_path25.join)(tmp, "src"), { recursive: true });
     (0, import_node_fs31.writeFileSync)(target, "");
     const cmd = {
-      command: [(0, import_node_path23.join)(root, "hooks/route-before-change.sh")],
-      stdin: JSON.stringify({ tool_input: { file_path: target }, cwd: tmp, session_id: SESSION_ID }),
-      env: hookEnv(env),
+      command: [(0, import_node_path25.join)(root, "hooks/route-before-change.sh")],
+      stdin: JSON.stringify({ tool_input: { file_path: target }, cwd: tmp, session_id: SESSION_ID2 }),
+      env: hookEnv2(env),
       samples: 7
     };
     runOnce(cmd, deps);
@@ -5342,14 +5603,14 @@ function routeBeforeChangeMedian(root, env, deps) {
     (0, import_node_fs31.rmSync)(tmp, { recursive: true, force: true });
   }
 }
-function hookEnv(env) {
+function hookEnv2(env) {
   return { ...env, ENGINEOS_BYPASS_FLAG: "/nonexistent/engineos.bypass", ENGINEOS_TELEMETRY: "0" };
 }
 
 // src/report/usage.ts
 var import_node_child_process7 = require("node:child_process");
 var import_node_fs32 = require("node:fs");
-var import_node_path24 = require("node:path");
+var import_node_path26 = require("node:path");
 var EXIT_OK7 = 0;
 var EXIT_FAILURE6 = 1;
 var USAGE5 = "usage: engineos usage-report [days]";
@@ -5378,7 +5639,7 @@ function collectTranscripts(projectsDir, days, nowMs) {
   return found.sort();
 }
 function renderReport(days, deps, io2) {
-  const projectsDir = (0, import_node_path24.join)(deps.env["HOME"] ?? "", ".claude", "projects");
+  const projectsDir = (0, import_node_path26.join)(deps.env["HOME"] ?? "", ".claude", "projects");
   if (!isDirectory8(projectsDir)) {
     io2.out(`No transcripts at ${projectsDir}
 `);
@@ -5425,7 +5686,7 @@ function readEntries(dir) {
 }
 function walk(dir, cutoff, found) {
   for (const entry of readEntries(dir)) {
-    const path = (0, import_node_path24.join)(dir, entry.name);
+    const path = (0, import_node_path26.join)(dir, entry.name);
     if (entry.isDirectory()) {
       walk(path, cutoff, found);
     } else if (entry.isFile() && entry.name.endsWith(".jsonl") && newerThan(path, cutoff)) {
@@ -5517,7 +5778,7 @@ function writeGateHits(stats, io2) {
 function writeTelemetry(days, deps, io2) {
   io2.out("\n## Kernel telemetry (this repo, .git/engineos-telemetry)\n");
   const dir = gitDir(deps.cwd, deps.spawn);
-  const telemetryDir = dir === null ? null : (0, import_node_path24.join)(dir, "engineos-telemetry");
+  const telemetryDir = dir === null ? null : (0, import_node_path26.join)(dir, "engineos-telemetry");
   if (telemetryDir === null || !isDirectory8(telemetryDir)) {
     io2.out("(none \u2014 telemetry not adopted here)\n");
     return;
@@ -5584,7 +5845,7 @@ function compareDesc(a, b) {
 
 // src/checks/agents-skills.ts
 var import_node_fs34 = require("node:fs");
-var import_node_path26 = require("node:path");
+var import_node_path28 = require("node:path");
 
 // src/checks/findings.ts
 var HARNESS_FINDINGS = ["precondition-missing", "artifact-pending"];
@@ -5615,7 +5876,7 @@ function renderFinding(entry) {
 
 // src/checks/lib.ts
 var import_node_fs33 = require("node:fs");
-var import_node_path25 = require("node:path");
+var import_node_path27 = require("node:path");
 function makeContext(root, io2) {
   return {
     root,
@@ -5624,17 +5885,17 @@ function makeContext(root, io2) {
     skipped: /* @__PURE__ */ new Set(),
     readText(rel) {
       try {
-        return (0, import_node_fs33.readFileSync)((0, import_node_path25.join)(root, rel), "utf8");
+        return (0, import_node_fs33.readFileSync)((0, import_node_path27.join)(root, rel), "utf8");
       } catch {
         return void 0;
       }
     },
     exists(rel) {
-      return (0, import_node_fs33.existsSync)((0, import_node_path25.join)(root, rel));
+      return (0, import_node_fs33.existsSync)((0, import_node_path27.join)(root, rel));
     },
     list(relDir) {
       try {
-        return (0, import_node_fs33.readdirSync)((0, import_node_path25.join)(root, relDir)).sort(byteOrder);
+        return (0, import_node_fs33.readdirSync)((0, import_node_path27.join)(root, relDir)).sort(byteOrder);
       } catch {
         return [];
       }
@@ -5797,21 +6058,21 @@ function skillDirectories(ctx) {
 }
 function isDirectory9(root, relativePath) {
   try {
-    return (0, import_node_fs34.statSync)((0, import_node_path26.join)(root, relativePath)).isDirectory();
+    return (0, import_node_fs34.statSync)((0, import_node_path28.join)(root, relativePath)).isDirectory();
   } catch {
     return false;
   }
 }
 function isFile7(root, relativePath) {
   try {
-    return (0, import_node_fs34.statSync)((0, import_node_path26.join)(root, relativePath)).isFile();
+    return (0, import_node_fs34.statSync)((0, import_node_path28.join)(root, relativePath)).isFile();
   } catch {
     return false;
   }
 }
 function sizeOf(root, relativePath) {
   try {
-    return (0, import_node_fs34.statSync)((0, import_node_path26.join)(root, relativePath)).size;
+    return (0, import_node_fs34.statSync)((0, import_node_path28.join)(root, relativePath)).size;
   } catch {
     return 0;
   }
@@ -5822,15 +6083,15 @@ function orNone(value) {
 
 // src/checks/contracts-archive.ts
 var import_node_fs35 = require("node:fs");
-var import_node_path28 = require("node:path");
+var import_node_path30 = require("node:path");
 
 // src/checks/contracts-intents.ts
-var import_node_path27 = require("node:path");
+var import_node_path29 = require("node:path");
 var INTENTS_PATH = "registries/intents.json";
 function intentRow(ctx, id) {
   let document;
   try {
-    document = readJsonFile((0, import_node_path27.join)(ctx.root, INTENTS_PATH));
+    document = readJsonFile((0, import_node_path29.join)(ctx.root, INTENTS_PATH));
   } catch {
     return void 0;
   }
@@ -5912,7 +6173,7 @@ function auditArchive(ctx, contract) {
     const name = firstField(text3, "name");
     const gate = completed !== "" ? completed : name.slice(0, DATE_LENGTH);
     if (gate < contract.grandfatheredBefore) continue;
-    const base = (0, import_node_path28.basename)(record2, ".md");
+    const base = (0, import_node_path30.basename)(record2, ".md");
     auditRecord({ record: record2, base, text: text3, completed, name, contract }, wellFormed);
     auditSpecLink({ ctx, base, text: text3, contract }, specLinks);
   }
@@ -5952,13 +6213,13 @@ function auditSpecLink(subject, into) {
     into.push(finding("C21c", "spec-not-under-prefix", `${base}:${spec}`));
     return;
   }
-  if (!isNonEmptyFile((0, import_node_path28.join)(ctx.root, spec))) {
+  if (!isNonEmptyFile((0, import_node_path30.join)(ctx.root, spec))) {
     into.push(finding("C21c", "spec-file-missing-or-empty", `${base}:${spec}`));
   }
 }
 function archivedRecords(root) {
   const found = [];
-  walk2((0, import_node_path28.join)(root, ARCHIVE_DIR), ARCHIVE_DIR, found);
+  walk2((0, import_node_path30.join)(root, ARCHIVE_DIR), ARCHIVE_DIR, found);
   return found.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }
 function walk2(absolute, relative2, into) {
@@ -5969,7 +6230,7 @@ function walk2(absolute, relative2, into) {
     return;
   }
   for (const name of names2) {
-    const child2 = (0, import_node_path28.join)(absolute, name);
+    const child2 = (0, import_node_path30.join)(absolute, name);
     if (isDirectory10(child2)) walk2(child2, `${relative2}/${name}`, into);
     else if (name.endsWith(".md") && name !== "README.md") into.push(`${relative2}/${name}`);
   }
@@ -7115,15 +7376,15 @@ function agentModels(ctx, models) {
 }
 
 // src/checks/kernel-lib.ts
-var import_node_path30 = require("node:path");
+var import_node_path32 = require("node:path");
 
 // src/checks/runtime-surface-fs.ts
 var import_node_fs36 = require("node:fs");
-var import_node_path29 = require("node:path");
-function executableBit(root, relativePath, platform = process.platform) {
-  if (platform === "win32") return null;
+var import_node_path31 = require("node:path");
+function executableBit(root, relativePath, platform2 = process.platform) {
+  if (platform2 === "win32") return null;
   try {
-    return ((0, import_node_fs36.statSync)((0, import_node_path29.join)(root, relativePath)).mode & 73) !== 0;
+    return ((0, import_node_fs36.statSync)((0, import_node_path31.join)(root, relativePath)).mode & 73) !== 0;
   } catch {
     return false;
   }
@@ -7156,7 +7417,7 @@ function loadedOr(read) {
   }
 }
 function rawJson(ctx, relativePath) {
-  const parsed = loadedOr(() => readJsonFile((0, import_node_path30.join)(ctx.root, relativePath)));
+  const parsed = loadedOr(() => readJsonFile((0, import_node_path32.join)(ctx.root, relativePath)));
   return isRecord(parsed) ? parsed : void 0;
 }
 function subRecord(row, key) {
@@ -7516,7 +7777,7 @@ var KERNEL_CHECKS = [
 
 // src/checks/portability.ts
 var import_node_fs37 = require("node:fs");
-var import_node_path31 = require("node:path");
+var import_node_path33 = require("node:path");
 var C32_FINDINGS = [
   "mirror-missing",
   "file-missing-in-mirror",
@@ -7572,7 +7833,7 @@ function checkC32(ctx) {
         findings.push(finding("C32", "file-missing-in-mirror", `${mirror}/${relative2}`));
         continue;
       }
-      if (!sameBytes((0, import_node_path31.join)(ctx.root, MIRROR_BASE, relative2), (0, import_node_path31.join)(ctx.root, mirror, relative2))) {
+      if (!sameBytes((0, import_node_path33.join)(ctx.root, MIRROR_BASE, relative2), (0, import_node_path33.join)(ctx.root, mirror, relative2))) {
         findings.push(finding("C32", "file-diverged", `${mirror}/${relative2}`));
       }
     }
@@ -7590,7 +7851,7 @@ function crlfOffenders(root) {
   const offenders = [];
   walk3(root, "", (relative2) => {
     if (!isPosixText(relative2)) return;
-    if (containsCr((0, import_node_path31.join)(root, relative2))) offenders.push(relative2);
+    if (containsCr((0, import_node_path33.join)(root, relative2))) offenders.push(relative2);
   });
   return offenders.sort(byteOrder2);
 }
@@ -7599,7 +7860,7 @@ function isPosixText(relative2) {
 }
 function filesUnder(root, base) {
   const collected = [];
-  walk3((0, import_node_path31.join)(root, base), "", (relative2) => collected.push(relative2));
+  walk3((0, import_node_path33.join)(root, base), "", (relative2) => collected.push(relative2));
   return collected.sort(byteOrder2);
 }
 function walk3(directory, prefix, visit) {
@@ -7613,7 +7874,7 @@ function walk3(directory, prefix, visit) {
     const relative2 = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) {
       if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      walk3((0, import_node_path31.join)(directory, entry.name), relative2, visit);
+      walk3((0, import_node_path33.join)(directory, entry.name), relative2, visit);
       continue;
     }
     if (entry.isFile()) visit(relative2);
@@ -7800,7 +8061,7 @@ function claimedCounts(text3) {
 }
 
 // src/checks/registries-coherence.ts
-var import_node_path32 = require("node:path");
+var import_node_path34 = require("node:path");
 var ROUTING = "registries/routing.json";
 var DECISION_RULES = "registries/decision-rules.json";
 var CAPABILITIES = "registries/capabilities.json";
@@ -7814,7 +8075,7 @@ function readable(load) {
   }
 }
 function agentRows(ctx) {
-  const document = readable(() => readJsonFile((0, import_node_path32.join)(ctx.root, AGENTS2)));
+  const document = readable(() => readJsonFile((0, import_node_path34.join)(ctx.root, AGENTS2)));
   if (document === null) return null;
   const rows3 = isRecord(document) ? document["agents"] : void 0;
   if (!Array.isArray(rows3)) return [];
@@ -7847,7 +8108,7 @@ function jsonValidity(ctx) {
   for (const name of ctx.list("registries")) {
     if (!name.endsWith(".json")) continue;
     const relative2 = `registries/${name}`;
-    if (!parsesAsJson((0, import_node_path32.join)(ctx.root, relative2))) broken.push(finding("C14", "malformed-json", relative2));
+    if (!parsesAsJson((0, import_node_path34.join)(ctx.root, relative2))) broken.push(finding("C14", "malformed-json", relative2));
   }
   return result("C14", "registries are valid JSON", broken);
 }
@@ -7901,7 +8162,7 @@ function decisionRuleCoherence(ctx) {
   if (!ctx.exists(DECISION_RULES)) {
     return [result("C14", "registries/decision-rules.json is present", [finding("C14", "missing", DECISION_RULES)])];
   }
-  const document = readable(() => readJsonFile((0, import_node_path32.join)(ctx.root, DECISION_RULES)));
+  const document = readable(() => readJsonFile((0, import_node_path34.join)(ctx.root, DECISION_RULES)));
   if (document === null) return [];
   const rows3 = isRecord(document) ? document["rules"] : void 0;
   const rules = Array.isArray(rows3) ? rows3.filter(isRecord) : [];
@@ -7958,7 +8219,7 @@ function capabilityCoherence(ctx) {
   ];
 }
 function capabilityRows(ctx) {
-  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, CAPABILITIES)));
+  const document = readable(() => readJsonFile((0, import_node_path34.join)(ctx.root, CAPABILITIES)));
   if (document === null) return null;
   const rows3 = isRecord(document) ? document["capabilities"] : void 0;
   if (!Array.isArray(rows3)) return [];
@@ -7973,7 +8234,7 @@ function capabilityRows(ctx) {
   return bindings;
 }
 function agentCapabilityRows(ctx) {
-  const document = readable(() => readJsonFile((0, import_node_path33.join)(ctx.root, AGENTS2)));
+  const document = readable(() => readJsonFile((0, import_node_path34.join)(ctx.root, AGENTS2)));
   if (document === null) return null;
   const rows3 = isRecord(document) ? document["agents"] : void 0;
   if (!Array.isArray(rows3)) return [];
@@ -8306,7 +8567,7 @@ function byteOrder4(a, b) {
 // src/checks/runtime-governance-shared.ts
 var import_node_fs38 = require("node:fs");
 var import_node_os3 = require("node:os");
-var import_node_path33 = require("node:path");
+var import_node_path35 = require("node:path");
 var POLICY_JSON3 = "registries/policy.json";
 var ROUTING_JSON2 = "registries/routing.json";
 function requirePolicy(ctx, check, title, token) {
@@ -8375,7 +8636,7 @@ function telemetryRun(ctx, argv2) {
   }
 }
 function withTempDir(run10) {
-  const dir = (0, import_node_fs38.mkdtempSync)((0, import_node_path33.join)((0, import_node_os3.tmpdir)(), "engineos-check-"));
+  const dir = (0, import_node_fs38.mkdtempSync)((0, import_node_path35.join)((0, import_node_os3.tmpdir)(), "engineos-check-"));
   try {
     return run10(dir);
   } finally {
@@ -8536,7 +8797,7 @@ function verifyDoneNoteNamesRepair(ctx) {
 }
 
 // src/checks/runtime-governance-telemetry.ts
-var import_node_path34 = require("node:path");
+var import_node_path36 = require("node:path");
 var import_node_fs39 = require("node:fs");
 var C22_FINDINGS = [
   "retention-days-not-a-whole-number",
@@ -8600,12 +8861,12 @@ function checkC22b(ctx) {
   const findings = [];
   withTempDir((dir) => {
     events.forEach((event2, index) => {
-      const file = (0, import_node_path34.join)(dir, `sample-${index}.jsonl`);
+      const file = (0, import_node_path36.join)(dir, `sample-${index}.jsonl`);
       const sample = JSON.stringify(event2.row["sample"] ?? null);
       const appended = telemetryRun(ctx, ["append", file, "--session", "canary", "--event", event2.id, "--data", sample, "--ts", "2026-08-06T00:00:00Z"]) && nonEmptyFile(file) && telemetryRun(ctx, ["validate", file]);
       if (!appended) findings.push(finding("C22b", "sample-did-not-round-trip", event2.id));
     });
-    const negatives = (0, import_node_path34.join)(dir, "negatives.jsonl");
+    const negatives = (0, import_node_path36.join)(dir, "negatives.jsonl");
     if (telemetryRun(ctx, ["append", negatives, "--session", "canary", "--event", "bogus-event", "--data", "{}"])) {
       findings.push(finding("C22b", "unknown-event-was-not-rejected"));
     }
@@ -8709,7 +8970,7 @@ function nonEmptyFile(path) {
 }
 
 // src/checks/runtime-governance-constitution.ts
-var import_node_path35 = require("node:path");
+var import_node_path37 = require("node:path");
 var C23_FINDINGS = [
   "precedence-sentence-disagrees",
   "missing-from-compatibility",
@@ -8735,7 +8996,7 @@ function checkC23(ctx) {
   if (stated === "" || stated !== declared4) findings.push(finding("C23", "precedence-sentence-disagrees"));
   const compatibility = ctx.readText(COMPATIBILITY) ?? "";
   for (const rule of alwaysOnImports(ctx.readText(CLAUDE_MD2) ?? "")) {
-    const name = (0, import_node_path35.basename)(rule);
+    const name = (0, import_node_path37.basename)(rule);
     if (!compatibility.includes(`${name}\``)) findings.push(finding("C23", "missing-from-compatibility", name));
   }
   findings.push(...runMirrors(rowsOf("C23"), ctx));
@@ -9227,10 +9488,10 @@ var RUNTIME_GOVERNANCE_CHECKS = [
 // src/checks/runtime-surface-canary.ts
 var import_node_fs40 = require("node:fs");
 var import_node_os4 = require("node:os");
-var import_node_path37 = require("node:path");
+var import_node_path39 = require("node:path");
 
 // src/checks/runtime-surface-journal.ts
-var import_node_path36 = require("node:path");
+var import_node_path38 = require("node:path");
 var C27_FINDINGS = [
   "block-missing",
   "home-missing",
@@ -9277,7 +9538,7 @@ function haveExecJournalInputs(ctx, check, title) {
 function execJournalBlock(ctx) {
   let raw;
   try {
-    raw = readJsonFile((0, import_node_path36.join)(ctx.root, POLICY));
+    raw = readJsonFile((0, import_node_path38.join)(ctx.root, POLICY));
   } catch {
     return void 0;
   }
@@ -9424,7 +9685,7 @@ var REJECTED_LINES = [
 function checkC27b(ctx) {
   const skipped = haveExecJournalInputs(ctx, "C27b", C27b_TITLE);
   if (skipped !== void 0) return skipped;
-  const workspace = (0, import_node_fs40.mkdtempSync)((0, import_node_path37.join)((0, import_node_os4.tmpdir)(), "engineos-c27b-"));
+  const workspace = (0, import_node_fs40.mkdtempSync)((0, import_node_path39.join)((0, import_node_os4.tmpdir)(), "engineos-c27b-"));
   try {
     const findings = [...appendFindings(ctx, workspace), ...validateFindings(ctx, workspace)];
     return [result("C27b", C27b_TITLE, findings)];
@@ -9434,14 +9695,14 @@ function checkC27b(ctx) {
 }
 function appendFindings(ctx, workspace) {
   const findings = [];
-  const spans = (0, import_node_path37.join)(workspace, "spans.exec.jsonl");
+  const spans = (0, import_node_path39.join)(workspace, "spans.exec.jsonl");
   findings.push(...fullSpanFindings(ctx, spans));
   for (const kind of declaredList(ctx, "span_kinds")) {
     if (!append2(ctx, spans, ["--span-kind", kind])) {
       findings.push(broke("append", `declared-span-kind-rejected:${kind}`));
     }
   }
-  findings.push(...v1ShapeFindings(ctx, (0, import_node_path37.join)(workspace, "v1.exec.jsonl")));
+  findings.push(...v1ShapeFindings(ctx, (0, import_node_path39.join)(workspace, "v1.exec.jsonl")));
   findings.push(...refusalFindings(ctx, spans));
   return findings;
 }
@@ -9541,7 +9802,7 @@ function refusalFindings(ctx, spans) {
 }
 function validateFindings(ctx, workspace) {
   const findings = [];
-  const file = (0, import_node_path37.join)(workspace, "foreign.exec.jsonl");
+  const file = (0, import_node_path39.join)(workspace, "foreign.exec.jsonl");
   for (const { subject, line } of REJECTED_LINES) {
     (0, import_node_fs40.writeFileSync)(file, `${line}
 `);
