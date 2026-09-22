@@ -207,3 +207,51 @@ test('the command binding is the one src/cli.ts registers', (t) => {
   assert.equal(asCommand([], io), 1);
   assert.equal(io.stderr.join(''), 'ENGINEOS_PERF_MULTIPLIER must be greater than zero\n');
 });
+
+// The lifecycle scenarios draw 30 timed runs from the same fake clock the five
+// budgets draw 22 from. A short array does not fail to compile — it silently
+// measures a zero — so the extra readings are explicit here.
+function lifecycleDurations(): number[] {
+  return [...durations(), ...new Array<number>(8).fill(30)];
+}
+
+function runArgv(root: string, argv: string[], deps: BenchDeps, env: NodeJS.ProcessEnv = {}): { status: number; stdout: string; stderr: string } {
+  const io = memoryIo({ env: { ...env, ENGINEOS_ROOT: root }, cwd: root });
+  const status = runBench(argv, io, deps);
+  return { status, stdout: io.stdout.join(''), stderr: io.stderr.join('') };
+}
+
+test('a bare bench invocation still prints the five budget lines', (t) => {
+  const { root } = fixtureRoot(t);
+  const { deps } = harness(root, durations());
+  assert.equal(run(root, deps).stdout.includes('== EngineOS runtime budgets =='), true);
+});
+
+test('bench lifecycle prints a scenario line per measured scenario', (t) => {
+  const { root } = fixtureRoot(t);
+  const { deps } = harness(root, lifecycleDurations());
+  const result = runArgv(root, ['lifecycle'], deps);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.includes('== EngineOS task lifecycle =='), true);
+  assert.equal(result.stdout.includes('direct-edit-warm'), true);
+  // A scenario that ran out of clock readings would report 0.0ms here, which is
+  // the failure mode a shorter array produces silently.
+  assert.equal(/p50=0\.0ms/.test(result.stdout), false);
+});
+
+test('bench baseline refuses to compare when no baseline exists for this host', (t) => {
+  const { root } = fixtureRoot(t);
+  const { deps } = harness(root, lifecycleDurations());
+  const result = runArgv(root, ['baseline'], deps);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.includes('no baseline'), true);
+});
+
+test('an unknown bench subcommand is refused rather than silently running the budgets', (t) => {
+  const { root } = fixtureRoot(t);
+  const { deps } = harness(root, lifecycleDurations());
+  const result = runArgv(root, ['nonsense'], deps);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.includes('nonsense'), true);
+  assert.equal(result.stdout.includes('== EngineOS runtime budgets =='), false);
+});
