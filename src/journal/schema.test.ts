@@ -101,3 +101,10 @@ test('the slug class admits the stamp this CLI writes and rejects whitespace', (
 function enumRows(): FieldSpec[] {
   return EXEC_JOURNAL_FIELDS.filter((spec) => spec.guard === 'enum');
 }
+
+test('tokens are always-present so an unobserved count emits null, not zero', () => {
+  const tokensIn = EXEC_JOURNAL_FIELDS.find((spec) => spec.name === 'tokens_in');
+  const tokensOut = EXEC_JOURNAL_FIELDS.find((spec) => spec.name === 'tokens_out');
+  assert.equal(tokensIn?.presence, 'always');
+  assert.equal(tokensOut?.presence, 'always');
+});

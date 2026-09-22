@@ -551,9 +551,9 @@ still required on Windows for `scripts/kernel.sh`, which stays bash until 2.0.
 
 ## Unreleased
 
-The entries below narrow existing behaviour or move an existing answer from
-bash to TypeScript; one adds checks that a consumer's `validate` run can now
-fail on. Nothing in the public surface is renamed or removed, and no
+The entries below narrow existing behaviour, move an existing answer from bash
+to TypeScript, or add new surface; some add checks that a consumer's `validate`
+run can now fail on. Nothing in the public surface is removed, and no
 deprecation window is opened.
 
 | Surface | change | Kind |
@@ -571,3 +571,7 @@ deprecation window is opened.
 | `ENGINEOS_REQUIRE_PARITY` (environment variable, test suite) | new: with `ENGINEOS_REQUIRE_PARITY=1` the bash-parity suite in `src/kernel/parity.test.ts` fails instead of skipping when bash is missing or cannot parse the pinned kernel (macOS bash 3.2). CI's `verify` job sets it, so parity evidence cannot disappear silently; local runs on macOS keep skipping | added |
 | `/analisy-architecture` -> `/analyze-architecture`, `patterns/1-Analisys` -> `patterns/1-Analysis.md` | the router-table spelling of the comprehension row; the files were renamed in d39a498 (1.7.0) and this entry is recorded late. `install.sh` prunes the dangling `~/.claude/commands` symlink the old name left behind | renamed |
 | `skills/strategy` | `enabled: true` again — it was set to `false` by the console's first "publish config changes" demo, not by decision, while `CLAUDE.md`, `README.md` and `registries/intents.json` advertised it live. Kernel answers that cite it stop listing it under `skills_suppressed` | restored |
+| `scripts/exec-journal.sh append` / `journal append`, and every span an EngineOS hook writes | `tokens_in` and `tokens_out` move from `required` to always-present: `--tokens-in` and `--tokens-out` become OPTIONAL on `append` (the usage block brackets them), an omitted count emits JSON `null` instead of failing the call, and the two announce hooks stop writing `0`. A hook cannot see a subagent's usage, so the old `0` said "free" where the truth was "unknown", and any consumer summing the column understated real spend. A caller that does observe usage (the headless runner) still passes its own integers through, and a supplied count is validated exactly as before. Consumers reading either field must handle `null`. Two divergences follow: `validate` now accepts a line whose token counts are `null`, which the pinned v1 bash CLI in `test/fixtures/legacy-journal/` still rejects, and an `append` call that omits the flags succeeds here and fails there — the differential parity suite passes both flags in every case, so neither is covered by it | changed |
+| `engineos bench lifecycle` | new subcommand arm of `engineos bench`. Runs the six lifecycle scenarios and prints `== EngineOS task lifecycle ==` followed by one `<scenario> p50=<n>ms p95=<n>ms` line per scenario. The scenario names (`prompt-routing`, `direct-edit-cold`, `direct-edit-warm`, `agent-dispatch`, `agent-return`, `final-gate`) are public surface | added |
+| `engineos bench baseline [--write]` | new subcommand arm of `engineos bench`. Without `--write`, compares this host's current run against `docs/perf/baselines/<host-id>.json` and exits 1 on any scenario more than 10% over its recorded p50, or when no baseline exists for the host. With `--write`, records the baseline and prints its path. `<host-id>` is derived from platform, cpu model and cpu count only, never the EngineOS version, so a version bump does not orphan a recorded baseline | added |
+| `engineos bench <unknown>` | an argument that is not `lifecycle` or `baseline` now exits 1 with `unknown bench subcommand: <arg>` on stderr. Before this change every argument was ignored and the five budgets ran; a bare `engineos bench` is unchanged, byte for byte | changed |

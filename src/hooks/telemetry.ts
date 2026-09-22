@@ -22,7 +22,7 @@ import type { TelemetryEventId } from '../registry/policy-telemetry';
 // derived the span id twice under a comment saying the copies must match, and a
 // wrong --capability-id was caught after the fact by grepping the writers
 // (check C27f, deleted with this port). Here the gate, the clock, the clamp, the
-// slug classes, run_id = trace_id = session and tokens = 0 live in ONE place —
+// slug classes and run_id = trace_id = session live in ONE place —
 // the sink — and callers pass facts. No caller names a flag, a file or a slug
 // class, and a wrong capability, tier, kind or status does not compile.
 //
@@ -176,14 +176,14 @@ export function event(sink: Sink | null, id: TelemetryEventId, data: EventData):
 function writeSpan(sink: Sink, facts: SpanFacts, durationMs: number, spanId: string | null): void {
   const fields: SpanFields = {
     // run_id and trace_id are both the session, so every span of one session
-    // joins without four call sites repeating it. Tokens are 0 because a hook
-    // cannot see a subagent's usage; a caller that CAN (the headless runner)
-    // passes its own through facts.fields, which is spread after these.
+    // joins without four call sites repeating it. Tokens are DELIBERATELY absent:
+    // a hook cannot see a subagent's usage, and the schema emits an unset
+    // always-field as null. A zero here would read as "free" to every consumer.
+    // A caller that CAN observe usage (the headless runner) passes its own
+    // through facts.fields, which is spread after these.
     run_id: sink.session,
     trace_id: sink.session,
     span_kind: facts.kind,
-    tokens_in: 0,
-    tokens_out: 0,
     ...(facts.fields ?? {}),
     // Named facts last: a fields entry may override the defaults above, but it
     // cannot contradict the four values the signature made the caller state.
