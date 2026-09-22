@@ -25,6 +25,13 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # eslint-config-next pulls eslint-plugin-react, whose latest release
+      # (7.37.x) still calls context.getFilename, removed in ESLint 10. Lint
+      # crashes with "contextOrFilename.getFilename is not a function" until the
+      # plugin ships ESLint 10 support. Drop this ignore once it does.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
