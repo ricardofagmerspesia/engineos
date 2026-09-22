@@ -5532,6 +5532,7 @@ function runBaseline(argv2, io2, deps) {
 `);
       return 0;
     }
+    const strict = argv2.includes("--strict");
     const baseline = readBaseline(fileBaselineIo(), root, report2.host);
     if (baseline === null) {
       io2.err("no baseline for this host \u2014 record one with 'engineos bench baseline --write'\n");
@@ -5543,7 +5544,10 @@ function runBaseline(argv2, io2, deps) {
       io2.err(`${regression.scenario}: ${regression.reason} (${regression.currentP50Ms.toFixed(1)}ms vs ${before})
 `);
     }
-    return found.length === 0 ? 0 : 1;
+    if (found.length > 0 && !strict) {
+      io2.err("advisory: drift above is reported, not gated \u2014 re-run, or pass --strict to fail on it\n");
+    }
+    return found.length > 0 && strict ? 1 : 0;
   } catch (e) {
     if (e instanceof KernelError) {
       io2.err(`${e.message}

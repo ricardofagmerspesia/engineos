@@ -124,6 +124,15 @@ function runLifecycle(io: Io, deps: BenchDeps): number {
   }
 }
 
+// ADVISORY by default, and the default is the honest one. Every scenario is a
+// process spawn on a 60-95ms floor, and a developer machine's run-to-run spread
+// is 30-50ms of correlated background load — noise larger than the effect the
+// comparison exists to find, which more samples inside one process cannot
+// average away. Recorded and compared, this is evidence; gated, it is a red
+// build on an unchanged tree, and a check that cries wolf is unlearned within a
+// week. --strict restores the failing exit for a host quiet enough to earn it.
+// Raising the floor until it passed here would have caught only an ~85%
+// regression while still reading as green, which is the worse lie.
 function runBaseline(argv: string[], io: Io, deps: BenchDeps): number {
   try {
     const root = resolveRoot(io.env);
@@ -132,8 +141,11 @@ function runBaseline(argv: string[], io: Io, deps: BenchDeps): number {
       io.out(`${writeBaseline(fileBaselineIo(), root, report)}\n`);
       return 0;
     }
+    const strict = argv.includes('--strict');
     const baseline = readBaseline(fileBaselineIo(), root, report.host);
     if (baseline === null) {
+      // Absent evidence, not a measured regression: this one is a refusal under
+      // either mode, because there is nothing to advise about.
       io.err("no baseline for this host — record one with 'engineos bench baseline --write'\n");
       return 1;
     }
@@ -142,7 +154,10 @@ function runBaseline(argv: string[], io: Io, deps: BenchDeps): number {
       const before = regression.baselineP50Ms === null ? 'none' : `${regression.baselineP50Ms.toFixed(1)}ms`;
       io.err(`${regression.scenario}: ${regression.reason} (${regression.currentP50Ms.toFixed(1)}ms vs ${before})\n`);
     }
-    return found.length === 0 ? 0 : 1;
+    if (found.length > 0 && !strict) {
+      io.err('advisory: drift above is reported, not gated — re-run, or pass --strict to fail on it\n');
+    }
+    return found.length > 0 && strict ? 1 : 0;
   } catch (e) {
     if (e instanceof KernelError) {
       io.err(`${e.message}\n`);

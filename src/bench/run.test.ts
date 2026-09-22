@@ -252,6 +252,32 @@ test('bench baseline refuses to compare when no baseline exists for this host', 
   assert.equal(result.stderr.includes('no baseline'), true);
 });
 
+// Drift is reported either way; only the exit code differs. The fixture records
+// a baseline at 30ms per reading and compares against 100ms, which clears both
+// the 10% tolerance and the 25ms floor, so the comparison is unambiguous and the
+// test is about the mode rather than about the arithmetic.
+function withDrift(t: TestContext, argv: string[]): { status: number; stdout: string; stderr: string } {
+  const { root } = fixtureRoot(t);
+  const written = runArgv(root, ['baseline', '--write'], harness(root, lifecycleDurations()).deps);
+  assert.equal(written.status, 0);
+  const slow = new Array<number>(lifecycleDurations().length).fill(100);
+  return runArgv(root, argv, harness(root, slow).deps);
+}
+
+test('bench baseline reports drift without failing, because the host noise is larger than the effect', (t) => {
+  const result = withDrift(t, ['baseline']);
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr.includes('slower'), true);
+  assert.equal(result.stderr.includes('advisory'), true);
+});
+
+test('bench baseline --strict fails on the same drift', (t) => {
+  const result = withDrift(t, ['baseline', '--strict']);
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr.includes('slower'), true);
+  assert.equal(result.stderr.includes('advisory'), false);
+});
+
 test('an unknown bench subcommand is refused rather than silently running the budgets', (t) => {
   const { root } = fixtureRoot(t);
   const { deps } = harness(root, lifecycleDurations());
