@@ -37,9 +37,9 @@ test('note is the only free-text row', () => {
   assert.deepEqual(free.map((spec) => spec.name), ['note']);
 });
 
-test('always is carried by agent and note alone', () => {
+test('always is carried by agent, the two token counts and note alone', () => {
   const always = EXEC_JOURNAL_FIELDS.filter((spec) => spec.presence === 'always');
-  assert.deepEqual(always.map((spec) => spec.name), ['agent', 'note']);
+  assert.deepEqual(always.map((spec) => spec.name), ['agent', 'tokens_in', 'tokens_out', 'note']);
 });
 
 test('every enum row declares its members and no other row does', () => {
