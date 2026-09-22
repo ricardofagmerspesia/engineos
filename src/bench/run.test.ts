@@ -7,6 +7,7 @@ import { memoryIo } from '../io';
 import { tempRoot } from '../testing/harness';
 import type { BenchDeps, BenchSpawn } from './measure';
 import { runBench } from './run';
+import { SCENARIOS } from './scenarios';
 
 // src/cli.ts registers this as a CommandTable entry, so the injected-deps
 // parameter has to stay optional. This binding pins that shape.
@@ -211,8 +212,12 @@ test('the command binding is the one src/cli.ts registers', (t) => {
 // The lifecycle scenarios draw 30 timed runs from the same fake clock the five
 // budgets draw 22 from. A short array does not fail to compile — it silently
 // measures a zero — so the extra readings are explicit here.
+// Derived from SCENARIOS, never a literal: a scenario added or its sample count
+// raised must move this array with it. A short array does not fail to compile —
+// clock() reads values[index] ?? 0, so the run silently reports 0.0ms.
 function lifecycleDurations(): number[] {
-  return [...durations(), ...new Array<number>(8).fill(30)];
+  const readings = SCENARIOS.reduce((total, scenario) => total + scenario.samples + (scenario.warm ? 1 : 0), 0);
+  return new Array<number>(readings).fill(30);
 }
 
 function runArgv(root: string, argv: string[], deps: BenchDeps, env: NodeJS.ProcessEnv = {}): { status: number; stdout: string; stderr: string } {

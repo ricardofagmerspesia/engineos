@@ -5,6 +5,14 @@ import { medianMs, runOnce, type BenchDeps, type TimedCommand } from './measure'
 const PROMPT = 'add a paginated orders endpoint and mirror the screen to mobile';
 const SESSION_ID = 'lifecycle-benchmark';
 
+// Every scenario spawns a process whose floor is node's own startup, so the
+// quantity being measured sits on top of OS scheduling noise that a handful of
+// readings cannot average out. Five samples produced a p50 that moved 10-50%
+// between consecutive runs on an idle machine, which made `bench baseline` fail
+// against a baseline recorded minutes earlier, four runs out of four. Twenty-one
+// readings cost about nine seconds for the whole suite and hold the p50 steady.
+const SCENARIO_SAMPLES = 21;
+
 // A scenario is one observable segment of a real task's lifecycle. `warm`
 // declares whether a discarded run precedes the samples: a cache-hit path that
 // measured its own cold first call would report the miss as the hit.
@@ -21,15 +29,20 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     name: 'prompt-routing',
     phase: 'routing',
-    samples: 5,
-    warm: false,
+    samples: SCENARIO_SAMPLES,
+    // The only scenario that discards a run without measuring a cache: the
+    // prompt advisor reads more of the tree than any other hook, so its cost is
+    // filesystem-cache sensitive and its first spawn in a cold process is tens
+    // of milliseconds slower than its steady state. cacheHit stays null for it —
+    // see runScenario, which reports a hit only for a scenario that has one.
+    warm: true,
     hook: 'hooks/prompt-advisor.sh',
     payload: () => JSON.stringify({ prompt: PROMPT, cwd: '/tmp', session_id: SESSION_ID }),
   },
   {
     name: 'direct-edit-cold',
     phase: 'routing',
-    samples: 5,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: 'hooks/route-before-change.sh',
     payload: (target) => JSON.stringify({ tool_input: { file_path: target }, cwd: '/tmp', session_id: SESSION_ID }),
@@ -37,7 +50,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     name: 'direct-edit-warm',
     phase: 'routing',
-    samples: 7,
+    samples: SCENARIO_SAMPLES,
     warm: true,
     hook: 'hooks/route-before-change.sh',
     payload: (target) => JSON.stringify({ tool_input: { file_path: target }, cwd: '/tmp', session_id: SESSION_ID }),
@@ -45,7 +58,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     name: 'agent-dispatch',
     phase: 'execution',
-    samples: 5,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: 'hooks/announce-agent-dispatch.sh',
     payload: () => JSON.stringify({ tool_input: { subagent_type: 'backend-coordinator' }, cwd: '/tmp', session_id: SESSION_ID }),
@@ -53,7 +66,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     name: 'agent-return',
     phase: 'integration',
-    samples: 5,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: 'hooks/announce-agent-return.sh',
     payload: () => JSON.stringify({ tool_input: { subagent_type: 'backend-coordinator' }, cwd: '/tmp', session_id: SESSION_ID }),
@@ -61,7 +74,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     name: 'final-gate',
     phase: 'verification',
-    samples: 3,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: 'hooks/stop-verify.sh',
     payload: () => JSON.stringify({ cwd: '/tmp', session_id: SESSION_ID }),
@@ -93,7 +106,7 @@ export function runScenario(
       tokensIn: null,
       tokensOut: null,
       costMicros: null,
-      cacheHit: scenario.warm ? true : null,
+      cacheHit: scenario.name === 'direct-edit-warm' ? true : null,
       retries: 0,
     });
   }

@@ -36,17 +36,30 @@ test('a missing baseline reads as null rather than an invented zero', () => {
   strictEqual(readBaseline(memoryIo(), '/repo', host), null);
 });
 
-test('compare reports a scenario that regressed past the tolerance', () => {
-  const found = compare(report(120), report(100), 0.1);
+test('compare reports a scenario past both the tolerance and the floor', () => {
+  const found = compare(report(140), report(100), 0.1, 25);
   strictEqual(found.length, 1);
   strictEqual(found[0]?.scenario, 'direct-edit-warm');
 });
 
 test('compare accepts a scenario inside the tolerance', () => {
-  deepStrictEqual(compare(report(105), report(100), 0.1), []);
+  deepStrictEqual(compare(report(105), report(100), 0.1, 25), []);
+});
+
+// The case the floor exists for: 63ms -> 73ms is 16% and fired on every run of
+// an unchanged checkout, because 6ms of scheduling noise clears a 10% band at
+// that magnitude. Both halves must clear before it is called a regression.
+test('compare accepts a ratio breach too small to be told from noise', () => {
+  deepStrictEqual(compare(report(73), report(63), 0.1, 25), []);
+});
+
+// The converse: a big absolute move that is small relative to a slow scenario is
+// not a regression either, or a 2s scenario would fail on a 26ms wobble.
+test('compare accepts an absolute breach inside the tolerance', () => {
+  deepStrictEqual(compare(report(2020), report(2000), 0.1, 25), []);
 });
 
 test('compare reports a scenario the baseline does not contain as unmeasured', () => {
   const current: LifecycleReport = { host, scenarios: [{ scenario: 'new-path', p50Ms: 1, p95Ms: 1, dispatches: 0, contextBytes: 0, samples: [] }] };
-  strictEqual(compare(current, report(100), 0.1)[0]?.reason, 'no-baseline');
+  strictEqual(compare(current, report(100), 0.1, 25)[0]?.reason, 'no-baseline');
 });

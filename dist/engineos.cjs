@@ -5248,7 +5248,7 @@ function readBaseline(io2, root, meta) {
     throw new KernelError(`${baselinePath(root, meta)} is not valid JSON \u2014 re-record it with 'engineos bench baseline --write'`);
   }
 }
-function compare(current, baseline, tolerance) {
+function compare(current, baseline, tolerance, floorMs) {
   const previous = new Map(baseline.scenarios.map((entry) => [entry.scenario, entry.p50Ms]));
   const found = [];
   for (const scenario of current.scenarios) {
@@ -5257,7 +5257,7 @@ function compare(current, baseline, tolerance) {
       found.push({ scenario: scenario.scenario, reason: "no-baseline", currentP50Ms: scenario.p50Ms, baselineP50Ms: null });
       continue;
     }
-    if (scenario.p50Ms > before * (1 + tolerance)) {
+    if (scenario.p50Ms > before * (1 + tolerance) && scenario.p50Ms - before > floorMs) {
       found.push({ scenario: scenario.scenario, reason: "slower", currentP50Ms: scenario.p50Ms, baselineP50Ms: before });
     }
   }
@@ -5355,19 +5355,25 @@ function median(values) {
 var import_node_path24 = require("node:path");
 var PROMPT = "add a paginated orders endpoint and mirror the screen to mobile";
 var SESSION_ID = "lifecycle-benchmark";
+var SCENARIO_SAMPLES = 21;
 var SCENARIOS = [
   {
     name: "prompt-routing",
     phase: "routing",
-    samples: 5,
-    warm: false,
+    samples: SCENARIO_SAMPLES,
+    // The only scenario that discards a run without measuring a cache: the
+    // prompt advisor reads more of the tree than any other hook, so its cost is
+    // filesystem-cache sensitive and its first spawn in a cold process is tens
+    // of milliseconds slower than its steady state. cacheHit stays null for it —
+    // see runScenario, which reports a hit only for a scenario that has one.
+    warm: true,
     hook: "hooks/prompt-advisor.sh",
     payload: () => JSON.stringify({ prompt: PROMPT, cwd: "/tmp", session_id: SESSION_ID })
   },
   {
     name: "direct-edit-cold",
     phase: "routing",
-    samples: 5,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: "hooks/route-before-change.sh",
     payload: (target) => JSON.stringify({ tool_input: { file_path: target }, cwd: "/tmp", session_id: SESSION_ID })
@@ -5375,7 +5381,7 @@ var SCENARIOS = [
   {
     name: "direct-edit-warm",
     phase: "routing",
-    samples: 7,
+    samples: SCENARIO_SAMPLES,
     warm: true,
     hook: "hooks/route-before-change.sh",
     payload: (target) => JSON.stringify({ tool_input: { file_path: target }, cwd: "/tmp", session_id: SESSION_ID })
@@ -5383,7 +5389,7 @@ var SCENARIOS = [
   {
     name: "agent-dispatch",
     phase: "execution",
-    samples: 5,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: "hooks/announce-agent-dispatch.sh",
     payload: () => JSON.stringify({ tool_input: { subagent_type: "backend-coordinator" }, cwd: "/tmp", session_id: SESSION_ID })
@@ -5391,7 +5397,7 @@ var SCENARIOS = [
   {
     name: "agent-return",
     phase: "integration",
-    samples: 5,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: "hooks/announce-agent-return.sh",
     payload: () => JSON.stringify({ tool_input: { subagent_type: "backend-coordinator" }, cwd: "/tmp", session_id: SESSION_ID })
@@ -5399,7 +5405,7 @@ var SCENARIOS = [
   {
     name: "final-gate",
     phase: "verification",
-    samples: 3,
+    samples: SCENARIO_SAMPLES,
     warm: false,
     hook: "hooks/stop-verify.sh",
     payload: () => JSON.stringify({ cwd: "/tmp", session_id: SESSION_ID })
@@ -5425,7 +5431,7 @@ function runScenario(scenario, root, env, deps) {
       tokensIn: null,
       tokensOut: null,
       costMicros: null,
-      cacheHit: scenario.warm ? true : null,
+      cacheHit: scenario.name === "direct-edit-warm" ? true : null,
       retries: 0
     });
   }
@@ -5441,6 +5447,7 @@ var SESSION_ID2 = "performance-budget";
 var HEADER = "== EngineOS runtime budgets ==";
 var LIFECYCLE_HEADER = "== EngineOS task lifecycle ==";
 var BASELINE_TOLERANCE = 0.1;
+var BASELINE_FLOOR_MS = 25;
 var DEFAULT_HOST_DEPS = {
   platform: () => (0, import_node_os2.platform)(),
   cpus: () => (0, import_node_os2.cpus)().map((cpu) => ({ model: cpu.model })),
@@ -5530,7 +5537,7 @@ function runBaseline(argv2, io2, deps) {
       io2.err("no baseline for this host \u2014 record one with 'engineos bench baseline --write'\n");
       return 1;
     }
-    const found = compare(report2, baseline, BASELINE_TOLERANCE);
+    const found = compare(report2, baseline, BASELINE_TOLERANCE, BASELINE_FLOOR_MS);
     for (const regression of found) {
       const before = regression.baselineP50Ms === null ? "none" : `${regression.baselineP50Ms.toFixed(1)}ms`;
       io2.err(`${regression.scenario}: ${regression.reason} (${regression.currentP50Ms.toFixed(1)}ms vs ${before})

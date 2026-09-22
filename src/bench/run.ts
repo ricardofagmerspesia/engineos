@@ -27,6 +27,12 @@ const LIFECYCLE_HEADER = '== EngineOS task lifecycle ==';
 // 10% over the recorded p50 before a scenario counts as regressed. Tighter than
 // this and ordinary host noise fails CI; looser and a real regression lands.
 const BASELINE_TOLERANCE = 0.1;
+// The absolute half of the regression test (src/bench/baseline.ts explains why
+// the ratio alone cannot judge a spawn-bound measurement). Sized above the
+// run-to-run spread of the six scenarios on an idle host, all of which sit
+// between 60ms and 150ms: a real regression in a hook moves a p50 by more than
+// this, and the machine, on its own, does not.
+const BASELINE_FLOOR_MS = 25;
 
 // Injected by scripts/build.mjs via `define`, the same way src/dispatch.ts reads
 // it. A tsc test build has no define, and the version is metadata on the
@@ -131,7 +137,7 @@ function runBaseline(argv: string[], io: Io, deps: BenchDeps): number {
       io.err("no baseline for this host — record one with 'engineos bench baseline --write'\n");
       return 1;
     }
-    const found = compare(report, baseline, BASELINE_TOLERANCE);
+    const found = compare(report, baseline, BASELINE_TOLERANCE, BASELINE_FLOOR_MS);
     for (const regression of found) {
       const before = regression.baselineP50Ms === null ? 'none' : `${regression.baselineP50Ms.toFixed(1)}ms`;
       io.err(`${regression.scenario}: ${regression.reason} (${regression.currentP50Ms.toFixed(1)}ms vs ${before})\n`);

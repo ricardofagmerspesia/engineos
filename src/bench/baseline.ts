@@ -44,10 +44,20 @@ export function readBaseline(io: BaselineIo, root: string, meta: HostMetadata): 
   }
 }
 
-// Relative, never absolute: the spec's targets are ratios against the baseline
-// recorded on the same host, so a slower CI box does not fail a change that
-// made nothing slower.
-export function compare(current: LifecycleReport, baseline: LifecycleReport, tolerance: number): Regression[] {
+// Relative FIRST: the spec's targets are ratios against the baseline recorded on
+// the same host, so a slower CI box does not fail a change that made nothing
+// slower. But a ratio alone cannot judge a spawn-bound measurement — at a ~63ms
+// p50, the 10% band is 6ms, and process scheduling moves a p50 further than that
+// between two runs of identical code. So a regression must ALSO clear floorMs in
+// absolute terms. The floor is what makes the gate mean something: below it the
+// instrument cannot tell a change from the machine, and a gate that fires on
+// noise trains everyone to ignore it.
+export function compare(
+  current: LifecycleReport,
+  baseline: LifecycleReport,
+  tolerance: number,
+  floorMs: number,
+): Regression[] {
   const previous = new Map(baseline.scenarios.map((entry) => [entry.scenario, entry.p50Ms]));
   const found: Regression[] = [];
   for (const scenario of current.scenarios) {
@@ -56,7 +66,7 @@ export function compare(current: LifecycleReport, baseline: LifecycleReport, tol
       found.push({ scenario: scenario.scenario, reason: 'no-baseline', currentP50Ms: scenario.p50Ms, baselineP50Ms: null });
       continue;
     }
-    if (scenario.p50Ms > before * (1 + tolerance)) {
+    if (scenario.p50Ms > before * (1 + tolerance) && scenario.p50Ms - before > floorMs) {
       found.push({ scenario: scenario.scenario, reason: 'slower', currentP50Ms: scenario.p50Ms, baselineP50Ms: before });
     }
   }
