@@ -1,6 +1,7 @@
 ---
 name: 2026-09-22-engineos-2-fast-core-w1-measurement
-status: active
+status: done
+completed: 2026-09-22
 owner: orchestrator
 spec: docs/specs/2026-09-22-engineos-2-fast-core-design.md
 domain: general
@@ -74,17 +75,21 @@ which no gate on this branch can run — see Verification.
 - [x] Barrier — COMPATIBILITY rows integrated, bundle rebuilt (`533da0a`)
 - [x] Barrier — C27d rebound to the claim the code now makes (`5c148f8`)
 - [x] Task 7 — the final gate, output shown
-- [ ] Task 7 — record this host's baseline (`bench baseline --write`)
-- [ ] Task 7 — wave handoff written per `templates/handoff.md`
+- [x] Task 7 — record this host's baseline (`bench baseline --write`)
+- [x] Task 7 — wave handoff written per `templates/handoff.md`
+- [x] Barrier — the baseline gate made honest after it failed against its own recording
 
 ## What was made
 The bench entry point grew two arms. `engineos bench lifecycle` runs six named
 scenarios — `prompt-routing`, `direct-edit-cold`, `direct-edit-warm`,
 `agent-dispatch`, `agent-return`, `final-gate` — and prints a p50/p95 line each.
 `engineos bench baseline` compares this host's current run against
-`docs/perf/baselines/<host-id>.json` and exits 1 on any scenario more than 10%
-over its recorded p50, or when the host has no baseline at all; `--write`
-records one. An argument that is neither now exits 1 instead of being ignored.
+`docs/perf/baselines/<host-id>.json` and names every scenario whose p50 exceeds
+the recording by both 10% and 25ms; `--write` records one. The comparison is
+advisory and exits 0 — see **Notes** for why, and `--strict` for the gating
+form. A missing baseline is exit 1 either way, because absent evidence is not a
+measured regression. An argument that is neither subcommand now exits 1 instead
+of being ignored.
 
 The exec-journal's two token fields became always-present. `--tokens-in` and
 `--tokens-out` are optional on `append` as a consequence, an omitted count emits
@@ -119,10 +124,16 @@ the breakage PR #103 fixes and it predates this wave by two weeks; main has been
 red since 2026-09-09. Merging #103 into this branch was the human's explicit
 choice among four, taken so the wave could be verified rather than declared.
 
-Not verified here: no lint step exists for the root package, and the two new
-bench subcommands were exercised by their own tests and by a manual
-`node dist/engineos.cjs bench`, not by a recorded baseline — that is the
-remaining checklist item.
+The full suite reported `2132 tests, 2113 pass, 3 fail, 16 skipped`. All three
+failures were this wave's own, all from Task 6 — C27d's `field-not-named` case
+(the Agent-traces section names the token fields in two bullets now, so deleting
+one site is no longer a deletion), the meta-case downstream of it, and the
+presence roster expecting two always-fields instead of four. Fixed in `06aaf30`;
+`26 tests, 26 pass, 0 fail` on re-run of the two files.
+
+Then the baseline itself was recorded — and failed its own comparison four runs
+out of four, on an idle machine, with nothing changed between them. See
+**Notes**. No lint step exists for the root package.
 
 ## Human decisions
 <!-- date | who | reasons | approved/refused | note -->
@@ -138,6 +149,14 @@ carries PR #103's commits until #103 lands on main. Chosen over three
 alternatives (scratchpad tsconfig override, duplicating the fix here, or
 reporting the wave unverified). Not a hitl reason — recorded because it changes
 what this branch contains.
+
+2026-09-22 | Ricardo Fagmer | — | approved | Make `bench baseline` advisory
+(exit 0, drift reported) with `--strict` as the gating opt-in, after the
+mechanical fixes left it still red on an unchanged tree. Chosen over amortising
+the spawn cost across N operations per process (the real fix, declined at this
+barrier), raising the floor to ~60ms, and halting to redesign the scenarios.
+Not a hitl reason — recorded because it narrows what the 2.0 program can claim
+to have measured.
 
 ## Changes registered
 Branch `codex/engineos-2-fast-core`, Wave 1 commits on top of `07eb57f`:
@@ -156,7 +175,36 @@ aaf6086 feat(bench): add the lifecycle sample schema and its statistics
 
 Carried in by the merge, authored on PR #103: `eb3439d`, `e39ec2b`, `9c60414`.
 
+Barrier commits after the gate:
+
+```
+4a1bfd7 feat(bench): make the baseline comparison advisory, gated only under --strict
+feff8e5 fix(bench): make the baseline gate survive its own recording
+06aaf30 test(journal): follow the token fields into their new presence
+7e18212 chore(engineos): record the Wave 1 measurement change
+5c148f8 fix(checks): rebind C27d's token caveat to the null claim
+```
+
+Handoff: `docs/specs/2026-09-22-engineos-2-fast-core-wave1-handoff.md`.
+
 ## Notes
+- **The measurement instrument cannot resolve the effect it measures on this
+  host, and that is the wave's real finding.** `bench baseline` failed against a
+  baseline recorded minutes earlier, four runs out of four. Three mechanical
+  fixes landed and all helped — samples 5 -> 21, a regression must clear both
+  10% and a 25ms absolute floor, and `prompt-routing` discards a warm-up run
+  because it drifted systematically (133.6 -> 104.3 -> 97.0ms across three
+  consecutive processes, being the hook that reads most of the tree). They were
+  not enough: run-to-run spread here is 30-50ms on 70-95ms process spawns, and
+  the noise is correlated background load that more samples inside one process
+  cannot average away. The comparison is therefore ADVISORY — it prints drift
+  and exits 0 — with `--strict` restoring the failing exit. Raising the floor
+  until it passed was rejected: at a 70ms p50 that catches only an ~85%
+  regression while still reporting green. Waves 5 and 6 must read these numbers
+  as evidence with an error bar, never as a gate.
+- A bug found on the way: `cacheHit` was keyed on the `warm` flag, so warming the
+  page cache would have been recorded as a cache hit. It is keyed on the one
+  scenario that measures a cache now.
 - `dist/engineos.cjs` was owned by `root` at mode 644 in this checkout, so
   esbuild could not open it for writing. `dist/` itself is user-owned, so the
   file was removed and regenerated rather than reaching for sudo; it is owned by
