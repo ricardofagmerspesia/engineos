@@ -9512,7 +9512,7 @@ var C27d_FINDINGS = [
   "section-empty",
   "field-not-named",
   "span-kind-alternation-missing",
-  "zero-is-not-free-caveat-missing",
+  "null-is-not-zero-caveat-missing",
   "status-floor-caveat-missing",
   "slug-claim-not-scoped-to-note",
   "classifies-content-reclaimed",
@@ -9523,7 +9523,7 @@ var C27d_FINDINGS = [
   "value-length-drift"
 ];
 var C27_TITLE = "policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses are non-empty, max_value_length agrees with the port's standalone fallback, and every writer exists";
-var C27d_TITLE = "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-0 and status-is-a-floor caveats, and the all-but-note slug claim with its length bound";
+var C27d_TITLE = "rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-null and status-is-a-floor caveats, and the all-but-note slug claim with its length bound";
 var POLICY = "registries/policy.json";
 var EJ_POLICY_TS = "src/registry/policy-exec-journal.ts";
 var FALLBACK_PATTERN = /^export const MAX_VALUE_LENGTH_FALLBACK = ([0-9]+);$/m;
@@ -9634,7 +9634,7 @@ function alternationFindings(ctx, section) {
 }
 function caveatFindings(section) {
   const findings = [];
-  if (!section.includes("0 as free")) findings.push(finding("C27d", "zero-is-not-free-caveat-missing"));
+  if (!section.includes("a null is an unknown rather than a zero")) findings.push(finding("C27d", "null-is-not-zero-caveat-missing"));
   if (!section.includes("FLOOR")) findings.push(finding("C27d", "status-floor-caveat-missing"));
   if (!section.includes("every field EXCEPT `note`")) findings.push(finding("C27d", "slug-claim-not-scoped-to-note"));
   if (!section.includes("does not classify the content")) findings.push(finding("C27d", "classifies-content-reclaimed"));

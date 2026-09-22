@@ -80,9 +80,10 @@ test('the span-kind alternation line deleted from the prose is caught', (t: Test
   assert.ok(hasFinding(run(root), 'span-kind-alternation-missing'));
 });
 
-test('the 0-is-not-free caveat dropped from the Agent traces section is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => rewrite(copy, OBSERVABILITY, '; do not read 0 as free', ''));
-  assert.ok(hasFinding(run(root), 'zero-is-not-free-caveat-missing'));
+test('the null-is-not-zero caveat dropped from the Agent traces section is caught', (t: TestContext) => {
+  const root = checkoutCopy(t, (copy) =>
+    rewrite(copy, OBSERVABILITY, 'a null is an unknown rather than a zero', 'the counts are absent'));
+  assert.ok(hasFinding(run(root), 'null-is-not-zero-caveat-missing'));
 });
 
 test('tokens_in dropped from the Agent traces field list is caught', (t: TestContext) => {

@@ -88,10 +88,11 @@ router decision and the verification gate are spans in it.
   `registries/policy.json` and `scripts/exec-journal.sh`'s header.
 - Who writes what: the dispatch/return hooks write `agent` spans (duration and
   status only — `tokens_in` and `tokens_out` are emitted as `null` there,
-  because the hook cannot observe the subagent's usage, and a null is an unknown
-  rather than a zero); the prompt advisor writes `router`; the Stop gate writes
-  `verification`. `tool` and `model` spans, and real token and cost figures,
-  come from a headless runner that owns the model call.
+  because the hook cannot observe the subagent's usage, and
+  a null is an unknown rather than a zero a consumer could sum); the prompt
+  advisor writes `router`; the Stop gate writes `verification`. `tool` and
+  `model` spans, and real token and cost figures, come from a headless runner
+  that owns the model call.
 - `capability_id` is always an id from `registries/capabilities.json`. Known
   imprecision: an agent span records `implement`, because dispatching is what
   the orchestrator does and no capability binds an agent to it — so a
