@@ -192,8 +192,12 @@ function emit(fields: SpanFields): Record<string, string | number | boolean | nu
     const value = fields[spec.name];
     if (value === undefined) {
       // agent and note keep their explicit nulls because a v1 line always
-      // carried both keys; every other unset field is dropped entirely, so a v1
-      // line is byte-identical to what v1 wrote.
+      // carried both keys; tokens_in and tokens_out keep theirs because an
+      // unobserved count is an unknown, and a dropped key reads as a zero to
+      // anyone summing the column. Every other unset field is dropped entirely,
+      // so a line whose v1 fields were all supplied is byte-identical to what
+      // v1 wrote; a caller that omits the two token flags now gets nulls where
+      // v1 refused the call outright.
       if (spec.presence === 'always') row[spec.name] = null;
       continue;
     }

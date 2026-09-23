@@ -29,6 +29,11 @@ this skill builds the machinery. Do not restate the rules here.
    { "id": "kebab-id", "input": {...}, "expected": {...}, "note": "why this case exists" }
    ```
    Must include: typical cases, edge cases (empty, long, ambiguous, adversarial/injection attempt), and known past failures.
+   For RAG features, must also include:
+   - One cross-tenant retrieval **pair**, same query, two principals: as principal B (the owner) it must return the target chunk at rank 1, and as principal A it must return zero hits — `expected.relevant_chunk_ids` empty, scored by a scorer asserting zero hits rather than low rank. Both halves are required; a zero-hit case on its own also passes against a retriever that is simply broken, so the positive control is what makes it evidence of a filter.
+   - One case whose source document carries PII, asserting on the indexed artifact — the retrieved chunk text and the stored payload contain the mask, not the raw value — as well as on the generated output. A clean answer over a chunk that still holds the PII means redaction ran on the wrong side of the index.
+   - One **no-answer** case: a question the corpus genuinely cannot answer. `expected` is the feature's "not found in the sources" response, and the scorer asserts the absence of any fabricated claim, not just the presence of the phrase. Without it nothing measures the relevance threshold, and a retriever tuned only on answerable questions is rewarded for always answering.
+   - One **history-dependent** case wherever query rewrite is used: a follow-up whose pronoun or reference only resolves against the prior turn (`input` carries that turn). Scored on the retrieval metrics of the rewritten query — an unresolved reference retrieves the previous topic, which looks plausible and is wrong.
 3. **Pick scorers per field** — cheapest that proves correctness:
    - `exact` — enums, ids, booleans
    - `schema` — output parses against zod schema (always on)
@@ -44,6 +49,7 @@ this skill builds the machinery. Do not restate the rules here.
    - Output: table of failures (id, field, expected vs got), then `PASS n/m (x%)`. Exit code 1 below threshold.
    - Threshold: define per feature (start: ≥90% or current baseline, never lower it silently).
    - For RAG features the runner calls the retriever and the generator separately and reports two tables — retrieval metrics per K, then generation pass rate — plus writes `evals/<feature>/retrieval/BASELINE.md`.
+   - For RAG features also report per-stage latency (rewrite, retrieve, re-rank, generate) in the report header or as a column, so a regression is attributed to a stage instead of to the feature.
 5. **Judge setup (only if used):** separate, cheaper model than the feature under test. Rubric prompt: criteria as yes/no questions, 1–5 scale forbidden (drift), output via structured output `{pass: boolean, reason: string}`. Spot-check 10 judge verdicts by hand once before trusting it.
 6. **Wire up:** add `"eval:<feature>": "tsx evals/<feature>/run.ts"` to package.json. Mention CI: run on PRs touching the feature's prompts/ or feature dir.
 7. **Baseline:** run once, record the rate in `evals/<feature>/BASELINE.md` with date + prompt version. Change cadence (every prompt/model change pastes before/after) per `rules/llm-apps.md`.
@@ -53,5 +59,8 @@ this skill builds the machinery. Do not restate the rules here.
 - Eval calls the production code path — a harness testing a copied prompt drifts and lies.
 - Cases include at least one prompt-injection attempt for any feature consuming untrusted content.
 - Judge never judges its own model family's output if avoidable; never judge without spot-check calibration.
-- Golden set grows: every production failure becomes a case in the same PR that fixes it.
+- Golden set grows: every production failure — including each one routed through the human review queue by negative feedback or low groundedness — becomes a case in the same PR that fixes it.
+- A semantic-cache or query-rewrite change with no before/after eval numbers pasted does not merge. Both change what the retriever is asked and what the user is served, so they carry a prompt change's evidence burden.
 - A RAG eval that has no `retrieval` scorer is incomplete: it cannot tell a retrieval failure from a generation failure.
+- A RAG eval over a shared corpus that has no cross-tenant pair is incomplete: the zero-hit half alone cannot distinguish an ACL filter from a broken retriever, and without either half a retriever with no filter passes every other case.
+- A RAG eval whose PII case asserts only on the generated text is incomplete: it cannot see raw PII sitting in the chunk store or the vectors.
