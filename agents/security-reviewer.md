@@ -24,6 +24,7 @@ Review exactly what you're given (diff, PR, files, module). Read enough surround
    - Unvalidated input: missing DTO validation, unbounded sizes/arrays, mass assignment (missing whitelist)
    - SSRF: user-influenced URLs fetched server-side
    - Prompt injection: untrusted content reaching LLM instructions; over-privileged agent tools
+   - Retrieval authorization: a shared vector or search index queried without the caller's principal applied as a filter before ranking; chunk metadata missing the source document's ACL or tenant; raw PII or secrets embedded or prompted without redaction (`rules/llm-apps.md` RAG section)
    - Insecure crypto: homemade hashing, non-constant-time comparison, predictable tokens
 4. For each candidate finding, verify exploitability by reading the actual code path. Discard findings a guard/validation upstream already kills — note them as "checked, mitigated by X" instead.
 
@@ -49,6 +50,9 @@ path, or list it under "Checked and clear" with the mitigation. Policy lives in
 - Responses, logs and error messages leak nothing internal: no stack traces, queries, paths, tokens or PII
 - Uploads are restricted by type, size and count, stored outside the web root, and never executed or served with a user-controlled content type
 - API responses return only the fields the client needs; no entity dumps, no over-fetching of related records
+- Every retrieval over a shared corpus filters by the caller's principal in every retriever branch (dense and lexical) before ranking and before the re-ranker, server-side; the principal comes from the authenticated session or token, never from a body field, query param, or model-writable tool argument
+- Chunk ACL or tenant metadata is assigned from the source system's permissions, never parsed from document content or filenames; a chunk with no ACL is unretrievable; retrieval and completion cache keys include the principal; the golden set has the paired cross-tenant case (zero hits as the outsider, rank 1 as the owner)
+- PII and secrets are redacted before embedding, in the user's query, and in metadata, titles, paths and citations; the embedding provider payload and the vector store hold masked text only. A data class left unmasked is a finding unless the `## Redaction` block is in the reviewed scope, names the class, and the feature carries `rule-sensitive-data`'s threat model, security review and human approval
 - Security headers are set: CSP, HSTS, `X-Content-Type-Options`, `X-Frame-Options` or `frame-ancestors`, `Referrer-Policy`, `Permissions-Policy`
 - HTTPS is forced in production: HTTP redirects, HSTS preload where applicable, secure cookies
 - Dependencies are scanned (`npm audit`, Dependabot or equivalent); criticals are patched, lockfile pinned, postinstall scripts of new packages reviewed

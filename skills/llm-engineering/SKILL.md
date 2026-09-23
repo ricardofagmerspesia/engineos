@@ -31,16 +31,40 @@ failed and what to try, not just "error":
 
 ## RAG checklist
 
-Chunking, metrics, hybrid retrieval, re-ranking, freshness and source citation are ruled by
-`rules/llm-apps.md` (RAG + Reliability sections). Team additions:
+Chunking, metrics, hybrid retrieval, re-ranking, freshness, source citation, retrieval ACL and
+pre-index redaction are ruled by `rules/llm-apps.md` (RAG + Reliability sections). Team additions:
 
-- Store the chunking version alongside the embedding, so re-chunking invalidates the right cache entries.
-- Pipeline shape: `query -> [dense search, lexical search] -> merge (RRF) -> re-rank -> top-N -> generator`.
-  Dense and lexical run in parallel; Reciprocal Rank Fusion merges without score calibration; the
-  re-ranker (cross-encoder or LLM pointwise) sees ~3-5x N candidates and returns N.
+- Store the chunking version and the redaction version alongside the embedding. A chunking-version
+  change is a cache concern — re-embed what changed, unaffected entries stay valid. A redaction-version
+  change is remediation: re-ingest the affected sources and delete the superseded chunks and vectors,
+  because the old vectors still carry the unredacted text.
+- Pipeline shape, two halves.
+  Ingestion: `source -> doc store (raw + content hash) -> parse (versioned parser) -> dedupe -> redact -> chunk (+ metadata, acl from source permissions never content) -> embed (pinned model) -> store`.
+  Query: `rewrite (bounded, untrusted output) -> redact query -> [dense search | filter, lexical search | filter] -> merge (RRF) -> re-rank (filtered candidates only) -> top-N -> assemble (token budget, parent expansion, source stamps) -> generator`.
+  Dense and lexical run in parallel, so the principal filter is drawn per branch: one filter stage ahead
+  of a fan-out has no single place to live, and an unfiltered branch leaks through the merge. Reciprocal
+  Rank Fusion merges without score calibration; the re-ranker (cross-encoder or LLM pointwise) sees
+  ~3-5x N candidates — all of them already filtered — and returns N. Redaction sits before chunking and
+  the filter before search because neither can be applied after the fact — see `rules/llm-apps.md` for why.
+  The doc store holds the raw bytes and the index is a projection of it, so a rebuild is a replay of this
+  line, not a re-download of every source.
+- Derive the chunk id, never generate one: `hash(source id + offsets + chunking/redaction/parser/embedding
+  versions)`. That derivation is the idempotency key — re-ingesting an unchanged source upserts the same
+  rows, and a version bump writes new ids so the superseded chunks are identifiable and deletable.
+- Check the cross-tenant case before any quality metric: a query scoped to one principal that returns
+  a single chunk belonging to another is a CRITICAL finding, and it stops the diagnosis below —
+  Recall@K measured on a leaking retriever describes nothing worth tuning.
 - Diagnose in this order, never the reverse: Recall@K low -> fix chunking/index/hybrid weights;
   Recall fine but Precision@K low -> add or tune the re-ranker; retrieval fine but groundedness
   low -> fix the generation prompt. Touching the prompt while Recall@K is low hides the real fault.
+  A query-rewrite or semantic-cache change enters the same order as a prompt change: judged on Recall@K
+  and eval pass rate before and after, pasted in the PR. Both rewrite the question the retriever answers,
+  so "it felt sharper" is the same non-evidence it is for a prompt.
+- Capture feedback per answer with the fields that make it reproducible: trace id, prompt version,
+  retrieved chunk ids with scores, the explicit signal (rating, correction) and the implicit ones
+  (retry, abandon, no click on a citation). Negative feedback and low-groundedness answers go to a human
+  review queue, and each reviewed failure leaves it as a golden case in the PR that fixes it — case format
+  and scorer choice are `eval-harness`'s.
 - Formulas, K choice and the scorer implementation: `skills/eval-harness/references/retrieval-metrics.md`.
 
 ## Eval harness
