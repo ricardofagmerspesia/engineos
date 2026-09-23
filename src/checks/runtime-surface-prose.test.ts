@@ -80,13 +80,20 @@ test('the span-kind alternation line deleted from the prose is caught', (t: Test
   assert.ok(hasFinding(run(root), 'span-kind-alternation-missing'));
 });
 
-test('the 0-is-not-free caveat dropped from the Agent traces section is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => rewrite(copy, OBSERVABILITY, '; do not read 0 as free', ''));
-  assert.ok(hasFinding(run(root), 'zero-is-not-free-caveat-missing'));
+test('the null-is-not-zero caveat dropped from the Agent traces section is caught', (t: TestContext) => {
+  const root = checkoutCopy(t, (copy) =>
+    rewrite(copy, OBSERVABILITY, 'a null is an unknown rather than a zero', 'the counts are absent'));
+  assert.ok(hasFinding(run(root), 'null-is-not-zero-caveat-missing'));
 });
 
-test('tokens_in dropped from the Agent traces field list is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => rewrite(copy, OBSERVABILITY, '`tokens_in`, `tokens_out`, ', ''));
+// Two bullets name the token fields since they started emitting null: the
+// per-span field list and the who-writes-what caveat. The check is scoped to the
+// section, not to a bullet, so a deletion is only a deletion once both are gone.
+test('tokens_in dropped from the Agent traces section is caught', (t: TestContext) => {
+  const root = checkoutCopy(t, (copy) => {
+    rewrite(copy, OBSERVABILITY, '`tokens_in`, `tokens_out`, ', '');
+    rewrite(copy, OBSERVABILITY, '`tokens_in` and `tokens_out` are emitted', 'the counts are emitted');
+  });
   assert.ok(hasFinding(run(root), 'field-not-named', 'tokens_in'));
 });
 

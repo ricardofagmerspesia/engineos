@@ -1,0 +1,1325 @@
+{
+  "host": {
+    "platform": "darwin",
+    "cpuModel": "Apple M2",
+    "cpuCount": 8,
+    "nodeVersion": "v22.23.2",
+    "engineosVersion": "1.7.0"
+  },
+  "scenarios": [
+    {
+      "scenario": "prompt-routing",
+      "p50Ms": 109.051917,
+      "p95Ms": 177.44562500000006,
+      "dispatches": 0,
+      "contextBytes": 28019,
+      "samples": [
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 76.28429099999998,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 148.81937499999998,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 117.26837499999999,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 122.01733300000001,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 109.051917,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 106.34445899999992,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 82.60216600000001,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 73.53420900000003,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 120.94120799999996,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 83.68279099999995,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 74.92958399999998,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 72.92229199999997,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 143.56999999999994,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 229.70299999999997,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 172.5221250000002,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 124.31858299999999,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 177.44562500000006,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 96.5173749999999,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 74.94137499999988,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 109.15604100000019,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "prompt-routing",
+          "phase": "routing",
+          "durationMs": 82.68479200000002,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "scenario": "direct-edit-cold",
+      "p50Ms": 92.92000000000007,
+      "p95Ms": 197.97633300000007,
+      "dispatches": 0,
+      "contextBytes": 28019,
+      "samples": [
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 229.33604100000002,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 183.361625,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 197.97633300000007,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 165.26912500000026,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 91.81929200000013,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 91.35112500000014,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 106.75525000000016,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 88.53704100000004,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 112.52300000000014,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 87.29362500000025,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 96.84779200000003,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 95.65237500000012,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 91.29549999999972,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 92.92000000000007,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 87.0729169999995,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 86.87766699999975,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 93.84850000000006,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 84.59050000000025,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 95.81116600000041,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 89.46741699999984,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-cold",
+          "phase": "routing",
+          "durationMs": 89.81604199999947,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "scenario": "direct-edit-warm",
+      "p50Ms": 137.9807090000004,
+      "p95Ms": 258.5831250000001,
+      "dispatches": 0,
+      "contextBytes": 28019,
+      "samples": [
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 132.96600000000035,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 119.76074999999946,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 87.51545900000019,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 134.40808299999935,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 106.12666700000045,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 96.45875000000069,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 313.8610840000001,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 178.43016700000044,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 201.83566699999938,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 258.5831250000001,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 119.5848330000008,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 137.9807090000004,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 147.6426249999995,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 157.51575000000048,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 197.5771249999998,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 97.9994999999999,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 117.95649999999932,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 191.95250000000033,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 150.45116699999926,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 97.99529200000052,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        },
+        {
+          "scenario": "direct-edit-warm",
+          "phase": "routing",
+          "durationMs": 177.4221660000003,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": true,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "scenario": "agent-dispatch",
+      "p50Ms": 127.7997090000008,
+      "p95Ms": 228.33854200000133,
+      "dispatches": 0,
+      "contextBytes": 28019,
+      "samples": [
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 91.82625000000007,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 111.61508400000093,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 96.91366700000071,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 104.71237500000097,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 86.72062500000175,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 69.10558300000048,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 79.45375000000058,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 240.13550000000032,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 143.97512499999903,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 159.62245799999982,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 173.49470800000017,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 157.74408399999993,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 205.1280000000006,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 183.36812500000087,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 228.33854200000133,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 140.92708400000083,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 142.65099999999984,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 127.7997090000008,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 102.9247919999998,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 96.17250000000058,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-dispatch",
+          "phase": "execution",
+          "durationMs": 96.0809160000008,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "scenario": "agent-return",
+      "p50Ms": 129.76437499999884,
+      "p95Ms": 214.30745900000147,
+      "dispatches": 0,
+      "contextBytes": 28019,
+      "samples": [
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 94.01258299999972,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 168.06991700000071,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 161.65383399999882,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 67.08608400000048,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 70.33591700000034,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 73.61945800000103,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 73.88620900000024,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 72.2293750000008,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 73.09504099999867,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 82.320208000001,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 174.46087500000067,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 129.76437499999884,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 214.30745900000147,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 166.2130419999994,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 225.67712500000016,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 129.30883299999914,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 136.14720800000032,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 131.6538330000003,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 131.71358399999917,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 188.1068750000013,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "agent-return",
+          "phase": "integration",
+          "durationMs": 73.0694999999996,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        }
+      ]
+    },
+    {
+      "scenario": "final-gate",
+      "p50Ms": 97.75629200000003,
+      "p95Ms": 288.87774999999965,
+      "dispatches": 0,
+      "contextBytes": 28019,
+      "samples": [
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 97.75629200000003,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 103.4450420000012,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 67.9542079999992,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 66.74208299999918,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 71.02016700000058,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 94.29516599999988,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 80.78316600000107,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 369.57345800000076,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 248.19629200000054,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 116.81374999999935,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 95.6986250000009,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 91.8130000000001,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 77.7234159999989,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 77.13512499999888,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 125.64304200000151,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 172.45979199999965,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 210.3561669999999,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 288.87774999999965,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 83.65266700000029,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 99.42412499999955,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        },
+        {
+          "scenario": "final-gate",
+          "phase": "verification",
+          "durationMs": 103.90862500000003,
+          "tokensIn": null,
+          "tokensOut": null,
+          "costMicros": null,
+          "cacheHit": null,
+          "retries": 0
+        }
+      ]
+    }
+  ]
+}
