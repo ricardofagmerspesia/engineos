@@ -51,10 +51,10 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
       // recorded as build. Absent or unregistered -> build (../registry/agents).
       modelTier: agentModelTier(ctx.root, agent),
       status: responseStatus(env.raw),
-      // tokens_in/tokens_out are 0 and cost_micros absent by construction:
-      // this hook never sees the subagent's usage. ./telemetry writes the
-      // zeros; rules/observability.md says so in prose so nobody reads a 0 as
-      // "free".
+      // tokens_in/tokens_out and cost_micros are absent by construction: this
+      // hook never sees the subagent's usage. The schema emits the two token
+      // fields as null, which is what an unknown is. Prose used to have to warn
+      // readers not to take the old zeros for "free"; the data says it now.
       fields: { agent },
     });
   } catch {

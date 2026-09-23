@@ -44,7 +44,7 @@ export const C27d_FINDINGS = [
   'section-empty',
   'field-not-named',
   'span-kind-alternation-missing',
-  'zero-is-not-free-caveat-missing',
+  'null-is-not-zero-caveat-missing',
   'status-floor-caveat-missing',
   'slug-claim-not-scoped-to-note',
   'classifies-content-reclaimed',
@@ -59,7 +59,7 @@ export const C27_TITLE =
   'policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses are non-empty, max_value_length agrees with the port\'s standalone fallback, and every writer exists';
 
 export const C27d_TITLE =
-  'rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-0 and status-is-a-floor caveats, and the all-but-note slug claim with its length bound';
+  'rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-null and status-is-a-floor caveats, and the all-but-note slug claim with its length bound';
 
 const POLICY = 'registries/policy.json';
 // The per-value length bound is DATA in the registry, and the port carries a
@@ -214,8 +214,10 @@ function alternationFindings(ctx: CheckContext, section: string): Finding[] {
 // The caveats are literals rather than mirror rows because each is a CLAIM the
 // section must keep, with no registry side to derive it from. Every one of them
 // records a misreading this schema has actually caused:
-//   - `0 as free`: the dispatch hooks cannot see a subagent's usage, so a
-//     consumer reading those zeros as real spend is wrong.
+//   - `a null is an unknown rather than a zero`: the dispatch hooks cannot see
+//     a subagent's usage. They used to write 0, which a consumer summing the
+//     column read as real spend; they now write null, and the caveat exists so
+//     nobody reintroduces a number that means nothing.
 //   - `FLOOR`: the hooks read only structural sources, so a structured response
 //     with no error flag records OK and a breaker count built on this field
 //     would see essentially no failures.
@@ -227,7 +229,7 @@ function alternationFindings(ctx: CheckContext, section: string): Finding[] {
 //     "cannot be written through those", which one probe refuted.
 function caveatFindings(section: string): Finding[] {
   const findings: Finding[] = [];
-  if (!section.includes('0 as free')) findings.push(finding('C27d', 'zero-is-not-free-caveat-missing'));
+  if (!section.includes('a null is an unknown rather than a zero')) findings.push(finding('C27d', 'null-is-not-zero-caveat-missing'));
   if (!section.includes('FLOOR')) findings.push(finding('C27d', 'status-floor-caveat-missing'));
   if (!section.includes('every field EXCEPT `note`')) findings.push(finding('C27d', 'slug-claim-not-scoped-to-note'));
   if (!section.includes('does not classify the content')) findings.push(finding('C27d', 'classifies-content-reclaimed'));

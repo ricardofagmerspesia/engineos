@@ -221,10 +221,12 @@ test('a dispatch/return pair writes one valid agent span', (t) => {
   assert.equal(row['status'], 'OK');
   assert.equal(row['trace_id'], 'span1');
   assert.equal(row['span_id'], 'toolu_1');
-  // A hook cannot see the subagent's usage, so the counts are 0 by construction
-  // and there is no cost at all — a consumer must not read the 0 as "free".
-  assert.equal(row['tokens_in'], 0);
-  assert.equal(row['tokens_out'], 0);
+  // A hook cannot see the subagent's usage, so the counts are null by
+  // construction and there is no cost at all. null is the unknown; the 0 this
+  // used to write was a number a consumer could sum, and summing it understated
+  // every real spend.
+  assert.equal(row['tokens_in'], null);
+  assert.equal(row['tokens_out'], null);
   assert.equal('cost_micros' in row, false);
   assert.equal(typeof row['duration_ms'], 'number');
 
