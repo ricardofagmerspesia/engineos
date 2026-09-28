@@ -1,0 +1,7 @@
+# A developer who installs this fixture locally must never commit its environment:
+# the e2e suite creates the .venv it needs in a temp copy, and a committed one
+# would make every case resolve to it.
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

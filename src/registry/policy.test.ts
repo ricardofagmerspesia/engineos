@@ -55,6 +55,7 @@ test('the shipped policy registry loads with every field the kernel reads', () =
     'destructive-action',
     'budget-exhausted',
     'breaker-open',
+    'topology-approval',
   ]);
   assert.deepEqual(policy.hitl.situations, ['destructive', 'budget-exhausted', 'reject', 'breaker-open']);
   assert.equal(policy.hitl.record_home, '.engineos/changes/<record>.md#human-decisions');

@@ -62,7 +62,7 @@ const TOKEN = 'hitl';
 
 // The frozen floor on the reason vocabulary. Named once so C26a's condition and
 // its title cannot disagree.
-const HITL_REASONS_MIN = 8;
+const HITL_REASONS_MIN = 9;
 
 const C26_TITLE = `policy.json.hitl is well-formed: reasons is ${HITL_REASONS_MIN}+ unique non-empty strings, situations is a non-empty array disjoint from retry.never_retry, record_home is set`;
 const C26C_TITLE =

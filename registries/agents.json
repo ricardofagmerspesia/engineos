@@ -225,7 +225,9 @@
       ],
       "model": "opus",
       "model_tier": "build",
-      "capability_ids": []
+      "capability_ids": [
+        "design-agent-topology"
+      ]
     },
     {
       "name": "mobile-coordinator",

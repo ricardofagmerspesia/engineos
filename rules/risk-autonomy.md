@@ -69,8 +69,9 @@ readers to ignore the gate that matters.
 | `destructive-action` | destructive DDL/DML, secret rotation, data deletion |
 | `budget-exhausted` | the repair or retry bound is spent, or backpressure answered `reject` |
 | `breaker-open` | a needed resource's breaker is open with no alternative |
+| `topology-approval` | the request designs a system with more than one agent (`registries/decision-rules.json` `rule-multi-agent-design`) — the developer approves the topology spec before any graph code, at any tier |
 
-Those eight ids are the whole vocabulary — a gate may cite nothing else, because
+Those nine ids are the whole vocabulary — a gate may cite nothing else, because
 a reason outside the list is one nobody can argue with or override.
 
 `resolve-task` carries `hitl.required` and `hitl.reasons` so the prompt advisor

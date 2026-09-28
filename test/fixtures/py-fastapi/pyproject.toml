@@ -1,0 +1,40 @@
+# EngineOS test fixture: the smallest FastAPI package the Python runner ladder
+# can be driven over (src/hooks/stop-verify-python.e2e.test.ts). Never installed
+# by the suite — every tool call is answered by a fake spawn — so the versions
+# below are pins to read, not packages to fetch. Dev tools are pinned exactly
+# (design D2); runtime deps are deliberately ranged, because the unpinned-tools
+# advisory reads dev dependencies only.
+[project]
+name = "py-fastapi-fixture"
+version = "0.1.0"
+description = "Fixture service for the EngineOS Python verification ladder"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.11",
+]
+
+[project.optional-dependencies]
+dev = [
+  "ruff==0.13.0",
+  "pyright==1.1.405",
+  "pytest==8.4.1",
+  "httpx==0.28.1",  # TestClient transport
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FastAPI's Depends() in a default argument is the framework's own idiom.
+ignore = ["B008"]
+
+[tool.pyright]
+include = ["app", "tests"]
+reportOptionalMemberAccess = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

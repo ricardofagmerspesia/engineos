@@ -42,7 +42,7 @@ export function intentsResults(ctx: CheckContext): CheckResult[] {
       'intent ids are unique',
       duplicates(intents.map((intent) => intent.id)).map((id) => finding('C16', 'duplicate-intent-id', id)),
     ),
-    result('C16', 'intents.json rules, skills and agents all resolve', dangling(ctx, intents)),
+    result('C16', 'intents.json rules, skills, agents and commands all resolve', dangling(ctx, intents)),
     result('C16', 'no intents.json signal carries placeholder metasyntax', signals(intents)),
     result('C16', 'hook_mirrored and domain agree on every intent', mirroredFlag(intents)),
     result('C16', 'every hook-mirrored intent matches its routing.json domain (rules)', foreignKeys(intents, domains)),
@@ -55,11 +55,24 @@ export function intentsResults(ctx: CheckContext): CheckResult[] {
 
 // ------------------------------------------------------------------ internals
 
+// A command is spelled either as the router table types it (`/engineos:audit`,
+// `/analyze-architecture`) or as its bare file name (`design-agents`); both
+// resolve to commands/<name>.md. C36 resolves the same tokens in the CLAUDE.md
+// table; this is the registry side, so an intent cannot name a command the
+// table never had.
+const COMMAND_NAME = /^(?:\/(?:engineos:)?)?([a-z][a-z0-9-]*)$/;
+
 // Unqualified rules and agents resolve to a file; unqualified skills resolve
 // unless the intent's note marks them external (spec deviation 2: code-review).
 // A qualified skill (`superpowers:brainstorming`) is another repo's to ship.
 function dangling(ctx: CheckContext, intents: readonly RawIntent[]): Finding[] {
   const findings: Finding[] = [];
+  for (const command of sortedUnique(intents.flatMap((intent) => [...intent.commands]))) {
+    const name = COMMAND_NAME.exec(command)?.[1];
+    if (name === undefined || !ctx.exists(`commands/${name}.md`)) {
+      findings.push(finding('C16', 'dangling-reference', `command:${subjectText(command)}`));
+    }
+  }
   for (const rule of sortedUnique(intents.flatMap((intent) => [...intent.rules]))) {
     if (!ctx.exists(`rules/${rule}.md`)) findings.push(finding('C16', 'dangling-reference', `rule:${rule}`));
   }

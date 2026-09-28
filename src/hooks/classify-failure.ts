@@ -39,9 +39,18 @@ const NODE_FLOOR = 18;
 // `<t>` is the target name, which the package-manager runners quote in their own
 // "no such script" wording. Anchored to each runner's phrasing so a missing
 // binary or a genuinely failing check matches nothing here and stays red.
+//
+// The python row is the same guard with a different meaning. A Python target
+// has no script to go stale — hasTarget read pyproject.toml, which does not
+// change between the probe and the run — but the TOOL can be missing from the
+// environment that was found: a venv without ruff, a `uv run` whose lock never
+// pinned pyright. That is a runner that is not there, so the match is rendered
+// as `runner-missing` (design §A1.4), never as a stale target. Typed over the
+// whole RunnerKind so the compiler refuses a runner without its row.
 const TARGET_ABSENT: Record<RunnerKind, string> = {
   nx: 'cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task',
   'npm-family': 'missing script:|command "<t>" not found|find a script named "<t>"',
+  python: 'No module named (ruff|pyright|pytest)|command not found|No such file or directory: .*(ruff|pyright|pytest)',
 };
 
 // One row per situation, in order. Null means there is nothing to judge: a green
@@ -61,7 +70,7 @@ export function classify(evidence: Evidence): Verdict | null {
       // stale probe: an Nx cache answering for a target that has gone, or a
       // jq-free script probe matching the word elsewhere in package.json.
       if (targetAbsent(evidence.runner, evidence.target).test(evidence.output)) {
-        return { situation: 'infra', reason: 'target-absent' };
+        return { situation: 'infra', reason: evidence.runner === 'python' ? 'runner-missing' : 'target-absent' };
       }
       return { situation: 'red' };
     }

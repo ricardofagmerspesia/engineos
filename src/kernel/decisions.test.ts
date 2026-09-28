@@ -62,7 +62,17 @@ test('a model-only rule never matches in the keyword tier', () => {
 
 test('a matched rule carries the require, prefer, gate and risk resolve-task reads', () => {
   const section = decisionsSection({ prompt: 'add a rag pipeline' }, regs);
+  // Two rules claim "rag" since 2026-09-11 (rule-rag-corpus-safety, priority 95,
+  // ahead of volatile-knowledge); the fixture pins both so the shape of every
+  // field is still what resolve-task reads.
   assert.deepEqual(section.matches, [
+    {
+      id: 'rule-rag-corpus-safety',
+      require: ['retrieval-acl', 'pre-index-redaction'],
+      prefer: null,
+      gate: 'design',
+      risk: null,
+    },
     {
       id: 'rule-volatile-knowledge',
       require: ['retrieval-evaluation', 'freshness-policy'],

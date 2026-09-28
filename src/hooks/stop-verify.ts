@@ -6,10 +6,12 @@
 // It runs ONLY in projects that have adopted EngineOS — a working tree carrying
 // `.engineos/` — because the checks it runs are the target repo's own scripts.
 //
-// Port of hooks/stop-verify.sh. The ladder below runs once for every runner: Nx
-// and pnpm/yarn/npm are adapters behind ./runner.ts, so the timeout table is
-// written here exactly once, and every infra-vs-red judgment goes through
-// ./classify-failure.ts.
+// Port of hooks/stop-verify.sh. The ladder below runs once for every runner: Nx,
+// pnpm/yarn/npm and the Python environment are adapters behind ./runner.ts, so
+// the timeout table is written here exactly once, and every infra-vs-red
+// judgment goes through ./classify-failure.ts. The runner is selected PER
+// PACKAGE (design §A1): a repo can hold a FastAPI service beside a React app,
+// and one directory can even be both.
 //
 // The fix-loop bound is NOT restated here. The block reason comes from the
 // kernel's repair section (../kernel/repair), which is the one reader of
@@ -21,10 +23,12 @@ import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { classify, type InfraReason } from './classify-failure';
-import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunnerSelection, type SpawnSyncLike } from './runner';
+import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
+import { unpinnedTools } from './runner-python';
 import { event, telemetrySink, withSpan, type EventData, type SpanFacts } from './telemetry';
 import type { SpanStatus } from '../registry/policy-exec-journal';
-import { PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, findUpAny, firstLines, hasVerifyExtension, isDirectory, isFile, runnerCommand, runnerFound, startDir, verifyEnvironment } from './verify-targets';
+import type { ProjectConfig } from '../registry/project-config';
+import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
 import { lazyRegistries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
 import { isRecord } from '../lib/json';
@@ -53,15 +57,40 @@ interface Failure {
   output: string;
 }
 
-interface Timeout {
+// An infra finding made DURING a run — a budget kill, or a Python tool the
+// environment turned out not to hold — as opposed to one made before the
+// ladder started (node too old, runner never found), which the plan records
+// as a line and never runs.
+interface Infra {
   target: string;
   handle: string;
-  seconds: number;
+  reason: InfraReason;
+  subject: string;
 }
 
 interface Ladder {
   failures: Failure[];
-  timeouts: Timeout[];
+  infra: Infra[];
+  // One line per Python package with a tool left unpinned (D2). Advisory: it
+  // never blocks and never changes the span status.
+  advisories: string[];
+}
+
+// One package under one runner. A directory holding both a pyproject.toml and
+// a package.json is two of these.
+interface Run {
+  packageDir: string;
+  selection: RunnerSelection;
+}
+
+// What the gate decided BEFORE running anything: the runs it will make, and the
+// lines that explain what it will not — a Python package with no environment,
+// a Node package under a node too old for its toolchain, a runner whose probe
+// failed. Every skipped package says so; an infra gap is announced, never
+// swallowed (design deviation 2).
+interface Plan {
+  runs: Run[];
+  lines: string[];
 }
 
 export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
@@ -95,46 +124,58 @@ export function verify(
   const files = changedFiles(env.transcriptPath);
   if (files.length === 0) return silent;
 
-  // A runtime too old to run the toolchain is an infra gap, not a genuine red —
-  // this hook's own charter. The nvm default is tried first; still too old skips
-  // verification rather than blocking on failures no code edit can fix.
-  const environment = verifyEnvironment(ctx.io.env, nodeVersion);
-  const tooOld = classify({ kind: 'environment', nodeMajor: environment.nodeMajor });
-  if (tooOld !== null && tooOld.situation === 'infra') {
-    return message(infraLine(tooOld.reason, targetsFor(ctx.io.env), `node ${environment.nodeMajor} cannot start the toolchain`));
-  }
-
   const packages = packageDirs(files, root);
   if (packages.length === 0) return silent;
 
   const targets = targetsFor(ctx.io.env);
-  const selection = runnerSelect(root);
-  const missing = classify({ kind: 'runner', found: runnerFound(selection, environment.env, spawn, root) });
-  if (missing !== null && missing.situation === 'infra') {
-    return message(infraLine(missing.reason, targets, `${runnerCommand(selection)} is not on PATH`));
-  }
+  // The nvm default is tried first; a node still too old is judged per Node
+  // package in planRuns, so a Python package in the same repo is verified
+  // regardless — its toolchain never ran on node.
+  const environment = verifyEnvironment(ctx.io.env, nodeVersion);
+  const plan = planRuns(packages, targets, root, projectConfig(root), environment, spawn);
+  // Nothing to run means nothing was verified, so there is no verdict to record
+  // and no span to open — only the lines that say why.
+  if (plan.runs.length === 0) return plan.lines.length === 0 ? silent : message(plan.lines.join('\n'));
 
   const sink = telemetrySink(env, ctx, { bypassed: false });
   // The span measures the CHECKS, not the transcript parsing that decided which
   // packages to check, which is why it opens here and not at the top.
   const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
-    const result = runLadder(selection, packages, targets, environment.env, spawn, root);
+    const result = runLadder(plan.runs, targets, environment.env, spawn, root);
     return { result, status: ladderStatus(result) };
   });
   // Written red or green: a green run is half the base rate usage-report.sh has
   // lacked. Inside no guard of its own — the sink already answers for
   // ENGINEOS_TELEMETRY, bypass and the project's .engineos/ opt-in.
-  event(sink, 'verify', verifyEvent(root, packages, ladder));
+  event(sink, 'verify', verifyEvent(root, plan.runs, ladder));
 
-  if (ladder.failures.length > 0) return block(blockReason(ctx.root, ladder.failures));
-  if (ladder.timeouts.length > 0) return message(timeoutLines(ladder.timeouts));
-  return silent;
+  // Skip, infra and advisory lines ride along on a block too: a red lint must
+  // not hide that pyright was skipped or that ruff is unpinned, or the
+  // developer fixes the red and meets the next finding one Stop later.
+  const lines = [...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
+  if (ladder.failures.length > 0) {
+    const reason = blockReason(ctx.root, ladder.failures);
+    return block(lines.length === 0 ? reason : `${reason}\n${lines.join('\n')}`);
+  }
+  return lines.length === 0 ? silent : message(lines.join('\n'));
 }
 
 // ------------------------------------------------------------------ internals
 
 function targetsFor(env: NodeJS.ProcessEnv): readonly string[] {
   return env['ENGINEOS_VERIFY_TESTS'] === '1' ? [...DEFAULT_TARGETS, TEST_TARGET] : DEFAULT_TARGETS;
+}
+
+// The one timeout table, applied to whichever runner was selected. The budget
+// is a setting, not a new constant (design §A1.5): pyright's first run over a
+// large repo can outlast the default, and ENGINEOS_VERIFY_BUDGET_S raises every
+// target's budget to the seconds it names. A value that is not a positive
+// integer is ignored rather than read as zero — zero would kill every check
+// on arrival and report the whole gate as a timeout.
+function budgetFor(target: string, env: NodeJS.ProcessEnv): number {
+  const override = Number.parseInt(env['ENGINEOS_VERIFY_BUDGET_S'] ?? '', 10);
+  if (Number.isInteger(override) && override > 0) return override;
+  return target === TEST_TARGET ? 180 : 90;
 }
 
 // The real tool_use structure is parsed, so a JSONL line carrying BOTH a Read and
@@ -217,31 +258,96 @@ function packageDirs(files: readonly string[], root: string): string[] {
   }
   const dirs = new Set<string>();
   for (const file of files) {
-    const owner = findUpAny(startDir(file), PACKAGE_MARKERS, stopReal);
+    const owner = packageOwner(startDir(file), stopReal);
     if (owner === null) continue;
     if (containedIn(stopReal, owner)) dirs.add(owner);
   }
   return [...dirs].sort();
 }
 
-function runLadder(
-  selection: RunnerSelection,
+// Selection per package, probe per distinct runner. The runner-found probe used
+// to run once per stop cycle because there was one runner per repo; with a
+// runner per package it runs once per distinct probe argv — a root `.venv`
+// shared by three services is asked once, and so is npm — and a probe that
+// fails drops every package behind it with one line.
+function planRuns(
   packages: readonly string[],
+  targets: readonly string[],
+  root: string,
+  config: ProjectConfig | null,
+  environment: VerifyEnvironment,
+  spawn: SpawnSyncLike,
+): Plan {
+  const runs: Run[] = [];
+  const lines: string[] = [];
+  // A runtime too old to run the Node toolchain is an infra gap, not a genuine
+  // red — this hook's own charter — and it is a NODE gap: it applies only when a
+  // Node package is in scope, and it is announced once however many there are.
+  const tooOld = classify({ kind: 'environment', nodeMajor: environment.nodeMajor });
+  let nodeAnnounced = false;
+  const probed = new Map<string, boolean>();
+  for (const packageDir of packages) {
+    for (const selection of selectionsFor(packageDir, root, config, spawn)) {
+      if (selection.kind === 'python-unavailable') {
+        lines.push(`[engineos] stop-verify skipped for ${relativeToRoot(root, packageDir)}: ${selection.reason}`);
+        continue;
+      }
+      if (selection.kind !== 'python' && tooOld !== null && tooOld.situation === 'infra') {
+        if (!nodeAnnounced) lines.push(infraLine(tooOld.reason, targets, `node ${environment.nodeMajor} cannot start the toolchain`));
+        nodeAnnounced = true;
+        continue;
+      }
+      const key = runnerProbe(selection).join(' ');
+      let found = probed.get(key);
+      if (found === undefined) {
+        found = runnerFound(selection, environment.env, spawn, root);
+        probed.set(key, found);
+        const missing = classify({ kind: 'runner', found });
+        if (missing !== null && missing.situation === 'infra') lines.push(infraLine(missing.reason, targets, missingSubject(selection)));
+      }
+      if (found) runs.push({ packageDir, selection });
+    }
+  }
+  return { runs, lines };
+}
+
+// A directory that holds both a pyproject.toml and a package.json — a LangGraph
+// service with its React front in the same root — is two packages sharing a
+// directory, and each runs under its own runner (design §A1.1). The Python
+// selection is asked first because it is the one that can be unavailable.
+function selectionsFor(packageDir: string, root: string, config: ProjectConfig | null, spawn: SpawnSyncLike): (RunnerSelection | RunnerUnavailable)[] {
+  const primary = runnerSelectFor(packageDir, root, config, undefined, spawn);
+  if (primary.kind !== 'python' && primary.kind !== 'python-unavailable') return [primary];
+  const alsoNode = NODE_PACKAGE_MARKERS.some((marker) => isFile(join(packageDir, marker)));
+  return alsoNode ? [primary, runnerSelect(root)] : [primary];
+}
+
+function missingSubject(selection: RunnerSelection): string {
+  if (selection.kind === 'python') return `${runnerProbe(selection).join(' ')} did not answer --version (${selection.env.source})`;
+  return `${runnerCommand(selection)} is not on PATH`;
+}
+
+function runLadder(
+  runs: readonly Run[],
   targets: readonly string[],
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
   root: string,
 ): Ladder {
   const failures: Failure[] = [];
-  const timeouts: Timeout[] = [];
-  for (const packageDir of packages) {
+  const infra: Infra[] = [];
+  const advisories: string[] = [];
+  for (const { packageDir, selection } of runs) {
     if (!isDirectory(packageDir)) continue;
+    if (selection.kind === 'python') {
+      const unpinned = unpinnedTools(packageDir);
+      if (unpinned.length > 0) advisories.push(`[engineos] ${relativeToRoot(root, packageDir)}: ${unpinned.join(', ')} not pinned to exact versions (rules/verification.md)`);
+    }
     const handle = runnerHandle(selection, packageDir);
     if (handle === null) continue;
     for (const target of targets) {
       if (!runnerHasTarget(selection, handle, target, undefined, spawn, root)) continue;
-      // The one timeout table, applied to whichever runner was selected.
-      const seconds = target === TEST_TARGET ? 180 : 90;
+      const seconds = budgetFor(target, env);
       const result = runnerRun(selection, handle, target, seconds, env, spawn, root);
       const verdict = classify({ kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
       if (verdict === null) continue;
@@ -249,21 +355,33 @@ function runLadder(
         failures.push({ target, handle, output: result.output });
         continue;
       }
-      if (verdict.reason === 'timeout') timeouts.push({ target, handle, seconds });
+      if (verdict.reason === 'timeout') infra.push({ target, handle, reason: verdict.reason, subject: `${handle} hit its ${seconds}s budget` });
+      // A Python tool the environment does not hold surfaces at run time (the
+      // classifier's python row): announced, like every infra finding.
+      if (verdict.reason === 'runner-missing') infra.push({ target, handle, reason: verdict.reason, subject: `${handle}: ${missingToolLine(result.output)}` });
       // `target-absent` after a stale probe is "nothing to run", not a finding:
       // the caller continues silently.
     }
   }
-  return { failures, timeouts };
+  return { failures, infra, advisories };
 }
 
-// A check that was killed by its budget reported nothing about the code, so the
-// gate neither passed nor failed — `OK` there would claim a green run the gate
-// never observed, and `FAILED` would blame the code for a tooling gap. bash had
-// no third answer because a timeout was simply red to it.
+// The line the classifier matched on, so the operator reads "No module named
+// ruff" rather than the whole ruff transcript; the argv line stands in when the
+// tool said nothing recognisable.
+function missingToolLine(output: string): string {
+  const matched = /^.*(?:No module named|command not found|No such file or directory).*$/im.exec(output);
+  return (matched?.[0] ?? firstLines(output, 1)).trim();
+}
+
+// A check that was killed by its budget — or that could not start its tool —
+// reported nothing about the code, so the gate neither passed nor failed: `OK`
+// there would claim a green run the gate never observed, and `FAILED` would
+// blame the code for a tooling gap. bash had no third answer because a timeout
+// was simply red to it.
 function ladderStatus(ladder: Ladder): SpanStatus {
   if (ladder.failures.length > 0) return 'FAILED';
-  return ladder.timeouts.length > 0 ? 'DEGRADED' : 'OK';
+  return ladder.infra.length > 0 ? 'DEGRADED' : 'OK';
 }
 
 // bash relativized each package dir against the repo root (`s|^$ROOT/||;
@@ -276,18 +394,25 @@ function relativeToRoot(root: string, dir: string): string {
 // `situation` and `reason` are absent on a wholly green cycle: there is no
 // verdict to report, and the append boundary reads a declared key that was never
 // sent as simply not sent.
-function verifyEvent(root: string, packages: readonly string[], ladder: Ladder): EventData {
+//
+// `targets` names the packages the ladder ENTERED: a package skipped before the
+// ladder (no Python environment, node too old) was not verified, and listing it
+// would claim a run the gate never made. A directory entered under two runners
+// is one package here.
+function verifyEvent(root: string, runs: readonly Run[], ladder: Ladder): EventData {
+  const entered = [...new Set(runs.map((run) => relativeToRoot(root, run.packageDir)))];
   const data: EventData = {
     failed: ladder.failures.length > 0,
-    targets: packages.map((dir) => relativeToRoot(root, dir)),
+    targets: entered,
   };
   if (ladder.failures.length > 0) {
     data['situation'] = 'red';
     return data;
   }
-  if (ladder.timeouts.length > 0) {
+  const first = ladder.infra[0];
+  if (first !== undefined) {
     data['situation'] = 'infra';
-    data['reason'] = 'timeout';
+    data['reason'] = first.reason;
   }
   return data;
 }
@@ -317,6 +442,6 @@ function infraLine(reason: InfraReason, targets: readonly string[], subject: str
   return `EngineOS gate: ${targets.join(', ')} skipped — infra (${reason}): ${subject}. No fix attempt is consumed.`;
 }
 
-function timeoutLines(timeouts: readonly Timeout[]): string {
-  return timeouts.map((t) => infraLine('timeout', [t.target], `${t.handle} hit its ${t.seconds}s budget`)).join('\n');
+function infraLineOf(finding: Infra): string {
+  return infraLine(finding.reason, [finding.target], finding.subject);
 }

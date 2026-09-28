@@ -63,6 +63,7 @@ not written down anywhere reusable.
 | D15 | Pattern catalog | Ten patterns (two extracted from the labv repos + eight new) plus two cross-cutting references (context-enriched tools, tenant profiles) | Offered to the developer at step 1 of the form, with a recommendation, never applied automatically |
 | D16 | Tools step | Its own step (step 3), eight sub-decisions per tool, the longest step by design | "The most important feature" — the demo's results come mostly from this layer |
 | D17 | Runtime approval interrupt | A catalog pattern the developer may pick when the *product* needs its *user* to confirm an action. Not the gate | Keeps developer approval and product HITL separate |
+| D18 | Git writes | Per-developer setting `ENGINEOS_GIT_WRITES=ask\|auto` (personal, in `settings.local.json`), **default `ask`**: every git/forge command that writes (commit, push, add, branch, checkout, merge, rebase, reset, stash, tag, `gh pr create/merge`, …) is turned into a permission prompt by a PreToolUse hook; read-only git needs no prompt; the guard survives `/engineos:bypass` | Sergio: `ask`; Ricardo: `auto` (set in his local settings). Flagged for upstream review because the default changes his experience |
 
 ## 3. Part A — Python stack
 
@@ -144,7 +145,7 @@ envelope as `route-path`), so hooks, `init` and the coordinators read one answer
 
 `registries/routing.json` — additive:
 
-- New domain **`backend-python`**, precedence right after `backend`:
+- New domain **`backend-python`**, precedence right after `dba` (so `*/alembic/versions/*` and `*.sql` keep routing to `dba`):
   `paths: ["*/routers/*.py", "*/api/*.py", "*/services/*.py", "*/use_cases/*.py", "*/adapters/*.py", "*/domain/*.py", "*/repositories/*.py"]`,
   `basenames: ["schemas.py", "models.py", "ports.py", "main.py", "dependencies.py", "settings.py"]`;
   rules `backend-python, architecture, data, testing, observability`; skill
@@ -345,7 +346,7 @@ the change record's `## Human decisions`.
 Enforcement level: the same as spec-before-code today — a contract requirement
 the prompt advisor injects and the change record must satisfy. A hook that blocks
 `Write` under `graph/` until the record carries an approval line is a follow-up,
-not part of this change (see Non-goals).
+not part of this change (see §8).
 
 ### B2. The form (skill `agent-system-design`, command `/engineos:design-agents`)
 
@@ -461,20 +462,85 @@ projection for the UI, default + overlay merge rules).
 - `docs/START.md`, `docs/BIG-PICTURE.md` (request lifecycle gains the topology
   gate branch), `docs/COMPATIBILITY.md` (new public surface listed).
 
-## 5. Scope
+## 5. Part C — Git-write confirmation (developer setting)
+
+The developer, not the constitution, decides whether Claude may write to git on
+its own. `rules/git.md` says how to commit; nothing today says *whether Claude may*.
+
+### C1. Setting
+
+`ENGINEOS_GIT_WRITES` = `ask` (default) | `auto`. Personal: set in the developer's
+`~/.claude/settings.local.json` `env` block, never in the repo. `ask` means every
+git write becomes a permission prompt the developer answers; `auto` restores
+today's behaviour. There is no per-repo override — this is about the person, not
+the project. `/engineos:bypass` does **not** disable it: the guard is the
+developer's own safety net, and turning EngineOS off must not turn it off.
+
+### C2. What counts as a write
+
+Read-only (never prompted): `status`, `log`, `diff`, `show`, `blame`, `branch`
+with no args or `--list`/`-a`/`-r`/`--show-current`, `remote -v`/`remote show`,
+`rev-parse`, `ls-files`, `check-ignore`, `describe`, `shortlog`, `cat-file`,
+`config --get`/`--list`, `merge-base`, `stash list`, `tag` with no args or `-l`.
+
+Everything else asks — including `add`, `fetch`, `checkout`, `switch`,
+`commit`, `push`, `pull`, `merge`, `rebase`, `reset`, `restore`, `stash` (other
+than `list`), `tag <name>`, `cherry-pick`, `revert`, `branch <name>`/`-d`/`-D`,
+`worktree`, `submodule`, `clone`, `init`, `config` writes, and the forge writes
+`gh pr create|merge|close|edit`, `gh release *`, `gh repo *`, `gh api` with
+`-X POST|PUT|PATCH|DELETE`. An unknown subcommand asks: the set is closed on the
+read side, open on the write side.
+
+### C3. Hook
+
+New PreToolUse hook `git-write-guard`, matcher `Bash`, registered in
+`hooks/hooks.json` like the others (node shim, `dist/engineos.cjs hook git-write-guard`).
+It parses `tool_input.command`: splits on shell operators (`&&`, `||`, `;`, `|`,
+newlines, `$(`…`)`), skips leading env assignments and `cd <dir> &&`, and for
+every segment whose first word is `git` or `gh` reads the subcommand after global
+options (`-C <dir>`, `-c k=v`, `--no-pager`). If any segment is a write and the
+setting is `ask`, the hook answers
+`{ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: "[engineos] git write: <subcommand> — ENGINEOS_GIT_WRITES=ask" } }`.
+Otherwise it is silent. It never denies: the decision is the developer's, at the
+prompt Claude Code shows. `src/hooks/output.ts` gains the `ask` decision kind for
+this (the only hook that uses it in this change).
+
+A command the parser cannot understand (unbalanced quotes, heredoc) is treated as
+a write when it contains the token `git ` or `gh ` at all — fail closed.
+
+### C4. Prose
+
+`rules/git.md` gains a first section "Who may write" stating the setting and
+that, under `ask`, Claude does the file work, stops, and asks with the proposed
+commit message; an approval covers one action, never a session. `CLAUDE.md`
+non-negotiables gain #12: "Git writes follow the developer's `ENGINEOS_GIT_WRITES`
+setting — `rules/git.md`". `docs/START.md` and `docs/ADOPTION.md` show the
+`settings.local.json` snippet. `templates/permissions.template.json` is
+unchanged (it already lists only read-only git).
+
+### C5. Tests
+
+`src/hooks/git-write-guard.test.ts`: the read-only list passes silently; each
+write subcommand asks; compound commands (`git status && git commit -m x`) ask;
+`-C`/`-c` prefixes are skipped; `gh pr create` asks; `auto` is silent on
+everything; bypass on + `ask` still asks; an unparsable command asks.
+`evals/*.jsonl` gains no case (no intent involved).
+
+## 6. Scope
 
 **Runtime (`src/`)**: `hooks/stop-verify.ts`, `hooks/verify-targets.ts`,
 `hooks/runner.ts` (interface extraction), new `hooks/runner-python.ts`,
 `hooks/classify-failure.ts`, `hooks/post-edit-check.ts`, `hooks/ensure-project-layout.ts`
 (stack line), new `kernel/stack.ts` + `kernel.sh resolve-stack`, `init/project.ts`
 (`--stack`, `config.json`), `registry/*.ts` loaders for the new fields,
-`checks/*.ts` additions, tests for each.
+`checks/*.ts` additions, new `hooks/git-write-guard.ts` + `output.ts` `ask` kind +
+`hooks/hooks.json` Bash entry (Part C), tests for each.
 
 **Registries**: `routing.json`, `intents.json`, `decision-rules.json`,
 `policy.json`, `capabilities.json`, `layout-manifest.json` (`.engineos/config.json`).
 
 **Prose**: new `rules/backend-python.md`; edits to `base.md`, `security.md`,
-`llm-apps.md`, `verification.md`, `backend.md`; deprecation header on
+`llm-apps.md`, `verification.md`, `backend.md`, `git.md` (Part C); deprecation header on
 `production-backend-standards.md`; new `skills/python-patterns`,
 `skills/langgraph-patterns`, `skills/agent-system-design` (+ 10 pattern files +
 2 references); edits to `eval-harness`, `llm-engineering`; agents
@@ -489,7 +555,7 @@ the hitl reason; `registries/docs-ledger.json` if any budget is exceeded.
 **Fixtures**: `test/fixtures/py-fastapi/` (minimal pinned-tool package for the
 runner e2e), `evals/*.jsonl` cases for the new intents and the topology rule.
 
-## 6. Verification
+## 7. Verification
 
 - `npm run typecheck`, `npm run lint`, `npm test` (includes
   `prose-layer.e2e.test.ts`, the new runner tests, and the C-checks).
@@ -505,10 +571,12 @@ runner e2e), `evals/*.jsonl` cases for the new intents and the topology rule.
   `llm`; the stale `uv.lock` does not win over `.venv/bin`; the prompt
   "add a supervisor agent that coordinates the DSL and narrator agents" produces
   the topology-approval contract and `/engineos:design-agents` starts at step 1.
+- **Part C, manual**: with `ENGINEOS_GIT_WRITES` unset, `git status` runs silently
+  and `git commit -m x` produces the permission prompt; with `auto`, neither prompts.
 - Both installers re-run cleanly (`install.sh` idempotency), which the developer
   runs (auto mode blocks Claude from self-modifying `~/.claude`).
 
-## 7. Non-goals
+## 8. Non-goals
 
 - Django, Flask, Gemini, Anthropic providers (D4, D9).
 - A hook that blocks writes under `graph/` until the topology approval line
@@ -519,7 +587,7 @@ runner e2e), `evals/*.jsonl` cases for the new intents and the topology rule.
   prose only, per `templates/adapters/`).
 - Migrating the demo's own code to these rules.
 
-## 8. Alternatives considered
+## 9. Alternatives considered
 
 - **Genericize the Node files instead of adding Python siblings.** Rejected:
   the mechanisms (validation pipes vs `extra="forbid"`, TypeORM vs Alembic) do
@@ -540,15 +608,15 @@ runner e2e), `evals/*.jsonl` cases for the new intents and the topology rule.
   Rejected by the developer (D16): tools are where the retrieval quality comes
   from and deserve their own step.
 
-## 9. Implementation plan (waves)
+## 10. Implementation plan (waves)
 
 Contracts frozen first (wave 0), then disjoint scopes per wave, one message per
 wave, barrier-verify between waves (`rules/parallelism.md`).
 
 | Wave | Units (disjoint scopes) | Tier |
 |---|---|---|
-| 0 | Freeze: `RunnerSelection` interface in `runner.ts`; `.engineos/config.json` schema; `routing.json`/`intents.json`/`decision-rules.json`/`policy.json` diffs; the pattern-file skeleton | design |
-| 1 | (a) `runner-python.ts` + `verify-targets.ts` + `classify-failure.ts` + tests + fixture · (b) `kernel/stack.ts` + `init --stack` + config loader + tests · (c) registries + `CLAUDE.md`/`AGENTS.md` mirror rows + validator checks + evals | build |
+| 0 | Freeze (written to `docs/specs/2026-09-28-python-stack-and-agent-design-contracts.md`): `RunnerSelection` union in `runner.ts`; `.engineos/config.json` schema; git-write-guard parser contract; `routing.json`/`intents.json`/`decision-rules.json`/`policy.json` diffs; the pattern-file skeleton | design |
+| 1 | (a) `runner-python.ts` + `verify-targets.ts` + `classify-failure.ts` + tests + fixture · (b) `kernel/stack.ts` + `init --stack` + config loader + tests · (c) registries + `CLAUDE.md`/`AGENTS.md` mirror rows + validator checks + evals · (d) `git-write-guard.ts` + `output.ts` `ask` + `hooks.json` + tests + `rules/git.md` (Part C) | build |
 | 2 | (a) `rules/backend-python.md` + `base.md`/`security.md`/`llm-apps.md`/`verification.md` edits · (b) `skills/python-patterns` · (c) `skills/langgraph-patterns` · (d) agents + templates edits | build |
 | 3 | (a) `skills/agent-system-design` SKILL + form + command + pattern file + template · (b) the ten pattern files + two references · (c) ADR + `policy.json` hitl + `rules/risk-autonomy.md` prose + C26 | design (a, c) / build (b) |
 | 4 | Docs (`START`, `BIG-PICTURE`, `COMPATIBILITY`, `CODEBASE_MAP`), `docs-ledger`, deprecation header (D5), final gate, manual verification on both labv repos, change record closed | build |

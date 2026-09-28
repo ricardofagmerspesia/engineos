@@ -67,9 +67,30 @@ touch ~/.claude/engineos.bypass       # machine-wide, sticky until deleted
 
 While any of them is on, every EngineOS hook exits immediately — except
 `prompt-advisor.sh`, which announces `BYPASS ACTIVE` each turn so an unguarded
-session never looks guarded. The constitution import in `~/.claude/CLAUDE.md`
+session never looks guarded, and `git-write-guard`, which is yours rather than the
+constitution's (next section). The constitution import in `~/.claude/CLAUDE.md`
 stays (nothing can unload it); the command instructs the model to treat the rules
 as not applicable. Nuclear option: comment out the `@…/engineos/CLAUDE.md` import.
+
+### Git writes: ask or auto (`ENGINEOS_GIT_WRITES`)
+
+By default Claude does not write to git on its own. The PreToolUse hook
+`git-write-guard` inspects every `Bash` command and turns each git or forge
+**write** (`add`, `commit`, `push`, `checkout`, `merge`, `rebase`, `reset`,
+`stash`, `tag <name>`, `gh pr create|merge`, …) into Claude Code's permission
+prompt, tagged `[engineos] git write: <command>`. Read-only git (`status`, `log`,
+`diff`, `show`, `branch --list`, …) never prompts. One approval covers one command.
+
+This is a **personal** setting, per machine, never per repo. To let Claude write
+without prompting, add to `~/.claude/settings.local.json`:
+
+```json
+{"env": {"ENGINEOS_GIT_WRITES": "auto"}}
+```
+
+Only the exact word `auto` switches it off; anything else (unset, empty, a typo)
+means `ask`. `/engineos:bypass` does not touch it. The full read/write split is in
+`rules/git.md` under "Who may write".
 
 ---
 

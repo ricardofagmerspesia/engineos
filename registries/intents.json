@@ -1,6 +1,6 @@
 {
-  "version": "1.3.1",
-  "description": "Machine-readable source of truth for the EngineOS router. 30 entries for CLAUDE.md's 29 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
+  "version": "1.4.0",
+  "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
     {
@@ -49,8 +49,8 @@
     },
     {
       "id": "backend",
-      "title": "Backend work",
-      "signals": ["NestJS", "API", "service", "controller", "migration", "queue"],
+      "title": "Backend work (NestJS)",
+      "signals": ["NestJS", "API", "service", "controller", "migration", "queue", "router", "endpoint"],
       "rules": ["backend", "architecture", "data", "testing", "observability"],
       "skills": ["nestjs-patterns"],
       "agents": ["backend-coordinator"],
@@ -60,7 +60,23 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "backend",
-      "note": "Rules follow registries/routing.json's order (the registry wins for this field); CLAUDE.md lists the same five rules in a different order, architecture first. data.md is loaded because the signals include migrations and nestjs-patterns defers migration safety to it; architecture.md and observability.md are closure targets of backend.md. The nestjs MCP is for codegen. backend-coordinator (alias borisenko) is dual-mode AUDIT/IMPLEMENT."
+      "note": "Rules follow registries/routing.json's order (the registry wins for this field); CLAUDE.md lists the same five rules in a different order, architecture first. data.md is loaded because the signals include migrations and nestjs-patterns defers migration safety to it; architecture.md and observability.md are closure targets of backend.md. The nestjs MCP is for codegen. backend-coordinator (alias borisenko) is dual-mode AUDIT/IMPLEMENT. Suppressed by backend-python: a prompt naming a Python framework loads the FastAPI shapes, not the NestJS ones — the two rows share the stack-neutral words (API, service, endpoint, migration) and differ on the framework names.",
+      "suppressed_by": ["backend-python"]
+    },
+    {
+      "id": "backend-python",
+      "title": "Backend work (FastAPI)",
+      "signals": ["FastAPI", "Pydantic", "SQLAlchemy", "Alembic", "Django", "Flask", "uvicorn", "pyproject"],
+      "rules": ["backend-python", "architecture", "data", "testing", "observability"],
+      "skills": ["python-patterns"],
+      "agents": ["backend-coordinator"],
+      "commands": [],
+      "mcp": [],
+      "model_tier": "build",
+      "risk_floor": "medium",
+      "hook_mirrored": true,
+      "domain": "backend-python",
+      "note": "Hook-mirrored as the routing.json domain `backend-python` (docs/specs/2026-09-28-python-stack-and-agent-design-design.md §A3); exists as its own intent because C16 requires every routing domain to be claimed by exactly one intent. Rules follow routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. Signals are the Python framework names only; the stack-neutral backend words live on the backend row, which this row suppresses when both match. backend-coordinator (alias borisenko) covers both stacks."
     },
     {
       "id": "frontend",
@@ -126,7 +142,7 @@
     {
       "id": "llm",
       "title": "LLM/agent work",
-      "signals": ["prompt", "agent", "RAG", "embedding", "eval", "tool schema"],
+      "signals": ["prompt", "agent", "RAG", "embedding", "eval", "tool schema", "LangGraph", "LangChain", "orchestrate", "orchestration", "orchestrator", "supervisor", "multi-agent", "multi agent", "multiagent", "agent-to-agent", "A2A"],
       "rules": ["llm-apps"],
       "skills": ["llm-engineering"],
       "agents": ["llm-coordinator"],
@@ -136,7 +152,22 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "llm",
-      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. An LLM feature with no evals also matches the eval-setup row."
+      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. An LLM feature with no evals also matches the eval-setup row. A system with more than one agent also matches the agent-system row, which owns the design gate."
+    },
+    {
+      "id": "agent-system",
+      "title": "Multi-agent system design",
+      "signals": ["multi-agent", "multi agent", "multiagent", "agents that", "agents which", "orchestrate", "orchestration", "orchestrator", "supervisor agent", "agent topology", "LangGraph", "A2A", "agent-to-agent", "handoff between agents"],
+      "rules": ["llm-apps"],
+      "skills": ["agent-system-design"],
+      "agents": ["llm-coordinator"],
+      "commands": ["design-agents"],
+      "mcp": [],
+      "model_tier": "design",
+      "risk_floor": "medium",
+      "hook_mirrored": false,
+      "domain": null,
+      "note": "Interactive: llm-coordinator (hermsdorff) runs patterns/3-Agent-topology-interview.md; developer approval recorded before any graph code. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems."
     },
     {
       "id": "dba",

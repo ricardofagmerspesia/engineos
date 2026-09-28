@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoryIo } from '../io';
-import { block, context, fail, message, render, silent } from './output';
+import { ask, block, context, fail, message, render, silent } from './output';
 
 test('a context decision renders the harness additionalContext envelope', () => {
   const io = memoryIo();
@@ -16,6 +16,20 @@ test('a block decision renders the Stop-gate block envelope', () => {
   const code = render(block('EngineOS gate: verification failed'), io);
   assert.equal(code, 0);
   assert.deepEqual(io.stdout, ['{"decision":"block","reason":"EngineOS gate: verification failed"}\n']);
+});
+
+test('an ask decision renders the PreToolUse permissionDecision envelope', () => {
+  const io = memoryIo();
+  const code = render(ask('[engineos] git write: git commit — ENGINEOS_GIT_WRITES=ask'), io);
+  assert.equal(code, 0);
+  assert.deepEqual(io.stdout, [
+    '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"[engineos] git write: git commit — ENGINEOS_GIT_WRITES=ask"}}\n',
+  ]);
+  assert.deepEqual(io.stderr, []);
+});
+
+test('ask is pinned to PreToolUse: the only event whose permissionDecision the harness honours', () => {
+  assert.deepEqual(ask('why'), { kind: 'ask', event: 'PreToolUse', reason: 'why' });
 });
 
 test('a message decision renders systemMessage', () => {

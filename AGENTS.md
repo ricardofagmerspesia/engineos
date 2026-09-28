@@ -59,7 +59,7 @@ Rules for routing:
   disagree. All other rows are request-driven and have no hook equivalent.
 - **Multi-match applies to this table only.** The hook emits exactly ONE route —
   first match wins, in this precedence chain: security → test → backend → dba →
-  ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
+  backend-python → ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
 - **Hooks do not run under Codex.** The `[router] …` context, the edit-time
@@ -83,10 +83,12 @@ Rules for routing:
 | Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` (always-on); fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
 | Backend work (NestJS, API, service, controller, migration, queue) | `rules/architecture.md` + `rules/backend.md` + `rules/production-backend-standards.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
+| Backend work (FastAPI, router, endpoint, Pydantic, SQLAlchemy, Alembic) | `rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
 | Frontend work (React, Next, component, page/app, UI, styling) | `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; agent `frontend-coordinator` |
 | Mobile work / mirror web to mobile (React Native, screen, navigation, native module, iOS/Android app; "mirror to mobile", "port to mobile", "mobile parity") | `rules/architecture.md` + `rules/frontend.md` + `rules/backend.md` (API-consumption parts) + `rules/observability.md` + `rules/testing.md`, adapted the mobile way; agent `mobile-coordinator` (elias) |
 | Mobile store release ("build ios", "publish to App Store", "TestFlight", "build android", "Play Store", "release the app", ipa/aab, store submission) | `rules/security.md` (signing keys/store credentials); agent `ios-builder` for Apple, `android-builder` for Google Play. Store review submission / production rollout only on explicit instruction |
-| LLM/agent work (prompt, agent, RAG, embedding, eval, tool schema) | `rules/llm-apps.md`; skill `llm-engineering`; agent `llm-coordinator` |
+| LLM/agent work (prompt, agent, RAG, embedding, eval, tool schema, LangGraph, LangChain) | `rules/llm-apps.md`; skill `llm-engineering`; agent `llm-coordinator` |
+| Multi-agent system design (multi-agent, orchestration, supervisor agent, agent topology, LangGraph, A2A, handoff between agents) | `/engineos:design-agents` + `rules/llm-apps.md`; skill `agent-system-design`; agent `llm-coordinator` (hermsdorff) in INTERVIEW mode; developer approval (hitl reason `topology-approval`) recorded in the change record before any graph code |
 | DBA / data layer (`*.sql`, migrations, schema, query perf, indexing) | `rules/architecture.md` + `rules/data.md`; agent `dba-coordinator` (writes migrations/queries, holds NO database MCP). Live schema/plan introspection is the read-only `postgres-specialist` / `oracle-specialist` leaves |
 | DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud) | `rules/architecture.md` + `rules/observability.md`; agent `devops-coordinator` (writes config, holds NO cloud MCP). Live cluster/cloud/CI introspection is the read-only `kubernetes-specialist` / `gcp-specialist` / `cicd-specialist` leaves |
 | Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials) | `rules/security.md`; dispatch `security-reviewer` |
@@ -142,7 +144,7 @@ read it there, not here.
 
 1. **Spec before code** — any change touching >2 files or any new feature.
 2. **The final gate before "done"** — `rules/verification.md`. The automated Stop-gate
-   half covers JS/TS-family packages only; other stacks are verified manually. This is
+   half covers JS/TS packages (npm/pnpm/yarn/Nx scripts) and Python packages (ruff, pyright, pytest); other stacks are verified manually. This is
    the Validation gate of `rules/gates.md`, never the Release gate.
 3. **No secrets** in code, config, or commits. Ever — `rules/security.md`.
 4. **Project conventions win** over these rules when they conflict:
@@ -166,6 +168,9 @@ read it there, not here.
 11. **Public surface changes follow `docs/COMPATIBILITY.md`** — rule paths, agent names,
     aliases, command names, skill directories, hook contracts and the return envelope
     are versioned surface. A rename is a deprecation with a window, never a silent `git mv`.
+12. **Git writes follow the developer's `ENGINEOS_GIT_WRITES` setting** (`ask`, the
+    default, or `auto`) — `rules/git.md`. Under `ask`, every git or forge command that
+    writes becomes a permission prompt; an approval covers one action, never a session.
 
 ## Codebase Overview
 

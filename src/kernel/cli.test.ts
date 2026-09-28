@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { isRecord, KernelError } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
+import { tempRoot } from '../testing/harness';
 import { parseFlags, requirePositional, runKernel } from './cli';
 import { lazyRegistries } from './context';
 
@@ -668,4 +671,72 @@ test('skill-state answers the list form for no argument and for an empty --id', 
 test('skill-state --id answers the lookup form in jq key order', () => {
   const answer = answerOf(['skill-state', '--id', 'no-such-skill-anywhere'], 0);
   assert.deepEqual(answer, { id: 'no-such-skill-anywhere', exists: false, enabled: true });
+});
+
+// resolve-stack is the one arm whose positional is optional and whose answer
+// comes from the caller's tree, not the registries: the cases below drive it
+// over a scratch directory and never over the checkout.
+test('resolve-stack detects the tree at the given directory', (t) => {
+  const dir = tempRoot(t);
+  mkdirSync(join(dir, 'api'));
+  writeFileSync(join(dir, 'api', 'requirements.txt'), 'fastapi==0.110.0\n');
+  writeFileSync(join(dir, 'package.json'), '{"dependencies":{"react":"18"}}\n');
+  const io = memoryIo({ env });
+  assert.equal(runKernel(['resolve-stack', dir], io), 0);
+  assert.deepEqual(JSON.parse(io.stdout.join('')), {
+    packages: [
+      { dir: '.', language: 'node', framework: 'react', compose_service: null },
+      { dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
+    ],
+    source: 'detected',
+  });
+});
+
+test('resolve-stack answers the config when .engineos/config.json is present', (t) => {
+  const dir = tempRoot(t);
+  mkdirSync(join(dir, '.engineos'));
+  writeFileSync(join(dir, 'package.json'), '{"dependencies":{"react":"18"}}\n');
+  writeFileSync(join(dir, '.engineos', 'config.json'), JSON.stringify({
+    version: 1,
+    stack: { packages: [{ dir: './web/', language: 'node', framework: 'next', compose_service: 'web' }] },
+  }));
+  const io = memoryIo({ env });
+  assert.equal(runKernel(['resolve-stack', dir], io), 0);
+  assert.deepEqual(JSON.parse(io.stdout.join('')), {
+    packages: [{ dir: 'web', language: 'node', framework: 'next', compose_service: 'web' }],
+    source: 'config',
+  });
+});
+
+test('resolve-stack defaults to cwd outside a work tree and resolves a relative dir against it', (t) => {
+  const dir = tempRoot(t);
+  mkdirSync(join(dir, 'svc'));
+  writeFileSync(join(dir, 'svc', 'pyproject.toml'), '[project]\ndependencies = ["django"]\n');
+  const io = memoryIo({ env, cwd: dir });
+  assert.equal(runKernel(['resolve-stack'], io), 0);
+  assert.deepEqual(JSON.parse(io.stdout.join('')), {
+    packages: [{ dir: 'svc', language: 'python', framework: 'django', compose_service: null, python_env: 'auto' }],
+    source: 'detected',
+  });
+  const io2 = memoryIo({ env, cwd: dir });
+  assert.equal(runKernel(['resolve-stack', 'svc'], io2), 0);
+  assert.equal(JSON.parse(io2.stdout.join('')).packages[0].dir, '.');
+});
+
+test('resolve-stack refuses a flag, a second argument, a missing directory and a malformed config', (t) => {
+  const dir = tempRoot(t);
+  const io = memoryIo({ env, cwd: dir });
+  assert.equal(runKernel(['resolve-stack', '--dir', dir], io), 1);
+  assert.deepEqual(JSON.parse(io.stdout.join('')), { error: 'resolve-stack takes a directory as a positional argument, not a flag (got --dir)' });
+  const io2 = memoryIo({ env, cwd: dir });
+  assert.equal(runKernel(['resolve-stack', dir, dir], io2), 1);
+  assert.deepEqual(JSON.parse(io2.stdout.join('')), { error: 'resolve-stack takes at most one argument, got 2' });
+  const io3 = memoryIo({ env, cwd: dir });
+  assert.equal(runKernel(['resolve-stack', 'nope'], io3), 1);
+  assert.deepEqual(JSON.parse(io3.stdout.join('')), { error: `resolve-stack: ${join(dir, 'nope')} is not a directory` });
+  mkdirSync(join(dir, '.engineos'));
+  writeFileSync(join(dir, '.engineos', 'config.json'), '{"version":1,"stack":{"packages":[]},"x":1}');
+  const io4 = memoryIo({ env, cwd: dir });
+  assert.equal(runKernel(['resolve-stack', dir], io4), 1);
+  assert.deepEqual(JSON.parse(io4.stdout.join('')), { error: `${join(dir, '.engineos', 'config.json')}: the document has an unknown key "x"` });
 });

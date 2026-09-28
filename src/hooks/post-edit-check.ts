@@ -7,7 +7,9 @@
 // PostToolUse(Edit|Write) in hooks/hooks.json.
 //
 // Tool-aware: biome or eslint for lint, nx or a package script for typecheck,
-// pnpm/yarn/npm for the runner. Scoped to the changed package, never the repo,
+// pnpm/yarn/npm for the runner; for a Python edit, ruff and pyright through the
+// package's environment (./runner-python.ts), the same ladder the Stop gate
+// runs. Scoped to the changed package, never the repo,
 // and the hunt for that package is bounded to the session cwd by the same
 // two-layer containment the Stop gate uses — a lexical ceiling on the walk plus a
 // realpath check on what came back — so a package.json above or beside the
@@ -23,10 +25,11 @@ import type { HookEnvelope } from './envelope';
 import { fail, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { classify } from './classify-failure';
-import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
-import { PACKAGE_MARKERS, PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, containedIn, execRun, failureBlock, findUpAny, firstLines, hasVerifyExtension, isFile, startDir, verifyEnvironment } from './verify-targets';
+import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
+import { PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, containedIn, execRun, failureBlock, findUpAny, firstLines, hasPythonExtension, hasVerifyExtension, isFile, packageOwner, projectConfig, startDir, verifyEnvironment } from './verify-targets';
 
 const TYPECHECK_TARGET = 'typecheck';
+const LINT_TARGET = 'lint';
 
 // bash `find_up "$START" nx.json pnpm-workspace.yaml .git` — the workspace a
 // scoped run is issued from, falling back to the package dir itself.
@@ -77,7 +80,7 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
   }
 
   const start = startDir(env.file);
-  const packageDir = findUpAny(start, PACKAGE_MARKERS, stopReal);
+  const packageDir = packageOwner(start, stopReal);
   if (packageDir === null) return silent;
   if (!containedIn(stopReal, packageDir)) return silent;
   // A workspace root that resolves outside the cwd is dropped rather than
@@ -86,11 +89,9 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
   const root = workspace !== null && containedIn(stopReal, workspace) ? workspace : packageDir;
 
   const environment = verifyEnvironment(ctx.io.env);
-  const selection = runnerSelect(root);
-  const failures: Failure[] = [
-    ...typecheck(selection, packageDir, root, environment.env, spawn),
-    ...lint(selection, env.file, start, root, stopReal, environment.env, spawn),
-  ];
+  const failures: Failure[] = hasPythonExtension(env.file)
+    ? pythonChecks(packageDir, root, environment.env, spawn)
+    : nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn);
   if (failures.length === 0) return silent;
   // bash accumulated each block behind a newline and printed the lot with
   // `printf '%b' | head -80`, so the report opens on a blank line.
@@ -98,6 +99,33 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
 }
 
 // ------------------------------------------------------------------ internals
+
+// The arm is chosen by the edited FILE, not by the package: a directory that
+// holds both a pyproject.toml and a package.json is two packages, and a .ts edit
+// in it wants tsc, not pyright. The Node arm is exactly what it was.
+function nodeChecks(
+  file: string,
+  start: string,
+  packageDir: string,
+  root: string,
+  stop: string,
+  env: NodeJS.ProcessEnv,
+  spawn: SpawnSyncLike,
+): Failure[] {
+  const selection = runnerSelect(root);
+  return [...typecheck(selection, packageDir, root, env, spawn), ...lint(selection, file, start, root, stop, env, spawn)];
+}
+
+// Both Python targets go through the runner ladder — there is no per-file
+// linter form to drive directly, ruff already scopes to the package. A .py
+// edit in a package that is not Python (a Node repo's helper script), or in a
+// Python package with no environment, is silent here: this hook is opt-in and
+// per edit, and the Stop gate is where the missing environment is announced.
+function pythonChecks(packageDir: string, root: string, env: NodeJS.ProcessEnv, spawn: SpawnSyncLike): Failure[] {
+  const selection = runnerSelectFor(packageDir, root, projectConfig(root), undefined, spawn);
+  if (selection.kind !== 'python') return [];
+  return [...typecheck(selection, packageDir, root, env, spawn), ...target(selection, packageDir, LINT_TARGET, LINT_TIMEOUT_SECONDS, root, env, spawn)];
+}
 
 // Nx addresses the project by name and runs from the workspace root; a package
 // manager runs the package's own script from its directory. Both arms are the
@@ -110,11 +138,24 @@ function typecheck(
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
 ): Failure[] {
+  return target(selection, packageDir, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, root, env, spawn);
+}
+
+// One rung of the ladder for one target: handle, hasTarget, run, classify.
+function target(
+  selection: RunnerSelection,
+  packageDir: string,
+  name: string,
+  timeoutSeconds: number,
+  root: string,
+  env: NodeJS.ProcessEnv,
+  spawn: SpawnSyncLike,
+): Failure[] {
   const handle = runnerHandle(selection, packageDir);
   if (handle === null) return [];
-  if (!runnerHasTarget(selection, handle, TYPECHECK_TARGET, undefined, spawn, root)) return [];
-  const result = runnerRun(selection, handle, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, env, spawn, root);
-  return redOf(selection, TYPECHECK_TARGET, handle, result);
+  if (!runnerHasTarget(selection, handle, name, undefined, spawn, root)) return [];
+  const result = runnerRun(selection, handle, name, timeoutSeconds, env, spawn, root);
+  return redOf(selection, name, handle, result);
 }
 
 // Probe the binary before running it: a config file existing while the linter is
@@ -128,6 +169,9 @@ function lint(
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
 ): Failure[] {
+  // biome and eslint are driven through the package manager's exec form, which
+  // only the Node arms carry.
+  if (selection.kind === 'python') return [];
   for (const linter of LINTERS) {
     // Bounded and contained like the package hunt: a biome.json above the
     // session cwd, or reached through a symlink out of it, must not decide that

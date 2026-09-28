@@ -197,11 +197,21 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     // The ceiling is non-null exactly when the floor is, and any_high raises the
     // floor to high, so what hitl is handed here is the ceiling at high — the
     // same value the contract object publishes.
-    if (decisions.any_high && ceiling !== null) {
+    //
+    // The one other fold is the topology fact: a matched rule whose `when`
+    // declares multi_agent_system owes the developer's approval before any
+    // graph code (policy.json hitl.reasons topology-approval). That reason is
+    // about the REQUEST, not about a tier, so it is folded at whatever tier the
+    // contract already carries — the floor's tier contributes no reason of its
+    // own below high, so a floor alone still never triggers hitl. It needs a
+    // ceiling to ask about, and every rule signal is also an intent signal, so
+    // a matched rule always arrives with a floor (resolve.test.ts holds this).
+    const topology = topologyRequired(decisions, ctx.registries);
+    if ((decisions.any_high || topology) && floor !== null && ceiling !== null) {
       // No conflict fact here: a matched high rule on a task nobody has
       // classified is not an observed disagreement between rule and tier, and
       // asserting one would be the same unearned claim one level down.
-      answer.hitl = hitlSection({ riskTier: 'high', autonomy: ceiling }, ctx.registries);
+      answer.hitl = hitlSection({ riskTier: floor, autonomy: ceiling, topology }, ctx.registries);
     }
     answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
   }
@@ -277,6 +287,18 @@ function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSec
     gates: unique(declared(decisions.matches.map((match) => match.gate))),
     preferences: unique(declared(decisions.matches.map((match) => match.prefer))),
   };
+}
+
+// The `when` key that names a multi-agent topology in decision-rules.json. The
+// fold reads the matched rules' declared condition rather than a rule id, so a
+// second rule with the same condition folds the same way without a code change.
+const TOPOLOGY_WHEN_KEY = 'multi_agent_system';
+
+function topologyRequired(decisions: DecisionsSection, regs: Registries): boolean {
+  const matched = new Set(decisions.matches.map((match) => match.id));
+  return regs.decisionRules.rules.some(
+    (rule) => matched.has(rule.id) && rule.when[TOPOLOGY_WHEN_KEY] === true,
+  );
 }
 
 // A floor the registry cannot map to a ceiling is a broken registry, not a null

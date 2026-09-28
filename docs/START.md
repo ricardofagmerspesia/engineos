@@ -172,12 +172,21 @@ These run on their own. Know what they do and how to respond:
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
 | `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) |
 | `prompt-advisor` | on your prompt | nothing — one non-blocking task contract combining route, scale, model tier, policy loads and matched decision rules |
+| `git-write-guard` | before each `Bash` call | answer the permission prompt when the command writes to git or the forge (`commit`, `push`, `add`, `checkout`, `gh pr create`, …). Read-only git never prompts. Personal setting `ENGINEOS_GIT_WRITES=ask` (default) \| `auto` in `~/.claude/settings.local.json` — see `rules/git.md` "Who may write" |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
 
-Every hook in this table checks the bypass marker first and exits early when it is
-set — see `/bypass` in §3. That is the only supported way to silence them; editing
-`settings.json` to unwire a hook takes it off for good, not for one task.
+Every hook in this table except `git-write-guard` checks the bypass marker first
+and exits early when it is set — see `/bypass` in §3. That is the only supported
+way to silence them; editing `settings.json` to unwire a hook takes it off for
+good, not for one task. The git-write guard is the developer's own safety net, not
+a constitutional rule, so bypass leaves it on; switch it off per machine with:
+
+```json
+{"env": {"ENGINEOS_GIT_WRITES": "auto"}}
+```
+
+in `~/.claude/settings.local.json`.
 
 **Tests are opt-in, not automatic.** EngineOS writes no tests and runs no test
 suite unless you ask for them ("write tests", "add coverage", "TDD this", "run

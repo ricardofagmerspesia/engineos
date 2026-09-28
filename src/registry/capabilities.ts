@@ -20,6 +20,7 @@ export const CAPABILITY_IDS = [
   'document',
   'security-review',
   'route',
+  'design-agent-topology',
 ] as const;
 
 export type CapabilityId = (typeof CAPABILITY_IDS)[number];
