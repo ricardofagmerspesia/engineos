@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { resolveRoot } from '../registry/paths';
 import { fixtureRepo, relocatedRoot, tempRoot } from '../testing/harness';
-import { IMPORT_RE, initProject, parseStackSpec } from './project';
+import { IMPORT_RE, claudeMdTemplate, initProject, parseStackSpec } from './project';
 
 const checkout = resolveRoot({}, __dirname);
 const SIX_DIRS = ['.engineos/changes', '.engineos/archived', '.engineos/memory', 'docs/specs', 'docs/prds', 'docs/rules'];
@@ -319,6 +319,77 @@ test('nothing is written when detection finds no package, and the hint says how 
   assert.ok(run.stdout.includes('  stack (detected): none\n'), run.stdout);
   assert.ok(run.stdout.includes(`  ${CONFIG}: not written — no package detected; declare one with --stack <framework>[@dir]\n`), run.stdout);
   assert.equal(existsSync(join(repo, CONFIG)), false);
+});
+
+// ------------------------------------------------------- CLAUDE.md template
+
+test('the CLAUDE.md template follows the resolved stack: python-only → the python variant, anything else → the general one', () => {
+  const py = { dir: '.', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' } as const;
+  const node = { dir: 'web', language: 'node', framework: 'react', compose_service: null } as const;
+  assert.equal(claudeMdTemplate([]), 'templates/project-claude.md');
+  assert.equal(claudeMdTemplate([node]), 'templates/project-claude.md');
+  assert.equal(claudeMdTemplate([py, node]), 'templates/project-claude.md');
+  assert.equal(claudeMdTemplate([py]), 'templates/project-claude-python.md');
+  assert.equal(claudeMdTemplate([py, { ...py, dir: 'svc' }]), 'templates/project-claude-python.md');
+});
+
+test('both starter templates ship and carry the sections init tells the developer to fill', () => {
+  for (const name of ['project-claude.md', 'project-claude-python.md']) {
+    const text = readFileSync(join(checkout, 'templates', name), 'utf8');
+    for (const heading of ['## Stack (router hints)', '## Commands', '## EngineOS']) {
+      assert.ok(text.includes(`${heading}\n`), `${name} lacks ${heading}`);
+    }
+  }
+  const general = readFileSync(join(checkout, 'templates', 'project-claude.md'), 'utf8');
+  assert.ok(general.includes('`npm run typecheck`') && general.includes('`pyright`'), 'general template carries both stacks');
+  const python = readFileSync(join(checkout, 'templates', 'project-claude-python.md'), 'utf8');
+  assert.ok(python.includes('`pyright`') && !python.includes('npm run'), 'python variant is single-stack');
+});
+
+test('a python-only repo is seeded from the python variant', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root, { files: { 'pyproject.toml': '[project]\ndependencies = ["fastapi"]\n' } });
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  stack (detected):\n    fastapi@.                python\n'), run.stdout);
+  assert.ok(run.stdout.includes('  CLAUDE.md: created from templates/project-claude-python.md'), run.stdout);
+  assert.equal(
+    readFileSync(join(repo, 'CLAUDE.md'), 'utf8'),
+    readFileSync(join(checkout, 'templates', 'project-claude-python.md'), 'utf8'),
+  );
+});
+
+test('a declared mixed stack is seeded from the general template, which carries both blocks', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--stack', 'fastapi@backend,react@frontend'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  CLAUDE.md: created from templates/project-claude.md'), run.stdout);
+  assert.equal(
+    readFileSync(join(repo, 'CLAUDE.md'), 'utf8'),
+    readFileSync(join(checkout, 'templates', 'project-claude.md'), 'utf8'),
+  );
+});
+
+test('--dry-run names the python variant for a declared python-only stack and writes nothing', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--dry-run', '--stack', 'fastapi@api'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  would create CLAUDE.md from templates/project-claude-python.md\n'), run.stdout);
+  assert.equal(existsSync(join(repo, 'CLAUDE.md')), false);
 });
 
 test('--dry-run prints the config it would write and writes nothing', (t) => {

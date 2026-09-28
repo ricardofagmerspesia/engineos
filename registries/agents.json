@@ -52,7 +52,7 @@
     {
       "name": "backend-coordinator",
       "alias": "borisenko",
-      "description": "Backend specialist — NestJS modules, controllers, services, DTOs, data access, repositories, queues, workers, migrations. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: borisenko.",
+      "description": "NestJS or FastAPI backend specialist — modules/routers, controllers, services, DTOs/Pydantic schemas, data access, repositories, queues, workers, migrations. Reads the resolved stack first and loads nestjs-patterns or python-patterns accordingly. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code). Alias: borisenko.",
       "tools": [
         "Read",
         "Grep",

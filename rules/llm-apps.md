@@ -4,11 +4,13 @@
 - DO keep prompts in versioned files/constants with names and changelog — never inline string soup scattered across code.
 - DO structure prompts: role/context → task → constraints → output format → examples. Examples beat instructions.
 - DO template with explicit variables; validate variables before interpolation.
+- DO test every prompt that carries customer data, three kinds, all required: a **fence-escape probe** (a value containing the data delimiter must not close the fence or land outside it), a **no-customer-string denylist** (no known tenant, product or person string appears in any built prompt — few-shots are synthetic), and a **prompt-version pin** (`PROMPT_VERSION` is stamped into every usage record and the test fails when the text changes without a bump).
+- DO feature-flag a tool's prompt block together with its tool registration — one flag, both sides; a prompt that describes a tool the model cannot call, or a registered tool the prompt never mentions, is a bug.
 - DON'T tweak prompts in production without an eval run (see below).
 
 ## Structured output
 - DO use tool/function calling or structured-output APIs for machine-readable results — never regex-parse free text.
-- DO validate every model output against a schema (zod/JSON Schema) before use; on failure, retry with the validation error appended.
+- DO validate every JSON the model returns against a schema (zod / Pydantic / JSON Schema) before use — verdicts, classifications, DSL, all typed. On validation failure: ONE retry carrying the validation error as feedback, then a typed failure. No regex-and-defaults parsing.
 - DON'T let model output cross a trust boundary unvalidated: it is untrusted input, same as a user form.
 
 ## Security (prompt injection)
@@ -112,3 +114,12 @@ inverted back out of the vector.
 - DO give agents few, well-described tools (5–10 sharp tools beat 30 vague ones).
 - DO cap agent loops (max iterations, max cost) — runaway agents burn money.
 - DO make tool errors informative to the model: return what went wrong and what to try, not just "error".
+
+Any system with more than one agent starts at `/engineos:design-agents` (skill
+`agent-system-design`): topology, roster, tools, protocol, context scoping,
+memory, harness, guardrails, failure policy, observability, evals, diagrams —
+one step at a time, the developer answering each. The agent-topology spec it
+writes is the design-gate artifact; the developer's approval is recorded under
+the change record's `## Human decisions` (hitl reason `topology-approval`)
+before any graph code exists. The `langgraph-patterns` skill is loaded only
+after that approval is recorded, never to choose the topology.

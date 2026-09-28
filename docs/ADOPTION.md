@@ -109,9 +109,12 @@ What it creates:
   optional — it's where durable, team-shared decisions get distilled
   (`rules/memory.md`). `.engineos/audits/` is created separately, by `/audit`, on
   first use.
-- `CLAUDE.md` from `templates/project-claude.md`, **only if the project has none**.
-  An existing one is never touched. Edit it: project name, stack, build/test/lint
-  commands, any rule overrides. **Do not** copy EngineOS rules in — project
+- `CLAUDE.md` from `templates/project-claude.md`, **only if the project has none**
+  — or from `templates/project-claude-python.md` when every package the stack
+  resolves to (`--stack`, or detection) is Python. The general template carries a
+  Node block and a Python block; delete the one your repo does not use, a mixed
+  repo keeps both. An existing `CLAUDE.md` is never touched. Edit it: project
+  name, stack, build/test/lint commands, any rule overrides. **Do not** copy EngineOS rules in — project
   `CLAUDE.md` > EngineOS > defaults, and the routing hook already appends "follow
   project CLAUDE.md" on every edit.
 

@@ -13,6 +13,12 @@
     "Bash(which:*)",
     "Bash(node --version:*)",
     "Bash(npm ls:*)",
-    "Bash(jq:*)"
+    "Bash(jq:*)",
+    "Bash(python --version:*)",
+    "Bash(python3 --version:*)",
+    "Bash(uv --version:*)",
+    "Bash(ruff --version:*)",
+    "Bash(pyright --version:*)",
+    "Bash(pip list:*)"
   ]
 }

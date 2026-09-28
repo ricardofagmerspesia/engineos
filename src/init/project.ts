@@ -51,14 +51,28 @@ const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir]
 // manifest joins them because it is what this port actually reads.
 const REQUIRED_SIBLINGS = ['hooks/scaffold-layout.sh', 'hooks/layout-manifest.sh', 'registries/layout-manifest.json'];
 
+// Two starter CLAUDE.md files ship: the general one carries a Node block AND a
+// Python block (the developer deletes the one they do not use, a mixed repo keeps
+// both), the Python variant is the clean single-stack file. The pick is made from
+// the same package list the config was written from: every resolved package
+// Python → the variant; anything else, including "no package", → the general
+// one, which is what init always produced before the stack existed.
+export const CLAUDE_MD_TEMPLATE = 'templates/project-claude.md';
+export const CLAUDE_MD_TEMPLATE_PYTHON = 'templates/project-claude-python.md';
+
+export function claudeMdTemplate(packages: readonly PackageStack[]): string {
+  const pythonOnly = packages.length > 0 && packages.every((pkg) => pkg.language === 'python');
+  return pythonOnly ? CLAUDE_MD_TEMPLATE_PYTHON : CLAUDE_MD_TEMPLATE;
+}
+
 // A one-entry manifest rather than a second call into the scaffolder's guard: the
 // CLAUDE.md seed must go through the SAME containment checks the manifest seeds
 // use, so the two write sites can never drift apart. `dir: ''` is the project
 // root itself, which is exactly what bash asked for with
 // `engineos_scaffold_dir "$ROOT" ""`.
-const CLAUDE_MD_SEED: ManifestEntry[] = [
-  { dir: '', seeds: [{ src: '@templates/project-claude.md', dest: 'CLAUDE.md' }] },
-];
+function claudeMdSeed(template: string): ManifestEntry[] {
+  return [{ dir: '', seeds: [{ src: `@${template}`, dest: 'CLAUDE.md' }] }];
+}
 
 export interface InitDeps {
   io: Io;
@@ -134,8 +148,12 @@ export function initProject(argv: string[], deps: InitDeps): number {
     io.out(created.length > 0 ? `  created: ${created.join(', ')}\n` : '  layout: already complete\n');
   }
 
-  writeProjectConfig({ io, project, stack, dryRun });
-  writeProjectClaudeMd({ io, project, root, dryRun });
+  // Resolved once: the config is written from this list and the CLAUDE.md
+  // template is picked from it, so the two can never disagree about the stack.
+  const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
+  const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
+  writeProjectConfig({ io, project, packages, source, dryRun });
+  writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
   io.out(doneMessage(root));
   return EXIT_OK;
 }
@@ -145,10 +163,14 @@ export function initProject(argv: string[], deps: InitDeps): number {
 // survive a second init. Nothing is written when detection finds no package:
 // a config wins entirely over detection (contracts §2), so an empty one would
 // pin the project to "no stack" the day a package.json appears.
-function writeProjectConfig(opts: { io: Io; project: string; stack: StackSpec; dryRun: boolean }): void {
-  const { io, project, stack, dryRun } = opts;
-  const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
-  const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
+function writeProjectConfig(opts: {
+  io: Io;
+  project: string;
+  packages: readonly PackageStack[];
+  source: StackSource;
+  dryRun: boolean;
+}): void {
+  const { io, project, packages, source, dryRun } = opts;
   io.out(stackTable(packages, source));
   const target = join(project, PROJECT_CONFIG_PATH);
   if (lstatOk(target)) {
@@ -159,7 +181,7 @@ function writeProjectConfig(opts: { io: Io; project: string; stack: StackSpec; d
     io.out(`  ${PROJECT_CONFIG_PATH}: not written — no package detected; declare one with --stack <framework>[@dir]\n`);
     return;
   }
-  const config: ProjectConfig = { version: 1, stack: { packages } };
+  const config: ProjectConfig = { version: 1, stack: { packages: [...packages] } };
   const text = `${JSON.stringify(config, null, 2)}\n`;
   if (dryRun) {
     io.out(`  would write ${PROJECT_CONFIG_PATH}:\n${indent(text, '    ')}`);
@@ -226,21 +248,21 @@ export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | {
 // The existence test is `-e || -L`, not `-f`: `-f` is FALSE for a dangling
 // symlink, so a repo that ships CLAUDE.md as a link to an absolute path
 // elsewhere on the machine would have the template copied THROUGH it.
-function writeProjectClaudeMd(opts: { io: Io; project: string; root: string; dryRun: boolean }): void {
-  const { io, project, root, dryRun } = opts;
+function writeProjectClaudeMd(opts: { io: Io; project: string; root: string; template: string; dryRun: boolean }): void {
+  const { io, project, root, template, dryRun } = opts;
   const claudeMd = join(project, 'CLAUDE.md');
   if (lstatOk(claudeMd)) {
-    io.out('  CLAUDE.md: exists, left untouched (declare your stack there — see templates/project-claude.md)\n');
+    io.out(`  CLAUDE.md: exists, left untouched (declare your stack there — see ${template})\n`);
     return;
   }
   if (dryRun) {
-    io.out('  would create CLAUDE.md from templates/project-claude.md\n');
+    io.out(`  would create CLAUDE.md from ${template}\n`);
     return;
   }
-  scaffoldLayout(project, root, CLAUDE_MD_SEED);
+  scaffoldLayout(project, root, claudeMdSeed(template));
   io.out(
     isFile(claudeMd)
-      ? '  CLAUDE.md: created from templates/project-claude.md — fill in the Stack and Commands sections\n'
+      ? `  CLAUDE.md: created from ${template} — fill in the Stack and Commands sections\n`
       : '  CLAUDE.md: skipped — the project root did not resolve to a directory inside itself\n',
   );
 }

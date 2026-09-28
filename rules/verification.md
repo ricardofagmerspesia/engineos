@@ -54,3 +54,31 @@ defined — every other document names it and stops. The `Stop` hook
   fix loop until green, with output shown.
 - Wave barriers (`rules/parallelism.md`) integrate contracts; the gate runs at the
   last barrier only.
+
+### Per stack
+
+The gate resolves the stack per package directory (`scripts/kernel.sh resolve-stack
+<dir>`: explicit `.engineos/config.json` first, manifests second) and runs the same
+targets through that stack's tools. A directory holding both manifests runs both.
+
+| Stack (marker) | `lint` | `typecheck` | `test` (when on) | Runner |
+|---|---|---|---|---|
+| Node (`package.json`, Nx `project.json`) | `lint` package script | `typecheck` package script | `test` package script | npm / pnpm / yarn / Nx, whichever the package declares |
+| Python (`pyproject.toml`; `requirements.txt` only when no `pyproject.toml` sits above it) | `ruff check .` then `ruff format --check .` | `pyright` | `pytest -q` | `.venv/bin/<tool>` (package, then repo root) → `uv run --directory <pkg> <tool>` when `uv.lock` exists → `docker compose exec <service> <tool>` when `.engineos/config.json` declares `compose_service` → skipped, with the visible line `[engineos] stop-verify skipped for <pkg>: no Python environment found (venv, uv or compose)` |
+
+- A target the package does not declare (no script; no `[tool.ruff]` /
+  `[tool.pyright]` / pytest config and no resolvable tool) is skipped and
+  announced, never failed.
+- **Pinned versions.** `ruff`, `pyright` and `pytest` are pinned to exact `==`
+  versions in the package's dev dependencies, and a lockfile (`uv.lock` or
+  `requirements.lock`) is committed. The gate installs nothing; when a declared
+  tool is unpinned it still runs and emits a one-line advisory
+  (`<tool> not pinned to exact versions (rules/verification.md)`).
+- **Budget.** 90 s per target, 180 s for tests. `ENGINEOS_VERIFY_BUDGET_S=<seconds>`
+  raises every target's budget (pyright's first run over a large repo); a value
+  that is not a positive integer is ignored.
+- **Red vs infra.** The gate blocks ONCE, only on genuine red — ruff/pyright
+  diagnostics, pytest failures, eslint/tsc errors. A missing environment, a
+  missing tool (`No module named ruff`, `command not found`), a budget timeout or
+  a node too old for the toolchain is infra: announced as a skip, no fix attempt
+  consumed, never a block.

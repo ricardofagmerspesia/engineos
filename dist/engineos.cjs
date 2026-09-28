@@ -5241,9 +5241,15 @@ var EXIT_SELF = 3;
 var EXIT_USAGE = 64;
 var USAGE = "usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]";
 var REQUIRED_SIBLINGS = ["hooks/scaffold-layout.sh", "hooks/layout-manifest.sh", "registries/layout-manifest.json"];
-var CLAUDE_MD_SEED = [
-  { dir: "", seeds: [{ src: "@templates/project-claude.md", dest: "CLAUDE.md" }] }
-];
+var CLAUDE_MD_TEMPLATE = "templates/project-claude.md";
+var CLAUDE_MD_TEMPLATE_PYTHON = "templates/project-claude-python.md";
+function claudeMdTemplate(packages) {
+  const pythonOnly = packages.length > 0 && packages.every((pkg) => pkg.language === "python");
+  return pythonOnly ? CLAUDE_MD_TEMPLATE_PYTHON : CLAUDE_MD_TEMPLATE;
+}
+function claudeMdSeed(template) {
+  return [{ dir: "", seeds: [{ src: `@${template}`, dest: "CLAUDE.md" }] }];
+}
 function initProject(argv2, deps) {
   const { io: io2, root } = deps;
   const parsed = parseArgs(argv2, io2.cwd());
@@ -5299,15 +5305,15 @@ function initProject(argv2, deps) {
     io2.out(created.length > 0 ? `  created: ${created.join(", ")}
 ` : "  layout: already complete\n");
   }
-  writeProjectConfig({ io: io2, project, stack, dryRun });
-  writeProjectClaudeMd({ io: io2, project, root, dryRun });
+  const packages = stack.kind === "declared" ? stack.packages : resolveStack(project, null).packages;
+  const source = stack.kind === "declared" ? "config" : "detected";
+  writeProjectConfig({ io: io2, project, packages, source, dryRun });
+  writeProjectClaudeMd({ io: io2, project, root, template: claudeMdTemplate(packages), dryRun });
   io2.out(doneMessage(root));
   return EXIT_OK;
 }
 function writeProjectConfig(opts) {
-  const { io: io2, project, stack, dryRun } = opts;
-  const packages = stack.kind === "declared" ? stack.packages : resolveStack(project, null).packages;
-  const source = stack.kind === "declared" ? "config" : "detected";
+  const { io: io2, project, packages, source, dryRun } = opts;
   io2.out(stackTable(packages, source));
   const target2 = (0, import_node_path20.join)(project, PROJECT_CONFIG_PATH);
   if (lstatOk(target2)) {
@@ -5320,7 +5326,7 @@ function writeProjectConfig(opts) {
 `);
     return;
   }
-  const config = { version: 1, stack: { packages } };
+  const config = { version: 1, stack: { packages: [...packages] } };
   const text3 = `${JSON.stringify(config, null, 2)}
 `;
   if (dryRun) {
@@ -5383,19 +5389,22 @@ function parseStackSpec(spec) {
   return { ok: true, stack: { kind: "declared", packages } };
 }
 function writeProjectClaudeMd(opts) {
-  const { io: io2, project, root, dryRun } = opts;
+  const { io: io2, project, root, template, dryRun } = opts;
   const claudeMd = (0, import_node_path20.join)(project, "CLAUDE.md");
   if (lstatOk(claudeMd)) {
-    io2.out("  CLAUDE.md: exists, left untouched (declare your stack there \u2014 see templates/project-claude.md)\n");
+    io2.out(`  CLAUDE.md: exists, left untouched (declare your stack there \u2014 see ${template})
+`);
     return;
   }
   if (dryRun) {
-    io2.out("  would create CLAUDE.md from templates/project-claude.md\n");
+    io2.out(`  would create CLAUDE.md from ${template}
+`);
     return;
   }
-  scaffoldLayout(project, root, CLAUDE_MD_SEED);
+  scaffoldLayout(project, root, claudeMdSeed(template));
   io2.out(
-    isFile6(claudeMd) ? "  CLAUDE.md: created from templates/project-claude.md \u2014 fill in the Stack and Commands sections\n" : "  CLAUDE.md: skipped \u2014 the project root did not resolve to a directory inside itself\n"
+    isFile6(claudeMd) ? `  CLAUDE.md: created from ${template} \u2014 fill in the Stack and Commands sections
+` : "  CLAUDE.md: skipped \u2014 the project root did not resolve to a directory inside itself\n"
   );
 }
 function doneMessage(root) {

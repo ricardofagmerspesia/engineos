@@ -33,15 +33,36 @@ endpoint inventory, a runnable test collection, and a pass/fail report.
    `docker compose down -v --remove-orphans` (or the project's equivalent), and
    prune leftover named volumes/anonymous data for this stack only. Confirm a
    clean slate.
-2. **Bring the stack up via the project's npm script + Docker.** Read
-   `package.json` and detect the script (e.g. `npm run docker:up`,
-   `npm run start:docker`, `npm run dev:up`, or `docker compose up -d --build`).
-   Start detached. Wait for readiness by polling, not sleeping.
+2. **Bring the stack up with the project's own boot command.** Resolve the
+   stack first (`scripts/kernel.sh resolve-stack` → `packages[].language`,
+   `framework`, `compose_service`), then detect the boot command in this order,
+   first hit wins:
+   1. `Makefile` targets — `make up`, `make dev`, `make run` (read the target
+      body; it usually wraps one of the commands below).
+   2. `pyproject.toml` present (Python package) — `uv run uvicorn <app>:app`
+      when `uv.lock` exists, else `.venv/bin/uvicorn <app>:app --port <port>`
+      (or `.venv/bin/fastapi dev`); find `<app>` from the `uvicorn`/`fastapi`
+      line in the README, a `[project.scripts]` entry, or the module that builds
+      `FastAPI(...)` (typically `app/main.py` or `main.py`). Export the settings
+      the service validates at boot (read `settings.py` / `.env.example`; use
+      test values, never real secrets) — a pydantic-settings app crashes on a
+      missing required field, which is the expected behaviour, not a bug.
+   3. `docker-compose*.yml` declares the service (`compose_service` set, or a
+      service whose build context is the package dir) — `docker compose up -d
+      --build <service>`; layer extra compose files the README names.
+   4. `package.json` script (`npm run docker:up`, `npm run start:docker`,
+      `npm run dev:up`, `npm run dev`) or plain `docker compose up -d --build`.
+   Start detached. Wait for readiness by polling (`/healthz`, `/health`,
+   `/readyz`, `/api/health`, or the compose healthcheck), not sleeping.
 3. **Discover every endpoint & emit JSON.** Build the endpoint inventory from the
    real source of truth, in priority order: an OpenAPI/Swagger spec if exposed
-   (`/api-json`, `/swagger.json`, `/openapi.json`) → else route decorators/definitions
-   in code (NestJS `@Get/@Post/...`, Express routers, etc.). Write two files under
-   the project's `qa/` (create it):
+   (`/openapi.json` — FastAPI serves it by default, also behind a `root_path`
+   such as `/api/openapi.json`; NestJS `/api-json`, `/swagger.json`) → else
+   static inspection of the route definitions in code: NestJS `@Get/@Post/...`
+   controller decorators, Express routers, FastAPI `APIRouter` decorators
+   (`@router.get/post/...` plus the `prefix=` of each `include_router` call in
+   `main.py`, and any `dependencies=[Depends(...)]` that marks a route as
+   authenticated). Write two files under the project's `qa/` (create it):
    - `qa/endpoints.json` — inventory: method, path, auth required?, path/query
      params, request body shape, expected success status, notes (e.g. "skip: MFA").
    - `qa/collection.postman.json` — a Postman v2.1 collection covering every
@@ -68,6 +89,15 @@ endpoint inventory, a runnable test collection, and a pass/fail report.
   token → authenticated CRUD on each resource → state transitions → cleanup.
   Extract ids/tokens from responses into collection variables and reuse them
   downstream ("double-check everything since user creation and its outcomes").
+- **Auth without a login endpoint (JWT-only services).** Before skipping a
+  bearer-protected route, look for a dev-token script — `scripts/mint_dev_token.py`
+  or any `mint*`/`*token*` script under `scripts/` — and mint one with the same
+  secret the service reads (`.venv/bin/python scripts/mint_dev_token.py
+  --company <tenant> --sub <user>`, exporting the JWT secret env var the service
+  validates). Put the token in `qa/env.postman.json` as a variable, never in the
+  collection. Only when no login endpoint and no mint script exist do you mark
+  the route `SKIPPED (no token source)`. Also mint a second-tenant token where the
+  claims carry a tenant: the IDOR case below is a cross-tenant request.
 - **Positive paths:** valid input → expected 2xx + correct response shape/values.
 - **Negative paths per endpoint:** missing/invalid body → 400/422; no/expired
   token → 401; wrong-user resource (IDOR) → 403/404; nonexistent id → 404;
@@ -83,7 +113,7 @@ Write `qa/REPORT.md` and print a summary. Format:
 
 ```
 ## QA report: <system> — <YYYY-MM-DD HH:MM>
-Environment: <base url> | stack up via: <npm script>
+Environment: <base url> | stack up via: <make target | uv/venv command | compose service | npm script>
 Totals: <passed>/<total> passed, <failed> failed, <skipped> skipped
 
 ### Failed (actionable)

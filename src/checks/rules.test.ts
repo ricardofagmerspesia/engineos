@@ -103,12 +103,14 @@ test('C5 passes on a clean tree', (t) => {
 
 test('router row dropping a deferred rule is caught', (t) => {
   const observed = findings(t, 'C5', (root) => {
-    // The bash case's sed, line-targeted the same way: only the backend row.
+    // The bash case's sed, line-targeted the same way: only the NestJS backend
+    // row. The FastAPI row also starts with "| Backend work" and its rule defers
+    // to observability.md too, so a prefix match would plant two findings.
     editFile(root, 'CLAUDE.md', (text) =>
       text
         .split('\n')
         .map((line) =>
-          line.startsWith('| Backend work') ? line.replace(' + `rules/observability.md`', '') : line,
+          line.startsWith('| Backend work (NestJS') ? line.replace(' + `rules/observability.md`', '') : line,
         )
         .join('\n'),
     );

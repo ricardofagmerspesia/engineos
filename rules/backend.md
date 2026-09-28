@@ -1,4 +1,4 @@
-# Backend Rules — NestJS / Node
+# Backend Rules (NestJS) — NestJS / Node
 
 ## Module structure
 - DO one Nest module per domain feature; module exports only its service surface.

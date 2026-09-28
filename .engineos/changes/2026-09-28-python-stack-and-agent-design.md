@@ -30,7 +30,7 @@ developer approves the branch.
 - [x] Developer reviews and approves the spec (recorded below)
 - [x] Wave 0 — contracts frozen in docs/specs/2026-09-28-python-stack-and-agent-design-contracts.md (runner union, config schema, git-guard parser, registry diffs, pattern skeleton, wave-1 ownership)
 - [x] Wave 1 — Python runner + stack resolution + registries/mirrors/validator + git-write-guard (4 agents, disjoint scopes, one dispatch; barrier: typecheck, tests, validator 113/113, evals 11/11)
-- [ ] Wave 2 — rules + `python-patterns` + `langgraph-patterns` + agents/templates
+- [x] Wave 2 — rules + `python-patterns` + `langgraph-patterns` + agents/templates (4 agents; barrier: 2281 tests/0 fail, validator 113/113, evals 11/11; resolve-task on a FastAPI prompt → backend-python rules + python-patterns; init picks project-claude-python.md for python-only repos through the rebuilt dist)
 - [ ] Wave 3 — `agent-system-design` skill, form, command, catalog, hitl reason + ADR
 - [ ] Wave 4 — docs, deprecation header, final gate, manual verification on `labv-assist` and `labv-opensearch-agent-demo`
 - [ ] Developer re-runs `install.sh`
