@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Gate requirements as data. CLAUDE.md states the constitution; this file states which artifacts a given condition demands, so a new requirement is a registry entry rather than a constitutional amendment. Read by hooks/prompt-advisor.sh (keyword tier, via scripts/kernel.sh resolve-task) and by the model directly (full tier, via rules/gates.md).",
   "precedence": [
     "security and compliance",
@@ -244,6 +244,26 @@
         "\\brag\\b",
         "\\bretrieval\\b",
         "\\bembeddings?\\b"
+      ]
+    },
+    {
+      "id": "rule-multi-agent-design",
+      "priority": 85,
+      "source": "docs/specs/2026-09-28-python-stack-and-agent-design-design.md §4",
+      "when": {
+        "multi_agent_system": true
+      },
+      "then": {
+        "require": [
+          "agent-topology-spec",
+          "mermaid-workflow",
+          "developer-approval"
+        ],
+        "gate": "design"
+      },
+      "signals": [
+        "\\b(multi[- ]?agent|agents? (that|which) (talk|hand ?off|coordinate)|supervisor agent|agent topology|orchestrat(e|ion|or) .{0,30}agents?)\\b",
+        "\\b(langgraph|a2a|agent[- ]to[- ]agent)\\b"
       ]
     },
     {

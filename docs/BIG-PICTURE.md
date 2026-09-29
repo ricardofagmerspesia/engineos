@@ -19,11 +19,11 @@ makes it deterministic; hooks and scripts at the bottom enforce it at runtime.
 flowchart TB
     subgraph L1["1 · Constitution (prose, always on)"]
         CLAUDE["CLAUDE.md<br/>router table + non-negotiables"]
-        RULES["rules/*.md<br/>base · security · git · context (always on)<br/>gates · models · parallelism · risk-autonomy · verification (task bundle)<br/>architecture · backend · frontend · data · llm-apps · observability · testing (per intent)"]
+        RULES["rules/*.md<br/>base · security · git · context (always on)<br/>gates · models · parallelism · risk-autonomy · verification (task bundle)<br/>architecture · backend · backend-python · frontend · data · llm-apps · observability · testing (per intent)"]
     end
 
     subgraph L2["2 · Registries (policy as data)"]
-        INTENTS["intents.json<br/>31 intents → rules/skills/agents"]
+        INTENTS["intents.json<br/>32 intents → rules/skills/agents"]
         ROUTING["routing.json<br/>file path → domain"]
         POLICY["policy.json<br/>risk · autonomy · gates · retry · repair<br/>admit · breaker · hitl · telemetry"]
         MODELS["models.json<br/>tier → model binding"]
@@ -33,7 +33,7 @@ flowchart TB
     end
 
     subgraph L3["3 · Kernel (deterministic decisions)"]
-        KERNEL["scripts/kernel.sh<br/>resolve-task · route-path · route-intent · risk · gates<br/>model · repair · admit · breaker · hitl · waves · scale"]
+        KERNEL["scripts/kernel.sh<br/>resolve-task · route-path · route-intent · resolve-stack · risk · gates<br/>model · repair · admit · breaker · hitl · waves · scale"]
     end
 
     subgraph L4["4 · Hooks (runtime enforcement)"]
@@ -42,8 +42,8 @@ flowchart TB
 
     subgraph L5["5 · Executors"]
         AGENTS["agents/*.md — 22 specialists<br/>coordinators · leaf specialists · reviewers · builders"]
-        SKILLS["skills/ — procedures<br/>record-change · adr · retro · task-observer · release-notes<br/>strategy · eval-harness · nestjs/react/llm patterns"]
-        COMMANDS["commands/ — entry points<br/>/route /implement /audit /init /bypass<br/>/analyze-architecture /talk-about-the-system /agents:*"]
+        SKILLS["skills/ — procedures<br/>record-change · adr · retro · task-observer · release-notes<br/>strategy · eval-harness · nestjs/react/python/langgraph/llm patterns<br/>agent-system-design (the topology form)"]
+        COMMANDS["commands/ — entry points<br/>/route /implement /audit /init /bypass /design-agents<br/>/analyze-architecture /talk-about-the-system /agents:*"]
     end
 
     subgraph L6["6 · Project state & evidence"]
@@ -106,13 +106,19 @@ flowchart TD
     ROUTER --> RISK["classify risk BEFORE first write<br/>rules/risk-autonomy.md"]
     RISK --> ESC{kernel says<br/>escalate=true?}
     ESC -->|yes| RA["router agent → dispatch plan<br/>(never edits, never dispatches)"]
-    ESC -->|no| SPEC
-    RA --> SPEC
+    ESC -->|no| TOPO
+    RA --> TOPO
+
+    TOPO{"more than one agent?<br/>(agent-system intent or<br/>rule-multi-agent-design)"}
+    TOPO -->|yes| FORM["/engineos:design-agents<br/>llm-coordinator walks the 12-step form, one step at a time<br/>→ docs/specs/&lt;date&gt;-&lt;slug&gt;-agent-topology.md"]
+    FORM --> APPROVE["developer approval line<br/>(hitl reason topology-approval)<br/>recorded in the change record"]
+    TOPO -->|no| SPEC
 
     SPEC{"> 2 files or<br/>new feature?"}
     SPEC -->|yes| BRAIN["superpowers:brainstorming<br/>→ docs/specs/ design + plan"]
     SPEC -->|no| REC
     BRAIN --> REC["open change record<br/>.engineos/changes/&lt;date&gt;-&lt;slug&gt;.md"]
+    APPROVE -->|approved — only then| REC
 
     REC --> FAN{"> 3 files, > 1 domain,<br/>or ≥ 3 independent tasks?"}
     FAN -->|yes| WAVES["freeze contracts → waves<br/>kernel.sh admit per dispatch<br/>rules/parallelism.md"]
@@ -129,10 +135,11 @@ flowchart TD
         AD["PreToolUse Agent|Task<br/>announce-agent-dispatch.sh (green banner)"]
         AR["PostToolUse Agent|Task<br/>announce-agent-return.sh (status, span)"]
         AD --> AR
+        BASH["PreToolUse Bash<br/>git-write-guard.sh → git/forge write?<br/>permission prompt under ENGINEOS_GIT_WRITES=ask<br/>read-only git silent · survives bypass"]
     end
 
     WORK --> INT["integrate at wave barrier<br/>handoff per templates/handoff.md"]
-    INT --> GATE["FINAL GATE — once, at the end<br/>lint and typecheck, tests only if ON<br/>rules/verification.md"]
+    INT --> GATE["FINAL GATE — once, at the end<br/>Node: lint and typecheck · Python: ruff and pyright<br/>tests only if ON — rules/verification.md"]
     GATE -->|red| FIX["bounded fix loop<br/>kernel.sh repair: 2 attempts, 1 escalation"]
     FIX -->|still red| RED([report red honestly])
     FIX -->|green| RECORD
@@ -141,7 +148,7 @@ flowchart TD
     RECORD --> STOP
 
     subgraph STOP["Stop hooks"]
-        SV["stop-verify.sh<br/>code changed but gate not run? → block once"]
+        SV["stop-verify.sh<br/>code changed but gate not run? → block once<br/>Python: .venv → uv → compose, skips loudly when none"]
         RV["record-verify.sh<br/>code changed but not recorded? → block once"]
     end
 
@@ -159,7 +166,12 @@ Key properties the flow encodes:
 - **Every change leaves a record.** `mark-unrecorded.sh` raises a flag on the first
   edit; `record-verify.sh` refuses "done" until `record-change` clears it.
 - **Bypass is loud.** When `/engineos:bypass` is on, the reply says so and the
-  whole middle of the diagram is skipped.
+  whole middle of the diagram is skipped — except `git-write-guard.sh`, which is
+  the developer's own setting, not the constitution's.
+- **Topology before graph code.** A request for more than one agent goes through
+  `/engineos:design-agents` first; implementation starts only after the developer's
+  approval line (`topology-approval`) is in the change record, and
+  `langgraph-patterns` loads after that, never to choose for you.
 
 ---
 
@@ -169,13 +181,14 @@ Which script fires on which harness event, and what it may do.
 
 | Event | Matcher | Hook | Effect | Runtime |
 |---|---|---|---|---|
-| `SessionStart` | all | `ensure-project-layout.sh` | Scaffolds `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` when the project opted in (`.engineos/` present or `ENGINEOS_SCAFFOLD=1`). Non-blocking | node |
+| `SessionStart` | all | `ensure-project-layout.sh` | Scaffolds `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` when the project opted in (`.engineos/` present or `ENGINEOS_SCAFFOLD=1`); prints one `[engineos] stack: <framework>@<dir> · … · runners: …` line from `kernel.sh resolve-stack`. Non-blocking | node |
 | `UserPromptSubmit` | all | `prompt-advisor.sh` | Calls `kernel.sh resolve-task`, injects one task contract; writes a `router` span; announces `BYPASS ACTIVE` when bypassed | node |
-| `PreToolUse` | `Edit\|Write\|NotebookEdit` | `route-before-change.sh` | `kernel.sh route-path` on the file → injects the domain's rules/skill/agent (precedence: security → test → backend → dba → ios-release → android-release → devops → mobile → frontend → llm) | node |
+| `PreToolUse` | `Edit\|Write\|NotebookEdit` | `route-before-change.sh` | `kernel.sh route-path` on the file → injects the domain's rules/skill/agent (precedence: security → test → backend → dba → backend-python → ios-release → android-release → devops → mobile → frontend → llm) | node |
 | `PreToolUse` | `Agent\|Task` | `announce-agent-dispatch.sh` | Re-injects the green `[agent] … \| model \| mode \| scope` banner | node |
+| `PreToolUse` | `Bash` | `git-write-guard.sh` | Turns a git or forge **write** (`add`, `commit`, `push`, `checkout`, `gh pr create`, …) into a permission prompt tagged `[engineos] git write: <command>` while `ENGINEOS_GIT_WRITES` is `ask` (the default); read-only git is silent; never denies. Bypass does NOT silence it | node |
 | `PostToolUse` | `Edit\|Write\|NotebookEdit` | `mark-unrecorded.sh` | Sets the unrecorded-change flag in the git dir | node |
 | `PostToolUse` | `Agent\|Task` | `announce-agent-return.sh` | Green `-> done / FAILED` line; writes an `agent` span with duration + status floor | node |
-| `Stop` | all | `stop-verify.sh` | Blocks once if code changed and scoped lint+typecheck did not run; tests join only when ON (`ENGINEOS_VERIFY_TESTS=1` or in scope) | node |
+| `Stop` | all | `stop-verify.sh` | Blocks once if code changed and the scoped gate did not run — Node: lint+typecheck; Python: ruff+pyright through `.venv` → `uv` → the `compose_service` in `.engineos/config.json`, skipped loudly when none exists; tests join only when ON (`ENGINEOS_VERIFY_TESTS=1` or in scope); `ENGINEOS_VERIFY_BUDGET_S` raises the per-target timeout | node |
 | `Stop` | all | `record-verify.sh` | Blocks once if code changed and no change record was closed | node |
 | not wired | — | `post-edit-check.sh` | Per-edit typecheck+lint, retired from default wiring; opt-in only | node |
 
@@ -212,7 +225,7 @@ flowchart LR
     MED --> HITL
     HIGH --> HITL
 
-    HITL["kernel.sh hitl<br/>reasons: high-risk · evidence-insufficient · external-effect<br/>policy-conflict · never-retry-situation · destructive-action<br/>budget-exhausted · breaker-open"]
+    HITL["kernel.sh hitl<br/>reasons: high-risk · evidence-insufficient · external-effect<br/>policy-conflict · never-retry-situation · destructive-action<br/>budget-exhausted · breaker-open · topology-approval"]
     HITL -->|required| HD["record under '## Human decisions'<br/>in the change record"]
 ```
 
@@ -232,6 +245,7 @@ flowchart LR
     subgraph CALLERS["Callers"]
         PA["prompt-advisor.sh"]
         RBC["route-before-change.sh"]
+        SV["stop-verify.sh · ensure-project-layout.sh · init"]
         ORCH["orchestrator (main loop)"]
         RTR["router agent"]
         VG["validate-engineos.sh"]
@@ -240,6 +254,7 @@ flowchart LR
     subgraph K["kernel.sh subcommands"]
         RTASK["resolve-task<br/>prompt → task contract"]
         RPATH["route-path<br/>file → domain"]
+        RSTACK["resolve-stack<br/>dir → packages + source"]
         RINT["route-intent<br/>signals → intents"]
         RESC["route-escalate<br/>needs router agent?"]
         RISKC["risk · gates · hitl"]
@@ -258,6 +273,7 @@ flowchart LR
 
     PA --> RTASK
     RBC --> RPATH
+    SV --> RSTACK
     ORCH --> FLOW
     ORCH --> RISKC
     RTR --> RESC
@@ -278,6 +294,7 @@ flowchart LR
 |---|---|---|
 | What does this prompt need? | `resolve-task` | intents, rules, skills, agents, risk floor, autonomy ceiling, gates, `hitl` |
 | Which domain owns this file? | `route-path` | one domain (first match in precedence) |
+| Which stack does this repo run? | `resolve-stack [dir]` | `packages[]` (dir, language, framework, compose_service, python_env) + `source` = `config` (`.engineos/config.json`) or `detected` |
 | Can I dispatch another agent? | `admit --inflight N --queued M` | `dispatch` / `defer` / `reject` |
 | Should I keep calling this resource? | `breaker --state S --failures N` | `closed` / `open` / `half-open` |
 | Fix loop on a red check? | `repair --check C --attempt N` | 2 attempts, 1 tier escalation, then red |

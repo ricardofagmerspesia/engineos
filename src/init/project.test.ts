@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { resolveRoot } from '../registry/paths';
 import { fixtureRepo, relocatedRoot, tempRoot } from '../testing/harness';
-import { IMPORT_RE, initProject } from './project';
+import { IMPORT_RE, claudeMdTemplate, initProject, parseStackSpec } from './project';
 
 const checkout = resolveRoot({}, __dirname);
 const SIX_DIRS = ['.engineos/changes', '.engineos/archived', '.engineos/memory', 'docs/specs', 'docs/prds', 'docs/rules'];
@@ -47,7 +47,39 @@ test('bad usage is refused with 64 before anything is touched', () => {
   assert.deepEqual(init(['--wat'], { home: '/nonexistent' }), {
     status: 64,
     stdout: '',
-    stderr: 'usage: engineos init [--dir PATH] [--dry-run]\n',
+    stderr: 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]\n',
+  });
+  assert.deepEqual(init(['--stack'], { home: '/nonexistent' }), {
+    status: 64,
+    stdout: '',
+    stderr: '--stack needs auto or a comma list of framework[@dir]\n',
+  });
+});
+
+test('a bad --stack spec is refused with 64 and names the offending entry', () => {
+  const refuse = (spec: string, message: string): void => {
+    assert.deepEqual(init(['--stack', spec], { home: '/nonexistent' }), { status: 64, stdout: '', stderr: `${message}\n` });
+  };
+  refuse('rails', '--stack: unknown framework "rails" (one of fastapi, django, flask, nestjs, react, next, react-native)');
+  refuse('fastapi,', '--stack: empty entry in "fastapi,"');
+  refuse('fastapi@/abs', '--stack: "/abs" must be a directory relative to the repo root');
+  refuse('fastapi@../up', '--stack: "../up" must be a directory relative to the repo root');
+  refuse('fastapi@api,react@./api/', '--stack: "api" is declared twice');
+  refuse('', '--stack needs auto or a comma list of framework[@dir]');
+});
+
+test('parseStackSpec derives the language from the framework and normalises dirs', () => {
+  assert.deepEqual(parseStackSpec('auto'), { ok: true, stack: { kind: 'auto' } });
+  assert.deepEqual(parseStackSpec('fastapi@./backend/, react@frontend, react-native'), {
+    ok: true,
+    stack: {
+      kind: 'declared',
+      packages: [
+        { dir: 'backend', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
+        { dir: 'frontend', language: 'node', framework: 'react', compose_service: null },
+        { dir: '.', language: 'node', framework: 'react-native', compose_service: null },
+      ],
+    },
   });
 });
 
@@ -199,4 +231,176 @@ test('a dangling CLAUDE.md symlink is left standing, never written through', (t)
   assert.equal(run.status, 0);
   assert.ok(run.stdout.includes('  CLAUDE.md: exists, left untouched'));
   assert.equal(existsSync(join(outside, 'planted.md')), false);
+});
+
+// ------------------------------------------------------------------ --stack
+
+const CONFIG = '.engineos/config.json';
+
+function readConfig(repo: string): unknown {
+  return JSON.parse(readFileSync(join(repo, CONFIG), 'utf8'));
+}
+
+test('--stack auto (the default) writes what detection found, pretty-printed with a trailing newline', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root, {
+    pkg: { dependencies: { next: '14', react: '18' } },
+    files: { 'api/pyproject.toml': '[project]\ndependencies = ["fastapi"]\n' },
+  });
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  stack (detected):\n    next@.                   node\n    fastapi@api              python\n'), run.stdout);
+  assert.ok(run.stdout.includes(`  ${CONFIG}: created (detected) — edit it to correct the stack\n`), run.stdout);
+  const text = readFileSync(join(repo, CONFIG), 'utf8');
+  assert.ok(text.endsWith('}\n'));
+  assert.equal(text, `${JSON.stringify(JSON.parse(text), null, 2)}\n`);
+  assert.deepEqual(readConfig(repo), {
+    version: 1,
+    stack: {
+      packages: [
+        { dir: '.', language: 'node', framework: 'next', compose_service: null },
+        { dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
+      ],
+    },
+  });
+});
+
+test('--stack with a declared list writes exactly that list', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root, { pkg: { dependencies: { react: '18' } } });
+  const run = init(['--dir', repo, '--stack', 'fastapi@backend,react@frontend'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  stack (config):\n    fastapi@backend          python\n    react@frontend           node\n'), run.stdout);
+  assert.ok(run.stdout.includes(`  ${CONFIG}: created (declared)`), run.stdout);
+  assert.deepEqual(readConfig(repo), {
+    version: 1,
+    stack: {
+      packages: [
+        { dir: 'backend', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
+        { dir: 'frontend', language: 'node', framework: 'react', compose_service: null },
+      ],
+    },
+  });
+});
+
+test('an existing config is never overwritten, even by a different --stack', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const home = fakeHome(root);
+  init(['--dir', repo, '--stack', 'flask'], { home });
+  const before = readFileSync(join(repo, CONFIG), 'utf8');
+  const run = init(['--dir', repo, '--stack', 'django@svc'], { home });
+  assert.equal(run.status, 0);
+  assert.ok(run.stdout.includes(`  ${CONFIG}: exists, left untouched\n`), run.stdout);
+  assert.equal(readFileSync(join(repo, CONFIG), 'utf8'), before);
+});
+
+test('nothing is written when detection finds no package, and the hint says how to declare one', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0);
+  assert.ok(run.stdout.includes('  stack (detected): none\n'), run.stdout);
+  assert.ok(run.stdout.includes(`  ${CONFIG}: not written — no package detected; declare one with --stack <framework>[@dir]\n`), run.stdout);
+  assert.equal(existsSync(join(repo, CONFIG)), false);
+});
+
+// ------------------------------------------------------- CLAUDE.md template
+
+test('the CLAUDE.md template follows the resolved stack: python-only → the python variant, anything else → the general one', () => {
+  const py = { dir: '.', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' } as const;
+  const node = { dir: 'web', language: 'node', framework: 'react', compose_service: null } as const;
+  assert.equal(claudeMdTemplate([]), 'templates/project-claude.md');
+  assert.equal(claudeMdTemplate([node]), 'templates/project-claude.md');
+  assert.equal(claudeMdTemplate([py, node]), 'templates/project-claude.md');
+  assert.equal(claudeMdTemplate([py]), 'templates/project-claude-python.md');
+  assert.equal(claudeMdTemplate([py, { ...py, dir: 'svc' }]), 'templates/project-claude-python.md');
+});
+
+test('both starter templates ship and carry the sections init tells the developer to fill', () => {
+  for (const name of ['project-claude.md', 'project-claude-python.md']) {
+    const text = readFileSync(join(checkout, 'templates', name), 'utf8');
+    for (const heading of ['## Stack (router hints)', '## Commands', '## EngineOS']) {
+      assert.ok(text.includes(`${heading}\n`), `${name} lacks ${heading}`);
+    }
+  }
+  const general = readFileSync(join(checkout, 'templates', 'project-claude.md'), 'utf8');
+  assert.ok(general.includes('`npm run typecheck`') && general.includes('`pyright`'), 'general template carries both stacks');
+  const python = readFileSync(join(checkout, 'templates', 'project-claude-python.md'), 'utf8');
+  assert.ok(python.includes('`pyright`') && !python.includes('npm run'), 'python variant is single-stack');
+});
+
+test('a python-only repo is seeded from the python variant', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root, { files: { 'pyproject.toml': '[project]\ndependencies = ["fastapi"]\n' } });
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  stack (detected):\n    fastapi@.                python\n'), run.stdout);
+  assert.ok(run.stdout.includes('  CLAUDE.md: created from templates/project-claude-python.md'), run.stdout);
+  assert.equal(
+    readFileSync(join(repo, 'CLAUDE.md'), 'utf8'),
+    readFileSync(join(checkout, 'templates', 'project-claude-python.md'), 'utf8'),
+  );
+});
+
+test('a declared mixed stack is seeded from the general template, which carries both blocks', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--stack', 'fastapi@backend,react@frontend'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  CLAUDE.md: created from templates/project-claude.md'), run.stdout);
+  assert.equal(
+    readFileSync(join(repo, 'CLAUDE.md'), 'utf8'),
+    readFileSync(join(checkout, 'templates', 'project-claude.md'), 'utf8'),
+  );
+});
+
+test('--dry-run names the python variant for a declared python-only stack and writes nothing', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--dry-run', '--stack', 'fastapi@api'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  would create CLAUDE.md from templates/project-claude-python.md\n'), run.stdout);
+  assert.equal(existsSync(join(repo, 'CLAUDE.md')), false);
+});
+
+test('--dry-run prints the config it would write and writes nothing', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--dry-run', '--stack', 'nestjs'], { home: fakeHome(root) });
+  assert.equal(run.status, 0);
+  assert.ok(run.stdout.includes(`  would write ${CONFIG}:\n    {\n      "version": 1,\n`), run.stdout);
+  assert.equal(existsSync(join(repo, '.engineos')), false);
 });

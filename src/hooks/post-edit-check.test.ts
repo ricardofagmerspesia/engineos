@@ -9,6 +9,7 @@ import { envelope, tempRoot } from '../testing/harness';
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { silent, type HookContext } from './output';
 import type { SpawnSyncLike } from './runner';
+import { venvBinDir } from './runner-python';
 import { run, verify } from './post-edit-check';
 
 const checkout = resolveRoot({}, __dirname);
@@ -313,6 +314,76 @@ test('typecheck and lint failures are reported together', (t) => {
   if (decision.kind !== 'fail') return;
   assert.equal(decision.stderr.includes('--- typecheck failed'), true);
   assert.equal(decision.stderr.includes('--- biome failed'), true);
+});
+
+// ------------------------------------------------------------------ python
+
+// A Python package with a venv, plus app/main.py as the edited file.
+function pythonPkg(t: Parameters<typeof tempRoot>[0], pyproject: string, opts: { venv?: boolean } = { venv: true }): { dir: string; file: string; bin: string } {
+  const dir = tempRoot(t);
+  writeFileSync(join(dir, 'pyproject.toml'), pyproject);
+  const bin = venvBinDir(join(dir, '.venv'));
+  if (opts.venv !== false) mkdirSync(bin, { recursive: true });
+  mkdirSync(join(dir, 'app'), { recursive: true });
+  const file = join(dir, 'app', 'main.py');
+  writeFileSync(file, 'x = 1\n');
+  return { dir, file, bin };
+}
+
+test('a python edit runs pyright and ruff through the package venv and fails on red', (t) => {
+  if (skipWithoutGit(t)) return;
+  const { dir, file, bin } = pythonPkg(t, '[tool.ruff]\n[tool.pyright]\n');
+  const { spawn, calls } = spawnWith((command) => (command.endsWith('pyright') ? { status: 1, stdout: 'app/main.py:1:1 - error: nope\n' } : {}));
+  const decision = verify(editOf(dir, file), context(), spawn);
+  assert.equal(decision.kind, 'fail');
+  if (decision.kind !== 'fail') return;
+  assert.equal(decision.stderr.includes(`--- typecheck failed (${dir}) ---`), true);
+  assert.equal(decision.stderr.includes('error: nope'), true);
+  assert.deepEqual(calls.map((call) => [[call.command, ...call.args].join(' '), call.cwd, call.timeout]), [
+    [`${join(bin, 'pyright')}`, dir, 90_000],
+    [`${join(bin, 'ruff')} check .`, dir, 45_000],
+    [`${join(bin, 'ruff')} format --check .`, dir, 45_000],
+  ]);
+});
+
+test('a python edit in a package with no environment is silent here', (t) => {
+  if (skipWithoutGit(t)) return;
+  const { dir, file } = pythonPkg(t, '[tool.ruff]\n', { venv: false });
+  const { spawn, calls } = spawnWith(() => ({ status: 1 }));
+  assert.deepEqual(verify(editOf(dir, file), context(), spawn), silent);
+  assert.deepEqual(calls, []);
+});
+
+test('a python edit in a Node package is not linted by eslint', (t) => {
+  if (skipWithoutGit(t)) return;
+  const { dir } = pkg(t, { 'package.json': scripts({ typecheck: 'exit 1' }), '.eslintrc.js': 'module.exports = {};\n' });
+  const file = join(dir, 'src', 'tool.py');
+  writeFileSync(file, 'x = 1\n');
+  const { spawn, calls } = spawnWith(() => ({ status: 1 }));
+  assert.deepEqual(verify(editOf(dir, file), context(), spawn), silent);
+  assert.deepEqual(calls, []);
+});
+
+test('a .ts edit in a directory that is also a Python package still takes the Node arm', (t) => {
+  if (skipWithoutGit(t)) return;
+  const { dir, file, bin } = pythonPkg(t, '[tool.pyright]\n');
+  writeFileSync(join(dir, 'package.json'), scripts({ typecheck: 'tsc --noEmit' }));
+  mkdirSync(join(dir, 'src'), { recursive: true });
+  const ts = join(dir, 'src', 'x.ts');
+  writeFileSync(ts, 'export const x = 1;\n');
+  const { spawn, calls } = spawnWith(GREEN);
+  assert.deepEqual(verify(editOf(dir, ts), context(), spawn), silent);
+  assert.deepEqual(calls.map((call) => [call.command, ...call.args].join(' ')), ['npm run -s typecheck']);
+  // And the .py edit in the same directory takes the Python arm: pyright is
+  // configured, ruff is not, so ruff is probed before it runs.
+  const python = spawnWith(GREEN);
+  assert.deepEqual(verify(editOf(dir, file), context(), python.spawn), silent);
+  assert.deepEqual(python.calls.map((call) => [call.command, ...call.args].join(' ')), [
+    join(bin, 'pyright'),
+    `${join(bin, 'ruff')} --version`,
+    `${join(bin, 'ruff')} check .`,
+    `${join(bin, 'ruff')} format --check .`,
+  ]);
 });
 
 // ------------------------------------------------------------------ the adapter entry

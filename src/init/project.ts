@@ -12,12 +12,22 @@
 // The self-repo check sits BEFORE the machine-level guards so running this inside
 // the EngineOS checkout always answers 3 — the honest reason — instead of a 1
 // about the local install.
-import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, statSync, writeFileSync, type Stats } from 'node:fs';
 import { join } from 'node:path';
 import type { spawnSync } from 'node:child_process';
 import type { Io } from '../io';
 import { loadLayoutManifest, scaffoldLayout, type ManifestEntry } from '../hooks/scaffold';
+import { packageLabel, resolveStack, type StackSource } from '../kernel/stack';
 import { repoRoot } from '../lib/git';
+import {
+  FRAMEWORKS,
+  FRAMEWORK_LANGUAGE,
+  PROJECT_CONFIG_PATH,
+  isFramework,
+  normalizeDir,
+  type PackageStack,
+  type ProjectConfig,
+} from '../registry/project-config';
 
 // The one regex install.sh writes and greps for, carried here as the same
 // literal string so the two sides cannot drift (plan Task 26). It is a POSIX
@@ -34,21 +44,35 @@ const EXIT_NOT_GIT = 2;
 const EXIT_SELF = 3;
 const EXIT_USAGE = 64;
 
-const USAGE = 'usage: engineos init [--dir PATH] [--dry-run]';
+const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]';
 
 // The bash halves of the scaffold stay on disk (versioned, sourced surface,
 // frozen until 2.0) and their absence still reads as a broken checkout; the JSON
 // manifest joins them because it is what this port actually reads.
 const REQUIRED_SIBLINGS = ['hooks/scaffold-layout.sh', 'hooks/layout-manifest.sh', 'registries/layout-manifest.json'];
 
+// Two starter CLAUDE.md files ship: the general one carries a Node block AND a
+// Python block (the developer deletes the one they do not use, a mixed repo keeps
+// both), the Python variant is the clean single-stack file. The pick is made from
+// the same package list the config was written from: every resolved package
+// Python → the variant; anything else, including "no package", → the general
+// one, which is what init always produced before the stack existed.
+export const CLAUDE_MD_TEMPLATE = 'templates/project-claude.md';
+export const CLAUDE_MD_TEMPLATE_PYTHON = 'templates/project-claude-python.md';
+
+export function claudeMdTemplate(packages: readonly PackageStack[]): string {
+  const pythonOnly = packages.length > 0 && packages.every((pkg) => pkg.language === 'python');
+  return pythonOnly ? CLAUDE_MD_TEMPLATE_PYTHON : CLAUDE_MD_TEMPLATE;
+}
+
 // A one-entry manifest rather than a second call into the scaffolder's guard: the
 // CLAUDE.md seed must go through the SAME containment checks the manifest seeds
 // use, so the two write sites can never drift apart. `dir: ''` is the project
 // root itself, which is exactly what bash asked for with
 // `engineos_scaffold_dir "$ROOT" ""`.
-const CLAUDE_MD_SEED: ManifestEntry[] = [
-  { dir: '', seeds: [{ src: '@templates/project-claude.md', dest: 'CLAUDE.md' }] },
-];
+function claudeMdSeed(template: string): ManifestEntry[] {
+  return [{ dir: '', seeds: [{ src: `@${template}`, dest: 'CLAUDE.md' }] }];
+}
 
 export interface InitDeps {
   io: Io;
@@ -56,9 +80,16 @@ export interface InitDeps {
   spawn: typeof spawnSync;
 }
 
+// `--stack` is either detection (`auto`, the default) or the developer's own
+// declaration: a comma list of `framework[@dir]`, a bare framework meaning the
+// repo root. Parsed up front so a typo is a usage refusal before anything is
+// touched, the same as a bad --dir.
+type StackSpec = { kind: 'auto' } | { kind: 'declared'; packages: PackageStack[] };
+
 interface Options {
   dir: string;
   dryRun: boolean;
+  stack: StackSpec;
 }
 
 type Parsed = { ok: true; options: Options } | { ok: false; message: string };
@@ -70,7 +101,7 @@ export function initProject(argv: string[], deps: InitDeps): number {
     io.err(`${parsed.message}\n`);
     return EXIT_USAGE;
   }
-  const { dir: target, dryRun } = parsed.options;
+  const { dir: target, dryRun, stack } = parsed.options;
 
   const project = repoRoot(target, deps.spawn);
   if (project === null) {
@@ -117,29 +148,121 @@ export function initProject(argv: string[], deps: InitDeps): number {
     io.out(created.length > 0 ? `  created: ${created.join(', ')}\n` : '  layout: already complete\n');
   }
 
-  writeProjectClaudeMd({ io, project, root, dryRun });
+  // Resolved once: the config is written from this list and the CLAUDE.md
+  // template is picked from it, so the two can never disagree about the stack.
+  const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
+  const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
+  writeProjectConfig({ io, project, packages, source, dryRun });
+  writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
   io.out(doneMessage(root));
   return EXIT_OK;
+}
+
+// `.engineos/config.json` is written ONCE, when absent, from either the declared
+// spec or what detection found — never overwritten, so a developer's edits
+// survive a second init. Nothing is written when detection finds no package:
+// a config wins entirely over detection (contracts §2), so an empty one would
+// pin the project to "no stack" the day a package.json appears.
+function writeProjectConfig(opts: {
+  io: Io;
+  project: string;
+  packages: readonly PackageStack[];
+  source: StackSource;
+  dryRun: boolean;
+}): void {
+  const { io, project, packages, source, dryRun } = opts;
+  io.out(stackTable(packages, source));
+  const target = join(project, PROJECT_CONFIG_PATH);
+  if (lstatOk(target)) {
+    io.out(`  ${PROJECT_CONFIG_PATH}: exists, left untouched\n`);
+    return;
+  }
+  if (packages.length === 0) {
+    io.out(`  ${PROJECT_CONFIG_PATH}: not written — no package detected; declare one with --stack <framework>[@dir]\n`);
+    return;
+  }
+  const config: ProjectConfig = { version: 1, stack: { packages: [...packages] } };
+  const text = `${JSON.stringify(config, null, 2)}\n`;
+  if (dryRun) {
+    io.out(`  would write ${PROJECT_CONFIG_PATH}:\n${indent(text, '    ')}`);
+    return;
+  }
+  // The parent is the directory the manifest scaffold just vouched for. It is
+  // re-checked with lstat here because the scaffold refuses a symlinked
+  // component silently, and this write must then refuse too rather than follow.
+  const parent = lstatOrNull(join(project, '.engineos'));
+  if (parent === null || parent.isSymbolicLink() || !parent.isDirectory()) {
+    io.out(`  ${PROJECT_CONFIG_PATH}: skipped — .engineos/ is not a plain directory inside the project\n`);
+    return;
+  }
+  try {
+    // 'wx' fails if the file appeared between the check and the write.
+    writeFileSync(target, text, { flag: 'wx' });
+    io.out(`  ${PROJECT_CONFIG_PATH}: created (${source === 'config' ? 'declared' : 'detected'}) — edit it to correct the stack\n`);
+  } catch {
+    io.out(`  ${PROJECT_CONFIG_PATH}: skipped — could not be written\n`);
+  }
+}
+
+function stackTable(packages: readonly PackageStack[], source: StackSource): string {
+  if (packages.length === 0) return `  stack (${source}): none\n`;
+  const lines = packages.map((pkg) => `    ${packageLabel(pkg).padEnd(24)} ${pkg.language}`);
+  return `  stack (${source}):\n${lines.join('\n')}\n`;
+}
+
+function indent(text: string, prefix: string): string {
+  return text.split('\n').map((line) => (line === '' ? line : `${prefix}${line}`)).join('\n');
+}
+
+// "fastapi@backend,react@frontend" -> two packages; "fastapi" -> one at ".".
+// Every refusal names the item, so a comma list with one bad entry says which.
+export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | { ok: false; message: string } {
+  const trimmed = spec.trim();
+  if (trimmed === '') return { ok: false, message: '--stack needs auto or a comma list of framework[@dir]' };
+  if (trimmed === 'auto') return { ok: true, stack: { kind: 'auto' } };
+  const packages: PackageStack[] = [];
+  const seen = new Set<string>();
+  for (const item of trimmed.split(',')) {
+    const entry = item.trim();
+    if (entry === '') return { ok: false, message: `--stack: empty entry in "${spec}"` };
+    const at = entry.indexOf('@');
+    const framework = at === -1 ? entry : entry.slice(0, at);
+    const rawDir = at === -1 ? '.' : entry.slice(at + 1);
+    if (!isFramework(framework)) {
+      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${FRAMEWORKS.join(', ')})` };
+    }
+    if (rawDir.startsWith('/') || rawDir.split('/').includes('..')) {
+      return { ok: false, message: `--stack: "${rawDir}" must be a directory relative to the repo root` };
+    }
+    const dir = normalizeDir(rawDir);
+    if (seen.has(dir)) return { ok: false, message: `--stack: "${dir}" is declared twice` };
+    seen.add(dir);
+    const language = FRAMEWORK_LANGUAGE[framework];
+    const pkg: PackageStack = { dir, language, framework, compose_service: null };
+    if (language === 'python') pkg.python_env = 'auto';
+    packages.push(pkg);
+  }
+  return { ok: true, stack: { kind: 'declared', packages } };
 }
 
 // The existence test is `-e || -L`, not `-f`: `-f` is FALSE for a dangling
 // symlink, so a repo that ships CLAUDE.md as a link to an absolute path
 // elsewhere on the machine would have the template copied THROUGH it.
-function writeProjectClaudeMd(opts: { io: Io; project: string; root: string; dryRun: boolean }): void {
-  const { io, project, root, dryRun } = opts;
+function writeProjectClaudeMd(opts: { io: Io; project: string; root: string; template: string; dryRun: boolean }): void {
+  const { io, project, root, template, dryRun } = opts;
   const claudeMd = join(project, 'CLAUDE.md');
   if (lstatOk(claudeMd)) {
-    io.out('  CLAUDE.md: exists, left untouched (declare your stack there — see templates/project-claude.md)\n');
+    io.out(`  CLAUDE.md: exists, left untouched (declare your stack there — see ${template})\n`);
     return;
   }
   if (dryRun) {
-    io.out('  would create CLAUDE.md from templates/project-claude.md\n');
+    io.out(`  would create CLAUDE.md from ${template}\n`);
     return;
   }
-  scaffoldLayout(project, root, CLAUDE_MD_SEED);
+  scaffoldLayout(project, root, claudeMdSeed(template));
   io.out(
     isFile(claudeMd)
-      ? '  CLAUDE.md: created from templates/project-claude.md — fill in the Stack and Commands sections\n'
+      ? `  CLAUDE.md: created from ${template} — fill in the Stack and Commands sections\n`
       : '  CLAUDE.md: skipped — the project root did not resolve to a directory inside itself\n',
   );
 }
@@ -160,6 +283,7 @@ Optional next steps (docs/ADOPTION.md sections 4-6):
 function parseArgs(argv: string[], cwd: string): Parsed {
   let dir = cwd;
   let dryRun = false;
+  let stack: StackSpec = { kind: 'auto' };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dir') {
@@ -167,13 +291,20 @@ function parseArgs(argv: string[], cwd: string): Parsed {
       if (value === undefined) return { ok: false, message: '--dir needs a path' };
       dir = value;
       i += 1;
+    } else if (arg === '--stack') {
+      const value = argv[i + 1];
+      if (value === undefined) return { ok: false, message: '--stack needs auto or a comma list of framework[@dir]' };
+      const parsedStack = parseStackSpec(value);
+      if (!parsedStack.ok) return { ok: false, message: parsedStack.message };
+      stack = parsedStack.stack;
+      i += 1;
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else {
       return { ok: false, message: USAGE };
     }
   }
-  return { ok: true, options: { dir, dryRun } };
+  return { ok: true, options: { dir, dryRun, stack } };
 }
 
 // Two independent signals: the repo's own marker files, or the target simply
@@ -205,11 +336,14 @@ function physical(path: string): string {
 }
 
 function lstatOk(path: string): boolean {
+  return lstatOrNull(path) !== null;
+}
+
+function lstatOrNull(path: string): Stats | null {
   try {
-    lstatSync(path);
-    return true;
+    return lstatSync(path);
   } catch {
-    return false;
+    return null;
   }
 }
 

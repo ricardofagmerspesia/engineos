@@ -1,13 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { isRecord } from '../lib/json';
+import type { ProjectConfig } from '../registry/project-config';
+import { isPythonTarget, pythonHasTarget, pythonRun, resolvePythonEnvironment, type PythonEnvironment } from './runner-python';
 
 // Port of hooks/lib-runner.sh plus the runner half of hooks/lib-common.sh
 // (has_script, runner_detect, ensure_modern_node).
 //
 // A runner is the tool that executes a project's verification targets (lint,
-// typecheck, tests): Nx, or a package-manager script runner. Callers see one
+// typecheck, tests): Nx, a package-manager script runner, or a Python
+// environment driving ruff/pyright/pytest (./runner-python.ts). Callers see one
 // ladder — select -> handle -> hasTarget -> run — and never branch on the runner
 // themselves. This module reports FACTS ONLY: it never decides whether a
 // non-zero run is the code's fault. That judgment is src/hooks/classify-failure.ts,
@@ -17,18 +20,29 @@ import { isRecord } from '../lib/json';
 // default, so a unit test drives the whole ladder without a filesystem or a
 // child process.
 
-export type RunnerKind = 'nx' | 'npm-family';
+export type RunnerKind = 'nx' | 'npm-family' | 'python';
 
 // `spawnSync` is an overload set whose first signature returns Buffers, so it is
 // not assignable to the string-returning slice below; binding the utf8 overload
 // here is what makes the real call satisfy `SpawnSyncLike`.
 const defaultSpawn: SpawnSyncLike = (command, args, options) => spawnSync(command, args, options);
 
-export interface RunnerSelection {
-  kind: RunnerKind;
-  run: string;
-  exec: string;
+// The Node arms address a package through a package manager's `run`/`exec`
+// forms; the Python arm carries the environment its tools are launched
+// through. The union is what lets every consumer narrow on `kind` and never
+// read `exec` off a selection that has none.
+export type RunnerSelection =
+  | { kind: 'nx' | 'npm-family'; run: string; exec: string }
+  | { kind: 'python'; env: PythonEnvironment };
+
+// A Python package with nothing to run it through. Not a selection: the caller
+// renders the skip message and moves on (design §A1.3 — skipped, never failed).
+export interface RunnerUnavailable {
+  kind: 'python-unavailable';
+  reason: string;
 }
+
+export const PYTHON_UNAVAILABLE_REASON = 'no Python environment found (venv, uv or compose)';
 
 // The exact slice of `spawnSync` this module uses, rather than `typeof spawnSync`
 // itself: the real `spawnSync` satisfies it, so callers pass it unchanged, and a
@@ -62,23 +76,69 @@ export interface RunResult {
 // ancient node; this is the version the nvm default is worth reaching for.
 const MODERN_NODE_MAJOR = 20;
 
+// The Node selection for a repo root. Kept for callers that still select once
+// per root (post-edit-check's Node arm, tests); the Stop gate selects per
+// package through runnerSelectFor.
 export function runnerSelect(
   root: string,
   exists: (p: string) => boolean = defaultExists,
 ): RunnerSelection {
   // The bash arm also required jq, because both Nx probes read JSON. JSON is
   // native here, so nx.json alone decides.
-  const kind: RunnerKind = exists(join(root, 'nx.json')) ? 'nx' : 'npm-family';
+  const kind: 'nx' | 'npm-family' = exists(join(root, 'nx.json')) ? 'nx' : 'npm-family';
   if (exists(join(root, 'pnpm-lock.yaml'))) return { kind, run: 'pnpm run', exec: 'pnpm exec' };
   if (exists(join(root, 'yarn.lock'))) return { kind, run: 'yarn run', exec: 'yarn' };
   return { kind, run: 'npm run', exec: 'npx --no-install' };
+}
+
+// The selection for the package that owns `pkgDir`. A pyproject.toml — or a
+// requirements.txt with no pyproject.toml above it, bounded by `root` — selects
+// the Python arm; otherwise the Node arm via runnerSelect(root). A Python
+// package whose environment does not resolve answers `python-unavailable`
+// rather than falling through to Node: `npm run lint` in a FastAPI service is
+// not a verification, and a silent Node no-op would read as coverage.
+export function runnerSelectFor(
+  pkgDir: string,
+  root: string,
+  config: ProjectConfig | null,
+  exists: (p: string) => boolean = defaultExists,
+  spawn: SpawnSyncLike = defaultSpawn,
+): RunnerSelection | RunnerUnavailable {
+  if (!isPythonPackage(pkgDir, root, exists)) return runnerSelect(root, exists);
+  const env = resolvePythonEnvironment(pkgDir, root, config, exists, spawn);
+  if (env === null) return { kind: 'python-unavailable', reason: PYTHON_UNAVAILABLE_REASON };
+  return { kind: 'python', env };
+}
+
+// requirements.txt is the weaker marker (design §A1.1): a `scripts/requirements.txt`
+// under a pyproject.toml belongs to that project, and the walk that found it
+// as the nearest marker (verify-targets packageOwner) already promoted it. The
+// rule is restated here so the selection is self-consistent for a caller that
+// did not — the ascent stops at `root`, and a `pkgDir` that is not under `root`
+// has no ancestors it is allowed to consult.
+export function isPythonPackage(pkgDir: string, root: string, exists: (p: string) => boolean = defaultExists): boolean {
+  if (exists(join(pkgDir, 'pyproject.toml'))) return true;
+  if (!exists(join(pkgDir, 'requirements.txt'))) return false;
+  let dir = pkgDir;
+  while (relative(root, dir) !== '' && isUnder(root, dir)) {
+    dir = dirname(dir);
+    if (exists(join(dir, 'pyproject.toml'))) return false;
+  }
+  return true;
+}
+
+function isUnder(ceiling: string, path: string): boolean {
+  const inside = relative(ceiling, path);
+  if (inside === '') return true;
+  if (isAbsolute(inside)) return false;
+  return inside !== '..' && !inside.startsWith(`..${sep}`);
 }
 
 // The identifier this runner addresses the package by, or null when it has none
 // (an Nx dir with no resolvable project name — nothing to run, so the caller
 // skips it). The handle is opaque to the caller and is also what a failure
 // summary names, which is why it differs per adapter: Nx addresses projects by
-// name, a package manager by directory.
+// name, a package manager and a Python environment by directory.
 export function runnerHandle(
   sel: RunnerSelection,
   pkgDir: string,
@@ -94,7 +154,7 @@ export function runnerHandle(
 
 // True when this runner knows that target for that handle. Each adapter asks its
 // own question: `nx show project` for Nx, a declared package.json script for a
-// package manager.
+// package manager, a pyproject.toml table or a `--version` answer for Python.
 export function runnerHasTarget(
   sel: RunnerSelection,
   handle: string,
@@ -103,6 +163,11 @@ export function runnerHasTarget(
   spawn: SpawnSyncLike = defaultSpawn,
   cwd: string = process.cwd(),
 ): boolean {
+  if (sel.kind === 'python') {
+    // The three targets are the whole Python vocabulary; a name outside it has
+    // no command table to run, so it is absent rather than a run that fails.
+    return isPythonTarget(target) && pythonHasTarget(sel.env, target, readFile, spawn);
+  }
   if (sel.kind === 'nx') {
     const argv = [...words(sel.exec), 'nx', 'show', 'project', handle, '--json'];
     const shown = spawn(argv[0] ?? '', argv.slice(1), { cwd, encoding: 'utf8' });
@@ -123,6 +188,12 @@ export function runnerRun(
   spawn: SpawnSyncLike = defaultSpawn,
   cwd: string = process.cwd(),
 ): RunResult {
+  if (sel.kind === 'python') {
+    // hasTarget already refused a name outside the Python vocabulary; a caller
+    // that skipped it gets a loud red rather than a green it never ran.
+    if (!isPythonTarget(target)) return { code: 1, output: `no python target named ${target}`, timedOut: false };
+    return pythonRun(sel.env, target, timeoutSeconds, env, spawn);
+  }
   // Nx runs from the workspace root and addresses the project by name; a package
   // manager runs from the package dir, which IS its handle.
   const argv =

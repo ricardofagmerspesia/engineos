@@ -15,8 +15,11 @@ import { bypassMarker } from './bypass';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { loadLayoutManifest, scaffoldLayout } from './scaffold';
+import { languagesOf, packageLabel, resolveStack } from '../kernel/stack';
 import { gitDir, repoRoot } from '../lib/git';
+import { KernelError } from '../lib/json';
 import { loadTelemetryPolicy } from '../registry/policy-telemetry';
+import { loadProjectConfig, type Language } from '../registry/project-config';
 
 const DAY_MS = 86_400_000;
 
@@ -65,16 +68,45 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (optIn === '0') return silent;
   if (optIn !== '1' && !isDirectory(join(project, '.engineos'))) return context('SessionStart', OPT_IN_HINT);
 
-  let created: string[];
+  const lines: string[] = [];
   try {
-    created = scaffoldLayout(project, ctx.root, loadLayoutManifest(ctx.root));
+    const created = scaffoldLayout(project, ctx.root, loadLayoutManifest(ctx.root));
+    if (created.length > 0) lines.push(`[engineos] scaffolded standard layout: ${created.join(', ')} (review seeded READMEs)`);
   } catch {
     // A missing or malformed manifest must never print an error into a session
     // start; bash swallowed the same failure with `. scaffold-layout.sh || exit 0`.
     return silent;
   }
-  if (created.length === 0) return silent;
-  return context('SessionStart', `[engineos] scaffolded standard layout: ${created.join(', ')} (review seeded READMEs)`);
+  // The stack line rides the same context decision as the scaffold line: one
+  // hook, one decision, so a session start never renders two payloads.
+  const stack = stackLine(project);
+  if (stack !== null) lines.push(stack);
+  if (lines.length === 0) return silent;
+  return context('SessionStart', lines.join('\n'));
+}
+
+// `[engineos] stack: fastapi@backend · react@frontend · runners: python: ruff/pyright/pytest, node: lint/typecheck scripts`
+// Config or detection, whichever resolveStack answers. Null when nothing
+// resolves — a repo with no package marker gets no line rather than an empty
+// one. A config that does not load is reported on the line instead of being
+// swallowed: the runner will refuse the same file, and a session that opens
+// with the reason beats one that finds out at the Stop gate.
+const RUNNERS: Readonly<Record<Language, string>> = {
+  python: 'python: ruff/pyright/pytest',
+  node: 'node: lint/typecheck scripts',
+};
+
+function stackLine(project: string): string | null {
+  let packages;
+  try {
+    packages = resolveStack(project, loadProjectConfig(project)).packages;
+  } catch (e) {
+    return e instanceof KernelError ? `[engineos] stack: ${e.message}` : null;
+  }
+  if (packages.length === 0) return null;
+  const labels = packages.map(packageLabel);
+  const runners = languagesOf(packages).map((language) => RUNNERS[language]);
+  return `[engineos] stack: ${labels.join(' · ')} · runners: ${runners.join(', ')}`;
 }
 
 // bash `find <gitdir> -maxdepth 1 -name 'ENGINEOS_UNRECORDED.*' -mtime +7 -delete`.

@@ -1,5 +1,14 @@
 # Production Backend Standards — Project-Specific
 
+> **DEPRECATED 2026-09-28** — removed after the deprecation window in
+> `docs/COMPATIBILITY.md` (the next MAJOR, not before). No router row loads this
+> file any more. Reason: it is a company-specific overlay (`@coresoft-sas/*`,
+> `DefaultTypeOrmRepository`, "no snake_case" — which conflicts with PEP 8 for
+> Python packages), not generic EngineOS policy. New home: the consuming
+> project's own `CLAUDE.md` / `docs/rules/` — copy the sections that apply there;
+> project conventions already win over EngineOS (non-negotiable #4). Nothing
+> below is maintained.
+
 Overlays on top of EngineOS `rules/backend.md`. These standards apply to every backend code change in this repository.
 
 ## Apply Scope

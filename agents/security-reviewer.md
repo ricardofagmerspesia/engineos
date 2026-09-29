@@ -21,11 +21,12 @@ Review exactly what you're given (diff, PR, files, module). Read enough surround
    - Missing/weak authn on new endpoints, queue consumers, webhooks
    - Injection: SQL string building, shell/exec with user data, path traversal, unescaped output, `dangerouslySetInnerHTML`
    - Secrets: keys/tokens in code, config, logs, error messages, prompts
-   - Unvalidated input: missing DTO validation, unbounded sizes/arrays, mass assignment (missing whitelist)
+   - Unvalidated input: missing DTO/schema validation (class-validator / Pydantic), unbounded sizes/arrays, mass assignment (missing whitelist / `extra="forbid"`)
    - SSRF: user-influenced URLs fetched server-side
    - Prompt injection: untrusted content reaching LLM instructions; over-privileged agent tools
    - Retrieval authorization: a shared vector or search index queried without the caller's principal applied as a filter before ranking; chunk metadata missing the source document's ACL or tenant; raw PII or secrets embedded or prompted without redaction (`rules/llm-apps.md` RAG section)
    - Insecure crypto: homemade hashing, non-constant-time comparison, predictable tokens
+   - Python-specific (FastAPI / Pydantic v2 packages): `os.environ`/`os.getenv` reads outside the settings module (a secret read past `pydantic-settings` skips validation and `SecretStr`); secrets typed as plain `str` (they land in `repr`, logs and validation errors); tenant or principal taken from a body field instead of the token dependency; a generated query (OpenSearch/SQL DSL built from model output) that does not have the tenant filter injected fail-closed after generation; `eval`/`exec`/`pickle.loads`/`yaml.load` on untrusted input; `subprocess` with `shell=True` and user data
 4. For each candidate finding, verify exploitability by reading the actual code path. Discard findings a guard/validation upstream already kills — note them as "checked, mitigated by X" instead.
 
 ## Hardening checklist
@@ -40,7 +41,7 @@ path, or list it under "Checked and clear" with the mitigation. Policy lives in
 - Row-level security is enabled on every table a client-facing key can reach, with policies that scope rows to the caller
 - Sensitive data is encrypted in transit (TLS everywhere) and at rest (PII, credentials, tokens)
 - Authentication and authorization are enforced server-side on every endpoint, object-level where a resource id is involved
-- Mass assignment is blocked: DTO whitelists, `forbidNonWhitelisted`, no raw body spread into models
+- Mass assignment is blocked: DTO/schema whitelists (`forbidNonWhitelisted`, Pydantic `extra="forbid"`), no raw body spread into models or `Model(**request.json())` past the schema
 - Session cookies are `httpOnly`, `secure`, `sameSite`, short-lived
 - Passwords are hashed with argon2 or bcrypt; no custom hashing, no reversible storage
 - Rate limits exist on login, registration, token refresh and every expensive or sensitive endpoint
@@ -55,7 +56,9 @@ path, or list it under "Checked and clear" with the mitigation. Policy lives in
 - PII and secrets are redacted before embedding, in the user's query, and in metadata, titles, paths and citations; the embedding provider payload and the vector store hold masked text only. A data class left unmasked is a finding unless the `## Redaction` block is in the reviewed scope, names the class, and the feature carries `rule-sensitive-data`'s threat model, security review and human approval
 - Security headers are set: CSP, HSTS, `X-Content-Type-Options`, `X-Frame-Options` or `frame-ancestors`, `Referrer-Policy`, `Permissions-Policy`
 - HTTPS is forced in production: HTTP redirects, HSTS preload where applicable, secure cookies
-- Dependencies are scanned (`npm audit`, Dependabot or equivalent); criticals are patched, lockfile pinned, postinstall scripts of new packages reviewed
+- Dependencies are scanned (`npm audit` / `pip-audit` (or `uv audit`), Dependabot or equivalent); criticals are patched, lockfile pinned (`package-lock.json` / `uv.lock` or pinned `requirements*.txt`), postinstall scripts of new packages reviewed
+- Python settings are one `pydantic-settings` model: every secret is a `SecretStr` read once at the composition root, no `os.environ` reads elsewhere, and a missing required value crashes the boot instead of defaulting to something weaker
+- Every query the service generates from model output or user text (search DSL, SQL, filters) gets the caller's tenant/principal filter injected server-side after generation, fail-closed: no tenant on the token → no query, never "all tenants"
 - No code path executes workspace-controlled content (scripts, config, hooks, plugins) outside the host's consent or permission gate
 - The installer does not weaken the host's security settings (permission allowlists, trust prompts, sandbox flags) without showing the change and asking
 

@@ -32,8 +32,11 @@ those later).
 ### Method
 
 1. **Map the repo.** Detect the stack, package/workspace layout, entry points,
-   and module boundaries (use Glob/Grep + `git ls-files`; read `package.json`,
-   config, `nest-cli.json`, `tsconfig`, compose files, etc.). Do not guess — read.
+   and module boundaries (use Glob/Grep + `git ls-files`; read the manifests —
+   `package.json`, `nest-cli.json`, `tsconfig`, `pyproject.toml`,
+   `requirements*.txt`, `uv.lock`, `alembic.ini`, `.engineos/config.json` (the
+   declared stack, when present) — plus config and compose files, etc.). A repo
+   may carry several packages on different stacks; map each. Do not guess — read.
 2. **Trace real relationships.** Follow imports, DI wiring, calls, routes, queue
    consumers, and config to build the actual module dependency graph. Prefer
    evidence (`file:line`) over assumption.

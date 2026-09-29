@@ -1,11 +1,12 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Machine-readable source of truth for EngineOS domain routing, including the path-pattern -> domain matching itself (match/excluded globs, resolved by scripts/kernel.sh route-path). CLAUDE.md's stack/domain table is the human mirror. Precedence order MUST list every domain exactly once, in match order — first match wins. Each domain's sample_path is a self-validating fixture: scripts/validate-engineos.sh (C17) routes it through kernel.sh and fails if it does not resolve to this domain.",
   "precedence": [
     "security",
     "test",
     "backend",
     "dba",
+    "backend-python",
     "ios-release",
     "android-release",
     "devops",
@@ -45,7 +46,10 @@
           "*.secrets.*",
           "credential.*",
           "*.credential.*",
-          "*.credentials.*"
+          "*.credentials.*",
+          "auth.py",
+          "guardrails.py",
+          "*_credentials.py"
         ]
       },
       "sample_path": "/tmp/api/src/auth/login.service.ts"
@@ -63,7 +67,10 @@
         "basenames": [
           "*.spec.*",
           "*.test.*",
-          "*.e2e-spec.*"
+          "*.e2e-spec.*",
+          "test_*.py",
+          "*_test.py",
+          "conftest.py"
         ]
       },
       "sample_path": "/tmp/api/user.service.spec.ts"
@@ -114,17 +121,54 @@
       "skills": [],
       "agent": "dba-coordinator",
       "hint": "postgres/oracle",
-      "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves.",
+      "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves. Precedes backend-python so */alembic/versions/* and *.sql are claimed before any backend-python path glob.",
       "match": {
         "paths": [
           "*/migrations/*",
-          "*/migration/*"
+          "*/migration/*",
+          "*/alembic/versions/*"
         ],
         "basenames": [
           "*.sql"
         ]
       },
       "sample_path": "/tmp/db/001_init.sql"
+    },
+    {
+      "id": "backend-python",
+      "title": "Backend (FastAPI shapes)",
+      "rules": [
+        "backend-python",
+        "architecture",
+        "data",
+        "testing",
+        "observability"
+      ],
+      "skills": [
+        "python-patterns"
+      ],
+      "agent": "backend-coordinator",
+      "note": "Same closure as backend: architecture/observability are closure targets of backend-python.md, data because the row's signals include migrations. Follows dba in precedence, so alembic/ and *.sql never land here.",
+      "match": {
+        "paths": [
+          "*/routers/*.py",
+          "*/api/*.py",
+          "*/services/*.py",
+          "*/use_cases/*.py",
+          "*/adapters/*.py",
+          "*/domain/*.py",
+          "*/repositories/*.py"
+        ],
+        "basenames": [
+          "schemas.py",
+          "models.py",
+          "ports.py",
+          "main.py",
+          "dependencies.py",
+          "settings.py"
+        ]
+      },
+      "sample_path": "/tmp/api/app/routers/users.py"
     },
     {
       "id": "ios-release",
@@ -276,7 +320,10 @@
           "*/evals/*",
           "*/eval/*",
           "*/embeddings/*",
-          "*/llm/*"
+          "*/llm/*",
+          "*/graph/*",
+          "*/agents/*",
+          "*/tools/*"
         ],
         "basenames": [
           "prompt*",
@@ -290,10 +337,16 @@
           "*.embedding*",
           "*.llm.*",
           "*.eval.*",
-          "*.evals.*"
+          "*.evals.*",
+          "*_agent.py",
+          "workflow.py",
+          "state.py",
+          "nodes.py",
+          "prompts_*.py"
         ]
       },
-      "sample_path": "/tmp/api/src/llm/client.ts"
+      "sample_path": "/tmp/api/src/llm/client.ts",
+      "note": "Last in precedence. The Python globs (*/graph/*, */agents/*, */tools/*, *_agent.py, workflow.py, state.py, nodes.py, prompts_*.py) cover LangGraph-style agent projects; since llm is last, a */services/*.py file under an agent project still routes backend-python — accepted, the agent-specific files carry the agent-specific names."
     }
   ],
   "excluded": {
@@ -305,7 +358,9 @@
       "*.lock",
       "package-lock.json",
       "pnpm-lock.yaml",
-      "yarn.lock"
+      "yarn.lock",
+      "uv.lock",
+      "poetry.lock"
     ],
     "self_dirs": [
       "hooks",

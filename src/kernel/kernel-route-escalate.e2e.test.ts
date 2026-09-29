@@ -188,8 +188,9 @@ function taskContract(answer: Record<string, unknown>): Record<string, unknown> 
 test('resolve-task substantive prompt exits 0', () => {
   const prompt = 'add a paginated orders endpoint and mirror the screen to mobile';
   const contract = taskContract(okBody(kernel(['resolve-task', '--prompt', prompt])));
-  assert.deepEqual(contract['intents'], ['mobile']);
-  assert.deepEqual(contract['agents'], ['mobile-coordinator']);
+  // "endpoint" is a backend signal (intents.json 1.4.0), so both stacks match.
+  assert.deepEqual(contract['intents'], ['backend', 'mobile']);
+  assert.deepEqual(contract['agents'], ['backend-coordinator', 'mobile-coordinator']);
   assert.ok(stringList(contract['required'], '.task_contract.required').includes('design-doc'));
   assert.equal(contract['risk_floor'], 'medium');
   const rules = stringList(contract['policy_rules'], '.task_contract.policy_rules');

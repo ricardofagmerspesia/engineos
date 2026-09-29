@@ -216,3 +216,64 @@ test('a malformed layout manifest leaves the session start silent', (t) => {
   assert.deepEqual(run(sessionStart(repo), hookCtx({ root: relocated })), { kind: 'silent' });
   assert.equal(existsSync(join(repo, 'docs')), false);
 });
+
+// ------------------------------------------------------------------ the stack line
+
+test('an adopted repo with package markers gets one stack line after the scaffold line', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), {
+    pkg: { dependencies: { react: '18' } },
+    files: { 'backend/requirements.txt': 'fastapi==0.110.0\n' },
+  });
+  mkdirSync(join(repo, '.engineos'));
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: `[engineos] scaffolded standard layout: ${SIX_DIRS} (review seeded READMEs)\n`
+      + '[engineos] stack: react@. · fastapi@backend · runners: node: lint/typecheck scripts, python: ruff/pyright/pytest',
+  });
+  // A second start scaffolds nothing and still says what the stack is.
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: '[engineos] stack: react@. · fastapi@backend · runners: node: lint/typecheck scripts, python: ruff/pyright/pytest',
+  });
+});
+
+test('the stack line reads .engineos/config.json when present and reports one that is malformed', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), { pkg: { dependencies: { react: '18' } } });
+  run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } }));
+  const config = join(repo, '.engineos', 'config.json');
+  writeFileSync(config, JSON.stringify({
+    version: 1,
+    stack: { packages: [{ dir: 'svc', language: 'python', framework: 'django', compose_service: 'svc' }] },
+  }));
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: '[engineos] stack: django@svc · runners: python: ruff/pyright/pytest',
+  });
+  writeFileSync(config, '{"version":1,"stack":{"packages":[{"dir":"a","language":"go","framework":null,"compose_service":null}]}}');
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: `[engineos] stack: ${config}: .stack.packages[0].language must be one of python|node`,
+  });
+});
+
+test('an adopted repo with no package marker stays silent once its layout is complete', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } }));
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), { kind: 'silent' });
+});

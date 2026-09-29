@@ -83,6 +83,40 @@ test('a destructive situation carries the destructive-action reason', () => {
   ]);
 });
 
+// --- the topology fact ------------------------------------------------------
+// The one reason that is neither a tier's implication nor a situation: a matched
+// rule-multi-agent-design says the developer approves the topology before any
+// graph code, at whatever tier and autonomy level the request carries.
+
+test('a topology awaiting approval requires a human at any tier', () => {
+  const section = hitlSection({ riskTier: 'low', autonomy: 'A2', topology: true }, regs);
+  assert.equal(section.required, true);
+  assert.deepEqual(section.reasons, ['topology-approval']);
+  assert.equal(section.autonomy_after, 'A2');
+  assert.deepEqual(reasons({ riskTier: 'medium', autonomy: 'A3', topology: true }), ['topology-approval']);
+});
+
+test('topology-approval takes its place in the registry order, after every tier reason', () => {
+  assert.deepEqual(reasons({ riskTier: 'high', autonomy: 'A3', externalEffect: true, topology: true }), [
+    'high-risk',
+    'external-effect',
+    'topology-approval',
+  ]);
+});
+
+test('a topology declared false is no reason, and the flag string spells the boolean', () => {
+  assert.deepEqual(reasons({ riskTier: 'medium', autonomy: 'A3', topology: false }), []);
+  assert.deepEqual(reasons({ riskTier: 'medium', autonomy: 'A3', topology: 'false' }), []);
+  assert.deepEqual(reasons({ riskTier: 'medium', autonomy: 'A3', topology: 'true' }), ['topology-approval']);
+});
+
+test('a non-boolean topology is refused', () => {
+  assert.throws(
+    () => hitlSection({ riskTier: 'low', autonomy: 'A2', topology: 'yes' }, regs),
+    kernelError('hitl --topology must be true|false'),
+  );
+});
+
 // Every declared situation must produce at least one reason from the closed
 // vocabulary. A situation the section accepts and then drops would answer
 // required:false — "no human needed" for an input it did not act on.

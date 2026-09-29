@@ -37,7 +37,7 @@ test("a reason removed from policy.json's hitl vocabulary is caught", (t) => {
       hitl['reasons'] = stringsAt(hitl, 'reasons').filter((reason) => reason !== 'destructive-action');
     });
   });
-  assert.ok(hasFinding(findings, 'reasons-below-minimum', '7'));
+  assert.ok(hasFinding(findings, 'reasons-below-minimum', '8'));
 });
 
 test('an emptied record_home is caught', (t) => {

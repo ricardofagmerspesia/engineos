@@ -16,6 +16,14 @@ on:
       - "**/agent/**"
       - "**/.env*"
       - "**/package.json"
+      - "**/pyproject.toml"
+      - "**/requirements*.txt"
+      - "**/uv.lock"
+      - "**/auth*.py"
+      - "**/guardrails*.py"
+      - "**/routers/**"
+      - "**/dependencies/**"
+      - "**/settings.py"
 
 concurrency:
   group: claude-security-${{ github.event.pull_request.number }}
@@ -46,7 +54,8 @@ jobs:
             - Injection: SQL string building, shell exec with user data, path traversal,
               unescaped HTML output
             - Secrets in code, config, logs, or error messages
-            - Unvalidated input: missing DTO validation, unbounded sizes, mass assignment
+            - Unvalidated input: missing DTO/schema validation (class-validator / Pydantic
+              extra=forbid), unbounded sizes, mass assignment
             - SSRF via user-influenced URLs
             - Prompt injection: untrusted content reaching LLM instructions;
               over-privileged agent tools; model output crossing trust boundaries unvalidated

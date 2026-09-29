@@ -174,7 +174,7 @@ test('a CLAUDE.md router row added without a registry update is caught', (t) => 
       return text.replace(anchor, `| Fake new intent (made up) | nothing |\n${anchor}`);
     });
   });
-  assert.ok(hasFinding(findings, 'intent-count-drift', 'registry=30,claude=30'));
+  assert.ok(hasFinding(findings, 'intent-count-drift', 'registry=32,claude=32'));
 });
 
 test('policy.json wave cap drifting from the parallelism prose is caught', (t) => {
@@ -273,6 +273,16 @@ test('an intent naming a rule file that does not exist is caught', (t) => {
     });
   });
   assert.ok(hasFinding(findings, 'dangling-reference', 'rule:nonexistent'));
+});
+
+test('an intent naming a command file that does not exist is caught', (t) => {
+  const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      const intent = rowAt(arrayAt(doc, 'intents'), 0);
+      intent['commands'] = [...strings(intent, 'commands'), '/engineos:no-such-command'];
+    });
+  });
+  assert.ok(hasFinding(findings, 'dangling-reference', 'command:/engineos:no-such-command'));
 });
 
 test('a signal carrying placeholder metasyntax is caught', (t) => {

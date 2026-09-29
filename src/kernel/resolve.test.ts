@@ -107,7 +107,7 @@ test('a signal inside a longer word does not match', () => {
 
 test('matching is ASCII-case-insensitive and Unicode-boundary aware', () => {
   // "é" is alphanumeric to jq's [[:alnum:]], so it bounds nothing.
-  assert.deepEqual(routeIntent('réadd endpoint').matches, []);
+  assert.deepEqual(routeIntent('réadd it').matches, []);
 });
 
 test('an intent match carries the eleven projected fields in jq key order', () => {
@@ -326,8 +326,10 @@ test('a task-contract fact answers route, decision_rules and task_contract toget
     'autonomy_ceiling_at_floor',
     'scale', 'decision_rules', 'required', 'gates', 'preferences',
   ]);
-  assert.deepEqual(contract.intents, ['mobile']);
-  assert.deepEqual(contract.agents, ['mobile-coordinator']);
+  // "endpoint" is a backend signal (registries/intents.json 1.4.0), so the
+  // prompt names both stacks and the contract carries both coordinators.
+  assert.deepEqual(contract.intents, ['backend', 'mobile']);
+  assert.deepEqual(contract.agents, ['backend-coordinator', 'mobile-coordinator']);
   assert.ok(contract.required.includes('design-doc'));
   // policy_rules is jq's `unique`, which sorts as well as de-duplicates.
   assert.deepEqual(contract.policy_rules, ['gates', 'models', 'parallelism', 'risk-autonomy', 'subagents', 'verification']);
@@ -354,6 +356,54 @@ test('a matched high rule raises the floor and folds the hitl section in', () =>
     autonomy_after: ctx.registries.policy.autonomy.ceiling_by_risk.high,
     record_home: ctx.registries.policy.hitl.record_home,
   });
+});
+
+// The topology fold: rule-multi-agent-design carries no risk tier, so the floor
+// stays what the intents set (agent-system/llm: medium) and the ONLY reason is
+// the approval the topology owes — a floor alone still announces nothing.
+test('a multi-agent prompt folds the topology-approval reason in at the floor it carries', () => {
+  const answer = resolve(
+    { prompt: 'design a supervisor agent that coordinates the DSL and narrator agents', taskContract: true },
+    ctx,
+  );
+  const contract = answer.task_contract;
+  assert.ok(contract?.intents.includes('agent-system'), `agent-system in ${String(contract?.intents)}`);
+  assert.ok(contract?.decision_rules.includes('rule-multi-agent-design'));
+  assert.equal(contract?.risk_floor, 'medium');
+  assert.deepEqual(answer.hitl, {
+    required: true,
+    reasons: ['topology-approval'],
+    autonomy_after: ctx.registries.policy.autonomy.ceiling_by_risk.medium,
+    record_home: ctx.registries.policy.hitl.record_home,
+  });
+});
+
+test('a LangGraph prompt with no supervisor word folds the same reason', () => {
+  const answer = resolve({ prompt: 'wire the LangGraph state machine for the order pipeline', taskContract: true }, ctx);
+  assert.deepEqual(answer.hitl?.reasons, ['topology-approval']);
+});
+
+// The fold needs a ceiling to ask about, which needs a floor, which needs an
+// intent: every phrase the rule's signals recognise must also land an intent, or
+// a matched rule would silently announce nothing. Held here rather than assumed.
+test('every rule-multi-agent-design signal phrase lands an intent, so the fold is never dropped', () => {
+  const phrases = [
+    'build a multi-agent pipeline',
+    'two agents that hand off to each other',
+    'agents which coordinate the ingest',
+    'add a supervisor agent for the workers',
+    'sketch the agent topology',
+    'orchestrate the three research agents',
+    'use langgraph for the flow',
+    'expose it over a2a',
+    'agent-to-agent messaging for the planner',
+  ];
+  for (const prompt of phrases) {
+    const answer = resolve({ prompt, taskContract: true }, ctx);
+    assert.ok(answer.task_contract?.decision_rules.includes('rule-multi-agent-design'), `rule matches: ${prompt}`);
+    assert.notEqual(answer.task_contract?.risk_floor, null, `a floor for: ${prompt}`);
+    assert.ok(answer.hitl?.reasons.includes('topology-approval'), `topology-approval for: ${prompt}`);
+  }
 });
 
 test('a prompt requesting no work is not substantive and loads no policy rules', () => {

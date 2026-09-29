@@ -9,26 +9,39 @@
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { runnerEnv, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
+import { PROBE_TIMEOUT_SECONDS } from './runner-python';
 import { isRecord } from '../lib/json';
+import { loadProjectConfig, type ProjectConfig } from '../registry/project-config';
 
-// JS/TS-family only: the runners understand package.json/nx targets and nothing
-// else, so another extension would be collected but never verified — a silent
-// no-op that reads as coverage. Non-JS stacks verify manually (CLAUDE.md #2).
-export const VERIFY_EXTENSIONS: readonly string[] = ['ts', 'tsx', 'js', 'jsx'];
+// The probe budget lives beside the Python probe (./runner-python.ts, which
+// this module cannot import from without a cycle through ./runner.ts) and is
+// re-exported here so every caller keeps the one name it always had.
+export { PROBE_TIMEOUT_SECONDS };
 
-// bash find_up's marker list for "the package this file belongs to".
-export const PACKAGE_MARKERS: readonly string[] = ['package.json', 'project.json'];
+// Only the families a runner exists for: the Node arms understand
+// package.json/nx targets, the Python arm ruff/pyright/pytest. Another
+// extension would be collected but never verified — a silent no-op that reads
+// as coverage — so any stack outside these two still verifies manually
+// (CLAUDE.md #2).
+export const NODE_EXTENSIONS: readonly string[] = ['ts', 'tsx', 'js', 'jsx'];
+export const PYTHON_EXTENSIONS: readonly string[] = ['py', 'pyi'];
+export const VERIFY_EXTENSIONS: readonly string[] = [...NODE_EXTENSIONS, ...PYTHON_EXTENSIONS];
 
-// The one directory name under a project whose package.json files are not the project's.
-const NODE_MODULES = 'node_modules';
+// bash find_up's marker list for "the package this file belongs to", one list
+// per arm. requirements.txt is the weaker Python marker: packageOwner promotes
+// a hit on it to the pyproject.toml above when there is one (design §A1.1).
+export const NODE_PACKAGE_MARKERS: readonly string[] = ['package.json', 'project.json'];
+export const PYTHON_PACKAGE_MARKERS: readonly string[] = ['pyproject.toml', 'requirements.txt'];
+export const PACKAGE_MARKERS: readonly string[] = [...NODE_PACKAGE_MARKERS, ...PYTHON_PACKAGE_MARKERS];
+
+// The directory names under a project whose package files are not the
+// project's: a dependency's package.json under node_modules, a wheel's
+// pyproject.toml under a venv's site-packages, and a bytecode cache that can
+// hold nothing worth entering. An owner reached through any of them is refused.
+const FOREIGN_SEGMENTS: readonly string[] = ['node_modules', '.venv', 'site-packages', '__pycache__'];
 
 // How many lines of a failure summary reach the operator (bash `head -80`).
 export const SUMMARY_LINES = 80;
-
-// bash probed a binary's `--version` with no budget at all. A hook that hangs on
-// a wedged package manager is worse than one that reports the probe failed, so
-// the probe gets the same kind of wall clock every run has.
-export const PROBE_TIMEOUT_SECONDS = 15;
 
 export interface VerifyEnvironment {
   env: NodeJS.ProcessEnv;
@@ -37,6 +50,24 @@ export interface VerifyEnvironment {
 
 export function hasVerifyExtension(file: string): boolean {
   return VERIFY_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
+}
+
+export function hasPythonExtension(file: string): boolean {
+  return PYTHON_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
+}
+
+// The project's declared stack, or null when it declared none. A malformed
+// `.engineos/config.json` is read as absent HERE, on purpose: the gate's charter
+// is to block on red code, and a config typo turning every Stop into a crash
+// (or a silent skip, which is what a thrown hook renders as) would be the
+// gate disabled by a JSON comma. The SessionStart stack line is where a
+// malformed config is reported, by the loader's own message.
+export function projectConfig(root: string): ProjectConfig | null {
+  try {
+    return loadProjectConfig(root);
+  } catch {
+    return null;
+  }
 }
 
 // bash `find_up <start> <name...>`: every name is probed at each level BEFORE the
@@ -113,8 +144,10 @@ export function startDir(file: string): string {
 // "Under the root" is also not "part of the project": a dependency's
 // package.json under node_modules is inside the consented tree and was never
 // consented to, and its `lint`/`typecheck` scripts are not lifecycle scripts, so
-// `npm ci --ignore-scripts` does nothing about them. An owner reached through a
-// node_modules segment is therefore refused too.
+// `npm ci --ignore-scripts` does nothing about them. The same holds for a
+// wheel's pyproject.toml under `.venv/lib/.../site-packages`: `ruff check .`
+// there would lint a vendored tree the developer never wrote. An owner reached
+// through any FOREIGN_SEGMENTS entry is therefore refused too.
 export function containedIn(root: string, candidate: string): boolean {
   let rootReal: string;
   let candidateReal: string;
@@ -125,7 +158,26 @@ export function containedIn(root: string, candidate: string): boolean {
     return false;
   }
   if (!isWithin(rootReal, candidateReal)) return false;
-  return !relative(rootReal, candidateReal).split(sep).includes(NODE_MODULES);
+  return !relative(rootReal, candidateReal).split(sep).some((segment) => FOREIGN_SEGMENTS.includes(segment));
+}
+
+// The package that owns a file: the nearest PACKAGE_MARKERS hit, bounded by
+// `stop`, with the one promotion design §A1.1 asks for — a directory whose only
+// marker is requirements.txt belongs to the pyproject.toml above it when one
+// sits between it and the ceiling. Without the promotion a `scripts/requirements.txt`
+// inside a FastAPI service would be verified as a package of its own, with no
+// [tool.ruff] and no venv, and the service that owns it would go unverified.
+export function packageOwner(start: string, stop: string): string | null {
+  const owner = findUpAny(start, PACKAGE_MARKERS, stop);
+  if (owner === null || !requirementsOnly(owner)) return owner;
+  // dirname(stop) lies outside the ceiling, and findUpAny refuses such a start
+  // without probing — which is exactly the bound the promotion must keep.
+  return findUpAny(dirname(owner), ['pyproject.toml'], stop) ?? owner;
+}
+
+function requirementsOnly(dir: string): boolean {
+  if (!existsSync(join(dir, 'requirements.txt'))) return false;
+  return !PACKAGE_MARKERS.some((marker) => marker !== 'requirements.txt' && existsSync(join(dir, marker)));
 }
 
 export function isDirectory(path: string): boolean {
@@ -161,11 +213,21 @@ export function verifyEnvironment(env: NodeJS.ProcessEnv, version: string = proc
   return { env: fixed, nodeMajor: Number.isNaN(rescued) ? onPath : rescued };
 }
 
-// The binary a selection is actually driven through: the package manager for the
-// npm-family ladder, the `exec` form Nx is invoked behind.
-export function runnerCommand(sel: RunnerSelection): string {
+// The argv (without `--version`) that asks whether a selection can run at all:
+// the package manager for the npm-family ladder, the `exec` form Nx is invoked
+// behind, the environment's launcher for Python. Two selections with the same
+// probe are the same runner as far as the Stop gate's once-per-runner probe is
+// concerned.
+export function runnerProbe(sel: RunnerSelection): readonly string[] {
+  if (sel.kind === 'python') return sel.env.probe;
   const command = (sel.kind === 'nx' ? sel.exec : sel.run).split(' ').find((part) => part !== '');
-  return command ?? '';
+  return command === undefined ? [] : [command];
+}
+
+// The binary a selection is actually driven through — what an infra message
+// names when the probe fails.
+export function runnerCommand(sel: RunnerSelection): string {
+  return runnerProbe(sel)[0] ?? '';
 }
 
 // bash never asked whether the runner existed, so a machine without the package
@@ -173,9 +235,9 @@ export function runnerCommand(sel: RunnerSelection): string {
 // — a block no code edit could clear. One probe per stop cycle answers the
 // classifier's `runner` row instead.
 export function runnerFound(sel: RunnerSelection, env: NodeJS.ProcessEnv, spawn: SpawnSyncLike, cwd: string): boolean {
-  const command = runnerCommand(sel);
-  if (command === '') return false;
-  return execRun(spawn, command, ['--version'], cwd, env, PROBE_TIMEOUT_SECONDS).code === 0;
+  const [command, ...rest] = runnerProbe(sel);
+  if (command === undefined || command === '') return false;
+  return execRun(spawn, command, [...rest, '--version'], cwd, env, PROBE_TIMEOUT_SECONDS).code === 0;
 }
 
 // The raw-command counterpart of runnerRun. ./runner.ts deliberately exposes only

@@ -5,17 +5,21 @@ import { delimiter, join } from 'node:path';
 import { tempRoot } from '../testing/harness';
 import type { RunnerSelection, SpawnSyncLike } from './runner';
 import {
+  PACKAGE_MARKERS,
   PROBE_TIMEOUT_SECONDS,
   containedIn,
   execRun,
   failureBlock,
   findUpAny,
   firstLines,
+  hasPythonExtension,
   hasVerifyExtension,
   isDirectory,
   isFile,
+  packageOwner,
   runnerCommand,
   runnerFound,
+  runnerProbe,
   verifyEnvironment,
 } from './verify-targets';
 
@@ -46,13 +50,70 @@ function timedOutError(): Error {
   return error;
 }
 
-test('only the JS/TS family is worth verifying', () => {
-  for (const file of ['a.ts', 'a.tsx', 'a.js', 'a.jsx', '/x/y/b.ts']) {
+// The families a runner exists for: JS/TS through a package manager, Python
+// through ruff/pyright/pytest. `a.py` moved from the refused list to the
+// accepted one with the Python arm (design §A1.2).
+test('only the JS/TS and Python families are worth verifying', () => {
+  for (const file of ['a.ts', 'a.tsx', 'a.js', 'a.jsx', '/x/y/b.ts', 'a.py', 'a.pyi', '/x/y/b.py']) {
     assert.equal(hasVerifyExtension(file), true, file);
   }
-  for (const file of ['a.md', 'a.py', 'a.sql', 'a.tsv', 'ts', '']) {
+  for (const file of ['a.md', 'a.sql', 'a.tsv', 'a.pyc', 'a.ipynb', 'ts', 'py', '']) {
     assert.equal(hasVerifyExtension(file), false, file);
   }
+  assert.equal(hasPythonExtension('a.py'), true);
+  assert.equal(hasPythonExtension('a.pyi'), true);
+  assert.equal(hasPythonExtension('a.ts'), false);
+});
+
+test('the package markers name both arms', () => {
+  assert.deepEqual([...PACKAGE_MARKERS], ['package.json', 'project.json', 'pyproject.toml', 'requirements.txt']);
+});
+
+test('a requirements.txt directory is promoted to the pyproject.toml above it, within the ceiling', (t) => {
+  const root = tempRoot(t);
+  mkdirSync(join(root, 'svc', 'scripts'), { recursive: true });
+  writeFileSync(join(root, 'svc', 'pyproject.toml'), '');
+  writeFileSync(join(root, 'svc', 'scripts', 'requirements.txt'), '');
+  assert.equal(packageOwner(join(root, 'svc', 'scripts'), root), join(root, 'svc'));
+  // A pyproject.toml above the ceiling does not claim it.
+  assert.equal(packageOwner(join(root, 'svc', 'scripts'), join(root, 'svc', 'scripts')), join(root, 'svc', 'scripts'));
+  // With no pyproject.toml above, the requirements.txt directory is the package.
+  mkdirSync(join(root, 'lone'), { recursive: true });
+  writeFileSync(join(root, 'lone', 'requirements.txt'), '');
+  assert.equal(packageOwner(join(root, 'lone'), root), join(root, 'lone'));
+  // A directory holding BOTH markers is not weak.
+  writeFileSync(join(root, 'lone', 'pyproject.toml'), '');
+  assert.equal(packageOwner(join(root, 'lone'), root), join(root, 'lone'));
+  // A package.json beside the requirements.txt is a Node package: not promoted.
+  mkdirSync(join(root, 'svc', 'web'), { recursive: true });
+  writeFileSync(join(root, 'svc', 'web', 'requirements.txt'), '');
+  writeFileSync(join(root, 'svc', 'web', 'package.json'), '{}');
+  assert.equal(packageOwner(join(root, 'svc', 'web'), root), join(root, 'svc', 'web'));
+});
+
+test('containedIn refuses a package reached through .venv, site-packages or __pycache__', (t) => {
+  const root = tempRoot(t);
+  for (const foreign of [join('.venv', 'lib', 'site-packages', 'wheel'), join('site-packages', 'wheel'), join('app', '__pycache__')]) {
+    mkdirSync(join(root, foreign), { recursive: true });
+    assert.equal(containedIn(root, join(root, foreign)), false, foreign);
+  }
+  // A directory merely NAMED like one is a different segment.
+  mkdirSync(join(root, 'venv-tools'), { recursive: true });
+  assert.equal(containedIn(root, join(root, 'venv-tools')), true);
+});
+
+const PY: RunnerSelection = {
+  kind: 'python',
+  env: { mode: 'compose', pkgDir: '/w/api', command: (tool) => ['docker', 'compose', 'exec', '-T', 'api', tool], source: 'compose:api', probe: ['docker', 'compose', 'exec', '-T', 'api', 'python'], spawnEnv: (base) => base },
+};
+
+test('the python probe is the environment launcher, asked for its version from the cwd', () => {
+  assert.deepEqual([...runnerProbe(PY)], ['docker', 'compose', 'exec', '-T', 'api', 'python']);
+  assert.equal(runnerCommand(PY), 'docker');
+  const { spawn, calls } = recorder({ status: 0 });
+  assert.equal(runnerFound(PY, {}, spawn, '/w'), true);
+  assert.deepEqual(calls, [{ command: 'docker', args: ['compose', 'exec', '-T', 'api', 'python', '--version'], cwd: '/w', timeout: PROBE_TIMEOUT_SECONDS * 1000 }]);
+  assert.deepEqual([...runnerProbe(NPM)], ['npm']);
 });
 
 test('findUpAny probes every name at a level before ascending', (t) => {

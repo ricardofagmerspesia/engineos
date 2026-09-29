@@ -94,6 +94,38 @@ test('a target name with regex metacharacters is matched literally', () => {
   );
 });
 
+// The python row: a tool the environment does not hold is a runner that is
+// missing, never a stale target and never red.
+test('a python tool missing from its environment is a missing runner', () => {
+  // The three alternatives of the contract row: `python -m` wording, the
+  // shell's, and the OS error the runner writes when the binary never started.
+  const missing = [
+    '/repo/.venv/bin/python: No module named ruff',
+    'No module named pyright',
+    '/bin/sh: ruff: command not found',
+    'No such file or directory: /repo/.venv/bin/pytest',
+  ];
+  for (const output of missing) {
+    assert.deepEqual(
+      classify({ kind: 'run', runner: 'python', target: 'lint', code: 127, output, timedOut: false }),
+      { situation: 'infra', reason: 'runner-missing' },
+      output,
+    );
+  }
+  // A test whose OWN subject is a missing module is still red: the pattern
+  // names the three tools, not any module.
+  assert.deepEqual(
+    classify({ kind: 'run', runner: 'python', target: 'test', code: 1, output: "E   ModuleNotFoundError: No module named 'app.settings'", timedOut: false }),
+    { situation: 'red' },
+  );
+  assert.deepEqual(
+    classify({ kind: 'run', runner: 'python', target: 'lint', code: 1, output: 'app/main.py:3:8: F401 `os` imported but unused', timedOut: false }),
+    { situation: 'red' },
+  );
+  // The row is keyed by runner: the same wording from npm stays what it was.
+  assert.deepEqual(classify(run({ code: 127, output: 'No module named ruff' })), { situation: 'red' });
+});
+
 test('a genuinely failing check stays red', () => {
   assert.deepEqual(classify(run({ code: 1, output: '3 errors, 0 warnings' })), { situation: 'red' });
   assert.deepEqual(classify(run({ code: 127, output: 'eslint: command not found' })), {

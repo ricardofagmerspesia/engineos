@@ -21,6 +21,7 @@ export type HookDecision =
   | { kind: 'silent' }
   | { kind: 'context'; event: HookEventName; text: string }
   | { kind: 'block'; reason: string }
+  | { kind: 'ask'; event: 'PreToolUse'; reason: string }
   | { kind: 'message'; text: string }
   | { kind: 'fail'; stderr: string };
 
@@ -34,6 +35,14 @@ export function block(reason: string): HookDecision {
   return { kind: 'block', reason };
 }
 
+// PreToolUse only: the harness shows its own permission prompt to the developer,
+// carrying `reason`, and the developer decides. It is neither a block (the tool
+// call may still run) nor a context injection (the model is not consulted) —
+// the git-write guard is the one hook that uses it (design 2026-09-28 §C3).
+export function ask(reason: string): HookDecision {
+  return { kind: 'ask', event: 'PreToolUse', reason };
+}
+
 export function message(text: string): HookDecision {
   return { kind: 'message', text };
 }
@@ -45,7 +54,7 @@ export function fail(stderr: string): HookDecision {
 // Returns the exit code the caller should exit with. Compact JSON plus one
 // trailing newline: the harness parses it, and the bash hooks this replaces
 // emitted both compact (`stop-verify.sh`) and jq-pretty (`hook_context`) forms,
-// so one shape for all five kinds settles the drift.
+// so one shape for every kind settles the drift.
 export function render(decision: HookDecision, io: Io): number {
   switch (decision.kind) {
     case 'silent':
@@ -55,6 +64,13 @@ export function render(decision: HookDecision, io: Io): number {
       return 0;
     case 'block':
       io.out(`${JSON.stringify({ decision: 'block', reason: decision.reason })}\n`);
+      return 0;
+    case 'ask':
+      io.out(
+        `${JSON.stringify({
+          hookSpecificOutput: { hookEventName: decision.event, permissionDecision: 'ask', permissionDecisionReason: decision.reason },
+        })}\n`,
+      );
       return 0;
     case 'message':
       io.out(`${JSON.stringify({ systemMessage: decision.text })}\n`);

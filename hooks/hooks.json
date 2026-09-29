@@ -40,6 +40,15 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook announce-agent-dispatch"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook git-write-guard"
+          }
+        ]
       }
     ],
     "PostToolUse": [

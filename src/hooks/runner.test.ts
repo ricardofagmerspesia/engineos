@@ -4,18 +4,36 @@ import { delimiter } from 'node:path';
 import {
   type RunnerSelection,
   type SpawnSyncLike,
+  isPythonPackage,
   runnerEnv,
   runnerHandle,
   runnerHasTarget,
   runnerRun,
   runnerSelect,
+  runnerSelectFor,
 } from './runner';
 
 const NX: RunnerSelection = { kind: 'nx', run: 'npm run', exec: 'npx --no-install' };
 const NPM: RunnerSelection = { kind: 'npm-family', run: 'npm run', exec: 'npx --no-install' };
+const PY: RunnerSelection = {
+  kind: 'python',
+  env: {
+    mode: 'venv',
+    pkgDir: '/w/api',
+    command: (tool) => [`/w/api/.venv/bin/${tool}`],
+    source: '.venv/bin',
+    probe: ['/w/api/.venv/bin/python'],
+    spawnEnv: (base) => base,
+  },
+};
 
 function existsIn(files: Record<string, string>): (p: string) => boolean {
   return (p) => Object.prototype.hasOwnProperty.call(files, p);
+}
+
+// The selection probes only for existence, so a case names paths, not contents.
+function existsAt(paths: readonly string[]): (p: string) => boolean {
+  return (p) => paths.includes(p);
 }
 
 function readFrom(files: Record<string, string>): (p: string) => string | null {
@@ -69,6 +87,63 @@ test('the lockfile picks the package manager, pnpm over yarn over npm', () => {
 
 test('a package manager addresses the package by its directory', () => {
   assert.equal(runnerHandle(NPM, '/w/apps/api', readFrom({})), '/w/apps/api');
+});
+
+// ------------------------------------------------------------------ per-package selection
+
+test('a pyproject.toml selects the python arm; anything else is the root Node selection', () => {
+  const files = ['/w/api/pyproject.toml', '/w/api/.venv/bin', '/w/pnpm-lock.yaml'];
+  const python = runnerSelectFor('/w/api', '/w', null, existsAt(files), recorder({}).spawn);
+  assert.equal(python.kind, 'python');
+  if (python.kind !== 'python') return;
+  assert.equal(python.env.mode, 'venv');
+  assert.equal(python.env.pkgDir, '/w/api');
+  assert.deepEqual(runnerSelectFor('/w/web', '/w', null, existsAt(files)), { kind: 'npm-family', run: 'pnpm run', exec: 'pnpm exec' });
+});
+
+test('a python package with no environment is unavailable, never the Node arm', () => {
+  const sel = runnerSelectFor('/w/api', '/w', null, existsAt(['/w/api/pyproject.toml']), recorder({ status: 1 }).spawn);
+  assert.deepEqual(sel, { kind: 'python-unavailable', reason: 'no Python environment found (venv, uv or compose)' });
+});
+
+test('requirements.txt is a package only when no pyproject.toml sits above it, bounded by the root', () => {
+  assert.equal(isPythonPackage('/w/scripts', '/w', existsAt(['/w/scripts/requirements.txt'])), true);
+  assert.equal(isPythonPackage('/w/scripts', '/w', existsAt(['/w/scripts/requirements.txt', '/w/pyproject.toml'])), false);
+  assert.equal(isPythonPackage('/w/a/b', '/w', existsAt(['/w/a/b/requirements.txt', '/w/a/pyproject.toml'])), false);
+  // A pyproject.toml ABOVE the root is nobody's business.
+  assert.equal(isPythonPackage('/w/scripts', '/w', existsAt(['/w/scripts/requirements.txt', '/pyproject.toml'])), true);
+  assert.equal(isPythonPackage('/w', '/w', existsAt(['/w/requirements.txt', '/pyproject.toml'])), true);
+  assert.equal(isPythonPackage('/w/web', '/w', existsAt(['/w/web/package.json'])), false);
+});
+
+// ------------------------------------------------------------------ the python arm
+
+test('the python arm addresses the package by its directory', () => {
+  assert.equal(runnerHandle(PY, '/w/api', readFrom({})), '/w/api');
+});
+
+test('a python target is one of the three, configured or answering --version', () => {
+  const files = { '/w/api/pyproject.toml': '[tool.ruff]\n' };
+  const { spawn, calls } = recorder({ status: 1 });
+  assert.equal(runnerHasTarget(PY, '/w/api', 'lint', readFrom(files), spawn), true);
+  assert.equal(runnerHasTarget(PY, '/w/api', 'typecheck', readFrom(files), spawn), false);
+  assert.equal(runnerHasTarget(PY, '/w/api', 'build', readFrom(files), spawn), false);
+  // lint needed no probe; typecheck probed pyright; build is not a python target and probed nothing.
+  assert.deepEqual(calls.map((c) => c.command), ['/w/api/.venv/bin/pyright']);
+});
+
+test('a python run goes through the environment, in the package dir, with the caller budget', () => {
+  const { spawn, calls } = recorder({ status: 0, stdout: 'ok' });
+  const result = runnerRun(PY, '/w/api', 'typecheck', 90, { A: '1' }, spawn, '/w');
+  assert.deepEqual(result, { code: 0, output: '/w/api/.venv/bin/pyright\nok\n', timedOut: false });
+  assert.deepEqual([calls[0]?.command, calls[0]?.args, calls[0]?.cwd, calls[0]?.env, calls[0]?.timeout], ['/w/api/.venv/bin/pyright', [], '/w/api', { A: '1' }, 90_000]);
+});
+
+test('a python run of a name outside the vocabulary is loud, not green', () => {
+  const { spawn, calls } = recorder({});
+  const result = runnerRun(PY, '/w/api', 'build', 90, {}, spawn, '/w');
+  assert.equal(result.code, 1);
+  assert.deepEqual(calls, []);
 });
 
 test('nx prefers the project.json name and strips the npm scope from the fallback', () => {

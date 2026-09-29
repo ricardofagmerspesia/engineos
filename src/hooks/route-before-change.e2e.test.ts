@@ -30,6 +30,8 @@ const ISOLATED: Record<string, string> = { ENGINEOS_BYPASS_FLAG: '/nonexistent/e
 
 const FRONTEND = 'rules/frontend.md+architecture.md+testing.md | skill:react-patterns | agent:frontend-coordinator';
 const BACKEND = 'rules/backend.md+architecture.md+data.md+testing.md+observability.md | skill:nestjs-patterns | agent:backend-coordinator';
+const BACKEND_PYTHON =
+  'rules/backend-python.md+architecture.md+data.md+testing.md+observability.md | skill:python-patterns | agent:backend-coordinator';
 const DBA = 'rules/data.md+architecture.md | agent:dba-coordinator (postgres/oracle)';
 const DEVOPS = 'rules/architecture.md+observability.md | agent:devops-coordinator (kubernetes/gcp/cicd)';
 const LLM = 'rules/llm-apps.md | skill:llm-engineering | agent:llm-coordinator';
@@ -272,6 +274,47 @@ test('excluded md', (t) => {
 
 test('authors ctrl NOT security', (t) => {
   assertGuidance(editContext(t, 'api/src/authors/author.controller.ts'), BACKEND);
+});
+
+// --- Python stack (registries/routing.json 1.2.0) ------------------------------
+// backend-python follows dba in precedence, so alembic/ and *.sql are claimed
+// first; test, security and llm precede or follow it by the same chain, and the
+// llm globs cover LangGraph-style agent trees.
+
+test('fastapi router -> backend-python', (t) => {
+  assertGuidance(editContext(t, 'x/app/routers/users.py'), BACKEND_PYTHON);
+});
+
+test('pydantic schemas -> backend-python', (t) => {
+  assertGuidance(editContext(t, 'x/app/schemas.py'), BACKEND_PYTHON);
+});
+
+test('pytest file -> test', (t) => {
+  assertGuidance(editContext(t, 'x/tests/test_users.py'), TEST_GUIDE);
+});
+
+test('conftest -> test', (t) => {
+  assertGuidance(editContext(t, 'x/tests/conftest.py'), TEST_GUIDE);
+});
+
+test('alembic version -> dba, not backend-python', (t) => {
+  assertGuidance(editContext(t, 'x/alembic/versions/001.py'), DBA);
+});
+
+test('langgraph workflow -> llm', (t) => {
+  assertGuidance(editContext(t, 'x/backend/graph/workflow.py'), LLM);
+});
+
+test('agent tool under app/ -> llm, not backend-python', (t) => {
+  assertGuidance(editContext(t, 'x/app/tools/search.py'), LLM);
+});
+
+test('auth.py -> security', (t) => {
+  assertGuidance(editContext(t, 'x/app/auth.py'), SECURITY);
+});
+
+test('uv.lock excluded', (t) => {
+  assert.equal(editContext(t, 'x/uv.lock'), '');
 });
 
 // --- exclusion unit checks, against the kernel's JSON contract ------------------

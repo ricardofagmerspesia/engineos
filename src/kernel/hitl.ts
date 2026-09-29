@@ -20,6 +20,10 @@ export interface HitlFacts {
   externalEffect?: boolean | string;
   conflict?: boolean | string;
   situation?: string;
+  // A multi-agent topology awaits the developer's approval before any graph
+  // code (decision rule rule-multi-agent-design). resolve-task declares it from
+  // the matched rule; a direct caller may declare it the same way.
+  topology?: boolean | string;
 }
 
 // cmd_hitl's key order: required, reasons, autonomy_after, record_home.
@@ -49,6 +53,7 @@ interface ReasonInputs {
   external: boolean;
   conflict: boolean;
   situation: string;
+  topology: boolean;
   autonomyIndex: number;
   externalFloorIndex: number;
   neverRetry: readonly string[];
@@ -77,6 +82,7 @@ export function hitlSection(facts: HitlFacts, regs: Registries): HitlSection {
   }
   const external = asBoolean(facts.externalEffect, 'hitl --external-effect must be true|false');
   const conflict = asBoolean(facts.conflict, 'hitl --conflict must be true|false');
+  const topology = asBoolean(facts.topology, 'hitl --topology must be true|false');
 
   // A tier that requires a human and names nowhere to record the decision has
   // not passed its gate (rules/risk-autonomy.md), so an empty record home is
@@ -112,6 +118,7 @@ export function hitlSection(facts: HitlFacts, regs: Registries): HitlSection {
     external,
     conflict,
     situation,
+    topology,
     autonomyIndex,
     externalFloorIndex,
     neverRetry: policy.retry.never_retry,
@@ -156,6 +163,10 @@ function triggeredReasons(inputs: ReasonInputs): string[] {
     reasons.push('budget-exhausted');
   }
   if (inputs.situation === 'breaker-open') reasons.push('breaker-open');
+  // Not a tier's implication and not a situation: the approval a topology owes
+  // is a fact about the request (a matched rule-multi-agent-design), so it
+  // fires at any tier and any autonomy level.
+  if (inputs.topology) reasons.push('topology-approval');
   return reasons;
 }
 

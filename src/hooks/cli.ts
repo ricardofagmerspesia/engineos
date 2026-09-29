@@ -16,6 +16,7 @@ import { run as announceAgentDispatch } from './announce-agent-dispatch';
 import { run as announceAgentReturn } from './announce-agent-return';
 import { run as stopVerify } from './stop-verify';
 import { run as postEditCheck } from './post-edit-check';
+import { run as gitWriteGuard } from './git-write-guard';
 
 export type HookRun = (env: HookEnvelope, ctx: HookContext) => HookDecision;
 
@@ -31,6 +32,7 @@ export const HOOKS: Readonly<Record<string, HookRun>> = {
   'announce-agent-return': announceAgentReturn,
   'stop-verify': stopVerify,
   'post-edit-check': postEditCheck,
+  'git-write-guard': gitWriteGuard,
 };
 
 export const runHook: Command = (argv: string[], io: Io): number => {

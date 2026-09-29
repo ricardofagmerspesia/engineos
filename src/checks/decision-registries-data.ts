@@ -39,6 +39,7 @@ export interface RawIntent {
   readonly rules: readonly string[];
   readonly skills: readonly string[];
   readonly agents: readonly string[];
+  readonly commands: readonly string[];
   readonly signals: readonly string[];
   readonly note: string;
   readonly domain: string | null;
@@ -94,6 +95,7 @@ export function readIntents(root: string): readonly RawIntent[] {
     rules: stringArray(intent['rules']),
     skills: stringArray(intent['skills']),
     agents: stringArray(intent['agents']),
+    commands: stringArray(intent['commands']),
     signals: stringArray(intent['signals']),
     note: text(intent['note']),
     // `has("domain") and .domain != null` — an absent key and an explicit null

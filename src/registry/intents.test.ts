@@ -58,8 +58,10 @@ test('the suppression fields the escalate composite reads are parsed', () => {
 // A row that answered null would push that coercion back to every call site.
 test('an absent suppression field defaults, and a non-true value never reads as set', () => {
   const rows = loadIntents(root).intents;
-  const plain = rows.find((i) => i.id === 'backend');
-  if (plain === undefined) throw new Error('the backend intent is missing from the registry');
+  // frontend declares none of the three fields; backend is suppressed_by
+  // backend-python since intents.json 1.4.0, so it is no longer the plain row.
+  const plain = rows.find((i) => i.id === 'frontend');
+  if (plain === undefined) throw new Error('the frontend intent is missing from the registry');
   assert.equal(plain.suppressible, false);
   assert.deepEqual(plain.suppressed_by, []);
   assert.equal(plain.requires_dispatch_plan, false);

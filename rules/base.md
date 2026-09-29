@@ -22,6 +22,13 @@
 - DO use `Number.parseInt` / `Number.parseFloat`, not the globals.
 - DO put mappers/transformers in their own file so they're reusable, not inlined per call site.
 
+## Language idioms (Python)
+- DO type-hint every signature and module-level constant; `X | None`, never `Optional[X]`; `list[str]`, never `List[str]`. `from __future__ import annotations` only when a forward reference needs it.
+- DON'T use `Any` at a boundary — a payload is `dict[str, object]` or a Pydantic model, then narrowed.
+- DO model closed sets as `Literal[...]` unions (`Literal["ok", "error"]`), not bare `str`.
+- DO follow PEP 8 names: `snake_case` functions and variables, `PascalCase` classes, `UPPER_SNAKE` constants, `_leading_underscore` for module-private.
+- DO define ports as `typing.Protocol` and domain values as `@dataclass(frozen=True)`; Pydantic models only at boundaries (HTTP, settings, model output), never inside the domain.
+
 ## Errors
 - DO fail fast at boundaries: validate input where it enters the system, then trust it inside.
 - DO throw typed/domain errors (`OrderNotFoundError`), catch at the layer that can act on them.

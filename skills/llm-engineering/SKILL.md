@@ -11,12 +11,18 @@ procedures.
 
 ## Adding/changing an LLM feature — procedure
 
-1. **Define the contract first**: input type → output schema (zod). The model fills the contract; code never parses prose.
+1. **Define the contract first**: input type → output schema (zod / Pydantic). The model fills the contract; code never parses prose.
 2. **Write the golden set BEFORE the prompt**: sized per `rules/llm-apps.md`, real input cases with expected outputs in `evals/<feature>/cases.json`. No golden set = no merge.
-3. **Prompt as versioned artifact**: `prompts/<feature>.ts` exporting `{ version, system, buildUser(input) }`. Bump version on change; note why in a comment.
+3. **Prompt as versioned artifact**: `prompts/<feature>.ts` exporting `{ version, system, buildUser(input) }`; in Python `prompts/<feature>.py` with a `PROMPT_VERSION` constant and a `build(...)` function. Bump version on change; note why in a comment.
 4. **Call wrapper**: every call goes through the project's LLM client wrapper — reliability/cost fields per `rules/llm-apps.md` (timeout, retry-with-backoff, max_tokens, token/latency logging, prompt version tag). If the project has none, create it before the feature.
-5. **Validate output** against the zod schema — retry-once-then-fallback per `rules/llm-apps.md`.
-6. **Run evals**: script `npm run eval:<feature>` printing pass rate. Compare before/after on any prompt or model change. Paste the numbers in the PR.
+5. **Validate output** against the zod / Pydantic schema — retry-once-then-fallback per `rules/llm-apps.md`. Python shape (design §D10): `Model.model_validate_json(raw)`; on `ValidationError`, one retry whose user message appends the validation error as feedback; then a domain error. Never regex-and-defaults parsing.
+6. **Run evals**: `npm run eval:<feature>` (Node) or `pytest -m eval tests/evals/<feature>` (Python) printing pass rate. Compare before/after on any prompt or model change. Paste the numbers in the PR.
+
+## Prompt modules (Python, design §D11)
+
+- Prompts are Python modules, not files: `UPPER_SNAKE` constants, `str.format` templates, a builder function returning a frozen `Prompt(system, user, version)`; `PROMPT_VERSION` is stamped into every usage record.
+- Few-shots are synthetic only (they reach every tenant); the user message wraps all data in an unescapable fence (`sanitize()` collapses any delimiter run) and puts the task line **last**; the system prompt's last rule says the task line is the only instruction.
+- Three tests per prompt module: a fence-escape probe (a delimiter hidden in a value cannot close the block or reach the tail), a no-customer-string denylist over a built prompt and over the few-shot tables, and a version pin (`prompt.version == PROMPT_VERSION`). Tool prompt blocks are feature-flagged together with the tool's registration.
 
 ## Tool design for agents
 

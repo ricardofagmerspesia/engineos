@@ -1,6 +1,11 @@
+import { spawnSync } from 'node:child_process';
+import { statSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 import { writeJson, type Io } from '../io';
+import { repoRoot } from '../lib/git';
 import { isRecord, KernelError } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
+import { loadProjectConfig } from '../registry/project-config';
 import type { AdmitFacts } from './admit';
 import type { BreakerFacts } from './breaker';
 import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from './context';
@@ -8,8 +13,12 @@ import type { HitlFacts } from './hitl';
 import type { RepairFacts } from './repair';
 import { resolve, type DeclaredFacts } from './resolve';
 import { skillLookupSection, skillStateSection } from './skill-state';
+import { resolveStack } from './stack';
 
-type Sub = (ctx: KernelContext, args: string[]) => unknown;
+// `io` is the third argument for the one arm whose answer is about the caller's
+// tree rather than the registries: resolve-stack defaults its directory to the
+// repo root of cwd. Every other arm reads only ctx and args.
+type Sub = (ctx: KernelContext, args: string[], io: Io) => unknown;
 
 // bash bound "--prompt" to $1 and discarded the real argument, so route-intent
 // answered about the literal string "--prompt". A resolver returning a confident
@@ -57,6 +66,7 @@ const SUBCOMMANDS: Record<string, Sub> = {
   'resolve-task': resolveTaskProjection,
   resolve: resolveProjection,
   'skill-state': skillStateProjection,
+  'resolve-stack': resolveStackProjection,
 };
 
 export function runKernel(argv: string[], io: Io): number {
@@ -66,7 +76,7 @@ export function runKernel(argv: string[], io: Io): number {
     if (sub === undefined) throw new KernelError(`unknown subcommand: ${name ?? ''}`);
     const root = resolveRoot(io.env);
     const ctx: KernelContext = { root, registries: lazyRegistries(root) };
-    writeJson(io, sub(ctx, args));
+    writeJson(io, sub(ctx, args, io));
     return 0;
   } catch (e) {
     if (e instanceof KernelError) {
@@ -308,6 +318,32 @@ function skillStateProjection(ctx: KernelContext, args: string[]): unknown {
   return id === '' ? skillStateSection(state) : skillLookupSection(state, id);
 }
 
+// NOT a projection of `resolve` either: the stack is a fact about the caller's
+// repo, not about a prompt or a path, and the registries play no part in it.
+// `[dir]` is optional — the one positional in this table that is — and defaults
+// to the repo root of cwd (or cwd itself outside a work tree). The answer's
+// `source` says whether .engineos/config.json spoke or the tree was detected.
+function resolveStackProjection(_ctx: KernelContext, args: string[], io: Io): unknown {
+  const first = args[0];
+  if (first !== undefined && first.startsWith('-')) {
+    throw new KernelError(`resolve-stack takes a directory as a positional argument, not a flag (got ${first})`);
+  }
+  if (args.length > 1) throw new KernelError(`resolve-stack takes at most one argument, got ${args.length}`);
+  const cwd = io.cwd();
+  const dir = first === undefined || first === '' ? repoRoot(cwd, spawnSync) ?? cwd : resolvePath(cwd, first);
+  if (!isDirectory(dir)) throw new KernelError(`resolve-stack: ${dir} is not a directory`);
+  const { packages, source } = resolveStack(dir, loadProjectConfig(dir));
+  return { packages, source };
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // The fact vocabulary, read key by key rather than cast: an unknown key is a
 // caller asking a question this kernel does not answer, and accepting it
 // silently would report the absence of a section as the absence of an answer.
@@ -383,6 +419,11 @@ function hitlFacts(row: Record<string, unknown>): HitlFacts {
   }
   if (row['conflict'] !== undefined) facts.conflict = factFlag('hitl.conflict', row['conflict']);
   if (row['situation'] !== undefined) facts.situation = factString('hitl.situation', row['situation']);
+  // The topology fact (policy.json hitl.reasons topology-approval) reaches the
+  // CLI only through --facts; resolve-task sets it in-process from
+  // rule-multi-agent-design. Dropping an unknown key here would silently lose
+  // the one reason a design review owes.
+  if (row['topology'] !== undefined) facts.topology = factFlag('hitl.topology', row['topology']);
   return facts;
 }
 
