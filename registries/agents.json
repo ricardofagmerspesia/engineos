@@ -213,7 +213,7 @@
     {
       "name": "llm-coordinator",
       "alias": "hermsdorff",
-      "description": "LLM/AI engineering specialist — prompt design, agent tools, structured output, RAG pipelines, embeddings, evals. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code/prompts). Alias: hermsdorff.",
+      "description": "LLM/AI engineering specialist — prompt design, agent tools, structured output, RAG pipelines, embeddings, evals. Branches: AUDIT (read-only findings) | IMPLEMENT (writes code/prompts) | INTERVIEW (`/engineos:design-agents` — walks the agent-system-design form with the developer, writes only the topology spec and the approval line). Alias: hermsdorff.",
       "tools": [
         "Read",
         "Grep",

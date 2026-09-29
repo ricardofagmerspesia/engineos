@@ -31,7 +31,7 @@ developer approves the branch.
 - [x] Wave 0 — contracts frozen in docs/specs/2026-09-28-python-stack-and-agent-design-contracts.md (runner union, config schema, git-guard parser, registry diffs, pattern skeleton, wave-1 ownership)
 - [x] Wave 1 — Python runner + stack resolution + registries/mirrors/validator + git-write-guard (4 agents, disjoint scopes, one dispatch; barrier: typecheck, tests, validator 113/113, evals 11/11)
 - [x] Wave 2 — rules + `python-patterns` + `langgraph-patterns` + agents/templates (4 agents; barrier: 2281 tests/0 fail, validator 113/113, evals 11/11; resolve-task on a FastAPI prompt → backend-python rules + python-patterns; init picks project-claude-python.md for python-only repos through the rebuilt dist)
-- [ ] Wave 3 — `agent-system-design` skill, form, command, catalog, hitl reason + ADR
+- [x] Wave 3 — `agent-system-design` skill (12-step form in references/form.md, 599 lines), `/engineos:design-agents`, patterns/3-Agent-topology-interview.md, templates/agent-topology.md, llm-coordinator INTERVIEW mode, 10 pattern files + 2 references (hitl reason + ADR landed in wave 1c); barrier: 2281 tests/0 fail, validator 113/113, evals 11/11; kernel on a supervisor-agent prompt → agent-system intent, design-agents command, hitl topology-approval
 - [ ] Wave 4 — docs, deprecation header, final gate, manual verification on `labv-assist` and `labv-opensearch-agent-demo`
 - [ ] Developer re-runs `install.sh`
 

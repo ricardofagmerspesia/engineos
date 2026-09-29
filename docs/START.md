@@ -118,9 +118,17 @@ and `/implement`; plugin mode namespaces them `/engineos:audit`.)
 /audit all                  # read-only audit across all domains → status report
 /audit dba src/orders       # one domain, scoped
 /implement backend add idempotency keys to the payments webhook
+/design-agents              # design a system with more than one agent — before any graph code
+/design-agents resume       # pick a draft topology spec back up at its first unfilled step
 ```
 `/audit` writes `.engineos/audits/<date>-<domain>.md` (verdict + root cause + plan).
 `/implement` is spec-gated and closes with a change record.
+`/design-agents` is interactive: `llm-coordinator` (hermsdorff) walks the
+`agent-system-design` form with you one step at a time — topology, roster, tools,
+protocol, context scoping, memory, harness, guardrails, failure policy,
+observability, evals, diagrams — writing `docs/specs/<date>-<slug>-agent-topology.md`
+as you answer, and closes only when your approval line (`topology-approval`) is in
+the change record. `langgraph-patterns` loads after that, never to choose for you.
 
 **Escape hatch — `/bypass`.** Some work isn't worth the constitution: a throwaway
 script, a one-line spike, someone else's repo you're just poking at.
@@ -269,6 +277,7 @@ goes back through the router.
 | Deep DB / cluster / CI inspection | leaf specialist (or `/audit` dispatches it) |
 | Record finished work | `record-change` skill |
 | Plan a feature | `tlc-spec-driven` (or just describe it — brainstorming triggers) |
+| Design a multi-agent system | `/design-agents` — the 12-step form, approval before any graph code; `resume` picks a draft back up |
 | Record an architecture decision | `adr` skill |
 | Security-check a diff | `security-reviewer` agent |
 | Get an independent "is this actually done" check | `critic` agent (alias `vera`) — required at risk=high |
