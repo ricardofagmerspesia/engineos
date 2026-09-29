@@ -33,8 +33,8 @@ developer approves the branch.
 - [x] Wave 2 — rules + `python-patterns` + `langgraph-patterns` + agents/templates (4 agents; barrier: 2281 tests/0 fail, validator 113/113, evals 11/11; resolve-task on a FastAPI prompt → backend-python rules + python-patterns; init picks project-claude-python.md for python-only repos through the rebuilt dist)
 - [x] Wave 3 — `agent-system-design` skill (12-step form in references/form.md, 599 lines), `/engineos:design-agents`, patterns/3-Agent-topology-interview.md, templates/agent-topology.md, llm-coordinator INTERVIEW mode, 10 pattern files + 2 references (hitl reason + ADR landed in wave 1c); barrier: 2281 tests/0 fail, validator 113/113, evals 11/11; kernel on a supervisor-agent prompt → agent-system intent, design-agents command, hitl topology-approval
 - [x] Wave 4 — docs (README, CODEBASE_MAP, BIG-PICTURE, START, ADOPTION, COMPATIBILITY, kernel.sh header), deprecation header (wave 2), final gate (2281 tests/0 fail, validator 113/113, evals 11/11, bundle rebuilt), live hooks on `labv-assist` (SessionStart stack line, PreToolUse routing → backend-python) and `labv-opensearch-agent-demo` (prompt-advisor → agent-system + topology-approval)
-- [ ] Developer re-runs `install.sh` (auto mode blocks Claude from self-modifying ~/.claude) — then the git-write guard and the Python gate are live in sessions
-- [ ] Developer decides: keep `ruff format --check` inside the lint target (labv-assist currently blocks on it) or gate it on `[tool.ruff.format]`
+- [x] Developer re-ran `install.sh` (2026-09-29): git-write-guard registered on PreToolUse Bash, Python allowlist merged, new skills/rule/pattern symlinked
+- [x] Developer decided (2026-09-29): keep `ruff format --check` inside the lint target as the spec says; existing repos run `ruff format .` once (labv-assist: 6 files)
 - [ ] PR to upstream (ricardofagmer/engineer-spec-ia-pattern) after the developer reviews the branch; flag the `ENGINEOS_GIT_WRITES` default (`ask`) for Ricardo
 
 ## What was made
@@ -62,6 +62,7 @@ on both labv repos.
 <!-- date | who | reasons (from registries/policy.json hitl.reasons) | approved/refused | note -->
 - 2026-09-28 | Sergio Hermsdorff | design | approved | branch-first then PR; ruff/pyright/pytest pinned; Pydantic-validated structured output; pytest import-purity test; keep all 8 new catalog patterns; tools get their own form step; developer approval (not product HITL) gates topology
 - 2026-09-28 | Sergio Hermsdorff | design | approved | per-developer git-write setting `ENGINEOS_GIT_WRITES=ask|auto`, default ask, enforced by a PreToolUse Bash hook that survives bypass (spec Part C, D18); Sergio = ask, Ricardo = auto
+- 2026-09-29 | Sergio Hermsdorff | design | approved | `ruff format --check` stays in the Python lint target (no adoption gate); style drift blocks like any red
 - 2026-09-28 | Sergio Hermsdorff | design | approved | spec docs/specs/2026-09-28-python-stack-and-agent-design-design.md approved; add hitl reason `topology-approval` (with ADR); enforcement instruction-level for now, blocking hook deferred (spec §8)
 
 ## Changes registered
