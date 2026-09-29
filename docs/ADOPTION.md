@@ -98,10 +98,14 @@ means `ask`. `/engineos:bypass` does not touch it. The full read/write split is 
 
 ```bash
 cd <project>
-~/projects/engineos/scripts/init-project.sh
+~/projects/engineos/scripts/init-project.sh                       # --stack auto (default): detect
+~/projects/engineos/scripts/init-project.sh --stack fastapi@backend,react@frontend
 ```
 Or, inside a Claude Code session in `<project>`: `/engineos:init`. Add `--dry-run`
-to see what it would do first.
+to see what it would do first. `--stack` takes `auto` or a comma list of
+`<framework>[@dir]` — one of `fastapi`, `django`, `flask`, `nestjs`, `react`, `next`,
+`react-native`; `@dir` is the package directory relative to the repo root (omit it
+for `.`).
 
 What it creates:
 - `.engineos/{changes,archived,memory}` plus `docs/{specs,prds,rules}`, each seeded
@@ -109,6 +113,13 @@ What it creates:
   optional — it's where durable, team-shared decisions get distilled
   (`rules/memory.md`). `.engineos/audits/` is created separately, by `/audit`, on
   first use.
+- `.engineos/config.json` — the project's declared stack, written **once** from
+  `--stack` (or from what detection found) and never overwritten, so edit it freely:
+  `{ "version": 1, "stack": { "packages": [{ "dir": "backend", "language": "python",
+  "framework": "fastapi", "compose_service": null, "python_env": "auto" }, …] } }`.
+  It is what `scripts/kernel.sh resolve-stack` answers from, and so what the Stop
+  gate, the SessionStart `[engineos] stack: …` line and the coordinators read.
+  Nothing is written when detection finds no package; declare one with `--stack`.
 - `CLAUDE.md` from `templates/project-claude.md`, **only if the project has none**
   — or from `templates/project-claude-python.md` when every package the stack
   resolves to (`--stack`, or detection) is Python. The general template carries a
@@ -124,6 +135,19 @@ is missing (Step 1 first), `$HOME` is unset, or the checkout is broken; the mess
 says which, `2` not a git work tree, `3` you are inside the EngineOS repo itself,
 `64` bad usage.
 
+**Python packages.** The Stop gate runs `ruff` and `pyright` (and `pytest` when tests
+are on) for every package the stack resolves to Python, and it never installs
+anything, so two things must already be true: the three tools are **pinned to exact
+versions in the project's dev dependencies** (`[dependency-groups] dev` or
+`[project.optional-dependencies]` in `pyproject.toml`; an unpinned tool gets an
+advisory line every Stop), and there is an environment to run them in — a `.venv`
+(in the package or at the repo root), a `uv.lock` (then `uv run`), or a
+`compose_service` in `.engineos/config.json` (then `docker compose exec -T`). Without
+one the gate **skips loudly** — `[engineos] stop-verify skipped for <pkg>: no Python
+environment found (venv, uv or compose)` — rather than blocking on a toolchain it
+cannot start. `ENGINEOS_VERIFY_BUDGET_S=<seconds>` raises the per-target timeout when
+pyright's first run over a large repo needs it.
+
 **Commit `.engineos/` and `CLAUDE.md`.** That commit is what makes EngineOS the
 default for every teammate: the presence of `.engineos/` is the opt-in signal the
 `SessionStart` scaffold reads, and it's what puts the change-record Stop gate and the
@@ -133,7 +157,9 @@ Then: open a `.engineos/changes/<date>-<slug>.md` when you start work, close it 
 the `record-change` skill when done (Step 7).
 
 Verify: `ls .engineos/changes/ .engineos/archived/ .engineos/memory/ docs/specs/ docs/prds/ docs/rules/`
-all exist, and a Claude session in `<project>` reads the project `CLAUDE.md`.
+all exist, `ls .engineos/config.json` shows the stack file (edit it if detection
+guessed wrong), and a Claude session in `<project>` reads the project `CLAUDE.md`
+and opens with a `[engineos] stack: …` line naming the packages you expect.
 
 ### Manual equivalent
 
@@ -203,7 +229,8 @@ Verify: open a PR; both workflows run.
 In a `<project>` session, make a trivial code edit. You should see:
 - a `[router]` line naming the rules/skill/specialist for that file (PreToolUse routing);
 - on finishing without verifying, a one-time **Stop block** asking for lint + typecheck
-  (tests only when they were in scope, or `ENGINEOS_VERIFY_TESTS=1` is set);
+  (Node) or ruff + pyright (Python) — tests only when they were in scope, or
+  `ENGINEOS_VERIFY_TESTS=1` is set;
 - on finishing with unrecorded changes, a one-time **Stop block** asking to run `record-change`.
 
 If a Stop block loops or never fires, see Troubleshooting.
@@ -213,7 +240,10 @@ If a Stop block loops or never fires, see Troubleshooting.
 ## 7. Daily workflow
 
 **Routing is automatic.** Editing `*.controller.ts` injects backend rules +
-`nestjs-patterns` + `backend-coordinator`; `*.tsx` injects frontend; a `.tsx`
+`nestjs-patterns` + `backend-coordinator`; `app/routers/*.py`, `schemas.py`,
+`main.py` and the like inject `rules/backend-python.md` + `python-patterns` + the
+same coordinator (`*/alembic/versions/*` stays DBA, `*/agents/*` and `*/graph/*`
+route to LLM); `*.tsx` injects frontend; a `.tsx`
 under `mobile/`, `android/`, `ios/`, or `react-native/` injects mobile instead
 (checked before the frontend pattern) + `mobile-coordinator`; `*.sql` injects
 DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.

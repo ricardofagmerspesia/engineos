@@ -5,5 +5,6 @@
 # its own registries/ (src/testing/harness.ts relocatedRoot).
 # Subcommands: resolve route-path route-intent model risk gates repair admit breaker
 #              hitl waves decision-rules scale route-escalate resolve-task skill-state
+#              resolve-stack [dir]
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINEOS_ROOT="$ROOT" exec node "$ROOT/dist/engineos.cjs" kernel "$@"

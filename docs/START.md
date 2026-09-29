@@ -3,8 +3,9 @@
 New to EngineOS? This is how to actually use it day to day: what fires
 automatically, and how to invoke the skills, agents, commands, and MCPs by hand.
 
-> Setting it up for the first time? Do [`ADOPTION.md`](ADOPTION.md) first.
-> This guide assumes EngineOS is already installed.
+> Setting it up for the first time? Do [`ADOPTION.md`](ADOPTION.md) first —
+> `init-project.sh --stack auto|<framework>[@dir],...` declares the stack the Stop
+> gate verifies. This guide assumes EngineOS is already installed.
 
 ## Mental model
 
@@ -45,6 +46,9 @@ explicitly by typing its name (Claude runs it via the Skill tool).
 | `nestjs-patterns` | Building NestJS backend code |
 | `react-patterns` | Building React/Next frontend code |
 | `llm-engineering` | Building prompts/agents/RAG/tools |
+| `python-patterns` | Building FastAPI/Django/Flask backend code |
+| `agent-system-design` | Designing a system with more than one agent — the 12-step form behind `/design-agents`, approval before any graph code |
+| `langgraph-patterns` | Implementing an approved agent topology in LangGraph — loads after the approval, never to choose for you |
 | `strategy` | Business/career strategy: market opportunity, learning path, blocked decision, positioning, monetizing existing assets — grounded in web sources + this repo, written to `docs/strategy/` |
 
 Invoke explicitly: just say `record-change` or "use the eval-harness skill".
@@ -59,7 +63,7 @@ relevant — let them.
 Agents run in their own context and report back. Dispatch with the Task tool, or
 say "use the `<name>` agent to …".
 
-EngineOS ships 19 agents total.
+EngineOS ships 22 agents total.
 
 **Domain coordinators** (dual-mode — AUDIT read-only, or IMPLEMENT writes):
 `backend-coordinator`, `frontend-coordinator`, `mobile-coordinator`,
@@ -176,9 +180,9 @@ These run on their own. Know what they do and how to respond:
 |---|---|---|
 | `route-before-change` | before each edit | nothing — read the injected `[router]` line; follow it |
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
-| `stop-verify` | when finishing | if it blocks: run lint + typecheck, show output. Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
+| `stop-verify` | when finishing | if it blocks: run the gate for the touched packages and show output — Node: lint + typecheck; Python: ruff + pyright (see "Python projects" below). Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
-| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) |
+| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) and prints one `[engineos] stack: fastapi@backend · react@frontend · runners: …` line so you can see which gate will run; if it names the wrong stack, edit `.engineos/config.json` |
 | `prompt-advisor` | on your prompt | nothing — one non-blocking task contract combining route, scale, model tier, policy loads and matched decision rules |
 | `git-write-guard` | before each `Bash` call | answer the permission prompt when the command writes to git or the forge (`commit`, `push`, `add`, `checkout`, `gh pr create`, …). Read-only git never prompts. Personal setting `ENGINEOS_GIT_WRITES=ask` (default) \| `auto` in `~/.claude/settings.local.json` — see `rules/git.md` "Who may write" |
 
@@ -204,6 +208,19 @@ release/merge gate that includes tests. Otherwise the finalization gate is
 **lint + typecheck only** — see `rules/verification.md` for the full policy, and set
 `ENGINEOS_VERIFY_TESTS=1` to force tests back into the Stop gate unconditionally.
 
+**Python projects.** For a package the stack resolves to Python (`.engineos/config.json`,
+else a `pyproject.toml`/`requirements.txt`), the Stop gate runs `ruff` and `pyright`
+(plus `pytest` when tests are on) through the first environment it finds:
+`.venv/bin` (package, then repo root) → `uv run` when a `uv.lock` exists → `docker compose
+exec -T <compose_service>` when `.engineos/config.json` names one. It never installs
+anything. With no environment it says so and moves on —
+`[engineos] stop-verify skipped for <pkg>: no Python environment found (venv, uv or compose)` —
+so a skipped package is visible, never silent. `ENGINEOS_VERIFY_TESTS=1` adds `pytest`;
+`ENGINEOS_VERIFY_BUDGET_S=<seconds>` raises every target's timeout (default 90s, 180s for
+tests) when pyright's first run over a large repo needs it. Pin `ruff`, `pyright` and
+`pytest` to exact versions in the project's dev dependencies: an unpinned tool gets an
+advisory line (`… not pinned to exact versions (rules/verification.md)`), not a block.
+
 ---
 
 ## 6. Specs — where plans live
@@ -221,7 +238,7 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 - **Always-on:** `rules/base.md`, `security.md`, `git.md`, `context.md`.
 - **Task-contract-loaded:** `memory.md`, `parallelism.md`, `models.md`,
   `subagents.md`, `verification.md`, `risk-autonomy.md`, `gates.md`.
-- **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
+- **Per-domain (routed):** `architecture.md`, `backend.md`, `backend-python.md`, `frontend.md`,
   `llm-apps.md`, `testing.md` (test craft, loaded when tests are on), `data.md`,
   `observability.md`, `memory.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.

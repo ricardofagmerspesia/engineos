@@ -28,10 +28,10 @@ jq runtime with one committed Node bundle, `dist/engineos.cjs`. Every
 graph TB
     subgraph Prose["Prose layer (source of truth for policy)"]
         CL[CLAUDE.md / AGENTS.md<br/>router table, non-negotiables]
-        RU[rules/*.md 19]
+        RU[rules/*.md 20]
         AG[agents/*.md 22]
-        SK[skills/*/SKILL.md 10]
-        CM[commands/*.md 7]
+        SK[skills/*/SKILL.md 13]
+        CM[commands/*.md 8]
     end
     subgraph Reg["registries/*.json (machine projection)"]
         INT[intents.json]
@@ -44,8 +44,8 @@ graph TB
     end
     subgraph Runtime["src/ -> dist/engineos.cjs"]
         CLI[cli.ts dispatch table]
-        KER[kernel/ resolve, route, risk, hitl, admit, breaker, repair]
-        HK[hooks/ 9 hook handlers]
+        KER[kernel/ resolve, route, stack, risk, hitl, admit, breaker, repair]
+        HK[hooks/ 10 hook handlers]
         JR[journal/ exec-journal + telemetry]
         CHK[checks/ 68 validator checks]
         GEN[gen/ agents.json + commands/agents]
@@ -87,17 +87,17 @@ engineos/
   install.sh / install.ps1   Machine install: symlinks into ~/.claude, settings-merge, secrets gate
   package.json / tsconfig.json / scripts/build.mjs   esbuild -> dist/engineos.cjs (committed)
   dist/engineos.cjs      The runtime. Never edit; CI fails on drift from src/
-  rules/                 19 policy files; 11 always-on, 8 routed per intent
+  rules/                 20 policy files; 11 always-on, 8 routed per intent, 1 deprecated (production-backend-standards)
   agents/                22 agent definitions (frontmatter: name, tools, model, tier)
-  skills/                10 SKILL.md procedures (adr, record-change, retro, eval-harness ...)
-  commands/              7 orchestrator commands + commands/agents/ (41 generated aliases)
-  templates/             handoff, project CLAUDE.md, permissions/mcp JSON, adapters, GitHub workflows
-  patterns/              architecture-analyst prompts (ANALYZE / INTERVIEW)
+  skills/                13 SKILL.md procedures (adr, record-change, retro, eval-harness, python-patterns, langgraph-patterns, agent-system-design ...)
+  commands/              8 orchestrator commands + commands/agents/ (41 generated aliases)
+  templates/             handoff, project CLAUDE.md (Node + Python blocks) + project-claude-python.md, agent-topology.md, permissions/mcp JSON, adapters, GitHub workflows
+  patterns/              architecture-analyst prompts (ANALYZE / INTERVIEW) + 3-Agent-topology-interview.md (llm-coordinator INTERVIEW)
   registries/            9 JSON registries (intents, routing, policy, decision-rules, agents, ...)
-  hooks/                 hooks.json (plugin wiring) + 10 .sh shims + 2 sourced bash libs
+  hooks/                 hooks.json (plugin wiring) + 11 .sh shims + 2 sourced bash libs
   scripts/               .sh shims over dist/engineos.cjs; build.mjs
   src/                   TypeScript runtime (see Module Guide)
-  test/fixtures/         Pinned legacy bash CLIs + registries for byte-parity tests
+  test/fixtures/         Pinned legacy bash CLIs + registries for byte-parity tests; py-fastapi/ (pyproject + app + tests) for the Python Stop-gate e2e
   evals/                 Golden set (33 intent cases, 16 agent cases) + RUBRIC.md
   docs/                  BIG-PICTURE, METHODOLOGY, COMPATIBILITY, ADOPTION, START, adr/, specs/, release-notes/
   console/               Standalone Next.js 15 admin console (skills vertical only; CI job `console`)
@@ -113,18 +113,18 @@ engineos/
 ### Prose layer: `CLAUDE.md`, `rules/`, `agents/`, `skills/`, `commands/`, `templates/`
 
 **Purpose**: state policy in prose an LLM follows. Every enforcement claim points at a registry or hook rather than claiming self-enforcement.
-**Entry point**: `CLAUDE.md` (router table: intent -> rules/skills -> agent; 11 non-negotiables; output-artifact protocol).
+**Entry point**: `CLAUDE.md` (router table: intent -> rules/skills -> agent; 12 non-negotiables; output-artifact protocol).
 
 | File / dir | Purpose | Tokens |
 |---|---|---|
 | `CLAUDE.md` | Router + constitution; imports only base, security, git, context directly | 4.2k |
 | `AGENTS.md` | Codex port; 11 always-on rules to compensate for no hooks | 4.3k |
-| `rules/*.md` | 19 rules. Always-on: base, security, git, context, memory, parallelism, models, subagents, verification, risk-autonomy, gates. Routed: architecture, backend, frontend, data, llm-apps, observability, testing, production-backend-standards | 17.8k |
+| `rules/*.md` | 20 rules. Always-on: base, security, git, context, memory, parallelism, models, subagents, verification, risk-autonomy, gates. Routed: architecture, backend, backend-python, frontend, data, llm-apps, observability, testing. Deprecated 2026-09-28, loaded by no row: production-backend-standards | ~19k |
 | `agents/*.md` | 22 agents; 21 opus, 1 fable (`product-spec`). Shared `## Return format` envelope with status OK/DEGRADED/CRITICAL/BLOCKED/FAILED | ~35k |
-| `skills/*/SKILL.md` | 10 skills; each declares which rule it must not restate | ~20k |
-| `commands/*.md` | audit, implement, route, bypass, init, analyze-architecture, talk-about-the-system | ~5k |
+| `skills/*/SKILL.md` | 13 skills; each declares which rule it must not restate. `agent-system-design` carries `references/form.md` (the 12-step form) and `references/patterns/` (ten topology patterns) | ~30k |
+| `commands/*.md` | audit, implement, route, bypass, init, design-agents, analyze-architecture, talk-about-the-system | ~6k |
 | `commands/agents/*.md` | 41 generated aliases; 6 hand-customized (marker removed) | 6.7k |
-| `templates/` | handoff.md (headings pinned by intents.json), project-claude.md, permissions/mcp JSON, adapters (cursor/codex/copilot), GitHub review workflows | ~7k |
+| `templates/` | handoff.md (headings pinned by intents.json), project-claude.md (Node + Python blocks) and project-claude-python.md (chosen by `init` for Python-only repos), agent-topology.md (the spec `/engineos:design-agents` fills), permissions/mcp JSON, adapters (cursor/codex/copilot), GitHub review workflows | ~9k |
 
 **Agent taxonomy**: 6 dual-mode coordinators (backend, frontend, mobile, dba, devops, llm) hold Edit/Write; 5 read-only MCP leaves (kubernetes, gcp, postgres, oracle, cicd) hold exactly one MCP server; 2 store builders (ios, android) with no alias; 4 reviewers (critic, security-reviewer, router, audit-consolidator); 5 standalone leaves (architecture-analyst, docs-writer, product-spec, test-writer, qa-tester).
 
@@ -139,7 +139,7 @@ engineos/
 | Registry | Shape | Consumers |
 |---|---|---|
 | `intents.json` | intents[] with signals, rules, skills, agents, risk_floor, model_tier, suppressible/suppressed_by, required_sections (handoff, record-change archive contract) | kernel route-escalate, resolve-task; C16, C18d, C19, C21 |
-| `routing.json` | domains[] with match/excluded globs, sample_path, agent, rules, skills; precedence chain; excluded.self_dirs | kernel route-path; route-before-change hook; mark-unrecorded; C6-C8, C14, C17 |
+| `routing.json` | domains[] with match/excluded globs, sample_path, agent, rules, skills; precedence chain (security, test, backend, dba, backend-python, ios-release, android-release, devops, mobile, frontend, llm — `dba` before `backend-python` so `*/alembic/versions/*` and `*.sql` stay DBA); excluded.self_dirs | kernel route-path; route-before-change hook; mark-unrecorded; C6-C8, C14, C17 |
 | `policy.json` | parallelism (wave cap, backpressure, prompt_signals), retry, repair, breaker, hitl, autonomy, risk, telemetry, exec_journal, router.escalate_when + fixtures | kernel admit/breaker/hitl/repair/risk; journal; hooks; C16, C20-C27 |
 | `decision-rules.json` | rules[] with regex signals, require/prefer artifacts, gate, risk, priority | kernel decisions; prompt-advisor notes; C14 |
 | `models.json` | tier -> model binding (fable / opus / haiku) | gen agent-registry, journal enums, C15, C31 |
@@ -147,6 +147,8 @@ engineos/
 | `capabilities.json` | capability id -> agent -> model_tier | telemetry span typing, C15, C18 |
 | `layout-manifest.json` | dirs/seeds for `.engineos/` + `docs/` scaffold | scaffold.ts, hooks/layout-manifest.sh (literal copy) |
 | `docs-ledger.json` | closure_exceptions, marker_budgets, external_skills, alias_exempt | prose-layer e2e test |
+
+Not a registry but read the same strict way: the project's `.engineos/config.json` (`src/registry/project-config.ts`, written by `engineos init --stack`) — `{ version: 1, stack: { packages: [{ dir, language, framework, compose_service, python_env? }] } }`; an absent file is `null` (detect), a malformed one is an error naming the JSON path. Consumed by `src/kernel/stack.ts`, the Stop gate and the SessionStart stack line.
 
 ### `src/kernel/` + `src/registry/` + `src/lib/`
 
@@ -157,10 +159,11 @@ engineos/
 |---|---|---|---|
 | `resolve` / `resolve-task` | `--prompt`, `--path`, `--facts`, `--task-contract` | intents, routing, policy, decision-rules | Answer envelope: route, decision_rules, hitl, task_contract |
 | `route-path` | file path | routing.json (first match in precedence) | domain, agent, rules, skills + skills_suppressed, hook_guidance |
+| `resolve-stack` | `[dir]` (optional; defaults to the repo root of cwd) | `.engineos/config.json` first, else `pyproject.toml`/`requirements.txt`/`package.json` per package dir (`src/kernel/stack.ts`); registries play no part | packages[] (dir, language, framework, compose_service, python_env), source `config` \| `detected` |
 | `skill-state` | `[--id <skill>]` | `skills/*/SKILL.md` frontmatter (`enabled:`, first block only) | skills[] + disabled[], or id/exists/enabled for one id; absence of the key means enabled |
 | `route-escalate` | prompt | intents signals + suppression, policy.router | escalate, reasons, intents, agents, model_tier, risk_floor, scale |
 | `risk` | five inputs | policy.risk | tier (max, never average) |
-| `hitl` | `--risk --autonomy [--evidence thin] [--external-effect] [--situation]` | policy.hitl, policy.autonomy | required, reasons (closed 8-id vocabulary), autonomy_after, record_home |
+| `hitl` | `--risk --autonomy [--evidence thin] [--external-effect] [--situation]` | policy.hitl, policy.autonomy | required, reasons (closed 9-id vocabulary; `topology-approval` is folded from `rule-multi-agent-design`, not from a tier), autonomy_after, record_home |
 | `admit` | `--inflight --queued` | policy.parallelism (wave cap reused as capacity) | dispatch / defer / reject |
 | `breaker` | `--state --failures` | policy.breaker | closed / open / half-open + allow |
 | `repair` | attempt, situation | policy.repair | continue / escalate / stop |
@@ -172,7 +175,7 @@ engineos/
 ### `src/hooks/` + `hooks/`
 
 **Purpose**: Claude Code integration. `hooks/hooks.json` calls `node dist/engineos.cjs hook <name>` directly; the `.sh` shims are for external callers only.
-**Entry point**: `src/hooks/cli.ts` (`HOOKS` map of 9 handlers), `src/hooks/envelope.ts` (decode stdin), `src/hooks/output.ts` (the only module that writes stdout / picks exit code).
+**Entry point**: `src/hooks/cli.ts` (`HOOKS` map of 10 handlers), `src/hooks/envelope.ts` (decode stdin), `src/hooks/output.ts` (the only module that writes stdout / picks exit code).
 
 | Event | Matcher | Handler | Emits |
 |---|---|---|---|
@@ -180,13 +183,14 @@ engineos/
 | UserPromptSubmit | `""` | `prompt-advisor.ts` | one in-process `resolve({taskContract:true})`; additionalContext with scale / decision-rule / route / HITL / classify notes; the only hook that speaks while bypassed |
 | PreToolUse | `Edit\|Write\|NotebookEdit` | `route-before-change.ts` | `[router] ...` context from route-path; per-session file cache under `<gitdir>/engineos-route-cache`; never blocks |
 | PreToolUse | `Agent\|Task` | `announce-agent-dispatch.ts` | green banner instruction; opens a span |
+| PreToolUse | `Bash` | `git-write-guard.ts` | `ask` permission decision (`[engineos] git write: <subcommand>`) when any segment of the command is a git/forge write and `ENGINEOS_GIT_WRITES` is not `auto`; silent otherwise; never denies; ignores bypass |
 | PostToolUse | `Edit\|Write\|NotebookEdit` | `mark-unrecorded.ts` | silent; writes `<gitdir>/ENGINEOS_UNRECORDED.<session>` for code extensions |
 | PostToolUse | `Agent\|Task` | `announce-agent-return.ts` | return banner; closes span, status from structural fields only |
-| Stop (1) | `""` | `stop-verify.ts` | scoped lint + typecheck per touched package (tests only with `ENGINEOS_VERIFY_TESTS=1`); no-op in projects without `.engineos/`; `block` on genuine red, `message` on infra |
+| Stop (1) | `""` | `stop-verify.ts` | per touched package: Node — scoped lint + typecheck; Python (`runner-python.ts`) — ruff + pyright through the first environment found (`.venv` → `uv` → compose service from `.engineos/config.json`), skipped loudly when none; tests only with `ENGINEOS_VERIFY_TESTS=1`; budgets 90s/180s or `ENGINEOS_VERIFY_BUDGET_S`; no-op in projects without `.engineos/`; `block` on genuine red, `message` on infra / skip / unpinned-tool advisory |
 | Stop (2) | `""` | `record-verify.ts` | `block` while the unrecorded marker exists and no `.deferred` sibling |
 | unwired | | `post-edit-check.ts` | registered in `HOOKS`, deliberately absent from hooks.json since 2026-08-08 |
 
-Wire formats (`output.ts`): `context` -> `{"hookSpecificOutput":{"hookEventName","additionalContext"}}`; `block` -> `{"decision":"block","reason"}` with exit 0; `message` -> `{"systemMessage"}`; `fail` -> stderr + exit 2. A hook body that throws is caught and rendered silent.
+Wire formats (`output.ts`): `context` -> `{"hookSpecificOutput":{"hookEventName","additionalContext"}}`; `ask` -> `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason"}}` (git-write-guard only); `block` -> `{"decision":"block","reason"}` with exit 0; `message` -> `{"systemMessage"}`; `fail` -> stderr + exit 2. A hook body that throws is caught and rendered silent.
 
 **Bypass** (`src/hooks/bypass.ts`, `src/bypass/cli.ts`): any of `ENGINEOS_BYPASS=1`, `~/.claude/engineos.bypass`, `<gitdir>/ENGINEOS_BYPASS`. Only the repo marker auto-expires (next SessionStart).
 
@@ -227,7 +231,7 @@ Pattern: checks never shell out. They call `runKernel`, `runTelemetry`, `runJour
 |---|---|---|
 | `gen/` | `engineos gen agent-registry \| agent-commands` | agents/*.md frontmatter -> `registries/agents.json`; one alias command per agent name/alias with a `@generated` marker (marker removed = hand-customized, preserved) |
 | `install/` | `engineos settings-merge` | merges hooks.json + permissions template into `~/.claude/settings.json`; scrubs both old `.sh` and new node hook forms; atomic write, write-once `.engineos.bak` |
-| `init/` | `engineos init` (`scripts/init-project.sh`, `/engineos:init`) | scaffold `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}`; refuses inside the EngineOS checkout (exit 3) |
+| `init/` | `engineos init [--stack auto\|<framework>[@dir],...]` (`scripts/init-project.sh`, `/engineos:init`) | scaffold `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}`; write `.engineos/config.json` once from `--stack` or detection; seed `CLAUDE.md` from `templates/project-claude.md` or `project-claude-python.md` (Python-only repos); refuses inside the EngineOS checkout (exit 3) |
 | `evals/` | `engineos evals` | deterministic tier (always; 7 assertions over `evals/*.jsonl`, coverage floor 25) + live tier (`ENGINEOS_EVAL_LIVE=1`, grades `[router]` announcement) |
 | `bench/` | `engineos bench` | five budgets: route-intent 250ms, resolve-task 500ms, prompt-advisor 600ms, route-before-change cache hit 150ms, always-on context 32000 bytes |
 | `report/` | `engineos usage-report [days]` | mines `~/.claude/projects` transcripts + telemetry for skill/agent/intent hit rates (input to `retro`) |
@@ -296,8 +300,9 @@ sequenceDiagram
     participant P as touched packages
 
     CC->>SV: stdin {transcript_path, stop_hook_active}
-    SV->>SV: parse transcript for Edit/Write on JS/TS files
-    SV->>P: lint, typecheck (test if ENGINEOS_VERIFY_TESTS=1), 90s/180s budgets
+    SV->>SV: parse transcript for Edit/Write on JS/TS and Python files
+    SV->>SV: resolve stack per package (.engineos/config.json, else detect)
+    SV->>P: Node: lint, typecheck · Python: ruff, pyright via .venv / uv / compose (test if ENGINEOS_VERIFY_TESTS=1), 90s/180s or ENGINEOS_VERIFY_BUDGET_S
     alt red
         SV-->>CC: {"decision":"block","reason": repair ladder + 80-line summary}
     else infra / timeout
@@ -343,7 +348,7 @@ graph LR
 - Bypass has three switches; only the repo marker expires. Under bypass every hook goes silent except prompt-advisor, which announces `BYPASS ACTIVE`.
 - esbuild target is node16 so the version guard can run on old node and re-exec; the real floor is 18 (20.10 for import attributes).
 - `src/checks` reads registries raw on purpose; the typed loaders would hide the malformations under test.
-- `rules/production-backend-standards.md` is a client-specific NestJS/TypeORM overlay (`@coresoft-sas/*`) loaded for all backend intents. Not generic policy.
+- `rules/production-backend-standards.md` is a client-specific NestJS/TypeORM overlay (`@coresoft-sas/*`), deprecated 2026-09-28 and loaded by no router row; it stays on disk with a deprecation header until the next MAJOR (`docs/COMPATIBILITY.md`).
 - `docs/release-notes/` has both `1.6.0.md` and `release-notes-1.6.0.md` with different content. `docs/PRD.md` is a stale June draft.
 - `.engineos/memory/` is empty despite 90 archived records; the distillation step has never run here.
 - `.agents/`, `.trae/`, `.windsurf/` are byte-identical vendored copies of an unrelated caveman skill set with no generator in this repo.
