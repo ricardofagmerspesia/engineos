@@ -370,3 +370,76 @@ test('a project that never adopted EngineOS is never written to', (t) => {
   run(promptOf('deploy the billing service to production', repo, 'spans6'), hookCtx());
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
 });
+
+// ------------------------------------------------------------------ the stack question
+
+// Restated rather than imported, like BYPASS_NOTICE above.
+const STACK_QUESTION_NOTE =
+  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. '
+  + 'Before writing any code, your FIRST reply must ask the developer which stack to use for each tier '
+  + 'the work touches (backend, frontend, mobile, LLM/agent runtime) — never pick one yourself '
+  + '(rules/base.md "New projects — stack first"). Persist the answer with '
+  + '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
+
+const BUILD_PROMPT = 'add a paginated orders endpoint to the API';
+
+function contextIn(prompt: string, cwd: string, env: NodeJS.ProcessEnv = ISOLATED): string {
+  const decision = run(promptOf(prompt, cwd), hookCtx(env));
+  return decision.kind === 'context' ? decision.text : '';
+}
+
+test('a stack-dependent prompt in a stackless repo ends with the stack question', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  const text = contextIn(BUILD_PROMPT, repo);
+  assert.ok(text.endsWith(`\n${STACK_QUESTION_NOTE}`) || text === STACK_QUESTION_NOTE, text);
+  assert.equal(text.split(STACK_QUESTION_NOTE).length, 2, 'the note appears exactly once');
+});
+
+test('a stack-dependent prompt in an empty directory outside git is asked too', (t) => {
+  const scratch = tempRoot(t);
+  assert.ok(contextIn(BUILD_PROMPT, scratch).includes(STACK_QUESTION_NOTE));
+});
+
+test('a pure question in a stackless repo is not asked for a stack', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(run(promptOf('what does this function return?', repo), hookCtx()), silent);
+});
+
+test('a repo with a manifest is not asked for a stack', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), { files: { 'services/api/pyproject.toml': '[project]\nname = "api"\n' } });
+  assert.ok(!contextIn(BUILD_PROMPT, repo).includes('no stack declared'));
+});
+
+test('a repo with a declared config is not asked for a stack', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), { files: { '.engineos/config.json': '{}' } });
+  assert.ok(!contextIn(BUILD_PROMPT, repo).includes('no stack declared'));
+});
+
+test('a bypassed stackless session hears only the bypass notice', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(run(promptOf(BUILD_PROMPT, repo), hookCtx({ ...ISOLATED, ENGINEOS_BYPASS: '1' })), {
+    kind: 'context',
+    event: 'UserPromptSubmit',
+    text: BYPASS_NOTICE,
+  });
+});

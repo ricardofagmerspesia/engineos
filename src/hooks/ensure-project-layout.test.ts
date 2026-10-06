@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs';
@@ -15,6 +15,19 @@ const checkout = resolveRoot({}, __dirname);
 const NOW = Date.now();
 const DAY_MS = 86_400_000;
 const SIX_DIRS = '.engineos/changes, .engineos/archived, .engineos/memory, docs/specs, docs/prds, docs/rules';
+const OPT_IN_HINT =
+  '[engineos] layout not scaffolded (opt-in): run `mkdir .engineos` in the project or set ENGINEOS_SCAFFOLD=1';
+// Restated rather than imported, like the hint above: a test that imported the
+// constant would pass however the note was rewritten.
+const STACK_QUESTION_NOTE =
+  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. '
+  + 'Before writing any code, your FIRST reply must ask the developer which stack to use for each tier '
+  + 'the work touches (backend, frontend, mobile, LLM/agent runtime) — never pick one yourself '
+  + '(rules/base.md "New projects — stack first"). Persist the answer with '
+  + '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
+// A manifest EngineOS recognises as a stack choice but resolves no package for,
+// so the cases that are not about the stack keep their stack line out of the way.
+const STACK_FILES: Record<string, string> = { 'go.mod': 'module example.test/app\n' };
 
 function hasGit(): boolean {
   return spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0;
@@ -48,11 +61,11 @@ test('an un-adopted repo is left alone and told how to opt in', (t) => {
     t.skip('git is not installed');
     return;
   }
-  const repo = fixtureRepo(tempRoot(t));
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
   assert.deepEqual(run(sessionStart(repo), hookCtx()), {
     kind: 'context',
     event: 'SessionStart',
-    text: '[engineos] layout not scaffolded (opt-in): run `mkdir .engineos` in the project or set ENGINEOS_SCAFFOLD=1',
+    text: OPT_IN_HINT,
   });
   assert.equal(existsSync(join(repo, 'docs')), false);
 });
@@ -73,7 +86,7 @@ test('ENGINEOS_SCAFFOLD=1 scaffolds the six standard dirs and names them once', 
     t.skip('git is not installed');
     return;
   }
-  const repo = fixtureRepo(tempRoot(t));
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
   assert.deepEqual(run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } })), {
     kind: 'context',
     event: 'SessionStart',
@@ -88,13 +101,14 @@ test('a repo whose layout is already complete is silent', (t) => {
     t.skip('git is not installed');
     return;
   }
-  const repo = fixtureRepo(tempRoot(t));
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
   run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } }));
   assert.deepEqual(run(sessionStart(repo), hookCtx()), { kind: 'silent' });
 });
 
-test('a directory outside any git work tree is silent', (t) => {
+test('a directory with a stack outside any git work tree is silent', (t) => {
   const scratch = tempRoot(t);
+  writeFileSync(join(scratch, 'go.mod'), 'module example.test/app\n');
   assert.deepEqual(run(sessionStart(scratch), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } })), { kind: 'silent' });
   assert.equal(existsSync(join(scratch, 'docs')), false);
 });
@@ -268,12 +282,106 @@ test('the stack line reads .engineos/config.json when present and reports one th
   });
 });
 
-test('an adopted repo with no package marker stays silent once its layout is complete', (t) => {
+test('an adopted repo with a manifest but no runnable package stays silent once its layout is complete', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
+  run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } }));
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), { kind: 'silent' });
+});
+
+// ------------------------------------------------------------------ the stack question
+
+// os.homedir() reads HOME on POSIX, so the home-directory guard is exercised
+// against a temp dir instead of the developer's real home.
+function withHome(t: TestContext, home: string): void {
+  const previous = process.env['HOME'];
+  process.env['HOME'] = home;
+  t.after(() => {
+    if (previous === undefined) delete process.env['HOME'];
+    else process.env['HOME'] = previous;
+  });
+}
+
+test('an empty directory outside git is asked for its stack and never scaffolded', (t) => {
+  const scratch = tempRoot(t);
+  assert.deepEqual(run(sessionStart(scratch), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: STACK_QUESTION_NOTE,
+  });
+  assert.equal(existsSync(join(scratch, 'docs')), false);
+  assert.equal(existsSync(join(scratch, '.engineos')), false);
+});
+
+test('a session started in the home directory is never asked for a stack', (t) => {
+  const home = tempRoot(t);
+  withHome(t, home);
+  assert.deepEqual(run(sessionStart(home), hookCtx()), { kind: 'silent' });
+});
+
+test('a home directory that is a git repo gets the opt-in hint without the stack question', (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t));
-  run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } }));
-  assert.deepEqual(run(sessionStart(repo), hookCtx()), { kind: 'silent' });
+  withHome(t, repo);
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), { kind: 'context', event: 'SessionStart', text: OPT_IN_HINT });
+});
+
+test('an un-adopted stackless repo gets the opt-in hint and the stack question in one payload', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: `${OPT_IN_HINT}\n${STACK_QUESTION_NOTE}`,
+  });
+  assert.equal(existsSync(join(repo, 'docs')), false);
+});
+
+test('an adopted stackless repo carries the stack question after the scaffold line, and on every start', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '1' } })), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: `[engineos] scaffolded standard layout: ${SIX_DIRS} (review seeded READMEs)\n${STACK_QUESTION_NOTE}`,
+  });
+  assert.deepEqual(run(sessionStart(repo), hookCtx()), {
+    kind: 'context',
+    event: 'SessionStart',
+    text: STACK_QUESTION_NOTE,
+  });
+});
+
+test('a declared .engineos/config.json answers the stack question', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), {
+    files: { '.engineos/config.json': JSON.stringify({ version: 1, stack: { packages: [] } }) },
+  });
+  run(sessionStart(repo), hookCtx());
+  const decision = run(sessionStart(repo), hookCtx());
+  assert.ok(decision.kind !== 'context' || !decision.text.includes('no stack declared'), JSON.stringify(decision));
+});
+
+test('ENGINEOS_SCAFFOLD=0 keeps a stackless repo silent', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(run(sessionStart(repo), hookCtx({ env: { ENGINEOS_SCAFFOLD: '0' } })), { kind: 'silent' });
 });

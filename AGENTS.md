@@ -79,7 +79,7 @@ Rules for routing:
 
 | Intent (signals) | Load |
 |---|---|
-| New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `superpowers:brainstorming` first, then `superpowers:writing-plans` for spec/design/tasks, then stack rules below. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature) — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
+| New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `/engineos:new-feature` — PRD + ADR + SPEC + TASKS before code: Matt Pocock skills `grill-with-docs` (ADRs → `docs/adr/`, glossary `CONTEXT.md`) → `to-spec` (PRD → `docs/prds/`) → skill `tlc-spec-lean` plan, then checks (SPEC → `.specs/features/<feature>/`, indexed from `docs/specs/`) → `to-tickets` (TASKS → `docs/specs/<feature>/tickets/`, each naming the check ids it closes) → build → the `tlc-spec-lean` Verifier; then stack rules below. Applies at non-negotiable #1's threshold — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
 | Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` (always-on); fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
 | Backend work (NestJS, API, service, controller, migration, queue) | `rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
@@ -142,7 +142,7 @@ Rules:
 Each item names the file that owns it. That file is the single source of truth —
 read it there, not here.
 
-1. **Spec before code** — any change touching >2 files or any new feature.
+1. **Spec before code** — any change touching >2 files or any new feature. A from-scratch feature carries four artifacts before code — PRD, ADR, SPEC, TASKS — produced by `/engineos:new-feature`.
 2. **The final gate before "done"** — `rules/verification.md`. The automated Stop-gate
    half covers JS/TS packages (npm/pnpm/yarn/Nx scripts) and Python packages (ruff, pyright, pytest); other stacks are verified manually. This is
    the Validation gate of `rules/gates.md`, never the Release gate.
@@ -171,6 +171,7 @@ read it there, not here.
 12. **Git writes follow the developer's `ENGINEOS_GIT_WRITES` setting** (`ask`, the
     default, or `auto`) — `rules/git.md`. Under `ask`, every git or forge command that
     writes becomes a permission prompt; an approval covers one action, never a session.
+13. **Stack first on a greenfield repo** — ask the developer which stack to use, never pick one — `rules/base.md` "New projects — stack first".
 
 ## Codebase Overview
 

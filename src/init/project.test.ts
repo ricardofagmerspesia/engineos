@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { memoryIo } from '../io';
 import { resolveRoot } from '../registry/paths';
 import { fixtureRepo, relocatedRoot, tempRoot } from '../testing/harness';
-import { IMPORT_RE, claudeMdTemplate, initProject, parseStackSpec } from './project';
+import { AGENT_SKILLS_DOCS, IMPORT_RE, claudeMdTemplate, initProject, parseStackSpec } from './project';
 
 const checkout = resolveRoot({}, __dirname);
 const SIX_DIRS = ['.engineos/changes', '.engineos/archived', '.engineos/memory', 'docs/specs', 'docs/prds', 'docs/rules'];
@@ -403,4 +403,89 @@ test('--dry-run prints the config it would write and writes nothing', (t) => {
   assert.equal(run.status, 0);
   assert.ok(run.stdout.includes(`  would write ${CONFIG}:\n    {\n      "version": 1,\n`), run.stdout);
   assert.equal(existsSync(join(repo, '.engineos')), false);
+});
+
+// ---------------------------------------------------- docs/agents/ seeding
+
+test('a fresh project gets both agent-skills docs seeded from templates/agent-skills/', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual([...AGENT_SKILLS_DOCS], ['issue-tracker.md', 'domain.md']);
+  for (const name of AGENT_SKILLS_DOCS) {
+    assert.ok(run.stdout.includes(`  docs/agents/${name}: created from templates/agent-skills/${name}\n`), run.stdout);
+    assert.equal(
+      readFileSync(join(repo, 'docs', 'agents', name), 'utf8'),
+      readFileSync(join(checkout, 'templates', 'agent-skills', name), 'utf8'),
+    );
+  }
+});
+
+test('existing agent-skills docs are never overwritten, and a dangling symlink is not written through', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const outside = join(root, 'outside');
+  mkdirSync(outside);
+  mkdirSync(join(repo, 'docs', 'agents'), { recursive: true });
+  writeFileSync(join(repo, 'docs', 'agents', 'issue-tracker.md'), '# mine\n');
+  symlinkSync(join(outside, 'planted.md'), join(repo, 'docs', 'agents', 'domain.md'));
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('  docs/agents/issue-tracker.md: exists, left untouched\n'), run.stdout);
+  assert.ok(run.stdout.includes('  docs/agents/domain.md: exists, left untouched\n'), run.stdout);
+  assert.equal(readFileSync(join(repo, 'docs', 'agents', 'issue-tracker.md'), 'utf8'), '# mine\n');
+  assert.equal(existsSync(join(outside, 'planted.md')), false);
+});
+
+test('a symlinked docs/agents/ directory is refused, never seeded through', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const outside = join(root, 'outside');
+  mkdirSync(outside);
+  mkdirSync(join(repo, 'docs'), { recursive: true });
+  symlinkSync(outside, join(repo, 'docs', 'agents'));
+  const run = init(['--dir', repo], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  for (const name of AGENT_SKILLS_DOCS) {
+    assert.ok(run.stdout.includes(`  docs/agents/${name}: skipped — `), run.stdout);
+    assert.equal(existsSync(join(outside, name)), false);
+  }
+});
+
+test('--dry-run names the agent-skills docs it would seed and writes nothing', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--dry-run'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  for (const name of AGENT_SKILLS_DOCS) {
+    assert.ok(run.stdout.includes(`  would create docs/agents/${name} from templates/agent-skills/${name}\n`), run.stdout);
+  }
+  assert.equal(existsSync(join(repo, 'docs')), false);
+});
+
+test('both starter CLAUDE.md templates carry the Agent skills and tlc-spec-lean blocks', () => {
+  for (const name of ['project-claude.md', 'project-claude-python.md']) {
+    const text = readFileSync(join(checkout, 'templates', name), 'utf8');
+    for (const line of ['## Agent skills\n', '### Issue tracker\n', '### Triage labels\n', '### Domain docs\n', '## tlc-spec-lean\n', 'profile: light\n', 'budget: 150k\n']) {
+      assert.ok(text.includes(line), `${name} lacks ${line.trim()}`);
+    }
+    assert.ok(text.includes('`docs/agents/issue-tracker.md`') && text.includes('`docs/agents/domain.md`'), name);
+  }
 });

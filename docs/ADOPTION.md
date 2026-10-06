@@ -107,6 +107,11 @@ to see what it would do first. `--stack` takes `auto` or a comma list of
 `react-native`; `@dir` is the package directory relative to the repo root (omit it
 for `.`).
 
+A brand-new repo has nothing to detect: the SessionStart hook tells Claude to ask you for
+the stack in its first reply (`rules/base.md` "New projects — stack first"); answer, and it
+persists the choice with `--stack` and records it as the first ADR. From-scratch features then
+run `/engineos:new-feature` (PRD, ADR, SPEC, TASKS before code).
+
 What it creates:
 - `.engineos/{changes,archived,memory}` plus `docs/{specs,prds,rules}`, each seeded
   with its `README.md`/`_template.md`. `memory/` is part of the standard layout, not

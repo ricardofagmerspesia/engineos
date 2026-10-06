@@ -20,24 +20,27 @@ Steps:
    `patterns/3-Agent-topology-interview.md`, and load the `agent-system-design`
    skill (Skill tool), which reads `skills/agent-system-design/references/form.md`
    and points at `templates/agent-topology.md`. Adopt that persona and procedure.
-2. Confirm a change record is open in `.engineos/changes/`; if none is, open one
+2. Settle the runtime first: in a greenfield repo ask the stack question
+   (`rules/base.md` "New projects — stack first") before the form; a non-Python
+   answer is accepted, with a note that the catalog and `langgraph-patterns` assume Python.
+3. Confirm a change record is open in `.engineos/changes/`; if none is, open one
    from `_template.md` first (domain `llm`) — the approval line needs a home.
-3. If `$ARGUMENTS` is `resume`: find the newest `docs/specs/*-agent-topology.md`
+4. If `$ARGUMENTS` is `resume`: find the newest `docs/specs/*-agent-topology.md`
    with `status: draft`, summarize the filled sections back to the developer, and
    re-enter the form at the first section still holding a `<placeholder>`.
    Otherwise: ask the developer for the system's name and slug, create
    `docs/specs/<date>-<slug>-agent-topology.md` in the **target project** from the
    template, set the change record's `spec:` field to it, and start at step 1.
-4. Walk the form: ask one step, wait, record the answer into its spec section,
+5. Walk the form: ask one step, wait, record the answer into its spec section,
    check the step's "do not proceed until" line, ask the next. Recommendations
    cite `file:line` in the reference repos where `form.md` names one. Never pick
    for the developer; never default or skip a step; write no code.
-5. At step 12 render the flowchart and the sequence diagram from the spec and ask
+6. At step 12 render the flowchart and the sequence diagram from the spec and ask
    for approval. On "approved": write
    `<date> | <developer> | topology-approval | approved | docs/specs/<file>` under
    the change record's `## Human decisions`, set the spec front-matter to
    `status: approved` with `approved_by` and `approved_on`, and stop.
-6. End with one line: the spec path, the pattern ids, and the next step —
+7. End with one line: the spec path, the pattern ids, and the next step —
    `langgraph-patterns` for a tool loop (or `python-patterns` for a pipeline) and
    the wave plan derived from §2 and §3 per `rules/parallelism.md`.
 

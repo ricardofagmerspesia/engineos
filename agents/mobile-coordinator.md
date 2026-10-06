@@ -63,6 +63,17 @@ transfer directly.
 
 ## Method
 
+Before step 1, in both modes, read the resolved stack:
+`scripts/kernel.sh resolve-stack [dir]`. A repo with no package and no
+`.engineos/config.json` has no stack yet — stop before any write and return
+`status: BLOCKED` with
+`missing: stack undeclared — the orchestrator asks the developer per rules/base.md "New projects — stack first"`
+as the first `next_actions` entry. Never pick a stack (React Native or any
+other) yourself. "Greenfield mobile work" below means a new feature inside an
+app whose stack is already declared; a web package elsewhere with no mobile
+package yet is not this case either — report the missing mobile app tree under
+`### Blocked` and let the orchestrator ask which mobile stack to scaffold.
+
 Greenfield work follows the same steps with the mobile requirements as the
 source instead of a web feature (skip step 1's web mapping).
 

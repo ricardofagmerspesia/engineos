@@ -8,6 +8,13 @@ trade-off, how the recommendation is derived from the answers already in the spe
 the section of `templates/agent-topology.md` the answer fills, and a
 "do not proceed until" line that is the gate to the next step.
 
+Runtime first: the language and agent runtime are the developer's answer to the
+stack question (`rules/base.md` "New projects — stack first"), settled before step
+1 — never defaulted to Python because the references below are Python. The pattern
+catalog, its reference implementations, `langgraph-patterns` and the `.py` paths in
+`templates/agent-topology.md` all assume Python; when the answer is another
+runtime, say so before step 1, then walk the same twelve steps on the generic rules.
+
 Grounding: every `file:line` below is real code. `demo/` is
 `labv-opensearch-agent-demo/backend` (the LangGraph reference), `assist/` is
 `labv-assist/app` (the single-agent grounded pipeline). A recommendation that cites

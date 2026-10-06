@@ -48,3 +48,20 @@
 - DO prefer the standard library and existing project deps over adding new packages.
 - DO check a new dep's maintenance (last release, downloads, deps count) before adding.
 - DON'T add a dependency for what 20 lines of code can do.
+
+## New projects — stack first
+A repo is greenfield when it has no `.engineos/config.json` and no package manifest (the
+SessionStart and UserPromptSubmit hooks detect it and say so).
+- DO ask the developer for the stack in your first reply in a greenfield repo, before any
+  code — one question per tier the work touches: backend, frontend, mobile, LLM/agent
+  runtime. Offer the stacks EngineOS supports first (NestJS, FastAPI, React/Next, React
+  Native, Python + LangGraph for agent systems), and accept any other answer.
+- DON'T choose a stack yourself, and don't infer one from which skills or patterns happen
+  to exist — that inference is how a TypeScript team got a Python project.
+- DO persist a supported answer with `engineos init --stack <framework>[@dir],...` and record
+  the choice as the project's first ADR (`docs/adr/`).
+- DO say plainly which EngineOS parts will not apply when the answer is a stack EngineOS has
+  no patterns for (e.g. "`langgraph-patterns` and the agent-design form are Python-only; the
+  Stop gate has no Go runner"), then proceed on the generic rules.
+- A dispatched agent cannot ask: a coordinator whose scope is greenfield returns `BLOCKED`
+  with `stack undeclared`, and the orchestrator asks the developer.

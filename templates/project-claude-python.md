@@ -34,6 +34,29 @@
 ## ADRs
 Decisions live in `docs/adr/`. Read related ADRs before structural changes.
 
+## Agent skills
+<!-- Read by Matt Pocock's engineering skills (/grill-with-docs, /to-spec, /to-tickets,
+     /triage), which `/engineos:new-feature` runs. `engineos init` seeds the two
+     docs/agents/ files below when absent; edit them, init never overwrites them. -->
+
+### Issue tracker
+
+Local markdown in the EngineOS layout: PRDs in `docs/prds/`, tickets in `docs/specs/<feature>/tickets/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — recorded on a ticket's `Triage:` line; the `**Status:**` line keeps its own closed vocabulary (`docs/agents/issue-tracker.md`). See `docs/agents/triage-labels.md` (create it only to override a default).
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/` (`YYYY-MM-DD-<slug>.md`). See `docs/agents/domain.md`.
+
+## tlc-spec-lean
+<!-- Read by the tlc-spec-lean skill (`/engineos:new-feature` SPEC and build stages).
+     SPEC artifacts live in `.specs/features/<feature>/`, indexed from `docs/specs/`. -->
+profile: light
+budget: 150k
+
 ## EngineOS
 Adopted with `scripts/init-project.sh`. The test policy is defined once, in
 `rules/verification.md` — read it there and do not restate it here. This section

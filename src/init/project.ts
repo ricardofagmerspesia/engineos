@@ -74,6 +74,19 @@ function claudeMdSeed(template: string): ManifestEntry[] {
   return [{ dir: '', seeds: [{ src: `@${template}`, dest: 'CLAUDE.md' }] }];
 }
 
+// The per-repo config Matt Pocock's engineering skills read (/to-spec, /to-tickets,
+// /grill-with-docs), pointed at the EngineOS layout instead of his `.scratch/`
+// default — without it those skills would write PRDs and tickets where the spec
+// gate never looks. Seeded through the same one-entry-manifest containment path
+// as CLAUDE.md, so docs/agents/ cannot be a symlink escape either.
+const AGENT_SKILLS_DIR = 'docs/agents';
+const AGENT_SKILLS_TEMPLATE_DIR = 'templates/agent-skills';
+export const AGENT_SKILLS_DOCS: readonly string[] = ['issue-tracker.md', 'domain.md'];
+
+function agentSkillsSeed(name: string): ManifestEntry[] {
+  return [{ dir: AGENT_SKILLS_DIR, seeds: [{ src: `@${AGENT_SKILLS_TEMPLATE_DIR}/${name}`, dest: name }] }];
+}
+
 export interface InitDeps {
   io: Io;
   root: string;
@@ -154,6 +167,7 @@ export function initProject(argv: string[], deps: InitDeps): number {
   const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
   writeProjectConfig({ io, project, packages, source, dryRun });
   writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
+  for (const name of AGENT_SKILLS_DOCS) writeAgentSkillsDoc({ io, project, root, name, dryRun });
   io.out(doneMessage(root));
   return EXIT_OK;
 }
@@ -264,6 +278,29 @@ function writeProjectClaudeMd(opts: { io: Io; project: string; root: string; tem
     isFile(claudeMd)
       ? `  CLAUDE.md: created from ${template} — fill in the Stack and Commands sections\n`
       : '  CLAUDE.md: skipped — the project root did not resolve to a directory inside itself\n',
+  );
+}
+
+// Same existence test as the CLAUDE.md seed (`lstat`, so a dangling symlink
+// counts as occupied): an existing file is the developer's, never overwritten.
+function writeAgentSkillsDoc(opts: { io: Io; project: string; root: string; name: string; dryRun: boolean }): void {
+  const { io, project, root, name, dryRun } = opts;
+  const dest = `${AGENT_SKILLS_DIR}/${name}`;
+  const template = `${AGENT_SKILLS_TEMPLATE_DIR}/${name}`;
+  const target = join(project, AGENT_SKILLS_DIR, name);
+  if (lstatOk(target)) {
+    io.out(`  ${dest}: exists, left untouched\n`);
+    return;
+  }
+  if (dryRun) {
+    io.out(`  would create ${dest} from ${template}\n`);
+    return;
+  }
+  scaffoldLayout(project, root, agentSkillsSeed(name));
+  io.out(
+    isFile(target)
+      ? `  ${dest}: created from ${template}\n`
+      : `  ${dest}: skipped — ${AGENT_SKILLS_DIR}/ is not a plain directory inside the project, or ${template} is missing\n`,
   );
 }
 

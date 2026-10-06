@@ -24,6 +24,14 @@ skill.
 
 ## Method
 
+0. Read the resolved stack first: `scripts/kernel.sh resolve-stack [dir]`.
+   **Greenfield** — no package and no `.engineos/config.json` — stop before any
+   write and return `status: BLOCKED` with
+   `missing: stack undeclared — the orchestrator asks the developer per rules/base.md "New projects — stack first"`
+   as the first `next_actions` entry. Never pick a stack (React/Next or any
+   other) yourself. Packages elsewhere but none covering your scope is not
+   greenfield: proceed against the repo's existing frontend package and record
+   the choice in `decisions`.
 1. Map the component tree / route for the target; identify state ownership, data
    fetching boundaries, and re-render hotspots.
 2. Check: server/client component boundaries, accessibility (roles, labels,

@@ -119,6 +119,50 @@ for skill in "$REPO_DIR"/skills/*/; do
   fi
 done
 
+# ---------- 4a2. Symlink pinned third-party skills ----------
+# `/engineos:new-feature` runs Matt Pocock's /grill-with-docs, /to-spec and
+# /to-tickets plus tlc-spec-lean; they are vendored under .agents/skills/ at the
+# versions skills-lock.json pins, and linked machine-wide so every project has
+# them. Only these two sources: the lock also pins skills EngineOS does not
+# route to, and installing those is the developer's call, not the installer's.
+# A name EngineOS ships itself under skills/ is skipped — link_idempotent would
+# otherwise silently repoint the EngineOS skill's symlink (both ship `retro`).
+# A pinned skill that is not vendored yet is a warning, never an abort.
+SKILLS_LOCK="$REPO_DIR/skills-lock.json"
+VENDORED_SKILLS="$REPO_DIR/.agents/skills"
+if [ ! -f "$SKILLS_LOCK" ]; then
+  warn "skip: skills-lock.json not found — pinned third-party skills not linked"
+elif ! command -v node >/dev/null 2>&1; then
+  warn "skip: node not found — pinned third-party skills (skills-lock.json) not linked"
+elif ! pinned_skills="$(node -e '
+  const fs = require("fs");
+  const sources = new Set(["mattpocock/skills", "tech-leads-club/agent-skills"]);
+  const lock = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const skills = lock && typeof lock.skills === "object" && lock.skills !== null ? lock.skills : {};
+  for (const [name, entry] of Object.entries(skills)) {
+    // A name becomes a path component under ~/.claude/skills: no separators, no dot-dirs.
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) continue;
+    if (entry && sources.has(entry.source)) console.log(name);
+  }
+' "$SKILLS_LOCK" 2>/dev/null)"; then
+  warn "skip: skills-lock.json could not be parsed — pinned third-party skills not linked"
+else
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    src="$VENDORED_SKILLS/$name"
+    target="$CLAUDE_DIR/skills/$name"
+    if [ -d "$REPO_DIR/skills/$name" ]; then
+      warn "skip: pinned skill $name — EngineOS ships its own skills/$name, which wins"
+    elif [ ! -d "$src" ]; then
+      warn "skip: pinned skill $name is not vendored at .agents/skills/$name"
+    elif link_idempotent "$src" "$target"; then
+      echo "pinned skill linked: $name"
+    else
+      warn "skip: $target exists and is not a symlink (local skill with same name?)"
+    fi
+  done <<< "$pinned_skills"
+fi
+
 # ---------- 4b. Symlink subagents ----------
 mkdir -p "$CLAUDE_DIR/agents"
 for agent in "$REPO_DIR"/agents/*.md; do

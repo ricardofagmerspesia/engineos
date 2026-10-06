@@ -37,8 +37,17 @@ from an MCP.
    `framework: nestjs` → load `nestjs-patterns` (Skill tool) and use
    `mcp__nestjs`; `language: python` / `framework: fastapi` → load
    `python-patterns` and follow `rules/backend-python.md`. A repo may resolve to
-   both — apply each package's own pair, never the other's. No package → say so
-   in `decisions` and fall back to what the files in scope show.
+   both — apply each package's own pair, never the other's.
+   **Greenfield** — `packages` is empty and there is no `.engineos/config.json`:
+   stop before any write and return `status: BLOCKED` with
+   `missing: stack undeclared — the orchestrator asks the developer per rules/base.md "New projects — stack first"`
+   as the first `next_actions` entry. Never pick a stack, and never infer one
+   from which skills or patterns exist. **Packages elsewhere, none in your
+   scope** (the repo resolves to packages, or declares a config, but no package
+   dir contains the files you were given) — not greenfield, not blocking: apply
+   the pair the repo's backend packages share and record which one and why in
+   `decisions`. If those packages disagree, say so in `decisions` and stay with
+   the generic `rules/backend.md` + `rules/architecture.md`.
 1. Map the surface: entry points (controllers or routers, queue consumers, webhooks), the
    data flow, and the boundaries (validation, authz).
 2. Check against the rules — input validation at the boundary, object-level

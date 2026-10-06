@@ -20,6 +20,6 @@
       "note": "retired phrasing: CLAUDE.md non-negotiable #4, plus rules/subagents.md for dispatched agents"
     }
   ],
-  "external_skills": ["claude-api", "code-review"],
+  "external_skills": ["claude-api", "code-review", "tlc-spec-lean", "grill-with-docs", "to-spec", "to-tickets"],
   "alias_exempt": ["ios-builder", "android-builder", "router"]
 }

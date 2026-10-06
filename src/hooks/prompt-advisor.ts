@@ -15,6 +15,7 @@ import { bypassActive } from './bypass';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceNotes, type TaskAnswer } from './prompt-advisor-guidance';
+import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
 import { event, telemetrySink, withSpan, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
 
 // The only thing a bypassed session is told, and the only reason this hook still
@@ -44,6 +45,9 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (task === null) return silent;
   writeEvents(sink, task);
   const notes = guidanceNotes(task);
+  // The fallback for a session whose SessionStart note scrolled away: repeated
+  // only on prompts that are about to make a stack choice, never on questions.
+  if (promptNeedsStackQuestion(task.contract.intents, env.cwd, ctx.spawn)) notes.push(STACK_QUESTION_NOTE);
   // A prompt that resolved nothing worth announcing stays silent — the events
   // and the span above are still the honest record that the call happened.
   if (notes.length === 0) return silent;

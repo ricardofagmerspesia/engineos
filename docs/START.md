@@ -40,6 +40,8 @@ explicitly by typing its name (Claude runs it via the Skill tool).
 | `record-change` | A unit of work is done — mark its record done, log files, archive it |
 | `retro` | Mine closed change records + eval/integrity failures for durable rule improvements (3+ occurrences required); proposes a PR, never merges |
 | `tlc-spec-driven` | Planning a feature/project (specify → design → tasks → execute) |
+| `tlc-spec-lean` | The SPEC stage of `/new-feature` (plan, then checks, in `.specs/features/<feature>/`) and its independent Verifier — loaded by the command, not invoked on its own |
+| `grill-with-docs`, `to-spec`, `to-tickets` | Matt Pocock's ADR, PRD and TASKS stages of `/new-feature`. Human-invoked only (`disable-model-invocation: true`) — Claude cannot trigger them from your wording; the command runs them for you |
 | `adr` | Making an architecture decision worth recording |
 | `eval-harness` | An LLM feature has no evals yet |
 | `release-notes` | Writing release notes / documenting a version |
@@ -54,7 +56,8 @@ explicitly by typing its name (Claude runs it via the Skill tool).
 Invoke explicitly: just say `record-change` or "use the eval-harness skill".
 Process skills from the `superpowers` plugin (`brainstorming`,
 `systematic-debugging`, `verification-before-completion`) trigger first when
-relevant — let them.
+relevant — let them. The one exception is a feature built from scratch: it goes
+through `/new-feature` (§3), not `brainstorming` → `writing-plans`.
 
 ---
 
@@ -124,6 +127,8 @@ and `/implement`; plugin mode namespaces them `/engineos:audit`.)
 /implement backend add idempotency keys to the payments webhook
 /design-agents              # design a system with more than one agent — before any graph code
 /design-agents resume       # pick a draft topology spec back up at its first unfilled step
+/new-feature orders         # a feature from scratch: PRD + ADR + SPEC + TASKS before code
+/new-feature orders resume  # restart at the earliest stage whose artifact is missing
 ```
 `/audit` writes `.engineos/audits/<date>-<domain>.md` (verdict + root cause + plan).
 `/implement` is spec-gated and closes with a change record.
@@ -133,6 +138,24 @@ protocol, context scoping, memory, harness, guardrails, failure policy,
 observability, evals, diagrams — writing `docs/specs/<date>-<slug>-agent-topology.md`
 as you answer, and closes only when your approval line (`topology-approval`) is in
 the change record. `langgraph-patterns` loads after that, never to choose for you.
+
+`/new-feature <feature-slug> [resume]` runs in your session, one stage at a time,
+and stops for your review at the end of each:
+
+| Stage | Produces |
+|---|---|
+| 0. Stack | only in a greenfield repo — the stack question, `init --stack`, the first ADR |
+| 1. Preconditions | `docs/agents/issue-tracker.md` and `docs/agents/domain.md` (from `templates/agent-skills/` if missing); a change record |
+| 2. ADR (`grill-with-docs`) | `docs/adr/YYYY-MM-DD-<slug>.md`, glossary in `CONTEXT.md` |
+| 3. PRD (`to-spec`) | `docs/prds/YYYY-MM-DD-<feature>.md` |
+| 4. SPEC (`tlc-spec-lean`) | `.specs/features/<feature>/plan.md` (stops for review), then `checks.md`; index `docs/specs/YYYY-MM-DD-<feature>.md` |
+| 5. TASKS (`to-tickets`) | `docs/specs/<feature>/tickets/NN-<slug>.md`, each with `Blocked by:` and `Closes checks:` |
+| 6. Build + verify | the code, with tests ON (the `checks.md` proofs), then a fresh Verifier writing `.specs/features/<feature>/verification.md` |
+
+The SPEC itself lives in `.specs/` because `tlc-spec-lean` is installed unchanged;
+`docs/specs/` only holds the index. In stage 6, `tlc-spec-lean` decides between one
+builder or sequential batches (advancing only on green) — that stage does not fan
+out in parallel the way `rules/parallelism.md` would by default.
 
 **Escape hatch — `/bypass`.** Some work isn't worth the constitution: a throwaway
 script, a one-line spike, someone else's repo you're just poking at.
@@ -182,8 +205,8 @@ These run on their own. Know what they do and how to respond:
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
 | `stop-verify` | when finishing | if it blocks: run the gate for the touched packages and show output — Node: lint + typecheck; Python: ruff + pyright (see "Python projects" below). Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
-| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) and prints one `[engineos] stack: fastapi@backend · react@frontend · runners: …` line so you can see which gate will run; if it names the wrong stack, edit `.engineos/config.json` |
-| `prompt-advisor` | on your prompt | nothing — one non-blocking task contract combining route, scale, model tier, policy loads and matched decision rules |
+| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) and prints one `[engineos] stack: fastapi@backend · react@frontend · runners: …` line so you can see which gate will run; if it names the wrong stack, edit `.engineos/config.json`. In a greenfield repo (no `.engineos/config.json`, no package manifest) it instead adds `[engineos] no stack declared …`: expect Claude's first reply to ask you which stack to use per tier — answer it, and it persists your choice with `init --stack` and records it as the first ADR |
+| `prompt-advisor` | on your prompt | nothing — one non-blocking task contract combining route, scale, model tier, policy loads and matched decision rules; in a greenfield repo a build-type prompt (feature, backend, frontend, mobile, LLM, agent system) also carries the `no stack declared` note. Advisory — it never blocks |
 | `git-write-guard` | before each `Bash` call | answer the permission prompt when the command writes to git or the forge (`commit`, `push`, `add`, `checkout`, `gh pr create`, …). Read-only git never prompts. Personal setting `ENGINEOS_GIT_WRITES=ask` (default) \| `auto` in `~/.claude/settings.local.json` — see `rules/git.md` "Who may write" |
 
 Gates block **once** (never loop). A block means "do the thing, then finish."
@@ -204,7 +227,8 @@ in `~/.claude/settings.local.json`.
 suite unless you ask for them ("write tests", "add coverage", "TDD this", "run
 the suite"), your project's `CLAUDE.md` requires them, a test agent
 (`test-writer` / `qa-tester`) was dispatched on purpose, or you named a
-release/merge gate that includes tests. Otherwise the finalization gate is
+release/merge gate that includes tests. Work that runs `/new-feature` has tests ON:
+the proofs in `.specs/features/<feature>/checks.md` are its tests. Otherwise the finalization gate is
 **lint + typecheck only** — see `rules/verification.md` for the full policy, and set
 `ENGINEOS_VERIFY_TESTS=1` to force tests back into the Stop gate unconditionally.
 
@@ -226,8 +250,11 @@ advisory line (`… not pinned to exact versions (rules/verification.md)`), not 
 ## 6. Specs — where plans live
 
 Multi-file changes and new features get a spec before code (a non-negotiable).
-- Created by the `brainstorming` → `writing-plans` flow, or `tlc-spec-driven`.
-- Stored in `docs/specs/<date>-<topic>-design.md`.
+- A feature built from scratch: `/new-feature` (§3) writes PRD + ADR + SPEC + TASKS
+  before code — the SPEC in `.specs/features/<feature>/`, indexed from
+  `docs/specs/<date>-<feature>.md`, the tickets in `docs/specs/<feature>/tickets/`.
+- Other multi-file changes: a design doc in `docs/specs/<date>-<topic>-design.md`
+  (`tlc-spec-driven` works too).
 - Read the relevant spec before implementing; it carries the approved design + the
   verification plan.
 
@@ -278,7 +305,9 @@ goes back through the router.
 
 1. Ask for the change ("add pagination to the orders list endpoint").
 2. Router announces backend rules + `nestjs-patterns` + `backend-coordinator`.
-3. For >2 files / a new feature, brainstorming + a spec come first — go with it.
+3. For >2 files a spec comes first — go with it. For a feature built from scratch,
+   type `/new-feature <slug>`: PRD, ADR, SPEC and TASKS are written, one review at a
+   time, before any code. In an empty repo, Claude asks for the stack before anything else.
 4. Open a `.engineos/changes/` record.
 5. Implement (or `/implement backend ...`). Each edit gets routed guidance.
 6. Verify — show lint/typecheck output (add test output only if tests were
@@ -293,7 +322,8 @@ goes back through the router.
 | Make a coordinated change | `/implement <domain> <task>` |
 | Deep DB / cluster / CI inspection | leaf specialist (or `/audit` dispatches it) |
 | Record finished work | `record-change` skill |
-| Plan a feature | `tlc-spec-driven` (or just describe it — brainstorming triggers) |
+| Build a feature from scratch | `/new-feature <slug>` — PRD + ADR + SPEC + TASKS before code; `resume` picks up at the first missing artifact |
+| Start a brand-new repo | just ask — Claude's first reply asks which stack per tier; never let it pick |
 | Design a multi-agent system | `/design-agents` — the 12-step form, approval before any graph code; `resume` picks a draft back up |
 | Record an architecture decision | `adr` skill |
 | Security-check a diff | `security-reviewer` agent |

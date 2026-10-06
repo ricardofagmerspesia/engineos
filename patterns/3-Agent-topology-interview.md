@@ -23,6 +23,10 @@ the target project.
   not run in a subagent, because a subagent cannot wait for the developer.
 - `skills/agent-system-design/SKILL.md` has been loaded (Skill tool) and
   `references/form.md` read.
+- The runtime is settled: it is the developer's answer to the stack question
+  (`rules/base.md` "New projects — stack first"). If the repo is greenfield, ask it
+  before step 1; if the answer is not Python, say that `langgraph-patterns`,
+  `python-patterns` and the template's `.py` paths assume Python, then proceed.
 
 ## The loop
 

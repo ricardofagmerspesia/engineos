@@ -32,6 +32,15 @@ feature lacks evals.
 
 ## Method
 
+0. Read the resolved stack first: `scripts/kernel.sh resolve-stack [dir]`.
+   **Greenfield** — no package and no `.engineos/config.json` — stop before any
+   write and return `status: BLOCKED` with
+   `missing: stack undeclared — the orchestrator asks the developer per rules/base.md "New projects — stack first"`
+   as the first `next_actions` entry. Never pick a runtime or language yourself,
+   and never infer Python because `langgraph-patterns` and `python-patterns`
+   exist. Packages elsewhere but none covering your scope is not greenfield:
+   proceed against the package the LLM code will live in and record the choice
+   in `decisions`.
 1. Map the LLM call sites, tool definitions, retrieval pipeline, and any eval set.
 2. Check: model output treated as untrusted input (validated, never trusted into
    sinks), prompt-injection surface from untrusted content, least-privilege agent
@@ -64,6 +73,20 @@ person driving this session, never the product's user.
 
 ### Method
 
+0. **Runtime before step 1.** The agent runtime and language are the developer's
+   answer to the stack question (`rules/base.md` "New projects — stack first"),
+   never your default. Run `scripts/kernel.sh resolve-stack`; when the repo is
+   greenfield (no package, no `.engineos/config.json`) and no answer is recorded
+   yet, ask the stack question first — this mode runs in the main session, so
+   the developer is there to answer. If you were dispatched as a subagent
+   instead, you cannot ask: return `status: BLOCKED` with
+   `missing: stack undeclared — the orchestrator asks the developer per rules/base.md "New projects — stack first"`
+   as the first `next_actions` entry. When the answer is not Python, say plainly
+   before step 1 that `langgraph-patterns`, `python-patterns`, the pattern
+   catalog's reference implementations and the `.py` paths in
+   `templates/agent-topology.md` assume Python and will not apply as written,
+   then proceed with the form on the generic rules (spec decision D3 of
+   `docs/specs/2026-10-06-stack-first-and-feature-artifacts-design.md`).
 1. **One step at a time.** Ask the step's question with its options, trade-offs
    and one recommendation grounded in the answers already recorded — cite
    `file:line` in the reference repos `form.md` names. End with the question; wait.

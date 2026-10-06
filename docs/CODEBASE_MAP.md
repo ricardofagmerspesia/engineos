@@ -90,7 +90,7 @@ engineos/
   rules/                 20 policy files; 11 always-on, 8 routed per intent, 1 deprecated (production-backend-standards)
   agents/                22 agent definitions (frontmatter: name, tools, model, tier)
   skills/                13 SKILL.md procedures (adr, record-change, retro, eval-harness, python-patterns, langgraph-patterns, agent-system-design ...)
-  commands/              8 orchestrator commands + commands/agents/ (41 generated aliases)
+  commands/              9 orchestrator commands (incl. new-feature) + commands/agents/ (41 generated aliases)
   templates/             handoff, project CLAUDE.md (Node + Python blocks) + project-claude-python.md, agent-topology.md, permissions/mcp JSON, adapters, GitHub workflows
   patterns/              architecture-analyst prompts (ANALYZE / INTERVIEW) + 3-Agent-topology-interview.md (llm-coordinator INTERVIEW)
   registries/            9 JSON registries (intents, routing, policy, decision-rules, agents, ...)
@@ -103,7 +103,7 @@ engineos/
   console/               Standalone Next.js 15 admin console (skills vertical only; CI job `console`)
   .engineos/             This repo's own governance store (21 active, 90 archived change records)
   .claude-plugin/        plugin.json + marketplace.json (plugin-mode install)
-  .agents/ .trae/ .windsurf/   Byte-identical vendored copies of an unrelated "caveman" skill set
+  .agents/ .trae/ .windsurf/   Byte-identical vendored copies of external skills (caveman, Matt Pocock, ...), pinned in skills-lock.json; install.sh links the mattpocock/skills and tech-leads-club/agent-skills entries from .agents/skills/ into ~/.claude/skills
   .cursor/rules/         2 hand-written Cursor mirrors (subagents, testing-opt-in)
   .superpowers/          Untracked plugin scratch (git info/exclude)
 ```
@@ -113,7 +113,7 @@ engineos/
 ### Prose layer: `CLAUDE.md`, `rules/`, `agents/`, `skills/`, `commands/`, `templates/`
 
 **Purpose**: state policy in prose an LLM follows. Every enforcement claim points at a registry or hook rather than claiming self-enforcement.
-**Entry point**: `CLAUDE.md` (router table: intent -> rules/skills -> agent; 12 non-negotiables; output-artifact protocol).
+**Entry point**: `CLAUDE.md` (router table: intent -> rules/skills -> agent; 13 non-negotiables; output-artifact protocol).
 
 | File / dir | Purpose | Tokens |
 |---|---|---|
@@ -122,9 +122,9 @@ engineos/
 | `rules/*.md` | 20 rules. Always-on: base, security, git, context, memory, parallelism, models, subagents, verification, risk-autonomy, gates. Routed: architecture, backend, backend-python, frontend, data, llm-apps, observability, testing. Deprecated 2026-09-28, loaded by no row: production-backend-standards | ~19k |
 | `agents/*.md` | 22 agents; 21 opus, 1 fable (`product-spec`). Shared `## Return format` envelope with status OK/DEGRADED/CRITICAL/BLOCKED/FAILED | ~35k |
 | `skills/*/SKILL.md` | 13 skills; each declares which rule it must not restate. `agent-system-design` carries `references/form.md` (the 12-step form) and `references/patterns/` (ten topology patterns) | ~30k |
-| `commands/*.md` | audit, implement, route, bypass, init, design-agents, analyze-architecture, talk-about-the-system | ~6k |
+| `commands/*.md` | audit, implement, route, bypass, init, design-agents, new-feature (the from-scratch flow: `grill-with-docs` → `to-spec` → `tlc-spec-lean` → `to-tickets` → build → Verifier, external skills read in-session), analyze-architecture, talk-about-the-system | ~6k |
 | `commands/agents/*.md` | 41 generated aliases; 6 hand-customized (marker removed) | 6.7k |
-| `templates/` | handoff.md (headings pinned by intents.json), project-claude.md (Node + Python blocks) and project-claude-python.md (chosen by `init` for Python-only repos), agent-topology.md (the spec `/engineos:design-agents` fills), permissions/mcp JSON, adapters (cursor/codex/copilot), GitHub review workflows | ~9k |
+| `templates/` | handoff.md (headings pinned by intents.json), project-claude.md (Node + Python blocks) and project-claude-python.md (chosen by `init` for Python-only repos), agent-topology.md (the spec `/engineos:design-agents` fills), agent-skills/ (`issue-tracker.md`, `domain.md` — copied to a project's `docs/agents/` by `init`), permissions/mcp JSON, adapters (cursor/codex/copilot), GitHub review workflows | ~9k |
 
 **Agent taxonomy**: 6 dual-mode coordinators (backend, frontend, mobile, dba, devops, llm) hold Edit/Write; 5 read-only MCP leaves (kubernetes, gcp, postgres, oracle, cicd) hold exactly one MCP server; 2 store builders (ios, android) with no alias; 4 reviewers (critic, security-reviewer, router, audit-consolidator); 5 standalone leaves (architecture-analyst, docs-writer, product-spec, test-writer, qa-tester).
 
@@ -179,8 +179,8 @@ Not a registry but read the same strict way: the project's `.engineos/config.jso
 
 | Event | Matcher | Handler | Emits |
 |---|---|---|---|
-| SessionStart | `""` | `ensure-project-layout.ts` | expire repo bypass marker, reap stale flags/cache/telemetry, scaffold `.engineos/` (opt-in), context hint |
-| UserPromptSubmit | `""` | `prompt-advisor.ts` | one in-process `resolve({taskContract:true})`; additionalContext with scale / decision-rule / route / HITL / classify notes; the only hook that speaks while bypassed |
+| SessionStart | `""` | `ensure-project-layout.ts` | expire repo bypass marker, reap stale flags/cache/telemetry, scaffold `.engineos/` (opt-in), context hint; `STACK_QUESTION_NOTE` (`stack-question.ts`) when `hasStackSignal` (`src/kernel/stack.ts`) is false — opted in or not, outside a git repo against cwd without scaffolding, never in `$HOME` |
+| UserPromptSubmit | `""` | `prompt-advisor.ts` | one in-process `resolve({taskContract:true})`; additionalContext with scale / decision-rule / route / HITL / classify notes, plus `STACK_QUESTION_NOTE` when a `STACK_DEPENDENT_INTENTS` intent matches in a stackless repo; the only hook that speaks while bypassed |
 | PreToolUse | `Edit\|Write\|NotebookEdit` | `route-before-change.ts` | `[router] ...` context from route-path; per-session file cache under `<gitdir>/engineos-route-cache`; never blocks |
 | PreToolUse | `Agent\|Task` | `announce-agent-dispatch.ts` | green banner instruction; opens a span |
 | PreToolUse | `Bash` | `git-write-guard.ts` | `ask` permission decision (`[engineos] git write: <subcommand>`) when any segment of the command is a git/forge write and `ENGINEOS_GIT_WRITES` is not `auto`; silent otherwise; never denies; ignores bypass |
@@ -244,7 +244,7 @@ Standalone Next.js 15 + React 19 + Drizzle/better-sqlite3 admin console for edit
 ### `.engineos/` and `docs/`
 
 - `.engineos/changes/` (active) -> `.engineos/archived/<YYYY>/<MM>/<domain>/` (done) -> `.engineos/memory/` (distilled facts; currently empty).
-- `docs/BIG-PICTURE.md` and `docs/METHODOLOGY.md` are the living companion docs; `docs/COMPATIBILITY.md` is the public-surface contract every "do not change this string" comment cites; `docs/adr/` holds 7 ADRs, all from the 2026-09-03/04 governance epic; `docs/specs/` holds 39 design/plan/handoff docs, most without a status field.
+- `docs/BIG-PICTURE.md` and `docs/METHODOLOGY.md` are the living companion docs; `docs/COMPATIBILITY.md` is the public-surface contract every "do not change this string" comment cites; `docs/adr/` holds 13 ADRs, from the 2026-09-03/04 governance epic through `2026-10-06-from-scratch-artifacts-matt-pocock-and-tlc-spec-lean.md` (stack question + `/engineos:new-feature`); `docs/specs/` holds 39 design/plan/handoff docs, most without a status field.
 
 ## Data Flow
 
@@ -351,12 +351,14 @@ graph LR
 - `rules/production-backend-standards.md` is a client-specific NestJS/TypeORM overlay (`@coresoft-sas/*`), deprecated 2026-09-28 and loaded by no router row; it stays on disk with a deprecation header until the next MAJOR (`docs/COMPATIBILITY.md`).
 - `docs/release-notes/` has both `1.6.0.md` and `release-notes-1.6.0.md` with different content. `docs/PRD.md` is a stale June draft.
 - `.engineos/memory/` is empty despite 90 archived records; the distillation step has never run here.
-- `.agents/`, `.trae/`, `.windsurf/` are byte-identical vendored copies of an unrelated caveman skill set with no generator in this repo.
+- `.agents/`, `.trae/`, `.windsurf/` are byte-identical vendored copies of external skills pinned in `skills-lock.json` (caveman, Matt Pocock, ...), with no generator in this repo. They are not all unrelated: `.agents/skills/` is the source `install.sh` links Matt's `grill-with-docs` / `to-spec` / `to-tickets` and `tlc-spec-lean` from, for `/engineos:new-feature`.
 - `console/` is not part of the root build; only its Skills vertical exists.
 - No `haiku`-tier agent file exists; cheap-tier work happens only via dispatch-time model override.
 - No uninstall script. `settings.json.engineos.bak` is write-once.
 - `install.ps1` is not exercised by CI.
 - Route cache invalidates on `routing.json` mtime+size, not content hash.
+- C36 resolves every backticked `/name` in a `CLAUDE.md`/`AGENTS.md` table row to `commands/<name>.md`, so external skills in a router row are written without the slash (`grill-with-docs`, not `/grill-with-docs`). An external skill named as "skill `<name>`" in the prose corpus must also be listed in `registries/docs-ledger.json` `external_skills`.
+- The stack question is advisory only: the hooks put `STACK_QUESTION_NOTE` in context and nothing blocks a write in a stackless repo.
 
 ## Navigation Guide
 

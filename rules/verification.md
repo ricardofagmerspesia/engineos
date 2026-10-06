@@ -13,6 +13,7 @@ change.
   (project conventions beat EngineOS defaults).
 - A test agent is dispatched on purpose: `test-writer` (ameer) or `qa-tester` (qa).
 - The user named a release/merge gate that includes tests.
+- The work runs the from-scratch feature flow (`/engineos:new-feature`): the proofs in `.specs/features/<feature>/checks.md` are its tests — written from the checks, never from the code.
 
 **Otherwise: write no tests, run no suite.** State the omission in one line so it
 is never silent:

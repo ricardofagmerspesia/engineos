@@ -80,8 +80,44 @@ PATHS=(
   templates
   tsconfig.json
 )
+# Pinned third-party skills: install.sh / install.ps1 step 4a2 link
+# .agents/skills/<name> for every skills-lock.json entry whose source is one of
+# these two, so a zip install needs exactly those directories even without the
+# IDE mirrors. Read from the COMMIT, like everything else packaged here. Names
+# are validated as install.sh does, and a name EngineOS ships under skills/ is
+# left out because the installers never link it (EngineOS wins). A pinned skill
+# not vendored at the commit fails packaging: the artifact would ship a lock the
+# installer cannot honour.
+PINNED_SKILL_PATHS=()
 if [ "$WITH_IDE_MIRRORS" -eq 1 ]; then
   PATHS+=(.agents .cursor .trae .windsurf)
+else
+  command -v node >/dev/null 2>&1 || { echo "error: node is required to read skills-lock.json for the pinned skills" >&2; exit 1; }
+  pinned_names="$(git show "$COMMIT:skills-lock.json" | node -e '
+    const sources = new Set(["mattpocock/skills", "tech-leads-club/agent-skills"]);
+    const lock = JSON.parse(require("fs").readFileSync(0, "utf8"));
+    const skills = lock && typeof lock.skills === "object" && lock.skills !== null ? lock.skills : {};
+    for (const [name, entry] of Object.entries(skills)) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) continue;
+      if (entry && sources.has(entry.source)) console.log(name);
+    }
+  ')" || { echo "error: could not read skills-lock.json at $COMMIT" >&2; exit 1; }
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if [ -n "$(git ls-tree -d "$COMMIT" -- "skills/$name")" ]; then
+      continue
+    fi
+    if [ -z "$(git ls-tree -d "$COMMIT" -- ".agents/skills/$name")" ]; then
+      echo "error: pinned skill $name (skills-lock.json) is not vendored at .agents/skills/$name in $COMMIT" >&2
+      exit 1
+    fi
+    PINNED_SKILL_PATHS+=(".agents/skills/$name")
+  done <<EOF
+$pinned_names
+EOF
+  if [ "${#PINNED_SKILL_PATHS[@]}" -gt 0 ]; then
+    PATHS+=("${PINNED_SKILL_PATHS[@]}")
+  fi
 fi
 
 # --- Artifact identity -----------------------------------------------------
@@ -202,6 +238,15 @@ EOF
   for f in install.sh install.ps1 .claude-plugin/plugin.json hooks/hooks.json; do
     if [ -f "$STAGE/$f" ]; then echo "ok   $f"; else echo "FAIL missing: $f"; fail=1; fi
   done
+
+  # 7. The pinned skills step 4a2 links are in the artifact, each with its SKILL.md.
+  if [ "${#PINNED_SKILL_PATHS[@]}" -gt 0 ]; then
+    missing_pinned=""
+    for p in "${PINNED_SKILL_PATHS[@]}"; do
+      [ -f "$STAGE/$p/SKILL.md" ] || missing_pinned="$missing_pinned $p"
+    done
+    if [ -n "$missing_pinned" ]; then echo "FAIL pinned skill missing SKILL.md:$missing_pinned"; fail=1; else echo "ok   ${#PINNED_SKILL_PATHS[@]} pinned third-party skills"; fi
+  fi
 
   [ "$fail" -eq 0 ] || { echo "artifact verification FAILED"; exit 1; }
 fi

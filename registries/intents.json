@@ -8,14 +8,14 @@
       "title": "New feature / multi-file change",
       "signals": ["add", "build", "create", "implement"],
       "rules": [],
-      "skills": ["superpowers:brainstorming", "superpowers:writing-plans"],
+      "skills": ["tlc-spec-lean"],
       "agents": [],
-      "commands": [],
+      "commands": ["new-feature"],
       "mcp": [],
       "model_tier": null,
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. brainstorming first, then writing-plans for spec/design/tasks, then whichever stack rows also match — so this row names no rules of its own. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the brainstorm/plan flow and to the matched stack rows.",
+      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. The from-scratch flow runs through the new-feature command: PRD + ADR + SPEC + TASKS before code, then whichever stack rows also match — so this row names no rules of its own. EXTERNAL skill: tlc-spec-lean is pinned from tech-leads-club/agent-skills in skills-lock.json and installed unchanged, not shipped under skills/; Matt Pocock's grill-with-docs, to-spec and to-tickets are human-invoked (disable-model-invocation) and run through the command, so they are not listed here. The flow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the command's stages and to the matched stack rows.",
       "suppressible": true
     },
     {
