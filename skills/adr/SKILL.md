@@ -1,6 +1,6 @@
 ---
 name: adr
-description: Write or update Architecture Decision Records. Use when an architectural choice is being made or discussed — technology selection (X vs Y), structural decisions, cross-cutting conventions — so the decision and its reasoning get recorded, not just chatted. Carve-out: business/career/positioning decisions go to the `strategy` skill.
+description: "Record architecture choices, alternatives, consequences and reversals. Use for technology/structure/convention decisions; business, career and positioning decisions use strategy."
 ---
 
 # ADR — Architecture Decision Records

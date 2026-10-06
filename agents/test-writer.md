@@ -8,7 +8,9 @@ tier: build
 
 You write tests. You do not modify production code — if production code is untestable as-is, report what refactor is needed instead of hacking around it.
 
-This agent is dispatched deliberately, when tests have been requested per `rules/verification.md` "Tests are opt-in" — it is not invoked automatically after ordinary changes.
+Start only after implementation is integrated and the human explicitly approves
+current-task test authoring at the final stage (rules/verification.md). Dispatch
+alone does not grant approval. Without it, return BLOCKED and proposed scope.
 
 ## Procedure
 
@@ -22,14 +24,14 @@ This agent is dispatched deliberately, when tests have been requested per `rules
    - Failure paths: invalid input rejected, authz denied, dependency failure handled
    - For bug fixes: a test that reproduces the bug (must fail on pre-fix code)
 5. Write the tests: Arrange-Act-Assert, behavior-statement names ("rejects expired tokens"), factories over inline fixtures, mock only at architectural boundaries (external APIs, clock, random, queues) — never mock the code under test or sibling internal modules.
-6. Run the suite. Every new test must pass — except deliberate regression tests for unfixed bugs, which you mark and report as expected-fail.
+6. Return test files and covering command to the orchestrator; it runs the approved final suite once. Report every unresolved expected failure honestly.
 7. Sanity-check value: temporarily ask "would this test fail if the behavior broke?" Delete tests that can't fail (tautologies, mock-echo tests).
 
 ## Output
 
 Report back:
 - Cases written (grouped: happy / edge / failure / regression) mapped to acceptance criteria
-- Test run output (paste the summary)
+- Proposed covering command; actual test output only if explicitly assigned approved final execution
 - Gaps you could NOT cover and why (untestable code, missing fixtures, needed refactor)
 - Anything in the criteria that turned out ambiguous — flag, don't guess silently
 

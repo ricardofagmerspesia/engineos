@@ -1,7 +1,7 @@
 # Start Here — Working with EngineOS
 
-New to EngineOS? This is how to actually use it day to day: what fires
-automatically, and how to invoke the skills, agents, commands, and MCPs by hand.
+Daily usage: automatic routing, scoped workers, commands, and completion gates.
+Load only the section needed; rules and registries own the detailed contracts.
 
 > Setting it up for the first time? Do [`ADOPTION.md`](ADOPTION.md) first —
 > `init-project.sh --stack auto|<framework>[@dir],...` declares the stack the Stop
@@ -28,7 +28,6 @@ flowcharts? [`BIG-PICTURE.md`](BIG-PICTURE.md).
 Most of it is **automatic**. You rarely invoke anything by name — the router and
 hooks do it. The sections below are for when you want to drive a piece directly.
 
----
 
 ## 1. Skills — invoke by name, or let them trigger
 
@@ -48,9 +47,8 @@ explicitly by typing its name (Claude runs it via the Skill tool).
 | `nestjs-patterns` | Building NestJS backend code |
 | `react-patterns` | Building React/Next frontend code |
 | `llm-engineering` | Building prompts/agents/RAG/tools |
-| `python-patterns` | Building FastAPI/Django/Flask backend code |
 | `agent-system-design` | Designing a system with more than one agent — the 12-step form behind `/design-agents`, approval before any graph code |
-| `langgraph-patterns` | Implementing an approved agent topology in LangGraph — loads after the approval, never to choose for you |
+| `mastra-patterns` | LLM apps/chatbots in NestJS providers; topology approval applies when designing multiple agents |
 | `strategy` | Business/career strategy: market opportunity, learning path, blocked decision, positioning, monetizing existing assets — grounded in web sources + this repo, written to `docs/strategy/` |
 
 Invoke explicitly: just say `record-change` or "use the eval-harness skill".
@@ -59,7 +57,6 @@ Process skills from the `superpowers` plugin (`brainstorming`,
 relevant — let them. The one exception is a feature built from scratch: it goes
 through `/new-feature` (§3), not `brainstorming` → `writing-plans`.
 
----
 
 ## 2. Agents — dispatch for scoped analysis or change
 
@@ -114,7 +111,6 @@ Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 
 e.g. `borisenko, audit the orders service` works the same as naming the coordinator.
 
----
 
 ## 3. Commands — orchestrators
 
@@ -137,7 +133,8 @@ and `/implement`; plugin mode namespaces them `/engineos:audit`.)
 protocol, context scoping, memory, harness, guardrails, failure policy,
 observability, evals, diagrams — writing `docs/specs/<date>-<slug>-agent-topology.md`
 as you answer, and closes only when your approval line (`topology-approval`) is in
-the change record. `langgraph-patterns` loads after that, never to choose for you.
+the change record. Mastra implements the approved topology inside NestJS providers; a single chatbot
+does not require a multi-agent topology gate.
 
 `/new-feature <feature-slug> [resume]` runs in your session, one stage at a time,
 and stops for your review at the end of each:
@@ -150,12 +147,12 @@ and stops for your review at the end of each:
 | 3. PRD (`to-spec`) | `docs/prds/YYYY-MM-DD-<feature>.md` |
 | 4. SPEC (`tlc-spec-lean`) | `.specs/features/<feature>/plan.md` (stops for review), then `checks.md`; index `docs/specs/YYYY-MM-DD-<feature>.md` |
 | 5. TASKS (`to-tickets`) | `docs/specs/<feature>/tickets/NN-<slug>.md`, each with `Blocked by:` and `Closes checks:` |
-| 6. Build + verify | the code, with tests ON (the `checks.md` proofs), then a fresh Verifier writing `.specs/features/<feature>/verification.md` |
+| 6. Build + verify | parallel implementation, final non-test checks, approved final tests/evals, then required Verifier writing `.specs/features/<feature>/verification.md` |
 
-The SPEC itself lives in `.specs/` because `tlc-spec-lean` is installed unchanged;
-`docs/specs/` only holds the index. In stage 6, `tlc-spec-lean` decides between one
-builder or sequential batches (advancing only on green) — that stage does not fan
-out in parallel the way `rules/parallelism.md` would by default.
+The SPEC lives in `.specs/`, indexed from `docs/specs/`. Freeze acceptance
+criteria before code; author/run executable proofs only at the final stage with
+explicit user approval. One supervisor schedules dependency-ready workers under
+`rules/parallelism.md`; no routine nested supervisor or reviewer/test loop.
 
 **Escape hatch — `/bypass`.** Some work isn't worth the constitution: a throwaway
 script, a one-line spike, someone else's repo you're just poking at.
@@ -173,7 +170,6 @@ next SessionStart, so a bypass you forget about expires into gates-ON rather tha
 persisting. Secrets hygiene and confirmation before destructive actions are not
 EngineOS rules and do not switch off.
 
----
 
 ## 4. MCPs — what powers the leaf specialists
 
@@ -193,7 +189,6 @@ Connect them per [`ADOPTION.md`](ADOPTION.md) §4 — env-var creds only,
 read-only roles. Baseline config + `$verify` notes: `templates/mcp.template.json`.
 Check what's live: the leaf returns real findings instead of `UNKNOWN`.
 
----
 
 ## 5. Hooks — automatic, you don't invoke them
 
@@ -203,9 +198,9 @@ These run on their own. Know what they do and how to respond:
 |---|---|---|
 | `route-before-change` | before each edit | nothing — read the injected `[router]` line; follow it |
 | `mark-unrecorded` | after a code edit | nothing — flags that a change needs recording |
-| `stop-verify` | when finishing | if it blocks: run the gate for the touched packages and show output — Node: lint + typecheck; Python: ruff + pyright (see "Python projects" below). Tests join only if they were requested for this task, or `ENGINEOS_VERIFY_TESTS=1` is set |
+| `stop-verify` | when finishing | scoped JS/TS lint + typecheck; tests/evals require a separate approved final command |
 | `record-verify` | when finishing | if it blocks: run the `record-change` skill |
-| `ensure-project-layout` | session start | nothing — scaffolds missing `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` (opt-in: only when `.engineos/` exists or `ENGINEOS_SCAFFOLD=1`) and prints one `[engineos] stack: fastapi@backend · react@frontend · runners: …` line so you can see which gate will run; if it names the wrong stack, edit `.engineos/config.json`. In a greenfield repo (no `.engineos/config.json`, no package manifest) it instead adds `[engineos] no stack declared …`: expect Claude's first reply to ask you which stack to use per tier — answer it, and it persists your choice with `init --stack` and records it as the first ADR |
+| `ensure-project-layout` | session start | opt-in scaffold (`.engineos/` or `ENGINEOS_SCAFFOLD=1`), declared stack hint; greenfield stack question before setup |
 | `prompt-advisor` | on your prompt | nothing — one non-blocking task contract combining route, scale, model tier, policy loads and matched decision rules; in a greenfield repo a build-type prompt (feature, backend, frontend, mobile, LLM, agent system) also carries the `no stack declared` note. Advisory — it never blocks |
 | `git-write-guard` | before each `Bash` call | answer the permission prompt when the command writes to git or the forge (`commit`, `push`, `add`, `checkout`, `gh pr create`, …). Read-only git never prompts. Personal setting `ENGINEOS_GIT_WRITES=ask` (default) \| `auto` in `~/.claude/settings.local.json` — see `rules/git.md` "Who may write" |
 
@@ -223,29 +218,12 @@ a constitutional rule, so bypass leaves it on; switch it off per machine with:
 
 in `~/.claude/settings.local.json`.
 
-**Tests are opt-in, not automatic.** EngineOS writes no tests and runs no test
-suite unless you ask for them ("write tests", "add coverage", "TDD this", "run
-the suite"), your project's `CLAUDE.md` requires them, a test agent
-(`test-writer` / `qa-tester`) was dispatched on purpose, or you named a
-release/merge gate that includes tests. Work that runs `/new-feature` has tests ON:
-the proofs in `.specs/features/<feature>/checks.md` are its tests. Otherwise the finalization gate is
-**lint + typecheck only** — see `rules/verification.md` for the full policy, and set
-`ENGINEOS_VERIFY_TESTS=1` to force tests back into the Stop gate unconditionally.
+**Tests/evals require explicit current-task approval at the final stage.**
+Feature scaffolding, test-agent dispatch, a release gate, or
+`ENGINEOS_VERIFY_TESTS` cannot substitute for consent. The Stop gate runs lint +
+typecheck; see `rules/verification.md`. Python declarations/paths are retained
+compatibility history, not an active development stack or automatic runner.
 
-**Python projects.** For a package the stack resolves to Python (`.engineos/config.json`,
-else a `pyproject.toml`/`requirements.txt`), the Stop gate runs `ruff` and `pyright`
-(plus `pytest` when tests are on) through the first environment it finds:
-`.venv/bin` (package, then repo root) → `uv run` when a `uv.lock` exists → `docker compose
-exec -T <compose_service>` when `.engineos/config.json` names one. It never installs
-anything. With no environment it says so and moves on —
-`[engineos] stop-verify skipped for <pkg>: no Python environment found (venv, uv or compose)` —
-so a skipped package is visible, never silent. `ENGINEOS_VERIFY_TESTS=1` adds `pytest`;
-`ENGINEOS_VERIFY_BUDGET_S=<seconds>` raises every target's timeout (default 90s, 180s for
-tests) when pyright's first run over a large repo needs it. Pin `ruff`, `pyright` and
-`pytest` to exact versions in the project's dev dependencies: an unpinned tool gets an
-advisory line (`… not pinned to exact versions (rules/verification.md)`), not a block.
-
----
 
 ## 6. Specs — where plans live
 
@@ -258,14 +236,13 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 - Read the relevant spec before implementing; it carries the approved design + the
   verification plan.
 
----
 
 ## 7. Rules — the standards being enforced
 
 - **Always-on:** `rules/base.md`, `security.md`, `git.md`, `context.md`.
 - **Task-contract-loaded:** `memory.md`, `parallelism.md`, `models.md`,
   `subagents.md`, `verification.md`, `risk-autonomy.md`, `gates.md`.
-- **Per-domain (routed):** `architecture.md`, `backend.md`, `backend-python.md`, `frontend.md`,
+- **Per-domain (routed):** `architecture.md`, `backend.md`, `frontend.md`,
   `llm-apps.md`, `testing.md` (test craft, loaded when tests are on), `data.md`,
   `observability.md`, `memory.md`.
 - The routing hook injects the right ones per edit; you don't load them manually.
@@ -274,7 +251,6 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
   `[router] intent=… risk=… autonomy=… loaded=…` line.
 - **Project `CLAUDE.md` overrides EngineOS** where they conflict.
 
----
 
 ## 8. The change lifecycle (every unit of work)
 
@@ -282,13 +258,16 @@ Multi-file changes and new features get a spec before code (a non-negotiable).
 open a record            → cp .engineos/changes/_template.md .engineos/changes/<date>-<slug>.md  (status: active)
    ↓ classify risk + autonomy (rules/risk-autonomy.md), which sets the gates that apply (rules/gates.md)
    ↓ do the work (unified prompt advisor + edit routing active)
-verify                   → the final gate: lint + typecheck, output shown (tests too, only if in scope)  (Validation gate)
+verify                   → final lint + typecheck, output shown; tests only after final user approval  (Validation gate)
 release-ready?           → named owner + rollback path + residual risks accepted (Release gate — required to ship)
-record-change skill      → status done, register files+movements, git mv → .engineos/archived/YYYY/MM/<domain>/
+record-change skill      → status done, register files+movements, archive under git-write policy → .engineos/archived/YYYY/MM/<domain>/
 ```
-This is what the Stop gates enforce. Distil any durable decision into `.engineos/memory/`.
+Distil durable decisions into `.engineos/memory/`. Keep related follow-ups on
+the same branch/PR until the user directs a change (`rules/git.md`). Node is the
+runtime; application backends use NestJS, UIs Next.js/React, LLMs Mastra.
+Claude Code hooks enforce their supported gates; under Codex follow
+`templates/adapters/codex.md` explicitly.
 
----
 
 ## Output artifact offer
 
@@ -299,7 +278,6 @@ template** and **UI/UX design** are only offered for frontend/mobile work. Pick
 one, or say "none" to stop there; your pick becomes the next unit of work and
 goes back through the router.
 
----
 
 ## Your first task — walkthrough
 
@@ -311,7 +289,7 @@ goes back through the router.
 4. Open a `.engineos/changes/` record.
 5. Implement (or `/implement backend ...`). Each edit gets routed guidance.
 6. Verify — show lint/typecheck output (add test output only if tests were
-   requested for this change).
+   approved for this change at the final stage).
 7. `record-change` to close and archive. Done.
 
 ## Cheat sheet — "I want to… → do…"

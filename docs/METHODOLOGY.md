@@ -25,7 +25,7 @@ substantive task exposes the same small contract:
 | Risk | `low`, `medium`, or `high`, plus the fact that set the tier |
 | Autonomy | The allowed ceiling (`A0`–`A3`; EngineOS does not grant `A4`) |
 | Gates | Required exits and artifacts derived from risk and decision rules |
-| Verification | Checks in scope, including an explicit tests-on/off decision |
+| Verification | Checks in scope, including final-stage test consent or pending status |
 | Evidence | Source-attributed outputs, findings, and approvals |
 | State | Current gate, known failures, and one concrete next action |
 
@@ -64,20 +64,15 @@ The gates form a ladder, but execution is a feedback loop. A changed scope goes
 back through policy resolution. A failed check returns to bounded repair. A
 blocked or exhausted task stops for a human; it does not sample until green.
 
-Three of the boxes above are kernel answers rather than judgement.
-`kernel.sh admit` answers admission — `dispatch`, `defer` or `reject` against
-the wave cap and the queue bound. `kernel.sh breaker` answers whether a failing
-resource is still worth calling, per resource and separately from the per-unit
-`retry` and the per-check `repair`. `kernel.sh hitl` answers whether a human must
-decide and names why, from a closed reason vocabulary
-(`registries/policy.json` `hitl.reasons`) — so every human stop carries a reason
-id and a record home rather than an inference from the tier, and a gate citing
-anything outside that list is not citing policy. The kernel resolves these; it
-does not enforce them, and nothing in the repo calls `admit` before a dispatch
-today. Only `high-risk` has an automatic producer (`resolve-task`, via
-`decision_rules.any_high`); the other reasons arrive from a caller that
-observed the situation. `kernel.sh` is the resolver for all three and
-`registries/policy.json` owns the values.
+Kernel answers: `admit` → dispatch/defer/reject; `breaker` → per-resource
+permission to continue; `hitl` → a human decision with a closed reason id and
+record home. Values belong to `registries/policy.json`; the kernel resolves them
+but does not enforce host launches. Only `high-risk` has an automatic producer
+(`resolve-task` via `decision_rules.any_high`); callers supply other observations.
+
+One supervisor owns contracts, useful host-bounded parallel workers, integration
+and final non-test validation. Keep related work on the same branch/PR until the
+user directs otherwise. `rules/parallelism.md` and `rules/git.md` own details.
 
 ## Policy ownership
 
@@ -137,9 +132,10 @@ includes:
 4. approvals required by the autonomy ceiling; and
 5. the next operational action when the change ships.
 
-Tests are part of the contract when requested, required by the project, assigned
-to a test agent, or included in a named release/merge gate. Otherwise the record
-says `[tests] skipped — not requested`; it never implies that tests passed.
+Tests/evals are authored and run only at the final stage with explicit
+current-task user approval. A project requirement, feature flow, agent dispatch
+or gate does not grant that consent. Without approval record
+`[tests] pending — final-stage user approval required`; never imply a pass.
 
 ## Learning and effectiveness
 
@@ -165,7 +161,7 @@ A methodology change is complete only when all applicable parts move together:
 
 1. the owning registry or rule changes;
 2. its human or machine mirror is updated without duplicating ownership;
-3. a check or eval detects regression;
+3. regression criteria exist, with executable tests/evals deferred to approved final validation;
 4. compatibility impact is recorded; and
 5. the change record carries the evidence.
 

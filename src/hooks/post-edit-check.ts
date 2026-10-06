@@ -7,9 +7,8 @@
 // PostToolUse(Edit|Write) in hooks/hooks.json.
 //
 // Tool-aware: biome or eslint for lint, nx or a package script for typecheck,
-// pnpm/yarn/npm for the runner; for a Python edit, ruff and pyright through the
-// package's environment (./runner-python.ts), the same ladder the Stop gate
-// runs. Scoped to the changed package, never the repo,
+// pnpm/yarn/npm for the runner. Python edits report an unsupported skip.
+// Scoped to the changed package, never the repo,
 // and the hunt for that package is bounded to the session cwd by the same
 // two-layer containment the Stop gate uses — a lexical ceiling on the walk plus a
 // realpath check on what came back — so a package.json above or beside the
@@ -22,15 +21,13 @@
 // Port of hooks/post-edit-check.sh.
 import { realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
-import { fail, silent, type HookContext, type HookDecision } from './output';
+import { fail, message, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { classify } from './classify-failure';
-import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
-import { PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, containedIn, execRun, failureBlock, findUpAny, firstLines, hasPythonExtension, hasVerifyExtension, isFile, packageOwner, projectConfig, startDir, verifyEnvironment } from './verify-targets';
+import { PYTHON_UNAVAILABLE_REASON, runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
+import { PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, containedIn, execRun, failureBlock, findUpAny, firstLines, hasPythonExtension, hasVerifyExtension, isFile, packageOwner, startDir, verifyEnvironment } from './verify-targets';
 
 const TYPECHECK_TARGET = 'typecheck';
-const LINT_TARGET = 'lint';
-
 // bash `find_up "$START" nx.json pnpm-workspace.yaml .git` — the workspace a
 // scoped run is issued from, falling back to the package dir itself.
 const WORKSPACE_MARKERS: readonly string[] = ['nx.json', 'pnpm-workspace.yaml', '.git'];
@@ -63,6 +60,7 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
   if (env.file === '') return silent;
   if (!hasVerifyExtension(env.file)) return silent;
   if (!isFile(env.file)) return silent;
+  if (hasPythonExtension(env.file)) return message(`[engineos] skipped ${env.file}: ${PYTHON_UNAVAILABLE_REASON}`);
 
   // The session's cwd is the tree the operator consented to, so it is both the
   // ascent's ceiling and the containment test on what came back. Fail closed: a
@@ -89,9 +87,7 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
   const root = workspace !== null && containedIn(stopReal, workspace) ? workspace : packageDir;
 
   const environment = verifyEnvironment(ctx.io.env);
-  const failures: Failure[] = hasPythonExtension(env.file)
-    ? pythonChecks(packageDir, root, environment.env, spawn)
-    : nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn);
+  const failures = nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn);
   if (failures.length === 0) return silent;
   // bash accumulated each block behind a newline and printed the lot with
   // `printf '%b' | head -80`, so the report opens on a blank line.
@@ -114,17 +110,6 @@ function nodeChecks(
 ): Failure[] {
   const selection = runnerSelect(root);
   return [...typecheck(selection, packageDir, root, env, spawn), ...lint(selection, file, start, root, stop, env, spawn)];
-}
-
-// Both Python targets go through the runner ladder — there is no per-file
-// linter form to drive directly, ruff already scopes to the package. A .py
-// edit in a package that is not Python (a Node repo's helper script), or in a
-// Python package with no environment, is silent here: this hook is opt-in and
-// per edit, and the Stop gate is where the missing environment is announced.
-function pythonChecks(packageDir: string, root: string, env: NodeJS.ProcessEnv, spawn: SpawnSyncLike): Failure[] {
-  const selection = runnerSelectFor(packageDir, root, projectConfig(root), undefined, spawn);
-  if (selection.kind !== 'python') return [];
-  return [...typecheck(selection, packageDir, root, env, spawn), ...target(selection, packageDir, LINT_TARGET, LINT_TIMEOUT_SECONDS, root, env, spawn)];
 }
 
 // Nx addresses the project by name and runs from the workspace root; a package

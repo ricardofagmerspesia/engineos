@@ -1,17 +1,9 @@
 # Handoff — <unit or wave name>
 
-> Written at a wave barrier (`rules/parallelism.md` step 6), at a session
-> boundary, or whenever work passes to someone who cannot read this conversation.
->
-> **The test:** could the next executor resume from this file alone, with no
-> access to the chat history? If not, it is not a handoff. "Continue where you
-> left off" is not a handoff.
->
-> The `##` headings and the `Gate:`/`Risk:` lines below are contract, not
-> suggestion: `registries/intents.json`'s `handoff` intent declares them
-> required, and `scripts/validate-engineos.sh` (C19) fails when template and
-> registry drift. Rename, add, or remove one only with a registry update in
-> the same commit.
+> Write at dependency/contract integration (rules/parallelism.md step 6), session
+> boundary or transfer to an executor without chat history. It must enable resume
+> from this file alone. All ## headings and Gate:/Risk: lines are registry contract
+> (handoff intent; validator C19): change only with the registry in the same commit.
 
 ## Objective
 
@@ -21,6 +13,9 @@
 
 <where the work actually stands right now, in one paragraph. Include what is
 half-finished, not just what is finished.>
+
+<task id, ledger state, owner, prerequisite ids and affected descendants. Distinguish
+implementation returned from integrated; list ready units that can refill free slots.>
 
 Gate: <discovery | design | implementation | validation | release> — <criteria met> of <criteria total> per `rules/gates.md`
 Risk: <low | medium | high> — <the trigger> (per `rules/risk-autonomy.md`)
@@ -32,6 +27,8 @@ Risk: <low | medium | high> — <the trigger> (per `rules/risk-autonomy.md`)
 ## Decisions
 
 - <decision> — <why, and what was rejected>
+- <consumed contract path@revision and contract owner; proposed drift, frozen delta
+  and rebrief status for affected consumers, if any>
 
 ## Files
 
@@ -39,11 +36,18 @@ Risk: <low | medium | high> — <the trigger> (per `rules/risk-autonomy.md`)
 |---|---|
 | `path/to/file.ts` | <reason> |
 
+<exclusive write scopes and their owners; name the single owner of shared wiring,
+lockfiles and generated outputs, and any ownership transfer required to resume.>
+
 ## Evidence
 
 ```
 <actual command output — not "tests pass">
 ```
+
+<read-only diff/contract inspection evidence; final non-test check results when
+available. Record tests/evals as pending approval or cite the current-task approval
+and final execution results. Worker return alone is not validation evidence.>
 
 ## Known failures and open risks
 
@@ -53,15 +57,23 @@ Risk: <low | medium | high> — <the trigger> (per `rules/risk-autonomy.md`)
 ## Not done
 
 - [ ] <remaining item — and who or what it is blocked on>
+- [ ] <integration, contract reconciliation or final validation still required>
 
 ## Next step
 
 <the single next action, concretely. Not "continue the implementation".>
+
+<which task can become ready, the prerequisite/revision that releases it, and
+whether its consumer must be rebriefed before dispatch.>
 
 ## Resume
 
 ```bash
 # exact commands to get back to a working state
 git checkout <branch>
-<install / build / test commands>
+<required resume commands, within existing permissions>
 ```
+
+<resume from the ledger and frozen contracts above. Run build/type checks only
+at the final validation gate; test/eval commands require explicit current-task
+approval after integration. Commands shown here do not grant execution permission.>

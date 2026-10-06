@@ -1,7 +1,6 @@
 # Model Assignment Rules — always on
 
-Match the model to the kind of thinking the work needs. Capability first, cost
-second — but never pay for capability the task doesn't use.
+Choose capability for the work, then minimize cost without sacrificing correctness.
 
 ## Assignment by work type
 
@@ -14,81 +13,47 @@ second — but never pay for capability the task doesn't use.
 | Standards/spec code review against an existing diff | **build** | `opus` |
 | Mechanical: renames, boilerplate, file moves, formatting, simple lookups, summaries | **cheap** | `haiku` |
 
-Adversarial correctness review (`critic`) and security review (`security-reviewer`)
-stay design tier — the new code-review row above is the ordinary two-axis
-(standards + spec) review against an existing diff, not the adversarial pass.
+`critic`/`security-reviewer` remain design tier; ordinary standards/spec diff review
+is build tier. Tier is the contract; model names are current bindings. Rebind the
+table and `registries/models.json` together when models change; the validator checks
+agreement. Test tier assignment never authorizes tests: only approved final work
+under `rules/verification.md` uses it.
 
-The tier is the contract; the model name is just today's binding. **"Most capable"
-is a role, not a name** — when a newer or stronger model ships, rebind the tier to
-it and update this table. Same when a model is retired.
-
-The machine-readable form of this table is `registries/models.json`;
-`scripts/validate-engineos.sh` fails when they disagree.
-
-The "tests" in the build-tier row is a tier assignment, not a mandate: tests get
-written only when they're in scope for the task per `rules/verification.md` ("Tests
-are opt-in"). When they are in scope, they're built on the same `opus` tier as
-the rest of the code.
-
-The **build** and **design** tiers are bound to the same model today. That is a
-binding, not a merge — the two rows stay separate because the tier is the
-contract, and a future model strong enough for build work at lower cost rebinds
-**build** without touching **design**. Keep stating the tier you meant. One
-consequence is explicit: while both tiers share a binding, escalating build ->
-design changes nothing on its own — escalate to **most capable** when a build-tier
-task has already failed at `opus`.
+Build and design are bound to the same model today, but remain separate tiers.
+State the intended tier; when build already failed at `opus`, escalating to design
+is a no-op: use most capable (`fable`) or reframe.
 
 ## How the model gets set
 
-1. **Agent frontmatter** `model:` — the agent's default tier.
-2. **Dispatch-time override** — pass `model` on the Task/Agent call; this wins over
-   frontmatter. Use it when the same agent does design work in one wave and build
-   work in the next.
-3. **Main loop** keeps the session model. To run work on a different model, delegate
-   it to a subagent with an explicit `model`.
+1. Agent frontmatter `model:` supplies the default.
+2. Dispatch-time `model` overrides frontmatter, including design/build changes.
+3. Main loop retains the session model; delegate work requiring another model.
 
-When spec/PRD authoring is requested and the session model is below the most-capable
-tier, dispatch the authoring to a subagent with `model: fable` rather than writing
-it inline.
+If spec/PRD authoring needs most capable and the session is below that tier,
+dispatch it with `model: fable` rather than writing inline.
 
 ## Escalation and downgrade
 
-- **Escalate one tier** when: an agent failed the same task twice, requirements are
-  ambiguous, the change is cross-cutting or security-sensitive, or the output will
-  be hard to reverse. While **build** and **design** share a binding, escalating out
-  of **build** is a no-op — go to **most capable** (`fable`) or reframe the problem,
-  don't re-run the same model and call it an escalation.
-- **Downgrade** only when the result is provably identical — mechanical work with
-  a fully specified target.
-- **Never trade correctness for cost.** When in doubt, go up a tier.
-- State the model in the fan-out announcement so the choice is auditable.
+- Escalate one tier after two same-task failures, ambiguous requirements,
+  cross-cutting/security-sensitive work or hard-to-reverse output. Respect shared
+  bindings: do not rerun `opus` and label it escalation from build.
+- Downgrade only provably identical mechanical work with a fully specified target.
+- Never trade correctness for cost; uncertainty favors the stronger tier.
+- Announce models in fan-out for auditability.
 
 ## Budget and degradation
 
-"Never trade correctness for cost" says what not to do; it does not say what to do
-when a budget actually binds. Improvising at that moment is how the trade happens
-by accident.
-
-**Degrade in this order.** Each rung is a gate, not an automatic step — check it
-before taking it, and if the check fails, move to the next rung rather than
-proceeding anyway:
+Check each rung; if ineligible, advance rather than bypassing its guard:
 
 | Rung | Take it when | Do NOT take it when |
 |---|---|---|
-| 1. Cache | The same input was already computed and inputs are unchanged | The upstream changed, or freshness is part of the requirement |
-| 2. Reduce context | The dropped layers are `rules/context.md` layers 5–6 | It would drop layer 1–2, or the evidence the answer rests on |
-| 3. Smaller model | Work is mechanical with a fully specified target | Gates assume the stronger tier, or risk is medium+ per `rules/risk-autonomy.md` |
-| 4. Defer or batch | The result is not needed to unblock anything now | Something is blocked on it, or deferral hides a failure |
-| 5. Deny | Every rung above failed its check | — |
+| 1. Cache | Same input computed; inputs unchanged | Upstream changed or freshness required |
+| 2. Reduce context | Drop `rules/context.md` layers 5–6 | Drop layers 1–2 or supporting evidence |
+| 3. Smaller model | Mechanical, fully specified target | Stronger-tier gates or medium+ risk (`rules/risk-autonomy.md`) |
+| 4. Defer or batch | Needed by no current dependency | Blocks work or hides a failure |
+| 5. Deny | Every earlier rung fails | — |
 
-When rung 5 is reached, say so and ask. A silent swap to a cheaper model on work
-whose gates assumed the stronger one is exactly the correctness-for-cost trade the
-rule above forbids — the trade is no better for being quiet.
-
-**Fan-out budgets.** A wave costs roughly (agents × context per agent). Before
-dispatching, sanity-check the wave against what the task is worth; if it does not
-fit, split into more waves rather than degrading every agent in one.
-
-Absolute limits (per-run, per-day, per-project) are project-specific and belong in
-the project's own `CLAUDE.md`, not here — EngineOS sets the ladder, the project
-sets the numbers.
+At rung 5 report the limit and ask; never silently swap to a weaker model.
+Fan-out cost scales with agents × context: assess before dispatch, split into
+more waves rather than degrade all workers. Absolute run/day/project budgets
+belong in project `CLAUDE.md`; EngineOS owns the ladder.

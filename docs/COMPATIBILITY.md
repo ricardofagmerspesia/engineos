@@ -6,6 +6,12 @@ repo. Renaming any of those silently breaks every consumer.
 
 This file is the contract. Version lives in `.claude-plugin/plugin.json`.
 
+Load only the relevant surface/policy section. Release additions and platform
+evidence retain their dated contracts; consult the matching version section
+(not an older prerequisites table) when upgrading. Current development workflow
+is owned by `rules/`; search historical tables on demand, never import this whole
+file into every task.
+
 ## What is public surface
 
 Changing any of these is a **breaking change**:

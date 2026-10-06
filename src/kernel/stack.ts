@@ -61,12 +61,6 @@ const NODE_FRAMEWORKS: readonly (readonly [string, NonNullable<Framework>])[] = 
   ['react', 'react'],
 ];
 
-const PYTHON_FRAMEWORKS: readonly (readonly [string, NonNullable<Framework>])[] = [
-  ['fastapi', 'fastapi'],
-  ['django', 'django'],
-  ['flask', 'flask'],
-];
-
 export function resolveStack(
   root: string,
   config: ProjectConfig | null,
@@ -77,8 +71,8 @@ export function resolveStack(
 }
 
 // Every directory under root (root included, bounded by SKIPPED_DIRS) that
-// holds a marker, in a stable order: parents before children, siblings by
-// name, python before node when one directory holds both.
+// holds a Node marker, in a stable order: parents before children, siblings by
+// name. Non-JavaScript manifests remain stack signals, never active packages.
 export function detectPackages(root: string, deps: StackDeps = defaultDeps): PackageStack[] {
   const found: PackageStack[] = [];
   walk(root, '.', deps, found);
@@ -107,17 +101,6 @@ function walk(root: string, rel: string, deps: StackDeps, found: PackageStack[])
 
 function packagesIn(abs: string, dir: string, deps: StackDeps): PackageStack[] {
   const out: PackageStack[] = [];
-  const pyproject = join(abs, 'pyproject.toml');
-  const requirements = join(abs, 'requirements.txt');
-  if (deps.exists(pyproject) || deps.exists(requirements)) {
-    out.push({
-      dir,
-      language: 'python',
-      framework: pythonFramework(pyproject, requirements, deps),
-      compose_service: null,
-      python_env: 'auto',
-    });
-  }
   const packageJson = join(abs, NODE_MARKER);
   if (deps.exists(packageJson)) {
     out.push({ dir, language: 'node', framework: nodeFramework(packageJson, deps), compose_service: null });
@@ -127,15 +110,8 @@ function packagesIn(abs: string, dir: string, deps: StackDeps): PackageStack[] {
 
 // ------------------------------------------------------------------ python
 
-function pythonFramework(pyproject: string, requirements: string, deps: StackDeps): Framework {
-  const names = new Set<string>();
-  const projectText = readOrNull(pyproject, deps);
-  if (projectText !== null) for (const name of pyprojectDependencies(projectText)) names.add(name);
-  const requirementsText = readOrNull(requirements, deps);
-  if (requirementsText !== null) for (const name of requirementsDependencies(requirementsText)) names.add(name);
-  return firstFramework(names, PYTHON_FRAMEWORKS);
-}
-
+// Deprecated parsing helpers remain exported for historical consumers; stack
+// detection no longer calls them or recommends Python frameworks.
 // Line-based and tolerant, not a TOML parser. Reads the dependency NAMES out of:
 //   [project]                     dependencies = ["fastapi>=0.110", ...]
 //   [project.optional-dependencies] <group> = [...]
@@ -342,7 +318,8 @@ function existsOrFalse(path: string, deps: StackDeps): boolean {
 // One line per package for humans: "fastapi@backend", or the language when no
 // framework was found ("python@tools").
 export function packageLabel(pkg: PackageStack): string {
-  return `${pkg.framework ?? pkg.language}@${pkg.dir}`;
+  const label = `${pkg.framework ?? pkg.language}@${pkg.dir}`;
+  return pkg.language === 'python' ? `${label} (deprecated, unsupported)` : label;
 }
 
 export function languagesOf(packages: readonly PackageStack[]): Language[] {

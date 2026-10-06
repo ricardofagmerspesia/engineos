@@ -1,10 +1,8 @@
 # Gates
 
-Five gates from problem to production. Each names its mechanism and honest
-enforcement strength: **blocking** prevents a transition, **checked** can fail CI,
-**advisory** emits guidance, and **conventional** relies on an executor or human.
-Which gates apply is a function of the risk tier from always-on
-`rules/risk-autonomy.md` — not every change walks the whole ladder.
+Risk (`rules/risk-autonomy.md`) selects applicable gates. Strengths: blocking
+prevents transition; checked can fail CI; advisory guides; conventional relies
+on executor/human.
 
 ## The ladder
 
@@ -24,9 +22,8 @@ Which gates apply is a function of the risk tier from always-on
 | medium | if the problem is vague | required when non-negotiable #1's threshold is met, or a decision rule demands it | required | required | required if it ships |
 | high | required | required, always | required | required, plus an independent `critic` pass | required, plus human approval |
 
-The Design row does not add a second spec threshold. Non-negotiable #1 owns it:
-more than 2 files, or any new feature. This file only says that at high risk the
-threshold is irrelevant — you write the design either way.
+Spec threshold remains non-negotiable #1: >2 files or any new feature. High risk
+always requires design, regardless of size.
 
 ## Design gate — exit criteria
 
@@ -40,13 +37,12 @@ threshold is irrelevant — you write the design either way.
 
 ## Validation ladder
 
-Validation is not one event. `rules/verification.md` owns which checks are in
-scope. Promote through the selected rungs rather than skipping one on the excuse
-that a later rung will catch it.
+`rules/verification.md` owns check scope. Complete applicable rungs in order:
 
-1. **Local** — typecheck and lint; unit tests when tests are in scope. Run once at
+1. **Local** — typecheck and lint; unit tests only with explicit current-task final-stage user approval. Run once at
    the final gate, not after every edit.
-2. **Integration** — when the contract or release risk requires it, run the module
+2. **Integration** — plan boundary coverage; after integration and explicit
+   current-task final-stage user approval, run the module
    against a real dependency (DB via testcontainers, API with mocked externals).
 3. **Pre-production** — the real deployment shape, real config, seeded data.
 4. **Production** — canary or staged rollout with the rollback trigger defined
@@ -56,9 +52,6 @@ Rungs 3 and 4 are project-specific; a project without them says so in its own
 `CLAUDE.md` rather than pretending rung 2 is sufficient.
 
 ## Release gate — exit criteria
-
-The gap this file exists to close. Nothing in EngineOS previously required any of
-this before something shipped.
 
 - [ ] A named owner for operating the change, not just for writing it.
 - [ ] A rollback path, stated concretely (revert commit, feature flag, previous
@@ -79,9 +72,7 @@ diff looks like. Classify it that way.
 
 - DO state which gate you are at when the work spans a session boundary. "Design
   gate, exit criteria 2 of 4 met" resumes; "in progress" does not.
-- DO fail the gate loudly. A gate you passed by lowering its bar is worse than no
-  gate, because it produces a record saying the bar was met.
-- DON'T run gates you do not need. Discovery on a typo is theatre, and theatre is
-  how teams learn to skip gates that matter.
+- Report failed gates explicitly; never lower their bar.
+- Run only applicable gates.
 - DON'T treat a green Stop hook as the Release gate. It is the Validation gate;
   it knows nothing about owners or rollback.

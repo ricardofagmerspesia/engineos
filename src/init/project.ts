@@ -17,10 +17,10 @@ import { join } from 'node:path';
 import type { spawnSync } from 'node:child_process';
 import type { Io } from '../io';
 import { loadLayoutManifest, scaffoldLayout, type ManifestEntry } from '../hooks/scaffold';
-import { packageLabel, resolveStack, type StackSource } from '../kernel/stack';
+import { hasStackSignal, packageLabel, resolveStack, type StackSource } from '../kernel/stack';
 import { repoRoot } from '../lib/git';
 import {
-  FRAMEWORKS,
+  ACTIVE_FRAMEWORKS,
   FRAMEWORK_LANGUAGE,
   PROJECT_CONFIG_PATH,
   isFramework,
@@ -51,18 +51,13 @@ const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir]
 // manifest joins them because it is what this port actually reads.
 const REQUIRED_SIBLINGS = ['hooks/scaffold-layout.sh', 'hooks/layout-manifest.sh', 'registries/layout-manifest.json'];
 
-// Two starter CLAUDE.md files ship: the general one carries a Node block AND a
-// Python block (the developer deletes the one they do not use, a mixed repo keeps
-// both), the Python variant is the clean single-stack file. The pick is made from
-// the same package list the config was written from: every resolved package
-// Python → the variant; anything else, including "no package", → the general
-// one, which is what init always produced before the stack existed.
+// New projects always use the JavaScript ecosystem template. The Python path is
+// retained as a deprecated public constant for existing integrations.
 export const CLAUDE_MD_TEMPLATE = 'templates/project-claude.md';
 export const CLAUDE_MD_TEMPLATE_PYTHON = 'templates/project-claude-python.md';
 
-export function claudeMdTemplate(packages: readonly PackageStack[]): string {
-  const pythonOnly = packages.length > 0 && packages.every((pkg) => pkg.language === 'python');
-  return pythonOnly ? CLAUDE_MD_TEMPLATE_PYTHON : CLAUDE_MD_TEMPLATE;
+export function claudeMdTemplate(_packages: readonly PackageStack[]): string {
+  return CLAUDE_MD_TEMPLATE;
 }
 
 // A one-entry manifest rather than a second call into the scaffolder's guard: the
@@ -165,6 +160,9 @@ export function initProject(argv: string[], deps: InitDeps): number {
   // template is picked from it, so the two can never disagree about the stack.
   const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
   const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
+  if (stack.kind === 'auto' && packages.length === 0 && hasStackSignal(project)) {
+    io.out('  existing stack signal found; no supported JavaScript package detected — non-JavaScript stacks are unsupported, existing files are preserved\n');
+  }
   writeProjectConfig({ io, project, packages, source, dryRun });
   writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
   for (const name of AGENT_SKILLS_DOCS) writeAgentSkillsDoc({ io, project, root, name, dryRun });
@@ -228,7 +226,7 @@ function indent(text: string, prefix: string): string {
   return text.split('\n').map((line) => (line === '' ? line : `${prefix}${line}`)).join('\n');
 }
 
-// "fastapi@backend,react@frontend" -> two packages; "fastapi" -> one at ".".
+// "nestjs@backend,react@frontend" -> two packages; "nestjs" -> one at ".".
 // Every refusal names the item, so a comma list with one bad entry says which.
 export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | { ok: false; message: string } {
   const trimmed = spec.trim();
@@ -242,8 +240,14 @@ export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | {
     const at = entry.indexOf('@');
     const framework = at === -1 ? entry : entry.slice(0, at);
     const rawDir = at === -1 ? '.' : entry.slice(at + 1);
+    if (framework === 'node' || framework === 'express') {
+      return { ok: false, message: `--stack: "${framework}" is not a supported application framework; choose nestjs for application backends, or next, react, react-native for UI. Node.js remains the runtime for tooling; use --stack auto to detect existing packages truthfully.` };
+    }
+    if (isFramework(framework) && FRAMEWORK_LANGUAGE[framework] !== 'node') {
+      return { ok: false, message: `--stack: "${framework}" is deprecated and unsupported; choose ${ACTIVE_FRAMEWORKS.join(', ')} (application backends require nestjs)` };
+    }
     if (!isFramework(framework)) {
-      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${FRAMEWORKS.join(', ')})` };
+      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${ACTIVE_FRAMEWORKS.join(', ')}; application backends require nestjs)` };
     }
     if (rawDir.startsWith('/') || rawDir.split('/').includes('..')) {
       return { ok: false, message: `--stack: "${rawDir}" must be a directory relative to the repo root` };
@@ -251,9 +255,7 @@ export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | {
     const dir = normalizeDir(rawDir);
     if (seen.has(dir)) return { ok: false, message: `--stack: "${dir}" is declared twice` };
     seen.add(dir);
-    const language = FRAMEWORK_LANGUAGE[framework];
-    const pkg: PackageStack = { dir, language, framework, compose_service: null };
-    if (language === 'python') pkg.python_env = 'auto';
+    const pkg: PackageStack = { dir, language: 'node', framework, compose_service: null };
     packages.push(pkg);
   }
   return { ok: true, stack: { kind: 'declared', packages } };

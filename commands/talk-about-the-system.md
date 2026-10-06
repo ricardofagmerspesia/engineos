@@ -4,9 +4,7 @@ argument-hint: [optional theme to focus the interview, e.g. "billing rules"]
 allowed-tools: Read, Grep, Glob, Write, Edit
 ---
 
-Run the `architecture-analyst` persona in **INTERVIEW mode in this session** — do
-NOT dispatch a subagent, because this requires interactive back-and-forth with
-the user.
+Use architecture-analyst INTERVIEW in-session; live answers preclude subagent dispatch.
 
 Steps:
 1. Read `agents/architecture-analyst.md` (the INTERVIEW section) and

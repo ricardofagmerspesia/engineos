@@ -1,105 +1,69 @@
 ---
 name: eval-harness
-description: Scaffold a complete eval harness for an LLM feature — golden cases, runner, scorers, LLM-judge rubric, npm script or pytest marker. Use when an LLM feature has no evals yet, or when "set up evals", "eval harness", "golden set" is requested.
+description: "Plan LLM golden cases/scorers; scaffold production-path eval runners only at the approved final stage. Use for eval setup, missing feature evals, golden sets or judge rubrics."
 ---
 
 # Eval Harness Scaffold
 
-## Boundary
+Author executable tests/evals **only after integrated implementation and explicit
+current-task final-stage approval** (`rules/verification.md`). Earlier invocation
+plans cases/metrics then returns pending approval. Use Node.js/TypeScript,
+zod/JSON Schema and the existing npm/pnpm/yarn runner. Exercise production Mastra
+agents/workflows through NestJS providers with production authenticated context and
+tool permissions; verify installed evaluation APIs against official docs.
 
-Ownership boundary for eval guidance: `rules/llm-apps.md` (EngineOS rule, resolved
-relative to EngineOS's `CLAUDE.md` — the repo/plugin root — not this project) sets
-the eval rules (golden set before iterating, run on every change, judge vs exact
-match), `llm-engineering` carries the how-to patterns, and this skill builds the
-machinery. Do not restate the rules here.
-
-Goal: `npm run eval:<feature>` (Node) or `pytest -m eval tests/evals/<feature>` (Python) printing a pass rate, runnable locally and in CI. No LLM feature merges without one (`rules/llm-apps.md`).
-
-## Stack
-
-The procedure below is the Node shape. Resolve the stack first (`scripts/kernel.sh resolve-stack <dir>`); on a Python package apply the same seven steps with the substitutions in **Python variant** at the end.
-
-## Ownership boundary for eval guidance
-
-`rules/llm-apps.md` sets the eval rules (golden set before iterating, run on every
-change, judge vs exact match), `llm-engineering` carries the how-to patterns, and
-this skill builds the machinery. Do not restate the rules here.
+`rules/llm-apps.md` owns eval policy; `llm-engineering` owns techniques;
+this skill owns machinery. Legacy Python interfaces are historical only.
 
 ## Procedure
 
-1. **Locate the feature contract.** Find the feature's input type and output schema (zod / Pydantic). No schema → stop and fix that first (structured output rule).
-2. **Build the golden set with the user**, sized and paced per `rules/llm-apps.md`, in `evals/<feature>/cases.json`. Source priority: real production/log examples > hand-written realistic cases > synthetic. Each case:
+1. Locate typed input/output schema. If absent, stop and establish the structured
+   contract before the harness.
+2. Build golden cases **with the user**, paced/sized by `rules/llm-apps.md`, in
+   `evals/<feature>/cases.json`. Prefer production/log examples, then realistic
+   hand-written cases, then synthetic:
+
    ```json
-   { "id": "kebab-id", "input": {...}, "expected": {...}, "note": "why this case exists" }
+   { "id": "kebab-id", "input": {}, "expected": {}, "note": "why this exists" }
    ```
-   Must include: typical cases, edge cases (empty, long, ambiguous, adversarial/injection attempt), and known past failures.
-   For RAG features, must also include:
-   - One cross-tenant retrieval **pair**, same query, two principals: as principal B (the owner) it must return the target chunk at rank 1, and as principal A it must return zero hits — `expected.relevant_chunk_ids` empty, scored by a scorer asserting zero hits rather than low rank. Both halves are required; a zero-hit case on its own also passes against a retriever that is simply broken, so the positive control is what makes it evidence of a filter.
-   - One case whose source document carries PII, asserting on the indexed artifact — the retrieved chunk text and the stored payload contain the mask, not the raw value — as well as on the generated output. A clean answer over a chunk that still holds the PII means redaction ran on the wrong side of the index.
-   - One **no-answer** case: a question the corpus genuinely cannot answer. `expected` is the feature's "not found in the sources" response, and the scorer asserts the absence of any fabricated claim, not just the presence of the phrase. Without it nothing measures the relevance threshold, and a retriever tuned only on answerable questions is rewarded for always answering.
-   - One **history-dependent** case wherever query rewrite is used: a follow-up whose pronoun or reference only resolves against the prior turn (`input` carries that turn). Scored on the retrieval metrics of the rewritten query — an unresolved reference retrieves the previous topic, which looks plausible and is wrong.
-3. **Pick scorers per field** — cheapest that proves correctness:
-   - `exact` — enums, ids, booleans
-   - `schema` — output parses against the zod / Pydantic schema (always on)
-   - `set` — array membership ignoring order
-   - `numeric` — tolerance band
-   - `contains` / `regex` — required fragments in text
-   - `judge` — LLM-as-judge; scope per `rules/llm-apps.md` (fuzzy criteria such as tone, faithfulness, relevance — never exact-match-able fields)
-   - `retrieval` — `recall_at_k`, `precision_at_k`, `mrr` over `expected.relevant_chunk_ids` vs. the retriever's ranked ids; see `references/retrieval-metrics.md`
-   - `judge` criteria for RAG generation: `groundedness` (every claim maps to a retrieved chunk) and `faithfulness` (no claim contradicts one) — yes/no per claim, never a scale
-4. **Write the runner** `evals/<feature>/run.ts`, matching project conventions:
-   - Load cases → call the real feature code (same entrypoint production uses, NOT a copy of the prompt) → score → report.
-   - Concurrency-limited (p-limit ~5), per-case try/catch (one crash ≠ dead run), prompt version + model logged in the report header.
-   - Output: table of failures (id, field, expected vs got), then `PASS n/m (x%)`. Exit code 1 below threshold.
-   - Threshold: define per feature (start: ≥90% or current baseline, never lower it silently).
-   - For RAG features the runner calls the retriever and the generator separately and reports two tables — retrieval metrics per K, then generation pass rate — plus writes `evals/<feature>/retrieval/BASELINE.md`.
-   - For RAG features also report per-stage latency (rewrite, retrieve, re-rank, generate) in the report header or as a column, so a regression is attributed to a stage instead of to the feature.
-5. **Judge setup (only if used):** separate, cheaper model than the feature under test. Rubric prompt: criteria as yes/no questions, 1–5 scale forbidden (drift), output via structured output `{pass: boolean, reason: string}`. Spot-check 10 judge verdicts by hand once before trusting it.
-6. **Wire up:** add `"eval:<feature>": "tsx evals/<feature>/run.ts"` to package.json (Python: the `eval` marker, see below). Mention CI: run on PRs touching the feature's prompts/ or feature dir.
-7. **Baseline:** run once, record the rate in `evals/<feature>/BASELINE.md` with date + prompt version. Change cadence (every prompt/model change pastes before/after) per `rules/llm-apps.md`.
 
-## Quality bar
+   Include typical, empty/long/ambiguous/adversarial injection and past failures.
+   For RAG also require:
+   - Cross-tenant **pair**: same query, owner B returns target at rank 1; principal
+     A gets zero hits with empty `expected.relevant_chunk_ids` and a zero-hit
+     scorer. Positive control distinguishes ACL filtering from broken retrieval.
+   - PII source: assert masked values in retrieved chunk **and stored payload**,
+     plus generated output. Clean output alone cannot prove pre-index redaction.
+   - No-answer query genuinely outside corpus: assert the “not found” response
+     **and no fabricated claims**, measuring relevance threshold.
+   - With query rewrite, a history-dependent follow-up carrying its prior turn;
+     score rewritten-query retrieval, not a plausible wrong-topic answer.
+3. Choose cheapest adequate scorer: exact(enums/ids/bools), schema(always),
+   set(unordered members), numeric(tolerance), contains/regex(fragments),
+   judge(fuzzy criteria only), retrieval(Recall@K/Precision@K/MRR on ranked vs
+   relevant ids; load `references/retrieval-metrics.md`). For generation judge
+   groundedness/faithfulness as yes/no **per claim**, never a scale.
+4. Write `evals/<feature>/run.ts`: load → production entrypoint → score → report,
+   never a copied prompt. Limit concurrency (~5/p-limit), isolate case crashes,
+   log prompt version/model, print failures(id/field/expected/got) then
+   `PASS n/m (x%)`. Exit 1 below feature threshold (start ≥90% or baseline;
+   never silently lower). For RAG call retriever/generator separately, print
+   retrieval-per-K and generation tables, write retrieval/BASELINE.md and report
+   rewrite/retrieve/re-rank/generate latency.
+5. If judging, use a separate cheaper model, preferably outside feature family.
+   Yes/no rubric, structured `{pass: boolean, reason: string}`, no 1–5 scale.
+   Manually calibrate 10 verdicts before trusting it.
+6. Add `"eval:<feature>": "tsx evals/<feature>/run.ts"` in package.json. CI
+   automation needs separate request/approval; current-task test consent cannot
+   authorize automatic future runs.
+7. Run once within approved scope; record date/prompt version/pass rate in
+   `evals/<feature>/BASELINE.md`. Prompt/model changes show before/after per
+   `rules/llm-apps.md`.
 
-- Eval calls the production code path — a harness testing a copied prompt drifts and lies.
-- Cases include at least one prompt-injection attempt for any feature consuming untrusted content.
-- Judge never judges its own model family's output if avoidable; never judge without spot-check calibration.
-- Golden set grows: every production failure — including each one routed through the human review queue by negative feedback or low groundedness — becomes a case in the same PR that fixes it.
-- A semantic-cache or query-rewrite change with no before/after eval numbers pasted does not merge. Both change what the retriever is asked and what the user is served, so they carry a prompt change's evidence burden.
-- A RAG eval that has no `retrieval` scorer is incomplete: it cannot tell a retrieval failure from a generation failure.
-- A RAG eval over a shared corpus that has no cross-tenant pair is incomplete: the zero-hit half alone cannot distinguish an ACL filter from a broken retriever, and without either half a retriever with no filter passes every other case.
-- A RAG eval whose PII case asserts only on the generated text is incomplete: it cannot see raw PII sitting in the chunk store or the vectors.
+## Completion checks
 
-## Python variant
-
-Same seven steps; these are the substitutions (design §D13 of the Python stack spec):
-
-- **Tree**: `tests/evals/<feature>/{golden.jsonl, test_golden.py, judge.py}` — one case per line in `golden.jsonl` with the same `{id, input, expected, note}` fields; `BASELINE.md` beside them.
-- **Contract**: the feature's Pydantic output model, imported from the feature — never redefined in the test. The `schema` scorer is `Model.model_validate(got)`.
-- **Runner**: `test_golden.py` marked `pytestmark = pytest.mark.eval`; register the marker in `[tool.pytest.ini_options]` and keep it out of the default run (`addopts = "-m 'not eval'"`). `pytest -m eval tests/evals/<feature>` is the command CI wires.
-- **Concurrency**: `asyncio.gather` over the cases behind an `asyncio.Semaphore(5)`; per-case `try/except` so one crash is one failure, not a dead run.
-- **Three golden-set kinds** for agent projects: per tool (question → expected query/arguments), per agent (task packet → output contract), and one end-to-end. **No test calls the provider by default** — the port is the `FakeLLM` from `conftest.py` and the assertion is on the contract. A live run (`EVAL_LIVE=1`, real adapter, spend cap) is the explicit opt-in that produces the before/after numbers a prompt change pastes in its PR.
-- **In-product scoring** stays limited to the runtime evaluator node (a Pydantic verdict, bounded retry) and the deterministic grounding check; the eval suite never ships in the product path.
-- **Judge** (`judge.py`): same rubric rules as step 5, output as a Pydantic `Verdict(pass_: bool, reason: str)` with `model_validate_json` and one retry-with-feedback on `ValidationError`.
-
-```python
-# tests/evals/<feature>/test_golden.py — spec §D13
-pytestmark = pytest.mark.eval
-CASES = [json.loads(line) for line in (Path(__file__).with_name("golden.jsonl").read_text().splitlines()) if line.strip()]
-THRESHOLD = 0.90  # or the current BASELINE.md rate; never lowered silently
-LIMIT = asyncio.Semaphore(5)
-
-async def run_case(use_case, case: dict) -> tuple[str, bool, str]:
-    async with LIMIT:
-        try:
-            got = await use_case.execute(Command(**case["input"]))   # the production entrypoint, not a copied prompt
-        except Exception as exc:  # one crash is one failed case
-            return case["id"], False, f"raised {type(exc).__name__}: {exc}"
-    return case["id"], *score(case["expected"], Output.model_validate(got))
-
-async def test_golden_set_meets_the_threshold(use_case):
-    results = await asyncio.gather(*(run_case(use_case, case) for case in CASES))
-    failures = [(case_id, why) for case_id, ok, why in results if not ok]
-    rate = 1 - len(failures) / len(results)
-    report = "\n".join(f"{case_id}: {why}" for case_id, why in failures) + f"\nPASS {len(results) - len(failures)}/{len(results)} ({rate:.0%})"
-    assert rate >= THRESHOLD, report
-```
+Production path, injection case and calibrated judge are required. RAG requires
+retrieval scorers, both cross-tenant controls and indexed-PII assertions. Reviewed
+negative-feedback/low-grounding failures become golden cases in the fixing PR.
+Semantic-cache/query-rewrite changes need before/after eval evidence to merge;
+unapproved evidence stays pending. No automatic CI/testing authorization is implied.

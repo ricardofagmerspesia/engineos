@@ -1,50 +1,40 @@
 # /implement — coordinated multi-domain change
 
-Orchestrate a coordinated multi-domain change: dispatch the relevant domain
-coordinators in IMPLEMENT mode for a well-scoped task. Trailing text is
-`<domain|all> <task description>` — first token is the domain
-(`backend|frontend|mobile|dba|devops|llm|all`), the rest is the task. `ia` is
-accepted as a deprecated alias for `llm`.
-
-You are the EngineOS implement orchestrator.
+You are the top-level implement supervisor. Arguments: domain|all then task;
+backend/frontend/mobile/dba/devops/llm supported; ia is a deprecated llm alias.
 
 ## Steps
 
-1. **Spec gate.** Per the EngineOS non-negotiables, a change touching >2 files or
-   any new feature needs a spec first. If this task qualifies and no spec exists,
-   stop and route to the brainstorming + spec-driven skills before implementing.
-
-2. **Open a change record** (`.engineos/changes/_template.md` → `.engineos/changes/<date>-<slug>.md`,
-   `status: active`) describing the task.
-
-3. **Select coordinator(s)** by domain (the dual-mode domain coordinators do the
-   work; MCP leaf specialists are AUDIT-only and are not used here):
-   backend→backend-coordinator, frontend→frontend-coordinator,
-   mobile→mobile-coordinator, dba→dba-coordinator, devops→devops-coordinator,
-   llm→llm-coordinator, all→the relevant subset for the task. `security` is not
-   an implement domain — `security-reviewer` is read-only; route
-   security-sensitive changes to the owning domain coordinator and dispatch
-   `security-reviewer` as a review pass afterwards.
-
-4. **Dispatch** with `MODE: IMPLEMENT`, the task, and the scope. For a
-   single-domain task, one coordinator. For cross-domain, dispatch the needed
-   coordinators; sequence them when one depends on another's output, otherwise
-   parallel.
-
-5. **Run the final gate** (`rules/verification.md`). When tests were not in scope,
-   state `[tests] skipped — not requested`. Cursor has no hook system, so nothing
-   enforces this automatically here: run it yourself before reporting done.
-
-6. **Record** — close the change via the `record-change` skill (mark done,
-   register files + movements, `.engineos/changes/` → `.engineos/archived/`).
-
-7. **Offer the output artifact** once the change is recorded: scaffold,
-   flowchart, reusable template, UI/UX design, or none — prune template/UI-UX
-   unless the domain dispatched was frontend or mobile.
+0. Route every code/config/design/doc task, including mechanical edits/follow-ups,
+   before writes/dispatch. Kernel fast path; supervisor resolves residue or
+   consults read-only router. Explicit /engineos:route is plan-only. Load resolved
+   rules/skills/patterns, classify risk/autonomy, announce. Unknown intent gets
+   always-on rules and an appropriate exclusive worker. Authorized work gains no
+   approval gate; pure explanations create no implementation units.
+1. Spec first for >2 files or any new feature. Missing spec: route to brainstorming
+   + spec-driven skills before implementation.
+2. Open active .engineos/changes/<date>-<slug>.md from _template.md.
+3. Select backend/frontend/mobile/dba/devops/llm coordinator(s); MCP leaves are
+   AUDIT-only. Security owner implements; security-reviewer reviews read-only.
+4. Freeze authoritative contracts/owner/revision (templates/api-contract.md for
+   HTTP), maintain rules/parallelism.md dependency ledger. Brief every worker:
+   MODE: IMPLEMENT, role, rules/skills/patterns, exclusive paths, prerequisites,
+   contract revisions, risk/autonomy, model, active branch/PR, return expectations.
+   Fill min(policy cap, available host worker slots), reserving supervisor slot,
+   with all useful ready units; one indivisible task gets one worker. Flat workers;
+   same domain may own disjoint units. Integrate prerequisites and refill promptly.
+   Shared outputs have one owner. Scope/new-task changes reroute via supervisor;
+   contract drift goes to owner, pausing only affected consumers until rebriefed.
+5. After all integration, final non-test gate (rules/verification.md). Tests need
+   explicit current-task final approval; otherwise state
+   [tests] pending — final-stage user approval required. Cursor has no hooks:
+   perform final validation explicitly before reporting completion.
+6. Close via record-change: files/movements, honest done status, changes → archived.
+7. Offer scaffold/flowchart/template/UI-UX/none once; template/UI-UX only for
+   frontend/mobile, per CLAUDE.md.
 
 ## Rules
 
-- Follow the routed rules for each domain (the PreToolUse routing hook injects
-  them on each edit) and project `CLAUDE.md` over EngineOS.
-- Keep the change atomic and within the PR size limit (`rules/git.md`); split if
-  larger.
+Load routed domain rules explicitly; Cursor has no PreToolUse hook. Project
+CLAUDE.md wins. Keep atomic changes and follow rules/git.md; preserve current
+branch/PR until the user directs a change.

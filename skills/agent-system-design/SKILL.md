@@ -1,141 +1,107 @@
 ---
 name: agent-system-design
-description: Interactive design gate for any system with more than one agent — a 12-step form Claude walks with the developer one decision at a time, a pattern catalog, and a topology spec with two Mermaid diagrams the developer approves before any graph code. Use when a request involves multiple agents, orchestration, a supervisor, LangGraph, or agent-to-agent handoff.
+description: "Interview the developer through 12 product multi-agent topology decisions; record contracts, two diagrams and approval before implementation. Use for product multi-agent orchestration, supervisors, A2A or handoffs; single chatbots and development-worker dispatch skip this gate."
 ---
 
 # Agent-system design
 
-Apply `rules/llm-apps.md` from EngineOS first (EngineOS rules — resolved relative to
-EngineOS's `CLAUDE.md`, the repo/plugin root, not this project). This skill is the
-design gate that rule names: before a system with more than one agent gets its first
-line of graph code, its topology is designed in a form the **developer** answers step
-by step, written to a spec, drawn twice, and approved.
+Apply EngineOS's `rules/llm-apps.md` first. This gate designs a **product** with
+multiple agents before any agent/workflow/tool implementation. Development-worker
+dispatch follows `rules/parallelism.md`, not this interview. A single Mastra
+chatbot/agent loads `mastra-patterns` directly.
 
-Vocabulary, fixed: **developer** = the person driving Claude with EngineOS;
-**user** = the person who uses the product being built; **Claude** = the model.
-Every approval here is the developer's, given in the Claude session and recorded in
-the change record. A product that needs its *user* to confirm an action picks the
-`user-approval-interrupt` catalog pattern — that is a product feature, not this gate.
+Vocabulary: **developer** drives the coding session; **user** uses the product;
+**Claude** is the model. Developer topology consent is recorded once in the change
+record. Product-user action consent is the `user-approval-interrupt` pattern.
 
-## When it fires
+## Trigger and procedure
 
-- The `agent-system` intent matched (`/engineos:design-agents`, or a request with
-  multi-agent, orchestration, supervisor, LangGraph, A2A, handoff signals), or
-- decision rule `rule-multi-agent-design` fired and the prompt advisor announced
-  "human-in-the-loop required — reasons: topology-approval".
+Fire when `agent-system` matches (`/engineos:design-agents`, multi-agent,
+orchestration, supervisor, Mastra workflows, A2A, handoff), or
+`rule-multi-agent-design` announces HITL reason `topology-approval`.
+Use `patterns/3-Agent-topology-interview.md`, with `llm-coordinator`
+(alias `hermsdorff`) in INTERVIEW mode in the developer's main session;
+interactive interviews never run in a subagent.
 
-Either way the procedure is `patterns/3-Agent-topology-interview.md`, run by the
-`llm-coordinator` persona (alias `hermsdorff`) in INTERVIEW mode, in the main
-session — never in a subagent, because every step waits for the developer.
+1. Read `references/form.md` before step 1; consult the current step again as
+   needed. Ask one step at a time: options, trade-offs, one grounded recommendation,
+   then wait. No skipped/unanswered steps, inferred defaults or model-chosen topology.
+   “Use your judgement” gets the recommendation restated for explicit agreement.
+2. Record each developer answer immediately in
+   `docs/specs/<date>-<slug>-agent-topology.md`, from
+   `templates/agent-topology.md` at the EngineOS root. Resume through
+   `/engineos:design-agents resume`. Cite reference implementations as
+   `file:line` where available; otherwise state there is no reference.
+3. Complete the 12 decisions below. Step 12 renders both diagrams for developer
+   review, then records consent. Before that record, create no multi-agent
+   implementation files, including tools/workflows. Reading `mastra-patterns`
+   for planning is permitted.
 
-## Non-negotiable rules
-
-1. **One step at a time.** Claude asks the step's question, presents the options
-   with their trade-offs and one recommendation grounded in the answers so far, and
-   **waits** for the developer's answer. It never asks two steps in one message.
-2. **Nothing is defaulted or skipped.** An unanswered step blocks the next one. "Use
-   your judgement" is answered by restating the recommendation and asking again.
-3. **Claude never picks the topology.** Step 1 recommends; the developer chooses.
-   The same holds for every later step.
-4. **Answers land in the spec as they are given.** After each answer Claude writes
-   the step's section into `docs/specs/<date>-<slug>-agent-topology.md` (from
-   `templates/agent-topology.md`), so an interrupted session resumes from the file
-   with `/engineos:design-agents resume`.
-5. **Recommendations cite code.** Where a labv-style reference implementation
-   exists, the recommendation points at `file:line` — `references/form.md` carries
-   the citations per step.
-6. **Two diagrams before approval.** Step 12 renders the flowchart and the sequence
-   diagram; the developer reviews both.
-7. **The approval line is the exit.** Only after
-   `<date> | <developer> | topology-approval | approved | docs/specs/<file>` is
-   written under the change record's `## Human decisions` may `langgraph-patterns`
-   be loaded and graph code written. Before that line, no `graph/`, `agents/` or
-   `tools/` file is created.
-
-## The form — 12 steps
-
-The full script — the question as asked, the options, how the recommendation is
-derived, the exact spec section produced, the "do not proceed until" line — is
-`references/form.md`. Read it before step 1; it is the enforcement mechanism for
-the rules above.
-
-| Step | Decision | What gets written into the spec |
+| Step | Decision | Spec obligation |
 |---|---|---|
-| 1 | Topology — a catalog pattern or a named combination | `pattern_ids` front-matter + §1 pattern and why |
-| 2 | Agent roster — purpose, model role, what each agent must never see | §2 roster table |
-| 3 | Tools — the eight sub-decisions, per tool (the longest step) | §3 tool contract table + context table |
-| 4 | Communication protocol — shared state, typed envelopes or A2A; sync/async | §4 protocol section |
-| 5 | Context scoping — one typed task packet per agent | §5 one Pydantic model per agent |
-| 6 | Memory per agent — none, summary buffer or store; scope; what survives a turn | §6 memory table |
-| 7 | Harness — entry point, iteration cap, recursion limit, timeout, retry and cost budgets, evaluator | §7 harness table |
-| 8 | Guardrails — tenant scoping, per-agent tool allowlist, sanitization | §8 guardrail list |
-| 9 | Failure policy — degrade vs fail per agent; fallback agent | §9 policy table |
-| 10 | Observability — run and correlation ids, per-agent traces, tokens per role | §10 observability section |
-| 11 | Evals — golden set per tool, per agent, one end-to-end | §11 eval plan |
-| 12 | Diagram review — flowchart + sequence diagram, then the approval line | §12 two Mermaid blocks; front-matter `status: approved` |
+| 1 | Catalog pattern or named combination | `pattern_ids` + §1 pattern/reason |
+| 2 | Purpose, model role, exclusions per agent | §2 roster |
+| 3 | Eight sub-decisions per tool | §3 contracts + context |
+| 4 | State, envelopes or A2A; sync/async | §4 every hop |
+| 5 | Scoped typed packet and output per agent | §5 zod models |
+| 6 | None, scoped Mastra memory or store; retention | §6 memory rows |
+| 7 | Entry point, iterations/transitions, timeout, retries, tokens/cost, evaluator | §7 numeric bounds/enforcement |
+| 8 | Tenant binding, tool allowlists, sanitization | §8 guards |
+| 9 | Degrade/fail/fallback per agent | §9 policies |
+| 10 | Run/correlation ids, spans, per-role usage | §10 tracing |
+| 11 | Per-tool, per-agent, end-to-end golden criteria | §11 eval plan |
+| 12 | Flowchart + sequence review and consent | §12 diagrams; `status: approved` |
 
 ## Pattern catalog
 
-Offered at step 1 with a recommendation, never applied automatically. One file per
-pattern, same skeleton (use when · do not use when · decisions it forces · LangGraph
-shape · failure modes · eval strategy · example).
+Read only the applicable pattern files before recommending. Each retains selection
+criteria, forced decisions, Mastra shape, failures, eval plan and provenance.
 
-| id | One line | File |
+| id | Shape | File |
 |---|---|---|
-| `react-tool-loop` | Single agent, tool loop, evaluator + bounded retry (the demo's shape) | `references/patterns/react-tool-loop.md` |
-| `grounded-pipeline` | Normalize → prompt → generate → deterministic ground-check → one corrective regeneration → warnings (labv-assist) | `references/patterns/grounded-pipeline.md` |
-| `supervisor-workers` | One router agent dispatches typed task packets to specialists and assembles their output contracts | `references/patterns/supervisor-workers.md` |
-| `typed-pipeline` | Fixed stages, Pydantic in/out per stage, testable stage by stage | `references/patterns/typed-pipeline.md` |
-| `rule-first-router` | Deterministic classification first, the model only for the residue | `references/patterns/rule-first-router.md` |
-| `evaluator-optimizer` | Generator + critic, standard verdict schema, retry guard mirrored in the routing function | `references/patterns/evaluator-optimizer.md` |
-| `fanout-aggregate` | Independent sub-tasks via `Send`, a reducer merges or votes; decides what one failed branch does | `references/patterns/fanout-aggregate.md` |
-| `plan-execute-replan` | Planner emits a typed step list, executor runs, replanner revises on failure | `references/patterns/plan-execute-replan.md` |
-| `user-approval-interrupt` | `interrupt()` + `Command(resume=…)` for actions with external effect — a **product** pattern, the user confirms | `references/patterns/user-approval-interrupt.md` |
-| `handoff-swarm` | Agents transfer control through explicit handoff tools, no supervisor; says when it is the wrong choice | `references/patterns/handoff-swarm.md` |
+| `react-tool-loop` | One agent, contextual tools, evaluator, bounded retry | `references/patterns/react-tool-loop.md` |
+| `grounded-pipeline` | Normalize/generate, deterministic grounding, one correction, warnings | `references/patterns/grounded-pipeline.md` |
+| `supervisor-workers` | Router dispatches specialist packets and assembles outputs | `references/patterns/supervisor-workers.md` |
+| `typed-pipeline` | Fixed stages with zod input/output | `references/patterns/typed-pipeline.md` |
+| `rule-first-router` | Deterministic classification; model handles residue | `references/patterns/rule-first-router.md` |
+| `evaluator-optimizer` | Generator/critic; typed verdict; mirrored retry guard | `references/patterns/evaluator-optimizer.md` |
+| `fanout-aggregate` | Bounded independent branches, merge/vote, failure policy | `references/patterns/fanout-aggregate.md` |
+| `plan-execute-replan` | Typed plan, one-step execution, eligible tail replanning | `references/patterns/plan-execute-replan.md` |
+| `user-approval-interrupt` | Product-user consent through durable suspend/resume | `references/patterns/user-approval-interrupt.md` |
+| `handoff-swarm` | Explicit peer transfers without a product supervisor | `references/patterns/handoff-swarm.md` |
 
-Cross-cutting references, folded into every pattern and into step 3:
+At step 3 load `references/context-enriched-tools.md`: semantic/curated/machine
+context, registry, internal agent, `_result`/`_handoff_result`, guards.
+For profile/model/memory/security decisions load `references/tenant-profiles.md`:
+JWT identity, `${ENV}`, role overrides, secret-free UI projection, overlay merge.
 
-| Reference | Covers |
-|---|---|
-| `references/context-enriched-tools.md` | The three context layers (semantic, curated, machine facts), the registry, the tool-embedded sub-agent, the `_result` / `_handoff_result` envelope, the guards |
-| `references/tenant-profiles.md` | Profile resolved from the JWT claim, `${ENV}` placeholders, per-role model defaults with per-tenant overrides, secret-free projection, default + overlay merge rules |
+## Runtime and implementation handoff
 
-## Where the pieces live
+Mastra on Node.js/TypeScript inside NestJS providers is fixed policy. NestJS owns
+transport, authentication and lifecycle; never ask to reselect the framework.
+Historical Python citations are design provenance, not executable APIs. Resolve
+active APIs/lifecycle against installed dependencies and official
+[agents](https://mastra.ai/docs/agents/overview),
+[workflows](https://mastra.ai/docs/workflows/overview),
+[suspend/resume](https://mastra.ai/docs/workflows/suspend-and-resume) docs
+(reviewed 2026-10-06). Catalog shapes are architecture recommendations.
 
-- Template: `templates/agent-topology.md` in the EngineOS root. The form reads it
-  from there at run time and writes the filled copy into the **project's**
-  `docs/specs/`; nothing is copied on `init`.
-- Spec: `docs/specs/<date>-<slug>-agent-topology.md`; the change record's `spec:`
-  field points at it.
-- Approval: the change record's `## Human decisions`, reason `topology-approval`
-  (`registries/policy.json` `hitl.reasons`).
-
-## How it composes
-
-- **`/engineos:route`** resolves the `agent-system` intent and announces the
-  `topology-approval` gate; this skill is what satisfies that gate. The router
-  never runs the form.
-- **`rules/parallelism.md`** — an approved topology is usually the wave plan: each
-  agent, its tools and its task packet become one unit with a disjoint file scope
-  (`agents/<name>.py`, `tools/<name>.py`, the packet model), the graph wiring is
-  the barrier after them. Derive the waves from §2 and §3 of the spec, not from
-  scratch.
-- **`rules/llm-apps.md`** — the tool, prompt and eval rules apply to every agent in
-  the roster; step 3 and step 11 are where they are made concrete.
-- **`langgraph-patterns`** — loaded only after the approval line exists, to
-  implement the approved shape. A linear pipeline (`grounded-pipeline`,
-  `typed-pipeline`) needs no graph: it is a plain `async` use case per
-  `python-patterns`.
-- **`eval-harness`** — scaffolds the step-11 plan once code exists.
+The router announces this gate but never runs the form. The change record's
+`spec:` points to the topology spec; consent lives under `## Human decisions`
+with policy reason `topology-approval`. After approval, derive exclusive worker
+scopes/dependencies from §2/§3 under `rules/parallelism.md`; integrate shared
+workflow wiring after dependencies. All agents follow `rules/llm-apps.md`.
+`mastra-patterns` implements the approved shape; deterministic stages may use
+plain typed helpers. `eval-harness` authors/runs §11 only after integration and
+explicit current-task final-stage test approval.
 
 ## Pre-flight before reporting the gate passed
 
-- [ ] Every one of the 12 sections in the spec has content the developer gave — no
-      `<placeholder>` left, no "TBD".
-- [ ] `pattern_ids` in the front-matter match §1.
-- [ ] §3 has all eight sub-decisions for every tool in the inventory.
-- [ ] §5 has one packet model per agent in §2.
-- [ ] Both Mermaid blocks render and the developer said so.
-- [ ] The approval line is in the change record with reason `topology-approval`,
-      and the spec front-matter says `status: approved`.
-- [ ] No file under `graph/`, `agents/` or `tools/` was written during the form.
+- All 12 sections contain developer decisions; no placeholders/TBD.
+- `pattern_ids` matches §1; §3 records all eight decisions for every tool.
+- §5 has packet/output models for every §2 agent.
+- Both Mermaid blocks render and the developer confirmed this.
+- Spec fields are `status: approved`, `approved_by`, `approved_on`.
+- Under the change record's `## Human decisions` appears:
+  `<date> | <developer> | topology-approval | approved | docs/specs/<file>`.
+- No agent/workflow/tool implementation was written during the interview.

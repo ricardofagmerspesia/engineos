@@ -3,7 +3,9 @@
 **Status:** baseline measured 2026-09-07 · **Snapshot:** `99b5eec` (clean working tree, except `skills-lock.json`)
 **Rule for this table (E01):** a capability only appears as *available* if there is an implementation **and** evidence that exercises it. Design, spec and written rule do not count as implementation. Where the evidence is indirect, that is said.
 
-This matrix exists because the PRD (`docs/PRD.md`, Draft v1 of 2026-06-11) describes the original intent, not the current state. It is the source for release notes, for the compatibility map and for what can be announced to a user.
+Dated release evidence, not a live readiness claim. Load the relevant matrix row
+for capability questions; preserve its snapshot, counts and gaps. The original
+intent is in [PRD.md](PRD.md). Current workflow policy lives in `rules/`.
 
 ## Legend
 
@@ -49,7 +51,7 @@ The console edits a **copy**. Between the moment a draft captured a file and the
 | Two concurrent publishes | Interleaving of `git add`/`commit` | Serialized by a directory lock, across processes |
 | Rollback over a file with an uncommitted change | `git revert` aborted or stopped on a conflict | Refused before touching anything |
 
-The lock is `mkdir`, not an in-memory flag: a flag would not exclude a **second instance** of the console pointed at the same repository, which is exactly the concurrent-publish case.
+The `mkdir` lock excludes concurrent console processes.
 
 ### Skill enablement — what the switch is worth
 

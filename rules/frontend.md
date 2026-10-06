@@ -3,7 +3,7 @@
 ## Components
 - DO default to Server Components (Next App Router); add `'use client'` only for interactivity.
 - DO keep components small and single-purpose; extract when JSX nesting passes ~3 levels.
-- DO colocate component + styles + test + subcomponents in one folder per feature.
+- DO colocate components, styles and subcomponents in one folder per feature; colocate approved final-stage tests there when authored.
 - DON'T build "god components" with 10+ props — split or compose with children.
 
 ## State
@@ -16,6 +16,12 @@
 - DO fetch on the server when possible (RSC, route handlers); client fetch only for user-driven updates.
 - DO handle the four states everywhere: loading, error, empty, success. Empty state is a designed state, not a blank div.
 - DON'T fetch in useEffect when a query library or server component can do it.
+
+## API contracts and parallel consumers
+- DO begin API-dependent work from the frozen project contract: record its owner, revision and authoritative wire schema in the task/handoff.
+- DO consume wire types or generated clients using existing project tooling. Keep NestJS decorated DTO classes, ORM entities and backend runtime dependencies out of frontend imports, including Next server code.
+- DO validate untrusted inputs/responses at the actual boundary using project runtime schemas where required. TypeScript types and generated client signatures alone do not validate network data.
+- DO report contract mismatches to the owner; pause the affected consumer work until the owner resolves and revises the contract. Continue unrelated ready work; consumers never silently redefine the shared contract.
 
 ## Styling & design system
 - DO use design tokens (CSS variables / theme) — never hardcoded hex values or magic px in components.
@@ -34,5 +40,8 @@
 - DON'T memoize by default — `useMemo`/`useCallback`/`memo` only for measured hot paths or referential-stability needs.
 
 ## Forms
-- DO validate with the same schema client and server (zod shared) — client for UX, server for truth.
+- DO align client validation with the wire contract; server validation remains authoritative. Share a runtime schema only when the project already has a frontend-safe schema source. NestJS class DTO validation and client Zod schemas may be separate implementations of the same contract; keep constraints aligned without importing decorated classes or adding a schema library solely for parity.
 - DO disable submit while pending and show inline field errors.
+
+## Delivery
+- DO plan acceptance criteria before implementation. Author test files/scaffolds and run tests only after integrated implementation and explicit current-task user approval, per `rules/verification.md`; run non-test gates at final integration.

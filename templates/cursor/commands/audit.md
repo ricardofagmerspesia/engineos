@@ -28,10 +28,10 @@ You are the EngineOS audit orchestrator. Run a **read-only** audit.
    | security | security-reviewer |
    | all      | the six domain coordinators — backend, frontend, mobile, dba, devops, llm — plus security-reviewer (add leaves only if scope names that domain) |
 
-3. **Dispatch in parallel** — give each agent `MODE: AUDIT`, the scope,
-   `model: opus` (analysis/design tier per `rules/models.md`), and the shared
-   report format. They run flat (subagents cannot spawn subagents); you are the
-   only orchestrator.
+3. **Dispatch ready scoped audits** up to useful policy/host capacity (reserve
+   supervisor slot); queue excess and refill promptly. Brief MODE: AUDIT, scope,
+   routed rules/skills/patterns, model: opus (analysis/design, rules/models.md)
+   and shared report format. Flat workers; only supervisor dispatches.
 
 4. **Consolidate**: dispatch `audit-consolidator` with all collected reports.
 

@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
@@ -15,7 +15,7 @@
       "model_tier": null,
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. The from-scratch flow runs through the new-feature command: PRD + ADR + SPEC + TASKS before code, then whichever stack rows also match — so this row names no rules of its own. EXTERNAL skill: tlc-spec-lean is pinned from tech-leads-club/agent-skills in skills-lock.json and installed unchanged, not shipped under skills/; Matt Pocock's grill-with-docs, to-spec and to-tickets are human-invoked (disable-model-invocation) and run through the command, so they are not listed here. The flow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the command's stages and to the matched stack rows.",
+      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. The from-scratch flow runs through the new-feature command: PRD + ADR + SPEC + TASKS before code, then whichever stack rows also match — so this row names no rules of its own. EXTERNAL skill: tlc-spec-lean is pinned from tech-leads-club/agent-skills in skills-lock.json and installed unchanged, not shipped under skills/; Matt Pocock's grill-with-docs, to-spec and to-tickets are human-invoked (disable-model-invocation) and run through the command, so they are not listed here. The flow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the command's stages and to the matched stack rows. Acceptance criteria precede code. Test/check implementation and execution are deferred until all code is integrated and the user explicitly approves current-task final tests; an external skill cannot authorize earlier tests.",
       "suppressible": true
     },
     {
@@ -50,7 +50,7 @@
     {
       "id": "backend",
       "title": "Backend work (NestJS)",
-      "signals": ["NestJS", "API", "service", "controller", "migration", "queue", "router", "endpoint"],
+      "signals": ["NestJS", "Express", "Node backend", "Node.js backend", "plain Node", "pure Node", "API", "service", "controller", "migration", "queue", "router", "endpoint"],
       "rules": ["backend", "architecture", "data", "testing", "observability"],
       "skills": ["nestjs-patterns"],
       "agents": ["backend-coordinator"],
@@ -60,13 +60,12 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "backend",
-      "note": "Rules follow registries/routing.json's order (the registry wins for this field); CLAUDE.md lists the same five rules in a different order, architecture first. data.md is loaded because the signals include migrations and nestjs-patterns defers migration safety to it; architecture.md and observability.md are closure targets of backend.md. The nestjs MCP is for codegen. backend-coordinator (alias borisenko) is dual-mode AUDIT/IMPLEMENT. Suppressed by backend-python: a prompt naming a Python framework loads the FastAPI shapes, not the NestJS ones — the two rows share the stack-neutral words (API, service, endpoint, migration) and differ on the framework names.",
-      "suppressed_by": ["backend-python"]
+      "note": "Application backends require NestJS, including API services, workers and LLM service hosts. Express/plain Node backend requests route to backend-coordinator for NestJS guidance; identify existing non-Nest backends truthfully and scope migration before extension. Express is allowed only as Nest's HTTP adapter. Node.js remains the runtime for tooling and libraries, not a backend framework choice. Rules follow routing.json; active frameworks are JavaScript/TypeScript only."
     },
     {
       "id": "backend-python",
       "title": "Backend work (FastAPI)",
-      "signals": ["FastAPI", "Pydantic", "SQLAlchemy", "Alembic", "Django", "Flask", "uvicorn", "pyproject"],
+      "signals": [],
       "rules": ["backend-python", "architecture", "data", "testing", "observability"],
       "skills": ["python-patterns"],
       "agents": ["backend-coordinator"],
@@ -76,7 +75,9 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "backend-python",
-      "note": "Hook-mirrored as the routing.json domain `backend-python` (docs/specs/2026-09-28-python-stack-and-agent-design-design.md §A3); exists as its own intent because C16 requires every routing domain to be claimed by exactly one intent. Rules follow routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. Signals are the Python framework names only; the stack-neutral backend words live on the backend row, which this row suppresses when both match. backend-coordinator (alias borisenko) covers both stacks."
+      "note": "Inactive compatibility entry, retained until the next major release no earlier than one minor release after deprecation. No automatic routing; explain unsupported Python requests and ask for a supported Node.js stack.",
+      "enabled": false,
+      "deprecated": true
     },
     {
       "id": "frontend",
@@ -141,10 +142,10 @@
     },
     {
       "id": "llm",
-      "title": "LLM/agent work",
-      "signals": ["prompt", "agent", "RAG", "embedding", "eval", "tool schema", "LangGraph", "LangChain", "orchestrate", "orchestration", "orchestrator", "supervisor", "multi-agent", "multi agent", "multiagent", "agent-to-agent", "A2A"],
+      "title": "LLM/agent/chatbot work",
+      "signals": ["Mastra", "chatbot", "chat bot", "conversational AI", "prompt", "agent", "RAG", "embedding", "eval", "tool schema", "LangGraph", "LangChain", "orchestrate", "orchestration", "orchestrator", "supervisor", "multi-agent", "multi agent", "multiagent", "agent-to-agent", "A2A"],
       "rules": ["llm-apps"],
-      "skills": ["llm-engineering"],
+      "skills": ["llm-engineering", "mastra-patterns"],
       "agents": ["llm-coordinator"],
       "commands": [],
       "mcp": [],
@@ -152,7 +153,7 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "llm",
-      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. An LLM feature with no evals also matches the eval-setup row. A system with more than one agent also matches the agent-system row, which owns the design gate."
+      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. Active LLM/chatbot orchestration uses Mastra in NestJS backend providers; Node.js is the runtime. LangGraph/LangChain signals retain migration ownership, not active implementation defaults. Bare Mastra or chatbot requests and single agents do not require multi-agent topology approval. An LLM feature with no evals also matches the eval-setup row; defer eval authoring/execution until the approved final test phase. A system with more than one agent also matches the agent-system row, which owns the design gate."
     },
     {
       "id": "agent-system",
@@ -167,7 +168,7 @@
       "risk_floor": "medium",
       "hook_mirrored": false,
       "domain": null,
-      "note": "Interactive: llm-coordinator (hermsdorff) runs patterns/3-Agent-topology-interview.md; developer approval recorded before any graph code. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems."
+      "note": "Interactive: llm-coordinator (hermsdorff) designs multi-agent Mastra workflows hosted in NestJS via patterns/3-Agent-topology-interview.md; developer approval recorded before workflow code. LangGraph signals retain legacy migration detection. Mastra/chatbot alone does not trigger this intent. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems."
     },
     {
       "id": "dba",
@@ -254,7 +255,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "qa-tester (alias qa): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Non-interactive — never waits for input."
+      "note": "qa-tester (alias qa): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Dispatch only after implementation/integration and explicit current-task user approval; preserve configured non-interactive execution once approved."
     },
     {
       "id": "audit",
@@ -353,7 +354,7 @@
       "risk_floor": "low",
       "hook_mirrored": true,
       "domain": "test",
-      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias ameer) for well-scoped targets."
+      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias ameer) for well-scoped targets. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing."
     },
     {
       "id": "eval-setup",
@@ -367,7 +368,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Scaffolding a harness against a known shape is build tier. Shares rules/llm-apps.md with the llm row, which this row will usually co-match."
+      "note": "Scaffolding a harness against a known shape is build tier. Shares rules/llm-apps.md with the llm row, which this row will usually co-match. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing."
     },
     {
       "id": "critic-verification",
@@ -487,7 +488,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck/tests and on an unrecorded change record — and they cover the Validation gate only, never the Release gate."
+      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck and on an unrecorded change record; approved final tests run separately after integration — and they cover the Validation gate only, never the Release gate."
     },
     {
       "id": "route-planning",

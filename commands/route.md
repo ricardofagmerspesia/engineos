@@ -26,11 +26,8 @@ route and stop.
    echo "$ENGINEOS_ROOT"
    ```
 
-   The symlink branch works because `install.sh` links every command file back
-   into the checkout, so any one of them leads home; the upward walk makes it
-   independent of nesting depth, and foreign commands are skipped because only a
-   directory holding `scripts/kernel.sh` is accepted. It reads no personal
-   configuration.
+   Follow installed command symlinks upward to scripts/kernel.sh, skipping
+   foreign commands. Read no personal config.
 
    Then ask the kernel for the route in one `resolve` call, substituting the
    printed root (shell state does not survive between Bash calls), and print
@@ -40,13 +37,9 @@ route and stop.
    "$ENGINEOS_ROOT"/scripts/kernel.sh resolve --facts "$(node -e 'process.stdout.write(JSON.stringify({ prompt: process.argv[1], escalate: true }))' -- "$ARGUMENTS")"
    ```
 
-   `node` builds the payload — node >= 18 is already the runtime the kernel
-   needs, and `jq` is no longer a dependency anywhere in this repo — so any
-   quote or newline in the request is escaped rather than breaking the JSON;
-   `"escalate": true` selects the route-escalation form (`escalate`, `reasons`,
-   `intents`, `agents`, `risk_floor`, `scale`, `ambiguous`) instead of the plain
-   intent form. If the loop prints nothing, report that the kernel is
-   unreachable from this project and stop.
+   Node >=18 safely JSON-escapes request quotes/newlines; jq is unnecessary.
+   escalate:true selects route-escalation fields (escalate/reasons/intents/agents/
+   risk_floor/scale/ambiguous). Empty root: report unreachable kernel and stop.
 2. Dispatch the `router` agent via the Task tool with `model: opus`, passing
    `$ARGUMENTS` as the request. **Explicit invocation always dispatches**, even
    when `escalate` is `false` — the user asked for a plan, and the fast path in

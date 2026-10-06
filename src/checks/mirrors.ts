@@ -69,7 +69,7 @@ const ROWS = [
     registry: 'policy.parallelism.wave_concurrency_cap', doc: 'rules/parallelism.md',
     // scope: file — the bash greps the sentence wherever it sits in the file.
     scope: 'file', direction: 'doc-names-registry',
-    kind: 'quotes', pattern: 'Cap concurrency at ~{n}',
+    kind: 'quotes', pattern: 'policy cap of {n}',
   },
   {
     id: 'spec-threshold-drift', check: 'C16',

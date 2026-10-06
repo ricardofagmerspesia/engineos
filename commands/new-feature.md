@@ -4,14 +4,9 @@ argument-hint: <feature-slug> [resume]
 allowed-tools: Read, Grep, Glob, Write, Edit, Bash, Skill, Agent
 ---
 
-Run the from-scratch feature flow **in this session** — do NOT hand the whole flow to a
-subagent, because every stage ends at a developer review gate.
-
-Matt Pocock's `grill-with-docs`, `to-spec` and `to-tickets` are
-`disable-model-invocation: true`: they cannot be loaded with the Skill tool. They are
-followed by **reading their `SKILL.md` and executing it in-session**. The developer
-typing this command is the human invocation those skills require. `tlc-spec-lean` is
-model-invocable and is loaded with the Skill tool.
+Run stages in-session: each ends at developer review. Read and execute
+grill-with-docs/to-spec/to-tickets SKILL.md (disable-model-invocation:true; this
+command is human invocation). Load model-invocable tlc-spec-lean with Skill.
 
 ## Arguments
 
@@ -27,6 +22,7 @@ artifact's filename).
    the loop from `commands/init.md` step 1; if it prints nothing, report EngineOS
    unreachable and stop. Never fall back to a relative path.
 2. Resolve each skill directory, first hit wins:
+   `$ENGINEOS_ROOT/skills/<name>/` (canonical EngineOS adaptation) →
    `~/.claude/skills/<name>/` → `<project>/.claude/skills/<name>/` →
    `$ENGINEOS_ROOT/.agents/skills/<name>/`. Names: `grill-with-docs`, `to-spec`,
    `to-tickets`, `tlc-spec-lean`. A missing one → tell the developer to re-run
@@ -41,31 +37,32 @@ artifact's filename).
 
 ## Review gate (ends every stage)
 
-Show the artifact paths and a summary of at most five lines, then ask: approve,
-revise, or stop. Proceed only on an explicit approval. On approval, tick that
-stage's line in the change record checklist with its artifact paths
-(`- [x] <N> <stage> — <paths>`). Revise → edit and re-present. Stop → leave the
-change record `active`; `resume` picks it up.
+Show paths and ≤5-line summary; ask approve/revise/stop. Explicit approval
+ticks `- [x] <N> <stage> — <paths>` in the change record. Revise → edit/re-present;
+stop → keep active for resume. Proceed only after approval.
 
-Keep stages 2–5 in one unbroken context window (grilling, PRD, plan, checks and
-tickets build on the same thinking). Compact only at a gate, and only when the
-window nears ~150k tokens.
+Keep stages 2–5 in one context window; compact only at a gate near ~150k tokens.
 
 ## Stages
 
 ### 0. Stack
-Greenfield = no `.engineos/config.json` and no package manifest within depth 3
-(`package.json`, `pyproject.toml`, `requirements.txt`, `go.mod`, `Cargo.toml`,
-`pom.xml`, `build.gradle`, `build.gradle.kts`, `Gemfile`, `composer.json`,
-`pubspec.yaml`, `mix.exs`, `deno.json`, `*.csproj`, `*.sln`; dot-directories and the
-`SKIPPED_DIRS` of `src/kernel/stack.ts` skipped). Not greenfield → skip to stage 1.
-Greenfield → follow `rules/base.md` "New projects — stack first": one question per
-tier the feature touches (backend, frontend, mobile, LLM/agent runtime), supported
-stacks offered first, never chosen for the developer. Persist a supported answer with
+Use greenfield detection in `src/kernel/stack.ts`: the root .engineos/config.json
+is absent AND no recognized manifest exists within depth 3, excluding
+dot-directories/SKIPPED_DIRS.
+Existing stack → stage 1; inspect the detector for the full manifest list.
+Greenfield → follow `rules/base.md` "New projects — stack first": NestJS is
+already selected when the feature includes an application backend. Ask only
+about unresolved frontend/mobile choices, Mastra provider/model/storage needs and deployment
+constraints; never offer plain Node.js or standalone Express as backend choices.
+Persist NestJS and supported answers with
 `"$ENGINEOS_ROOT/scripts/init-project.sh" --dir "$(git rev-parse --show-toplevel)" --stack <framework>[@dir],...`
-and write the choice as the project's first ADR, `docs/adr/<date>-stack.md`. For an
-unsupported answer, state which EngineOS parts will not apply, then proceed.
-Gate. Artifact: `.engineos/config.json` or a manifest, plus the stack ADR.
+and write the choices as the project's first ADR, `docs/adr/<date>-stack.md`. For
+an unsupported answer, explain the JavaScript ecosystem and mandatory NestJS
+backend policy and ask only for the unresolved supported choice.
+When NestJS is the only touched tier and deployment constraints are known,
+record the stack and ADR and continue without a separate backend-choice gate.
+Otherwise review the unresolved decisions under the stage gate. Artifact:
+`.engineos/config.json` or a manifest, plus the stack ADR.
 
 ### 1. Preconditions and change record
 - `docs/agents/issue-tracker.md` and `docs/agents/domain.md` must exist (seeded by
@@ -75,7 +72,7 @@ Gate. Artifact: `.engineos/config.json` or a manifest, plus the stack ADR.
   tier the feature mostly touches; `spec:` filled at stage 4). Checklist lines, one
   per stage: `0 stack`, `1 preconditions`, `2 ADR`, `3 PRD`, `4a plan`, `4b checks`,
   `5 tasks`, `6 build + verify`.
-- State `[tests] on — from-scratch feature flow (rules/verification.md)`.
+- State `[tests] pending — final-stage user approval required`.
 Gate. Artifact: both `docs/agents/` files and the change record.
 
 ### 2. ADR — `/grill-with-docs`
@@ -96,15 +93,15 @@ Gate. Artifact: the PRD.
 Load skill `tlc-spec-lean`. Profile and budget come from the project `CLAUDE.md`
 `## tlc-spec-lean` block (default `profile: light`, `budget: 150k`).
 - **4a plan** → `.specs/features/<feature>/plan.md`, inputs the PRD and ADRs.
-  Run `python3 <tlc-dir>/scripts/validate_plan.py <feature>`; non-zero → fix and
-  re-run. Gate — no check exists before the plan is approved.
+  Review the plan structure by reading: problem, surfaces, EARS criteria,
+  one-way doors and no unresolved assumptions. Gate — no check exists before the plan is approved.
 - **4b checks** → `.specs/features/<feature>/checks.md` derived from the approved
-  plan. Run `python3 <tlc-dir>/scripts/validate_checks.py <feature>` until it exits 0.
+  plan as acceptance claims and proposed evidence, without executable tests.
   Write the index `docs/specs/<date>-<feature>.md`: one page linking the PRD, the
   ADRs, `plan.md`, `checks.md` and `docs/specs/<feature>/tickets/`. Set the change
   record `spec:` to the index. Gate.
-No `python3` → perform the validator checks by reading the artifact and say once that
-this is the degraded path.
+Use the artifact templates for manual structure review; legacy Python validators
+are retained for compatibility and are not part of active workflows.
 
 ### 5. TASKS — `/to-tickets`
 Read `<to-tickets>/SKILL.md` and follow it, working from the PRD, `plan.md` and
@@ -120,34 +117,27 @@ closes is a gap — add a ticket or send the check back through stage 4 (a check
 never edited after approval). Update the index to list the tickets.
 Gate. Artifact: the ticket files.
 
-### 6. Build and verify
-- Record the feature base (`git rev-parse HEAD`) in the change record `## Notes`.
-- Write `## Handoff` in `checks.md` with the tlc-spec-lean arithmetic. Under budget →
-  one builder. Over budget → stop and ask: handoff (sequential batches, only on green)
-  or one builder. Record the answer on the `## Handoff` line before any code.
-- Builders are the coordinators the router names for each ticket's files, dispatched
-  per `rules/subagents.md`: `MODE: IMPLEMENT`, tests IN SCOPE, the ticket, `checks.md`
-  and the diff landed so far. Tests are written from the checks, never from the code;
-  the builder runs the proofs for the checks its tickets close, sets the ticket
-  `**Status:**` to `done`, reports, and stops. Work the frontier: a ticket whose
-  blockers are all `done`.
-- Commits follow `rules/git.md` (`ENGINEOS_GIT_WRITES`; each commit is asked for under
-  `ask`). Never push or deploy from this command.
-- When the last ticket is `done`, in the same turn, **this session** dispatches the
-  Verifier — never a builder, never a child of one: a fresh `general-purpose` agent,
-  `model: opus`, with no inherited conversation. Brief: `<tlc-dir>/references/verify.md`,
-  `plan.md`, `checks.md`, every source the plan marks binding, the range
-  `<feature base>..HEAD` (plus `git diff <base>` when work is uncommitted), **every**
-  check, the profile. It writes only `.specs/features/<feature>/verification.md` and
-  fixes nothing.
-- Run `python3 <tlc-dir>/scripts/validate_verification.py <feature>` until it exits 0.
-  A FAIL goes to the developer, not to a builder; fixes follow the bounded repair loop
-  (`registries/policy.json` `repair`), then a scoped re-verification per `verify.md`.
-- Run the final gate (`rules/verification.md`) with tests, output shown.
-Gate. Artifact: `verification.md` passing its validator, every ticket `done`. Then
-close the change record with skill `record-change`.
+### 6. Build, integrate, final validation
+- Record the feature base with a read-only git command.
+- Decompose tickets into exclusive files and frozen contracts. Use the dependency-ready
+  scheduler in rules/parallelism.md: refill host-bounded slots as each dependency lands.
+- Dispatch router coordinators in IMPLEMENT mode with tests OUT OF SCOPE, ticket,
+  acceptance claims, frozen contracts and dependency state. Builders implement,
+  review their diff, report evidence and stop; they run no intermediate gates.
+- Integrate every unit, then run one final lint/typecheck/build stage with output.
+- Dispatch the independent Verifier for read-only review of all acceptance criteria
+  and source evidence. It may not run or author tests without final-stage approval.
+  Write verification.md with passed non-test evidence and explicit pending test claims.
+- Present the concrete test scope after integration. Reuse direct explicit
+  current-task approval if already given; otherwise request it. Only then author the tests from acceptance criteria
+  and run the bounded covering suite. No workflow, agent or env flag grants consent.
+- If approval is absent, report implementation delivered and tests pending. Never
+  claim executable proofs passed. Preserve existing tests.
+- Commits follow rules/git.md; never push or deploy from this command.
+Close the change record honestly with non-test evidence and the test decision.
 
 ## Resume
+
 
 With `resume`, check the artifacts in stage order and enter the earliest stage whose
 artifact is missing or whose validator fails: stack signal → `docs/agents/` files and

@@ -14,6 +14,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { KernelError, isRecord } from '../lib/json';
 
+// Python values remain readable for existing configs during the compatibility
+// window; new declarations and automatic execution use the active Node stack.
 export type Language = 'python' | 'node';
 export type Framework = 'fastapi' | 'django' | 'flask' | 'nestjs' | 'react' | 'next' | 'react-native' | null;
 export type PythonEnv = 'venv' | 'uv' | 'compose' | 'auto';
@@ -34,6 +36,8 @@ export interface ProjectConfig {
 export const PROJECT_CONFIG_PATH = '.engineos/config.json';
 
 export const LANGUAGES: readonly Language[] = ['python', 'node'];
+export const ACTIVE_LANGUAGES: readonly Language[] = ['node'];
+export const ACTIVE_FRAMEWORKS: readonly NonNullable<Framework>[] = ['nestjs', 'react', 'next', 'react-native'];
 export const FRAMEWORKS: readonly NonNullable<Framework>[] = [
   'fastapi', 'django', 'flask', 'nestjs', 'react', 'next', 'react-native',
 ];

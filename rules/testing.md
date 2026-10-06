@@ -34,8 +34,9 @@ definition of **the final gate** they run at, live in `rules/verification.md`
 - DON'T mock what you own and can run (your own services, in-memory logic) — too many mocks = testing your mocks.
 
 ## Process
-- `superpowers:test-driven-development` is the discipline to follow when the user
-  asks for TDD or for tests up front — not a default mode for every feature.
-- DO keep the suite fast (unit suite <30s) so that running it, when asked, stays cheap.
-- Flaky test = broken test. Fix or delete within the week; never retry-until-green.
-- Run tests when they are ON at the final gate only.
+- Author and run tests only after integrated implementation and explicit current-task
+  final-stage user approval (rules/verification.md). A test agent does not grant approval.
+- TDD requires the user's explicit exception to final-only ordering before the first test.
+- Use the project's JavaScript runner (Node test runner, Jest, Vitest or Playwright).
+- Keep coverage scoped to the approved behavior. Run one bounded final covering suite;
+  repeat affected tests only after a repair. Never retry until green.

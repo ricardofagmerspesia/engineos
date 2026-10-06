@@ -1,28 +1,77 @@
 name: live-evals
 
-# Live-tier eval run (evals/RUBRIC.md). Deliberately NOT on push/pull_request —
-# it spends real tokens against a real model, so it is cost-gated to a weekly
-# schedule plus manual dispatch, and it does not block merges. It exists to
-# catch router-accuracy drift that the deterministic tier (scripts/run-evals.sh
-# in ci.yml, which runs on every PR) cannot see: the deterministic tier proves
-# the eval SET is well-formed, this proves the ROUTER still matches it.
+# Live behavioral evals require explicit approval for this manual run, after
+# source and console integration validation. They spend real model tokens and
+# remain an observability signal rather than a merge gate (evals/RUBRIC.md).
 on:
-  schedule:
-    - cron: "0 6 * * 1" # Monday 06:00 UTC
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      approve_tests:
+        description: "Approve final live behavioral evals and model token spend for this run"
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  live-eval:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "20"
+          cache: npm
+
+      - name: Source integration validation
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          git diff --exit-code -- dist/engineos.cjs
+
+  console:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: console
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      - name: Console integration validation
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm run build
+
+  live-eval:
+    needs: [verify, console]
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+
+      - name: EngineOS integrity and behavioral kernel checks
+        run: node dist/engineos.cjs validate
 
       - name: Install the claude CLI
         run: npm install -g @anthropic-ai/claude-code

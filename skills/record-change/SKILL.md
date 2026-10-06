@@ -1,98 +1,46 @@
 ---
 name: record-change
-description: Use after completing a unit of work (any code change) to finalize its change record — mark it done, describe what was made, register all files changed and movements, and move the record from .engineos/changes/ to .engineos/archived/. Clears the EngineOS unrecorded-changes flag that the Stop gate enforces. Invoke when work is complete, when "record the change" / "log this change" is requested, or when the Stop gate reports unrecorded changes.
+description: "Finalize a completed change record: deliverables, checklist, decisions, diff, archive and Stop marker. Use on completion, record/log requests or unrecorded-change Stop gates."
 ---
 
 # Record a change
 
-Finalize the change-tracking record for work that is now complete. This is the
-closing half of the EngineOS change lifecycle (`.engineos/changes/` → `.engineos/archived/`) and it
-clears the `ENGINEOS_UNRECORDED` flag the Stop gate checks.
+Close one completed unit's record from `.engineos/changes/` to
+`.engineos/archived/`, then clear its Stop-gate unrecorded marker.
+Track steps in order; git writes independently follow `rules/git.md`.
 
-## Steps
+1. Find the active record matching this work. If absent, create
+   `<YYYY-MM-DD>-<short-kebab-slug>.md` from `.engineos/changes/_template.md`
+   with What/Why/Scope. Set `domain:` to backend, frontend, mobile, dba, llm,
+   devops, security, test, docs or general.
+2. Check Scope/`git diff --stat HEAD` against spec threshold: >2 files or any
+   new feature. Below threshold, set literal `spec: n/a — <reason>` (C21).
+   Otherwise verify `spec:` points to an existing `docs/specs/` file;
+   missing spec blocks archival until brainstorm/design is recorded at
+   `docs/specs/<YYYY-MM-DD>-<slug>-design.md` and linked.
+3. Fill `## What was made` with concrete past-tense deliverables. Resolve every
+   `## Checklist` item: tick or strike through with its reason. Fill
+   `## Human decisions` with actual date/person/HITL reason ids/approved-or-refused/
+   note for reasons from `registries/policy.json` `hitl.reasons`
+   (kernel HITL/advisor evidence); if none fired, state that. Remove placeholder
+   comments; a present but empty section is not evidence.
+4. Under `## Changes registered`, paste actual `git status --short` and
+   `git diff --stat HEAD`, including touched files and movements/renames.
+   For work spanning commits also paste `git log --oneline <base>..HEAD`.
+   This section is required for archives completed from 2026-08-06 (C21).
+5. Only with deliverables/checklist resolved and applicable final-gate evidence
+   recorded, set `status: done`, `completed: <real YYYY-MM-DD>`.
+6. Derive archive year/month from completed and domain from `domain:`; create
+   `.engineos/archived/<YYYY>/<MM>/<domain>/` and move the record there,
+   preserving the filename's date. Use `git mv` only with git-write authorization.
+7. Clear only this session's
+   `<absolute-git-dir>/ENGINEOS_UNRECORDED.${CLAUDE_SESSION_ID:-}` marker.
+   Obtain git dir with `git rev-parse --absolute-git-dir`. When the session id is
+   unavailable, the legacy fallback clears `ENGINEOS_UNRECORDED*` in that git
+   dir; use the scoped marker whenever the environment identifies it.
+8. Verify archive path/status, marker removal and the rename in `git status`.
 
-Track each step in the session's task list, in order.
-
-1. **Locate the active record.** Find the `.engineos/changes/*.md` whose front matter has
-   `status: active`. If more than one, pick the one matching the work just done.
-   If none exists, create one from `.engineos/changes/_template.md`, named
-   `<YYYY-MM-DD>-<short-kebab-slug>.md`, and fill What / Why / Scope from the work.
-   Confirm `domain:` is set to one of `backend`, `frontend`, `mobile`, `dba`, `llm`,
-   `devops`, `security`, `test`, `docs`, or `general` (no single domain fits) —
-   required to build the archive path in step 6.
-
-2. **Confirm the spec exists, when required.** The spec-before-code threshold is
-   CLAUDE.md non-negotiable #1: any change touching **>2 files** or any **new
-   feature**. Check the record's `## Scope` (or `git diff --stat HEAD`) against
-   that threshold.
-   - Below it: set `spec:` to the literal escape form `n/a — <reason>` (e.g.
-     `n/a — single-file rule edit, below the >2-file spec threshold`) so the
-     archive check (`validate-engineos.sh` C21) can tell a deliberate
-     exemption from a forgotten link, then continue to step 3.
-   - At or above it: read the record's `spec:` front-matter field and verify that
-     file exists under `docs/specs/`. If it is missing or the field is empty, the
-     change is not ready to archive — write the spec first (brainstorm →
-     `docs/specs/<YYYY-MM-DD>-<slug>-design.md`), set `spec:`, then continue.
-
-3. **Describe what was made.** Fill `## What was made` with a concrete, past-tense
-   account of what actually landed (not intentions), and resolve `## Checklist` —
-   every item ticked `- [x]`, or struck through with a one-line reason if dropped.
-   A record with unticked, unexplained checklist items is not done.
-
-   Fill `## Human decisions` in the same pass. If any human-in-the-loop reason
-   fired for this work (`scripts/kernel.sh hitl`, or the advisor announced one),
-   write the real row: date, who, the reason ids from
-   `registries/policy.json` `hitl.reasons`, approved or refused, and a note. If
-   none fired, say so in one line. `rules/gates.md` enforces that the section
-   exists; nothing enforces its content, so a record archived with the
-   template's placeholder comment left verbatim is an unrecorded human decision
-   wearing the shape of a recorded one.
-
-4. **Register changes and movements.** Capture the real diff into the record under
-   a `## Changes registered` section:
-   ```bash
-   git status --short
-   git diff --stat HEAD
-   ```
-   List the touched files and any `git mv` / renames. If the work spanned commits,
-   add `git log --oneline <base>..HEAD`. Paste the actual output, not a paraphrase.
-   (The section is scaffolded by `_template.md`; records completed from
-   2026-08-06 on must carry it — C21 checks the archive.)
-
-5. **Mark done.** Only after `## What was made` is written and `## Checklist` is fully resolved:
-   set front matter `status: done` and add `completed: <YYYY-MM-DD>`
-   (use the real current date).
-
-6. **Archive it under a month+domain tree.** Archived records are grouped
-   `.engineos/archived/<YYYY>/<MM>/<domain>/` — no day folder; the exact date
-   still lives in the filename prefix. Derive year/month from the record's
-   `completed` field and the domain from its `domain:` field, create the path,
-   and move it:
-   ```bash
-   D=2026-06-19   # the record's completed date, YYYY-MM-DD
-   DOM=backend    # the record's domain: field
-   mkdir -p ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}"
-   git mv ".engineos/changes/<file>.md" ".engineos/archived/${D:0:4}/${D:5:2}/${DOM}/<file>.md"
-   ```
-
-7. **Clear the flag.** Tell the Stop gate the work is recorded — clear only the
-   current session's marker:
-   ```bash
-   rm -f "$(git rev-parse --absolute-git-dir)/ENGINEOS_UNRECORDED.${CLAUDE_SESSION_ID:-}"
-   ```
-   If `CLAUDE_SESSION_ID` is unset in this environment, fall back to the glob
-   (also clears any legacy unsuffixed flag):
-   ```bash
-   rm -f "$(git rev-parse --absolute-git-dir)"/ENGINEOS_UNRECORDED*
-   ```
-
-8. **Verify.** Confirm the record is in `.engineos/archived/<YYYY>/<MM>/<domain>/` with
-   `status: done`, the flag file is gone, and `git status` reflects the rename.
-
-## Scope
-
-- Records flow `.engineos/changes/` → `.engineos/archived/` only. Do NOT distil into `memory/` here
-  and do NOT touch external trackers (Jira) — out of scope for this skill.
-- One record per unit of work. Don't batch unrelated changes into one record.
-- If nothing was actually changed (no code touched), there is nothing to record —
-  remove the flag (step 7) and stop.
+Scope: one record per unit; no unrelated batching, memory distillation or external
+tracker/Jira writes. If nothing changed, there is no record to archive: clear the
+marker and stop. Approved testing remains separate; pending evidence is recorded
+honestly and this skill grants no test execution permission.

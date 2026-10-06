@@ -1,15 +1,16 @@
 # EngineOS Eval Rubric
 
-EngineOS requires a golden set before iterating on any prompt or agent
-(`rules/llm-apps.md`). This directory is EngineOS applying that rule to itself.
+Plan golden-set criteria before prompt/agent changes; author/run cases only after
+integration and explicit current-task final approval (`rules/verification.md`).
+This directory defines EngineOS’s own router/agent evaluation contract.
 
 ## What is graded
 
 | Suite | File | Grading |
 |---|---|---|
-| Intent routing | `intent-routing-cases.jsonl` | Deterministic conformance always; live model grading opt-in |
-| Agent behaviour | `agent-cases.jsonl` | Deterministic conformance always; live model grading opt-in |
-| Path routing | covered by `src/hooks/route-before-change.e2e.test.ts` | Fully deterministic, already in CI |
+| Intent routing | `intent-routing-cases.jsonl` | Approved final deterministic conformance; separately scoped live grading |
+| Agent behaviour | `agent-cases.jsonl` | Approved final deterministic conformance; separately scoped live grading |
+| Path routing | covered by `src/hooks/route-before-change.e2e.test.ts` | Deterministic, approved final test suite |
 
 Run: `scripts/run-evals.sh`. Live grading: `ENGINEOS_EVAL_LIVE=1 scripts/run-evals.sh`
 (requires the `claude` CLI on PATH). Without it the runner reports the live tier
@@ -17,8 +18,9 @@ as SKIPPED with a count — never as passed.
 
 ## Deterministic tier (always runs, gates CI)
 
-Catches eval-set rot, which is how golden sets die: the suite keeps passing while
-the thing it describes has moved.
+Historical heading retained; execution now requires approved final-stage testing.
+
+Checks case/schema drift against current policy.
 
 1. Every line is valid JSON with the required fields.
 2. Every `must_load` / `must_not_load` entry names a rule that exists in `rules/`.
@@ -31,9 +33,7 @@ the thing it describes has moved.
    such an expectation could never pass.
 7. `expect_risk`, when present, is a real tier (`low` / `medium` / `high`) and is
    **at or above** the `risk_floor` that `registries/routing.json` sets for every
-   expected domain. A case claiming a DBA change is low risk contradicts the
-   registry, and one of the two is wrong — the check forces that argument to
-   happen at authoring time rather than in production.
+   expected domain. Resolve case/registry disagreements before approving execution.
 
 ## Live tier (opt-in)
 
@@ -70,9 +70,9 @@ Agent cases are graded by an independent judge session against the `must` /
 ## Maintaining the set
 
 - A router table change that does not move a single eval case is suspicious:
-  either the change was cosmetic, or the set has a hole. Add the case.
+  either cosmetic or missing coverage. Propose the case; author after final approval.
 - A case that fails for a reason the team accepts is a **rule** change, not a case
-  deletion. Deleting inconvenient cases is how a golden set stops being golden.
+  deletion. Preserve inconvenient cases rather than weakening coverage.
 - Target 30–60 intent cases. Below 30 the set is decorative; above ~60 the live
   tier gets slow enough that people stop running it.
 - Every case carries a `notes` field saying which router row or rule it pins.

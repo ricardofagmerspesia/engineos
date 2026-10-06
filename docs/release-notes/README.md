@@ -1,25 +1,17 @@
 # Release notes
 
-One file per released EngineOS version, named `<version>.md` and matching the
-`version` field of `.claude-plugin/plugin.json`. Each file says what a consuming
-repository gains, what changed shape, what was fixed, and what a consumer has to
-do to upgrade. `docs/COMPATIBILITY.md` is the policy that decides which of those
-belong in a MAJOR, a MINOR or a PATCH; these files are the record of what
-actually shipped under it. This directory is also the register
-`docs/COMPATIBILITY.md` points at for deprecations: when a public surface is
-deprecated, the release note for that version names the replacement and the
-version in which the old surface is removed.
+One `<version>.md` per release, matching `.claude-plugin/plugin.json`. Record
+gains, changes, fixes and upgrade actions. [`COMPATIBILITY.md`](../COMPATIBILITY.md)
+owns semver; every deprecation names its replacement and removal version.
 
 | Version | Notes |
 |---|---|
 | 1.6.0 | [1.6.0.md](1.6.0.md) — runtime governance: backpressure, circuit breaker, HITL, agent spans, one-command adoption |
 | 1.7.0 | [1.7.0.md](1.7.0.md) — the node runtime: one bundle, node hooks, jq and python3 gone, every bash entry point a deprecated shim, bash suites ported to node:test |
 
-Releases before 1.6.0 have no file here: the directory did not exist, and
-nothing is being reconstructed after the fact. For those versions the
-`.engineos/archived/` change records are the account.
+Earlier releases have no reconstructed notes; use `.engineos/archived/`.
 
-`skills/release-notes/SKILL.md` step 5 names the file
+`skills/release-notes/SKILL.md` persistence step names the file
 `release-notes-<version>.md`. This directory uses `<version>.md` instead, as
 `docs/specs/2026-09-03-engineos-default-methodology-plan.md` Task 9 specifies.
 The two conventions disagree and the skill has not been changed; reconciling

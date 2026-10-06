@@ -12,10 +12,12 @@ Duplication drifts.
 
 ## Workflow for any change
 
-1. Branch from `main`: `feat/…`, `fix/…`, `chore/…`, `docs/…`.
+1. Keep the active branch/PR for related work until user-directed change; follow
+   `rules/git.md` for branch creation and git-write approval.
 2. Open a `.engineos/changes/` record (`cp .engineos/changes/_template.md .engineos/changes/$(date +%F)-<slug>.md`,
    `status: active`). See `.engineos/changes/README.md`.
-3. Make the change. Keep PRs ≤400 lines (see `rules/git.md`); split larger work.
+3. Freeze contracts, then use one supervisor and scoped parallel workers. The
+   ≤400-line PR target is advisory; split only at the user's direction.
 4. Verify (see below) and show the output in the PR description.
 5. Close the record with the `record-change` skill (marks done, registers files +
    movements, moves `.engineos/changes/` → `.engineos/archived/`). Distil any lasting fact into
@@ -35,24 +37,29 @@ Duplication drifts.
   `description` (the description is what makes it fire — be specific about when).
 - **Agent** (`agents/*.md`): frontmatter `name`, `description`, and an explicit
   `tools:` allowlist. Read-only agents must not list `Edit`/`Write`.
-- **Hook** (`hooks/*.sh`): pure POSIX-ish bash that runs on macOS bash 3.2 + BSD
-  userland AND Linux. No GNU-only flags, no empty regex alternations. Wire it in
-  BOTH `hooks/hooks.json` (plugin) and `install.sh` (mode A) — they must match.
-  Add a test.
+- **Hook** (`src/hooks/*.ts`): implement the shared `HookDecision` contract and
+  register in `src/hooks/cli.ts` and `hooks/hooks.json`; installers consume that
+  wiring. Compatibility `hooks/*.sh` shims must run on macOS bash 3.2/BSD and
+  Linux: no GNU-only flags or empty regex alternations.
+  Prepare regression criteria; tests require final-stage approval.
 - **Integrity Check** (`src/checks/<family>.ts`): a `Check` object — id from
   `src/checks/ids.ts` (`C24`, or `C24b` for a sub-check of an existing one), its
   finding codes declared via `declare module './codes'`, a `run(ctx)` returning
   `CheckResult[]` — appended to the family's `<FAMILY>_CHECKS` array, which
   `src/checks/index.ts` already spreads into `CHECKS`. Add a planted-breakage
-  case to `src/checks/<family>.test.ts` asserting the finding code — a Check with
-  no negative case proves nothing — and rebuild `dist/engineos.cjs`.
+  case to `src/checks/<family>.test.ts` asserting the finding code at the approved
+  final test stage — a Check with no negative case proves nothing — and rebuild
+  `dist/engineos.cjs` at final validation.
 
 ## Verification (required before "done")
 
-- `npm test` — unit and e2e suites (`src/**/*.test.ts`, `*.e2e.test.ts`): every hook, the kernel, the journal and telemetry CLIs, the generators, the installer and the validator. No bash test suite remains.
-- `shellcheck -S error hooks/*.sh install.sh scripts/*.sh`.
-- `jq empty` on every JSON file you touched.
-- CI (`.github/workflows/ci.yml`) runs all of the above on every PR; keep it green.
+Run final scoped lint/typecheck/build and inspect touched JSON/whitespace; show
+actual output. Tests, evals, behavioral integrity and smoke checks are separate
+final-stage actions requiring explicit current-task user approval
+(`rules/verification.md`). `ENGINEOS_VERIFY_TESTS` is deprecated and grants none.
+CI source/console validation runs automatically; the `approve_tests` manual
+dispatch runs suites only after validation. Keep the PR green and report pending
+tests honestly.
 
 ## Security
 

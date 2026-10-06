@@ -13,8 +13,7 @@ alwaysApply: true
  parallelism.md, models.md, risk-autonomy.md, context.md>
 ```
 
-Domain rules become glob-scoped files, which is Cursor's native equivalent of
-the `match` globs in `registries/routing.json`:
+Domain rules use registry match globs:
 
 ```mdc
 ---
@@ -23,8 +22,7 @@ globs: ["**/*.controller.ts", "**/*.service.ts", "**/*.module.ts"]
 <contents of rules/backend.md + architecture.md + data.md + testing.md + observability.md>
 ```
 
-Derive the globs from `registries/routing.json` — same patterns, same precedence
-order. Do not hand-maintain a second list.
+Derive patterns/precedence from registries/routing.json; no second hand-maintained list.
 
 ## What is enforced
 
@@ -46,9 +44,9 @@ order. Do not hand-maintain a second list.
 
 ## CI fallback
 
-Run `scripts/validate-engineos.sh`, `scripts/run-evals.sh`, lint, typecheck and
-tests in CI. That covers the Validation gate for merged code; it does not cover
-it for uncommitted work, which is the real loss versus Claude Code.
+Final CI lint/typecheck/build covers integrated code. Tests/evals/behavioral
+validator require explicit current-task final approval (rules/verification.md).
+CI cannot enforce uncommitted work; the model must apply its final gate.
 
 ## Existing assets
 

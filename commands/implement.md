@@ -4,66 +4,50 @@ argument-hint: <domain|all> <task description>
 allowed-tools: Task, Read, Write, Edit, Bash, Grep, Glob
 ---
 
-You are the EngineOS implement orchestrator. Arguments: `$ARGUMENTS` — first token
-is the domain (`backend|frontend|mobile|dba|devops|llm|all`), the rest is the task.
-`ia` is accepted as a deprecated alias for `llm`. If the first token is not a
-recognized domain, treat the whole argument string as the task and infer the
-domain(s) from it rather than failing.
+You are the top-level implement supervisor. `$ARGUMENTS`: first token
+backend|frontend|mobile|dba|devops|llm|all, then task. `ia` is a deprecated llm
+alias. Unknown first token: infer domains from the whole argument string.
 
 ## Steps
 
-1. **Spec gate.** Per the EngineOS non-negotiables, a change touching >2 files or
-   any new feature needs a spec first. If this task qualifies and no spec exists,
-   stop and route to `superpowers:brainstorming` + `superpowers:writing-plans` before
-   implementing. Author the spec/PRD on the most-capable tier (`model: fable`,
-   `rules/models.md`) — delegate it to a subagent if the session model is lower.
-
-2. **Open a change record** (`.engineos/changes/_template.md` → `.engineos/changes/<date>-<slug>.md`,
-   `status: active`) describing the task.
-
-3. **Select coordinator(s)** by domain (the dual-mode domain coordinators do the
-   work; MCP leaf specialists are AUDIT-only and are not used here):
-   backend→backend-coordinator, frontend→frontend-coordinator,
-   mobile→mobile-coordinator, dba→dba-coordinator, devops→devops-coordinator,
-   llm→llm-coordinator, all→the relevant subset for the task.
-   `security` is not an implement domain — `security-reviewer` is read-only; route
-   security-sensitive changes to the owning domain coordinator and dispatch
-   `security-reviewer` as a review pass afterwards.
-
-4. **Freeze the contracts** (skip only for a single-file change). One design pass
-   on `model: opus` writes down the shared surface the parallel agents must honor:
-   types/DTOs, API routes + payloads, DB schema deltas, event names, module public
-   surfaces. Put it in the change record. Nothing fans out before this exists.
-
-5. **Plan the waves** (`rules/parallelism.md`). Split the task into units with
-   **disjoint file scope**; group units into waves by dependency. Announce:
+0. **Route before writes/dispatch**, including mechanical edits and follow-ups.
+   Use kernel routing; supervisor resolves residue or consults read-only router.
+   Explicit /engineos:route stays plan-only. Load routed rules/skills/patterns,
+   classify risk/autonomy, announce route. Unknown intent: always-on rules plus
+   appropriate exclusive worker. Authorized work gains no approval gate; pure
+   explanations create no implementation units.
+1. **Spec first:** >2 files or any new feature requires a spec. If missing, route
+   to superpowers:brainstorming + superpowers:writing-plans before implementation.
+   Spec/PRD uses fable (rules/models.md); delegate if session tier is lower.
+2. Open active `.engineos/changes/<date>-<slug>.md` from _template.md.
+3. Select relevant domain-coordinator(s): backend, frontend, mobile, dba, devops,
+   llm. MCP leaves are AUDIT-only. Security is not an implement domain: its owner
+   implements; security-reviewer supplies read-only review afterwards.
+4. **Freeze contracts** (single-file exemption): one opus design owner specifies
+   types/DTOs, HTTP routes/payloads, DB deltas, events and module public surfaces.
+   Link source/owner/revision from change record; use templates/api-contract.md
+   for HTTP, keeping existing schemas authoritative. Consumers start only when
+   their required contracts exist.
+5. Split into exclusive paths; maintain dependency/contract-revision ledger in
+   rules/parallelism.md. Units become ready as prerequisites integrate. Announce
    `[fanout] waves=<n> wave1=<agent:scope, ...> model=<per-agent>`.
-
-6. **Dispatch each wave in ONE message** — multiple Task calls in the same turn,
-   max ~6 per wave. Each dispatch carries: `MODE: IMPLEMENT`, the unit's task, the
-   exact file scope it owns exclusively, the frozen contracts, and its model
-   (`opus` for code and for units that still carry design risk, `haiku` for
-   mechanical units). Same coordinator may be dispatched N times over different
-   scopes — that is the normal way to parallelize inside one domain.
-   Between waves: integrate only — intermediate barriers do not verify
-   (`rules/parallelism.md`); the gate in step 7 is the single verification point.
-
-7. **Run the final gate** (`rules/verification.md`). When tests were not in scope,
-   state `[tests] skipped — not requested`. Report any unit that failed by name;
-   never let a green summary cover an incomplete unit.
-
-8. **Record** — close the change via the `record-change` skill (mark done,
-   register files + movements, `.engineos/changes/` → `.engineos/archived/`).
-
-9. **Offer the output artifact** (per CLAUDE.md's Output artifact section): ask
-   once which follow-up artifact to produce — scaffold, flowchart, reusable
-   template, UI/UX design, or none. Prune options that don't fit: reusable
-   template and UI/UX design are offered only when the domain dispatched was
-   frontend or mobile.
+6. Dispatch **all useful ready units**, filling min(policy cap, host worker slots),
+   reserving supervisor slot. Queue excess and refill promptly; one indivisible
+   task gets one worker. Flat workers; same coordinator can own disjoint units.
+   Brief: MODE: IMPLEMENT, role, rules/skills/patterns, task, exclusive paths,
+   prerequisites, contracts/revisions, risk/autonomy, active branch/PR and return
+   expectations. Model: opus for code/design risk; haiku for mechanical work.
+   Workers return scope changes/new tasks for supervisor rerouting. Inspect and
+   integrate returns, release dependencies and refill; no intermediate gates.
+7. Integrate all units, then final lint/typecheck/build (rules/verification.md).
+   Tests are a separate final action requiring direct current-task consent;
+   otherwise state `[tests] pending — final-stage user approval required`.
+   Name failed/incomplete units; never hide them behind a green summary.
+8. Close via record-change: files/movements, mark done honestly, move changes → archived.
+9. Offer once per CLAUDE.md: scaffold/flowchart/template/UI-UX/none, pruning
+   inapplicable choices. Template/UI-UX only for frontend/mobile.
 
 ## Rules
 
-- Follow the routed rules for each domain (the PreToolUse routing hook injects
-  them on each edit) and project `CLAUDE.md` over EngineOS.
-- Keep the change atomic and within the PR size limit (`rules/git.md`); split if
-  larger.
+Follow routed domain rules (edit hook) and project CLAUDE.md. Keep change atomic
+and follow rules/git.md; preserve current branch/PR until user directs a change.

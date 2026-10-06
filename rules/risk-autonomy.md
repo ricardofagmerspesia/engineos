@@ -1,8 +1,6 @@
 # Risk & Autonomy Rules — always on
 
-Every other gate in EngineOS is proportional to this file. Without a risk tier, a
-migration that drops a column and a README typo get the same ceremony — one is
-over-governed, the other under-governed, and both are wrong.
+Classify proportionate risk before action; gates derive from that tier.
 
 Classify risk BEFORE acting. State it in the router line:
 
@@ -48,14 +46,8 @@ human.
 
 ## Human-in-the-loop
 
-The ceiling says how far you may go alone. HITL says when a human must decide,
-and names why, so the decision is auditable rather than implied by a tier.
-
-HITL is answered from a **classified tier**, never from a risk floor. A floor is
-an input to classification: on its own it requires no human, it only marks a
-classification as owed — classify per the table above first. A gate announced
-off a bare floor is the gate theatre `rules/gates.md` warns about, and it teaches
-readers to ignore the gate that matters.
+HITL requires a classified tier, never a bare risk floor. Floors demand
+classification, not approval; classify using Risk inputs before querying gates.
 
 `scripts/kernel.sh hitl --risk <tier> --autonomy <ceiling> [--evidence thin] [--external-effect true] [--conflict true] [--situation <s>]`
 
@@ -71,16 +63,12 @@ readers to ignore the gate that matters.
 | `breaker-open` | a needed resource's breaker is open with no alternative |
 | `topology-approval` | the request designs a system with more than one agent (`registries/decision-rules.json` `rule-multi-agent-design`) — the developer approves the topology spec before any graph code, at any tier |
 
-Those nine ids are the whole vocabulary — a gate may cite nothing else, because
-a reason outside the list is one nobody can argue with or override.
+These nine ids are the closed vocabulary; gates cite no others.
 
-`resolve-task` carries `hitl.required` and `hitl.reasons` so the prompt advisor
-can announce them before the first write. On a floor-only prompt `hitl` is null
-and `task_contract.risk_floor` is the whole answer; the advisor turns that into
-an instruction to classify, never into a gate. The decision itself is recorded
-in the change record under `## Human decisions`: who, when, which reasons, what
-was approved or refused. A tier that requires a human and has no such record
-has not passed its gate.
+`resolve-task` announces `hitl.required`/`hitl.reasons` before writing. Floor-only
+answers have null hitl and `task_contract.risk_floor`: classify rather than gate.
+Record required human decisions under change-record `## Human decisions`: who,
+when, reason ids, approval/refusal. Missing records leave the gate open.
 
 ## Rules
 

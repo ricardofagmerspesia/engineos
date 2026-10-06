@@ -2,7 +2,7 @@
 "use strict";
 
 // src/cli.ts
-var import_node_child_process10 = require("node:child_process");
+var import_node_child_process9 = require("node:child_process");
 var import_node_fs45 = require("node:fs");
 
 // src/io.ts
@@ -272,6 +272,7 @@ var import_node_fs6 = require("node:fs");
 var import_node_path3 = require("node:path");
 var PROJECT_CONFIG_PATH = ".engineos/config.json";
 var LANGUAGES = ["python", "node"];
+var ACTIVE_FRAMEWORKS = ["nestjs", "react", "next", "react-native"];
 var FRAMEWORKS = [
   "fastapi",
   "django",
@@ -585,7 +586,7 @@ function loadIntents(root) {
       const id = reader2.requireString(row["id"], `${path}.id`);
       if (id === "") reader2.malformed(`${path}.id must not be empty`);
       const signals2 = reader2.requireStrings(row["signals"], `${path}.signals`);
-      if (signals2.length === 0) reader2.malformed(`${path}.signals must not be empty`);
+      if (signals2.length === 0 && !(row["enabled"] === false && row["deprecated"] === true)) reader2.malformed(`${path}.signals must not be empty`);
       return {
         id,
         title: reader2.requireString(row["title"], `${path}.title`),
@@ -1854,11 +1855,6 @@ var NODE_FRAMEWORKS = [
   ["react-native", "react-native"],
   ["react", "react"]
 ];
-var PYTHON_FRAMEWORKS = [
-  ["fastapi", "fastapi"],
-  ["django", "django"],
-  ["flask", "flask"]
-];
 function resolveStack(root, config, deps = defaultDeps) {
   if (config !== null) return { packages: config.stack.packages, source: "config" };
   return { packages: detectPackages(root, deps), source: "detected" };
@@ -1882,104 +1878,10 @@ function walk(root, rel, deps, found) {
 }
 function packagesIn(abs, dir, deps) {
   const out = [];
-  const pyproject = (0, import_node_path6.join)(abs, "pyproject.toml");
-  const requirements = (0, import_node_path6.join)(abs, "requirements.txt");
-  if (deps.exists(pyproject) || deps.exists(requirements)) {
-    out.push({
-      dir,
-      language: "python",
-      framework: pythonFramework(pyproject, requirements, deps),
-      compose_service: null,
-      python_env: "auto"
-    });
-  }
   const packageJson = (0, import_node_path6.join)(abs, NODE_MARKER);
   if (deps.exists(packageJson)) {
     out.push({ dir, language: "node", framework: nodeFramework(packageJson, deps), compose_service: null });
   }
-  return out;
-}
-function pythonFramework(pyproject, requirements, deps) {
-  const names2 = /* @__PURE__ */ new Set();
-  const projectText = readOrNull(pyproject, deps);
-  if (projectText !== null) for (const name of pyprojectDependencies(projectText)) names2.add(name);
-  const requirementsText = readOrNull(requirements, deps);
-  if (requirementsText !== null) for (const name of requirementsDependencies(requirementsText)) names2.add(name);
-  return firstFramework(names2, PYTHON_FRAMEWORKS);
-}
-function pyprojectDependencies(text3) {
-  var _a;
-  const names2 = [];
-  let section = "";
-  let collecting = false;
-  for (const raw of text3.split("\n")) {
-    const line = stripTomlComment(raw).trim();
-    if (line === "") continue;
-    if (collecting) {
-      for (const item of quotedStrings(line)) names2.push(dependencyName(item));
-      if (closesArray(line)) collecting = false;
-      continue;
-    }
-    const header2 = /^\[([^\]]+)\]$/.exec(line);
-    if (header2 !== null) {
-      section = ((_a = header2[1]) == null ? void 0 : _a.trim()) ?? "";
-      continue;
-    }
-    const assignment = /^([A-Za-z0-9_.\-"']+)\s*=\s*(.*)$/.exec(line);
-    if (assignment === null) continue;
-    const key = (assignment[1] ?? "").replace(/["']/g, "");
-    const value = assignment[2] ?? "";
-    if (isPoetryDependencyTable(section)) {
-      if (key !== "python") names2.push(dependencyName(key));
-      continue;
-    }
-    const arrayKey = section === "project" && key === "dependencies" || section === "project.optional-dependencies" || section === "dependency-groups";
-    if (!arrayKey || !value.startsWith("[")) continue;
-    for (const item of quotedStrings(value)) names2.push(dependencyName(item));
-    collecting = !closesArray(value);
-  }
-  return names2;
-}
-function isPoetryDependencyTable(section) {
-  return section === "tool.poetry.dependencies" || section === "tool.poetry.dev-dependencies" || /^tool\.poetry\.group\.[^.]+\.dependencies$/.test(section);
-}
-function requirementsDependencies(text3) {
-  const names2 = [];
-  for (const raw of text3.split("\n")) {
-    const line = raw.replace(/(^|\s)#.*$/, "").trim();
-    if (line === "" || line.startsWith("-")) continue;
-    const name = dependencyName(line);
-    if (name !== "") names2.push(name);
-  }
-  return names2;
-}
-function dependencyName(spec) {
-  const match = /^[A-Za-z0-9][A-Za-z0-9._-]*/.exec(spec.trim());
-  if (match === null) return "";
-  return match[0].toLowerCase().replace(/[-_.]+/g, "-");
-}
-function stripTomlComment(line) {
-  let quote = null;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (quote !== null) {
-      if (ch === quote) quote = null;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === "#") {
-      return line.slice(0, i);
-    }
-  }
-  return line;
-}
-function closesArray(line) {
-  return line.replace(/"[^"]*"|'[^']*'/g, "").includes("]");
-}
-function quotedStrings(text3) {
-  const out = [];
-  const re = /"([^"]*)"|'([^']*)'/g;
-  const flat = text3.replace(/\{[^}]*\}/g, "");
-  for (let m = re.exec(flat); m !== null; m = re.exec(flat)) out.push(m[1] ?? m[2] ?? "");
   return out;
 }
 function nodeFramework(packageJson, deps) {
@@ -2066,7 +1968,8 @@ function existsOrFalse(path, deps) {
   }
 }
 function packageLabel(pkg) {
-  return `${pkg.framework ?? pkg.language}@${pkg.dir}`;
+  const label2 = `${pkg.framework ?? pkg.language}@${pkg.dir}`;
+  return pkg.language === "python" ? `${label2} (deprecated, unsupported)` : label2;
 }
 function languagesOf(packages) {
   const out = [];
@@ -3180,11 +3083,10 @@ function isFile3(path) {
 // src/hooks/stack-question.ts
 var import_node_os2 = require("node:os");
 var import_node_path12 = require("node:path");
-var STACK_QUESTION_NOTE = '[engineos] no stack declared \u2014 this repo has no .engineos/config.json and no package manifest. Before writing any code, your FIRST reply must ask the developer which stack to use for each tier the work touches (backend, frontend, mobile, LLM/agent runtime) \u2014 never pick one yourself (rules/base.md "New projects \u2014 stack first"). Persist the answer with `engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
+var STACK_QUESTION_NOTE = '[engineos] no stack declared \u2014 this repo has no .engineos/config.json and no package manifest. Before writing any code, state the mandatory NestJS application backend policy within the JavaScript/TypeScript ecosystem. Application backends (including API, worker and LLM service hosts) require NestJS; Node.js is the runtime and tooling environment, not a backend framework choice. Ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers; do not ask the developer to reconfirm NestJS or Mastra. never offer plain Node.js or standalone Express application backends (rules/base.md "New projects \u2014 stack first"). Persist the answer with `engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
 var STACK_DEPENDENT_INTENTS = [
   "new-feature",
   "backend",
-  "backend-python",
   "frontend",
   "mobile",
   "llm",
@@ -4069,162 +3971,162 @@ function escapeRegExp(value) {
 }
 
 // src/hooks/runner.ts
-var import_node_child_process4 = require("node:child_process");
-var import_node_fs22 = require("node:fs");
-var import_node_path18 = require("node:path");
-
-// src/hooks/runner-python.ts
 var import_node_child_process3 = require("node:child_process");
 var import_node_fs21 = require("node:fs");
 var import_node_path17 = require("node:path");
-var PYTHON_TOOLS = ["ruff", "pyright", "pytest"];
-var PYTHON_TARGETS = {
-  lint: [["ruff", "check", "."], ["ruff", "format", "--check", "."]],
-  typecheck: [["pyright"]],
-  test: [["pytest", "-q"]]
-};
-var TARGET_TOOL = { lint: "ruff", typecheck: "pyright", test: "pytest" };
-var PROBE_TIMEOUT_SECONDS = 15;
-var VENV_DIR = ".venv";
-var UV_LOCK = "uv.lock";
-var PYPROJECT = "pyproject.toml";
 var defaultSpawn = (command, args, options) => (0, import_node_child_process3.spawnSync)(command, args, options);
-function isPythonTarget(target2) {
-  return target2 === "lint" || target2 === "typecheck" || target2 === "test";
+var PYTHON_UNAVAILABLE_REASON = "Python verification is deprecated and unsupported; automatic verification supports the JavaScript ecosystem only";
+var MODERN_NODE_MAJOR = 20;
+function runnerSelect(root, exists = defaultExists) {
+  const kind = exists((0, import_node_path17.join)(root, "nx.json")) ? "nx" : "npm-family";
+  if (exists((0, import_node_path17.join)(root, "pnpm-lock.yaml"))) return { kind, run: "pnpm run", exec: "pnpm exec" };
+  if (exists((0, import_node_path17.join)(root, "yarn.lock"))) return { kind, run: "yarn run", exec: "yarn" };
+  return { kind, run: "npm run", exec: "npx --no-install" };
 }
+function runnerSelectFor(pkgDir, root, config, exists = defaultExists, _spawn = defaultSpawn) {
+  if (exists((0, import_node_path17.join)(pkgDir, "package.json")) || exists((0, import_node_path17.join)(pkgDir, "project.json"))) return runnerSelect(root, exists);
+  const declared4 = config == null ? void 0 : config.stack.packages.find((pkg) => pkg.dir === ((0, import_node_path17.relative)(root, pkgDir).split(import_node_path17.sep).join("/") || "."));
+  if ((declared4 == null ? void 0 : declared4.language) === "python" || isPythonPackage(pkgDir, root, exists)) {
+    return { kind: "python-unavailable", reason: PYTHON_UNAVAILABLE_REASON };
+  }
+  return runnerSelect(root, exists);
+}
+function isPythonPackage(pkgDir, root, exists = defaultExists) {
+  if (exists((0, import_node_path17.join)(pkgDir, "pyproject.toml"))) return true;
+  if (!exists((0, import_node_path17.join)(pkgDir, "requirements.txt"))) return false;
+  let dir = pkgDir;
+  while ((0, import_node_path17.relative)(root, dir) !== "" && isUnder(root, dir)) {
+    dir = (0, import_node_path17.dirname)(dir);
+    if (exists((0, import_node_path17.join)(dir, "pyproject.toml"))) return false;
+  }
+  return true;
+}
+function isUnder(ceiling2, path) {
+  const inside = (0, import_node_path17.relative)(ceiling2, path);
+  if (inside === "") return true;
+  if ((0, import_node_path17.isAbsolute)(inside)) return false;
+  return inside !== ".." && !inside.startsWith(`..${import_node_path17.sep}`);
+}
+function runnerHandle(sel, pkgDir, readFile = defaultReadFile) {
+  if (sel.kind !== "nx") return pkgDir;
+  const project = readName(readFile((0, import_node_path17.join)(pkgDir, "project.json")));
+  if (project !== null) return project;
+  const pkg = readName(readFile((0, import_node_path17.join)(pkgDir, "package.json")));
+  return pkg === null ? null : pkg.replace(/^@[^/]*\//, "");
+}
+function runnerHasTarget(sel, handle, target2, readFile = defaultReadFile, spawn = defaultSpawn, cwd = process.cwd()) {
+  if (sel.kind === "python") {
+    return false;
+  }
+  if (sel.kind === "nx") {
+    const argv2 = [...words(sel.exec), "nx", "show", "project", handle, "--json"];
+    const shown = spawn(argv2[0] ?? "", argv2.slice(1), { cwd, encoding: "utf8" });
+    if (shown.status !== 0) return false;
+    return declared3(parseJson(shown.stdout), "targets", target2);
+  }
+  return declared3(parseJson(readFile((0, import_node_path17.join)(handle, "package.json"))), "scripts", target2);
+}
+function runnerRun(sel, handle, target2, timeoutSeconds, env, spawn = defaultSpawn, cwd = process.cwd()) {
+  if (sel.kind === "python") {
+    return { code: 1, output: PYTHON_UNAVAILABLE_REASON, timedOut: false };
+  }
+  const argv2 = sel.kind === "nx" ? [...words(sel.exec), "nx", "run", `${handle}:${target2}`] : [...words(sel.run), "-s", target2];
+  const runCwd = sel.kind === "nx" ? cwd : handle;
+  const result2 = spawn(argv2[0] ?? "", argv2.slice(1), {
+    cwd: runCwd,
+    env,
+    encoding: "utf8",
+    timeout: timeoutSeconds * 1e3
+  });
+  const timedOut = errorCodeOf(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM";
+  const output = `${result2.stdout ?? ""}${result2.stderr ?? ""}`;
+  const code = typeof result2.status === "number" ? result2.status : timedOut ? 124 : 1;
+  return { code, output, timedOut };
+}
+function runnerEnv(env, nodeMajorOnPath, exists = defaultExists, readLink = defaultReadFile, listDir = defaultListDir) {
+  if (nodeMajorOnPath >= MODERN_NODE_MAJOR) return env;
+  const home = env["HOME"];
+  const nvmDir = env["NVM_DIR"] ?? (home === void 0 || home === "" ? null : (0, import_node_path17.join)(home, ".nvm"));
+  if (nvmDir === null || nvmDir === "") return env;
+  const alias = (0, import_node_path17.join)(nvmDir, "alias", "default");
+  if (!exists(alias)) return env;
+  const wanted = (readLink(alias) ?? "").trim();
+  if (wanted === "") return env;
+  const versionsDir = (0, import_node_path17.join)(nvmDir, "versions", "node");
+  let bin = null;
+  for (const name of listDir(versionsDir).sort()) {
+    if (!name.startsWith(`v${wanted}`)) continue;
+    if (majorOf(name) < MODERN_NODE_MAJOR) continue;
+    const candidate = (0, import_node_path17.join)(versionsDir, name, "bin");
+    if (exists((0, import_node_path17.join)(candidate, "node"))) bin = candidate;
+  }
+  if (bin === null) return env;
+  const current = env["PATH"] ?? "";
+  return { ...env, PATH: current === "" ? bin : `${bin}${import_node_path17.delimiter}${current}` };
+}
+function declared3(doc, field, name) {
+  if (!isRecord(doc)) return false;
+  const table2 = doc[field];
+  if (!isRecord(table2)) return false;
+  const value = table2[name];
+  return value !== void 0 && value !== null && value !== false;
+}
+function errorCodeOf(error) {
+  const candidate = error;
+  if (!isRecord(candidate)) return null;
+  const code = candidate["code"];
+  return typeof code === "string" ? code : null;
+}
+function readName(text3) {
+  const doc = parseJson(text3);
+  if (!isRecord(doc)) return null;
+  const name = doc["name"];
+  return typeof name === "string" && name !== "" ? name : null;
+}
+function parseJson(text3) {
+  if (text3 === null || text3 === void 0 || text3 === "") return null;
+  try {
+    return JSON.parse(text3);
+  } catch {
+    return null;
+  }
+}
+function words(command) {
+  return command.split(" ").filter((part) => part !== "");
+}
+function majorOf(versionDir) {
+  const parsed = Number.parseInt(versionDir.replace(/^v/, ""), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+function defaultExists(p) {
+  return (0, import_node_fs21.existsSync)(p);
+}
+function defaultReadFile(p) {
+  try {
+    return (0, import_node_fs21.readFileSync)(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+function defaultListDir(p) {
+  try {
+    return (0, import_node_fs21.readdirSync)(p);
+  } catch {
+    return [];
+  }
+}
+
+// src/hooks/runner-python.ts
+var import_node_fs22 = require("node:fs");
+var import_node_path18 = require("node:path");
+var PYTHON_TOOLS = ["ruff", "pyright", "pytest"];
+var PROBE_TIMEOUT_SECONDS = 15;
+var PYPROJECT = "pyproject.toml";
 function isPythonTool(name) {
   return PYTHON_TOOLS.some((tool) => tool === name);
 }
-function venvBinDir(venvDir, platform2 = process.platform) {
-  return (0, import_node_path17.join)(venvDir, platform2 === "win32" ? "Scripts" : "bin");
-}
-function executableName(tool, platform2 = process.platform) {
-  return platform2 === "win32" ? `${tool}.exe` : tool;
-}
-var resolved = /* @__PURE__ */ new Map();
-function resolvePythonEnvironment(pkgDir, root, config, exists = defaultExists, spawn = defaultSpawn, platform2 = process.platform) {
-  const memo3 = exists === defaultExists && spawn === defaultSpawn;
-  const key = `${(0, import_node_path17.resolve)(pkgDir)}\0${(0, import_node_path17.resolve)(root)}\0${platform2}`;
-  if (memo3) {
-    const hit = resolved.get(key);
-    if (hit !== void 0) return hit;
-  }
-  const env = resolveUncached(pkgDir, root, config, exists, spawn, platform2);
-  if (memo3) resolved.set(key, env);
-  return env;
-}
-function resolveUncached(pkgDir, root, config, exists, spawn, platform2) {
-  const declared4 = packageStackFor(config, pkgDir, root);
-  const pin = (declared4 == null ? void 0 : declared4.python_env) ?? "auto";
-  if (pin === "auto" || pin === "venv") {
-    const venvDirs = (0, import_node_path17.resolve)(pkgDir) === (0, import_node_path17.resolve)(root) ? [(0, import_node_path17.join)(pkgDir, VENV_DIR)] : [(0, import_node_path17.join)(pkgDir, VENV_DIR), (0, import_node_path17.join)(root, VENV_DIR)];
-    for (const venvDir of venvDirs) {
-      const bin = venvBinDir(venvDir, platform2);
-      if (exists(bin)) return venvEnvironment(pkgDir, bin, platform2);
-    }
-  }
-  if (pin === "auto" || pin === "uv") {
-    const locked = exists((0, import_node_path17.join)(pkgDir, UV_LOCK)) || exists((0, import_node_path17.join)(root, UV_LOCK));
-    if (locked && probeAnswers(spawn, ["uv"], pkgDir)) return uvEnvironment(pkgDir);
-  }
-  if (pin === "auto" || pin === "compose") {
-    const service = (declared4 == null ? void 0 : declared4.compose_service) ?? null;
-    if (service !== null && service !== "") return composeEnvironment(pkgDir, service);
-  }
-  return null;
-}
-function packageStackFor(config, pkgDir, root) {
-  if (config === null) return null;
-  const dir = relativeDir(root, pkgDir);
-  return config.stack.packages.find((row) => row.dir === dir && row.language === "python") ?? null;
-}
-function relativeDir(root, dir) {
-  const rel = (0, import_node_path17.relative)((0, import_node_path17.resolve)(root), (0, import_node_path17.resolve)(dir));
-  return rel === "" ? "." : rel.split(import_node_path17.sep).join("/");
-}
-function venvEnvironment(pkgDir, bin, platform2) {
-  return {
-    mode: "venv",
-    pkgDir,
-    command: (tool) => [(0, import_node_path17.join)(bin, executableName(tool, platform2))],
-    // ".venv/bin" for the package's own venv, "../.venv/bin" for the root's —
-    // the message reader learns which one answered without a machine path.
-    source: (0, import_node_path17.relative)(pkgDir, bin).split(import_node_path17.sep).join("/"),
-    probe: [(0, import_node_path17.join)(bin, executableName("python", platform2))],
-    spawnEnv: (base) => activated(base, bin)
-  };
-}
-function activated(base, bin) {
-  const path = base["PATH"] ?? "";
-  const env = { ...base, VIRTUAL_ENV: (0, import_node_path17.dirname)(bin), PATH: path === "" ? bin : `${bin}${import_node_path17.delimiter}${path}` };
-  delete env["PYTHONHOME"];
-  return env;
-}
-function uvEnvironment(pkgDir) {
-  return {
-    mode: "uv",
-    pkgDir,
-    command: (tool) => ["uv", "run", "--directory", pkgDir, tool],
-    spawnEnv: (base) => base,
-    source: "uv (uv.lock)",
-    probe: ["uv"]
-  };
-}
-function composeEnvironment(pkgDir, service) {
-  return {
-    mode: "compose",
-    pkgDir,
-    command: (tool) => ["docker", "compose", "exec", "-T", service, tool],
-    source: `compose:${service}`,
-    probe: ["docker", "compose", "exec", "-T", service, "python"],
-    spawnEnv: (base) => base
-  };
-}
-function pythonHasTarget(env, target2, readFile = defaultReadFile, spawn = defaultSpawn) {
-  if (configuredIn(env.pkgDir, target2, readFile)) return true;
-  return probeAnswers(spawn, env.command(TARGET_TOOL[target2]), env.pkgDir);
-}
-function configuredIn(pkgDir, target2, readFile) {
-  const doc = readToml(readFile((0, import_node_path17.join)(pkgDir, PYPROJECT)) ?? "");
-  switch (target2) {
-    case "lint":
-      return configures(doc, "tool.ruff");
-    case "typecheck":
-      return configures(doc, "tool.pyright");
-    case "test":
-      return configures(doc, "tool.pytest.ini_options") || readFile((0, import_node_path17.join)(pkgDir, "pytest.ini")) !== null || readFile((0, import_node_path17.join)(pkgDir, "conftest.py")) !== null;
-  }
-}
-function pythonRun(env, target2, timeoutSeconds, processEnv, spawn = defaultSpawn, now = Date.now) {
-  let remaining = timeoutSeconds;
-  let output = "";
-  for (const [tool, ...args] of PYTHON_TARGETS[target2]) {
-    const argv2 = [...env.command(tool), ...args];
-    output += `${argv2.join(" ")}
-`;
-    if (remaining <= 0) return { code: 124, output, timedOut: true };
-    const started = now();
-    const result2 = spawn(argv2[0] ?? "", argv2.slice(1), {
-      cwd: env.pkgDir,
-      env: env.spawnEnv(processEnv),
-      encoding: "utf8",
-      timeout: Math.ceil(remaining * 1e3)
-    });
-    remaining -= (now() - started) / 1e3;
-    output += endedLine(`${result2.stdout ?? ""}${result2.stderr ?? ""}`);
-    if (errorCodeOf(result2.error) === "ENOENT") output += `No such file or directory: ${argv2[0] ?? ""}
-`;
-    if (errorCodeOf(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM") {
-      return { code: 124, output, timedOut: true };
-    }
-    if (result2.status !== 0) {
-      return { code: typeof result2.status === "number" ? result2.status : 1, output, timedOut: false };
-    }
-  }
-  return { code: 0, output, timedOut: false };
-}
-function unpinnedTools(pkgDir, readFile = defaultReadFile) {
-  const doc = readToml(readFile((0, import_node_path17.join)(pkgDir, PYPROJECT)) ?? "");
+function unpinnedTools(pkgDir, readFile = defaultReadFile2) {
+  const doc = readToml(readFile((0, import_node_path18.join)(pkgDir, PYPROJECT)) ?? "");
   const specs = [
     ...doc.strings.get("project.optional-dependencies.dev") ?? [],
     ...doc.strings.get("dependency-groups.dev") ?? []
@@ -4254,7 +4156,7 @@ function readToml(text3) {
     if (pending !== null) {
       pending.value += ` ${line}`;
       if (balanced(pending.value)) {
-        strings.set(pending.key, quotedStrings2(pending.value));
+        strings.set(pending.key, quotedStrings(pending.value));
         pending = null;
       }
       continue;
@@ -4272,16 +4174,10 @@ function readToml(text3) {
     const full = table2 === "" ? key : `${table2}.${key}`;
     entries.add(full);
     const value = line.slice(eq + 1).trim();
-    if (balanced(value)) strings.set(full, quotedStrings2(value));
+    if (balanced(value)) strings.set(full, quotedStrings(value));
     else pending = { key: full, value };
   }
   return { entries, strings };
-}
-function configures(doc, name) {
-  for (const entry of doc.entries) {
-    if (entry === name || entry.startsWith(`${name}.`)) return true;
-  }
-  return false;
 }
 function dottedKey(text3) {
   return text3.split(".").map((part) => part.trim().replace(/^["']|["']$/g, "")).join(".");
@@ -4316,166 +4212,12 @@ function balanced(value) {
   }
   return depth <= 0;
 }
-function quotedStrings2(value) {
+function quotedStrings(value) {
   const out = [];
   for (const match of value.matchAll(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g)) {
     out.push(match[1] ?? match[2] ?? "");
   }
   return out;
-}
-function probeAnswers(spawn, launcher, cwd) {
-  const argv2 = [...launcher, "--version"];
-  const result2 = spawn(argv2[0] ?? "", argv2.slice(1), { cwd, encoding: "utf8", timeout: PROBE_TIMEOUT_SECONDS * 1e3 });
-  return result2.status === 0;
-}
-function endedLine(text3) {
-  return text3 === "" || text3.endsWith("\n") ? text3 : `${text3}
-`;
-}
-function errorCodeOf(error) {
-  if (error === void 0) return null;
-  const candidate = error;
-  if (typeof candidate !== "object" || candidate === null) return null;
-  const code = Reflect.get(candidate, "code");
-  return typeof code === "string" ? code : null;
-}
-function defaultExists(p) {
-  return (0, import_node_fs21.existsSync)(p);
-}
-function defaultReadFile(p) {
-  try {
-    return (0, import_node_fs21.readFileSync)(p, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-// src/hooks/runner.ts
-var defaultSpawn2 = (command, args, options) => (0, import_node_child_process4.spawnSync)(command, args, options);
-var PYTHON_UNAVAILABLE_REASON = "no Python environment found (venv, uv or compose)";
-var MODERN_NODE_MAJOR = 20;
-function runnerSelect(root, exists = defaultExists2) {
-  const kind = exists((0, import_node_path18.join)(root, "nx.json")) ? "nx" : "npm-family";
-  if (exists((0, import_node_path18.join)(root, "pnpm-lock.yaml"))) return { kind, run: "pnpm run", exec: "pnpm exec" };
-  if (exists((0, import_node_path18.join)(root, "yarn.lock"))) return { kind, run: "yarn run", exec: "yarn" };
-  return { kind, run: "npm run", exec: "npx --no-install" };
-}
-function runnerSelectFor(pkgDir, root, config, exists = defaultExists2, spawn = defaultSpawn2) {
-  if (!isPythonPackage(pkgDir, root, exists)) return runnerSelect(root, exists);
-  const env = resolvePythonEnvironment(pkgDir, root, config, exists, spawn);
-  if (env === null) return { kind: "python-unavailable", reason: PYTHON_UNAVAILABLE_REASON };
-  return { kind: "python", env };
-}
-function isPythonPackage(pkgDir, root, exists = defaultExists2) {
-  if (exists((0, import_node_path18.join)(pkgDir, "pyproject.toml"))) return true;
-  if (!exists((0, import_node_path18.join)(pkgDir, "requirements.txt"))) return false;
-  let dir = pkgDir;
-  while ((0, import_node_path18.relative)(root, dir) !== "" && isUnder(root, dir)) {
-    dir = (0, import_node_path18.dirname)(dir);
-    if (exists((0, import_node_path18.join)(dir, "pyproject.toml"))) return false;
-  }
-  return true;
-}
-function isUnder(ceiling2, path) {
-  const inside = (0, import_node_path18.relative)(ceiling2, path);
-  if (inside === "") return true;
-  if ((0, import_node_path18.isAbsolute)(inside)) return false;
-  return inside !== ".." && !inside.startsWith(`..${import_node_path18.sep}`);
-}
-function runnerHandle(sel, pkgDir, readFile = defaultReadFile2) {
-  if (sel.kind !== "nx") return pkgDir;
-  const project = readName(readFile((0, import_node_path18.join)(pkgDir, "project.json")));
-  if (project !== null) return project;
-  const pkg = readName(readFile((0, import_node_path18.join)(pkgDir, "package.json")));
-  return pkg === null ? null : pkg.replace(/^@[^/]*\//, "");
-}
-function runnerHasTarget(sel, handle, target2, readFile = defaultReadFile2, spawn = defaultSpawn2, cwd = process.cwd()) {
-  if (sel.kind === "python") {
-    return isPythonTarget(target2) && pythonHasTarget(sel.env, target2, readFile, spawn);
-  }
-  if (sel.kind === "nx") {
-    const argv2 = [...words(sel.exec), "nx", "show", "project", handle, "--json"];
-    const shown = spawn(argv2[0] ?? "", argv2.slice(1), { cwd, encoding: "utf8" });
-    if (shown.status !== 0) return false;
-    return declared3(parseJson(shown.stdout), "targets", target2);
-  }
-  return declared3(parseJson(readFile((0, import_node_path18.join)(handle, "package.json"))), "scripts", target2);
-}
-function runnerRun(sel, handle, target2, timeoutSeconds, env, spawn = defaultSpawn2, cwd = process.cwd()) {
-  if (sel.kind === "python") {
-    if (!isPythonTarget(target2)) return { code: 1, output: `no python target named ${target2}`, timedOut: false };
-    return pythonRun(sel.env, target2, timeoutSeconds, env, spawn);
-  }
-  const argv2 = sel.kind === "nx" ? [...words(sel.exec), "nx", "run", `${handle}:${target2}`] : [...words(sel.run), "-s", target2];
-  const runCwd = sel.kind === "nx" ? cwd : handle;
-  const result2 = spawn(argv2[0] ?? "", argv2.slice(1), {
-    cwd: runCwd,
-    env,
-    encoding: "utf8",
-    timeout: timeoutSeconds * 1e3
-  });
-  const timedOut = errorCodeOf2(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM";
-  const output = `${result2.stdout ?? ""}${result2.stderr ?? ""}`;
-  const code = typeof result2.status === "number" ? result2.status : timedOut ? 124 : 1;
-  return { code, output, timedOut };
-}
-function runnerEnv(env, nodeMajorOnPath, exists = defaultExists2, readLink = defaultReadFile2, listDir = defaultListDir) {
-  if (nodeMajorOnPath >= MODERN_NODE_MAJOR) return env;
-  const home = env["HOME"];
-  const nvmDir = env["NVM_DIR"] ?? (home === void 0 || home === "" ? null : (0, import_node_path18.join)(home, ".nvm"));
-  if (nvmDir === null || nvmDir === "") return env;
-  const alias = (0, import_node_path18.join)(nvmDir, "alias", "default");
-  if (!exists(alias)) return env;
-  const wanted = (readLink(alias) ?? "").trim();
-  if (wanted === "") return env;
-  const versionsDir = (0, import_node_path18.join)(nvmDir, "versions", "node");
-  let bin = null;
-  for (const name of listDir(versionsDir).sort()) {
-    if (!name.startsWith(`v${wanted}`)) continue;
-    if (majorOf(name) < MODERN_NODE_MAJOR) continue;
-    const candidate = (0, import_node_path18.join)(versionsDir, name, "bin");
-    if (exists((0, import_node_path18.join)(candidate, "node"))) bin = candidate;
-  }
-  if (bin === null) return env;
-  const current = env["PATH"] ?? "";
-  return { ...env, PATH: current === "" ? bin : `${bin}${import_node_path18.delimiter}${current}` };
-}
-function declared3(doc, field, name) {
-  if (!isRecord(doc)) return false;
-  const table2 = doc[field];
-  if (!isRecord(table2)) return false;
-  const value = table2[name];
-  return value !== void 0 && value !== null && value !== false;
-}
-function errorCodeOf2(error) {
-  const candidate = error;
-  if (!isRecord(candidate)) return null;
-  const code = candidate["code"];
-  return typeof code === "string" ? code : null;
-}
-function readName(text3) {
-  const doc = parseJson(text3);
-  if (!isRecord(doc)) return null;
-  const name = doc["name"];
-  return typeof name === "string" && name !== "" ? name : null;
-}
-function parseJson(text3) {
-  if (text3 === null || text3 === void 0 || text3 === "") return null;
-  try {
-    return JSON.parse(text3);
-  } catch {
-    return null;
-  }
-}
-function words(command) {
-  return command.split(" ").filter((part) => part !== "");
-}
-function majorOf(versionDir) {
-  const parsed = Number.parseInt(versionDir.replace(/^v/, ""), 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-function defaultExists2(p) {
-  return (0, import_node_fs22.existsSync)(p);
 }
 function defaultReadFile2(p) {
   try {
@@ -4484,18 +4226,11 @@ function defaultReadFile2(p) {
     return null;
   }
 }
-function defaultListDir(p) {
-  try {
-    return (0, import_node_fs22.readdirSync)(p);
-  } catch {
-    return [];
-  }
-}
 
 // src/hooks/verify-targets.ts
 var import_node_fs23 = require("node:fs");
 var import_node_path19 = require("node:path");
-var NODE_EXTENSIONS = ["ts", "tsx", "js", "jsx"];
+var NODE_EXTENSIONS = ["ts", "tsx", "js", "jsx", "mts", "cts", "mjs", "cjs"];
 var PYTHON_EXTENSIONS = ["py", "pyi"];
 var VERIFY_EXTENSIONS = [...NODE_EXTENSIONS, ...PYTHON_EXTENSIONS];
 var NODE_PACKAGE_MARKERS = ["package.json", "project.json"];
@@ -4558,7 +4293,9 @@ function containedIn(root, candidate) {
   return !(0, import_node_path19.relative)(rootReal, candidateReal).split(import_node_path19.sep).some((segment) => FOREIGN_SEGMENTS.includes(segment));
 }
 function packageOwner(start, stop) {
-  const owner = findUpAny(start, PACKAGE_MARKERS, stop);
+  const nodeOwner = findUpAny(start, NODE_PACKAGE_MARKERS, stop);
+  if (nodeOwner !== null) return nodeOwner;
+  const owner = findUpAny(start, PYTHON_PACKAGE_MARKERS, stop);
   if (owner === null || !requirementsOnly(owner)) return owner;
   return findUpAny((0, import_node_path19.dirname)(owner), ["pyproject.toml"], stop) ?? owner;
 }
@@ -4590,7 +4327,7 @@ function verifyEnvironment(env, version = process.versions.node) {
   return { env: fixed, nodeMajor: Number.isNaN(rescued) ? onPath2 : rescued };
 }
 function runnerProbe(sel) {
-  if (sel.kind === "python") return sel.env.probe;
+  if (sel.kind === "python") return [];
   const command = (sel.kind === "nx" ? sel.exec : sel.run).split(" ").find((part) => part !== "");
   return command === void 0 ? [] : [command];
 }
@@ -4604,7 +4341,7 @@ function runnerFound(sel, env, spawn, cwd) {
 }
 function execRun(spawn, command, args, cwd, env, timeoutSeconds) {
   const result2 = spawn(command, args, { cwd, env, encoding: "utf8", timeout: timeoutSeconds * 1e3 });
-  const timedOut = errorCodeOf3(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM";
+  const timedOut = errorCodeOf2(result2.error) === "ETIMEDOUT" || result2.signal === "SIGTERM";
   const output = `${result2.stdout ?? ""}${result2.stderr ?? ""}`;
   const code = typeof result2.status === "number" ? result2.status : timedOut ? 124 : 1;
   return { code, output, timedOut };
@@ -4620,7 +4357,7 @@ function majorOf2(version) {
   const parsed = Number.parseInt(version.replace(/^v/, ""), 10);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
-function errorCodeOf3(error) {
+function errorCodeOf2(error) {
   if (error === void 0) return null;
   const candidate = error;
   if (!isRecord(candidate)) return null;
@@ -4647,11 +4384,13 @@ function verify(env, ctx, spawn, nodeVersion = process.versions.node) {
   if (!isDirectory6((0, import_node_path20.join)(root, ".engineos"))) return silent;
   const files = changedFiles(env.transcriptPath);
   if (files.length === 0) return silent;
-  const packages = packageDirs(files, root);
-  if (packages.length === 0) return silent;
-  const targets = targetsFor(ctx.io.env);
+  const skippedFiles = files.filter(hasPythonExtension).map((file) => `[engineos] skipped ${file}: ${PYTHON_UNAVAILABLE_REASON}`);
+  const packages = packageDirs(files.filter((file) => !hasPythonExtension(file)), root);
+  if (packages.length === 0) return skippedFiles.length === 0 ? silent : message(skippedFiles.join("\n"));
+  const targets = DEFAULT_TARGETS;
   const environment = verifyEnvironment(ctx.io.env, nodeVersion);
   const plan = planRuns(packages, targets, root, projectConfig(root), environment, spawn);
+  plan.lines.unshift(...skippedFiles);
   if (plan.runs.length === 0) return plan.lines.length === 0 ? silent : message(plan.lines.join("\n"));
   const sink = telemetrySink(env, ctx, { bypassed: false });
   const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
@@ -4659,16 +4398,14 @@ function verify(env, ctx, spawn, nodeVersion = process.versions.node) {
     return { result: result2, status: ladderStatus(result2) };
   });
   event(sink, "verify", verifyEvent(root, plan.runs, ladder));
-  const lines = [...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
+  const testNotice = ctx.io.env["ENGINEOS_VERIFY_TESTS"] === "1" ? ["[engineos] ENGINEOS_VERIFY_TESTS is deprecated and ignored: tests require explicit user approval and a separate final command after integration."] : [];
+  const lines = [...testNotice, ...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
   if (ladder.failures.length > 0) {
     const reason2 = blockReason(ctx.root, ladder.failures);
     return block(lines.length === 0 ? reason2 : `${reason2}
 ${lines.join("\n")}`);
   }
   return lines.length === 0 ? silent : message(lines.join("\n"));
-}
-function targetsFor(env) {
-  return env["ENGINEOS_VERIFY_TESTS"] === "1" ? [...DEFAULT_TARGETS, TEST_TARGET] : DEFAULT_TARGETS;
 }
 function budgetFor(target2, env) {
   const override = Number.parseInt(env["ENGINEOS_VERIFY_BUDGET_S"] ?? "", 10);
@@ -4850,7 +4587,6 @@ function infraLineOf(finding2) {
 // src/hooks/post-edit-check.ts
 var import_node_fs25 = require("node:fs");
 var TYPECHECK_TARGET = "typecheck";
-var LINT_TARGET = "lint";
 var WORKSPACE_MARKERS = ["nx.json", "pnpm-workspace.yaml", ".git"];
 var LINTERS = [
   { target: "biome", configs: ["biome.json", "biome.jsonc"] },
@@ -4866,6 +4602,7 @@ function verify2(env, ctx, spawn) {
   if (env.file === "") return silent;
   if (!hasVerifyExtension(env.file)) return silent;
   if (!isFile5(env.file)) return silent;
+  if (hasPythonExtension(env.file)) return message(`[engineos] skipped ${env.file}: ${PYTHON_UNAVAILABLE_REASON}`);
   if (env.cwd === "") return silent;
   let stopReal;
   try {
@@ -4880,7 +4617,7 @@ function verify2(env, ctx, spawn) {
   const workspace = findUpAny(start, WORKSPACE_MARKERS, stopReal);
   const root = workspace !== null && containedIn(stopReal, workspace) ? workspace : packageDir;
   const environment = verifyEnvironment(ctx.io.env);
-  const failures = hasPythonExtension(env.file) ? pythonChecks(packageDir, root, environment.env, spawn) : nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn);
+  const failures = nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn);
   if (failures.length === 0) return silent;
   return fail(firstLines(`
 ${failures.map((f) => failureBlock(f.target, f.subject, f.output)).join("\n")}`, SUMMARY_LINES));
@@ -4888,11 +4625,6 @@ ${failures.map((f) => failureBlock(f.target, f.subject, f.output)).join("\n")}`,
 function nodeChecks(file, start, packageDir, root, stop, env, spawn) {
   const selection = runnerSelect(root);
   return [...typecheck(selection, packageDir, root, env, spawn), ...lint(selection, file, start, root, stop, env, spawn)];
-}
-function pythonChecks(packageDir, root, env, spawn) {
-  const selection = runnerSelectFor(packageDir, root, projectConfig(root), void 0, spawn);
-  if (selection.kind !== "python") return [];
-  return [...typecheck(selection, packageDir, root, env, spawn), ...target(selection, packageDir, LINT_TARGET, LINT_TIMEOUT_SECONDS, root, env, spawn)];
 }
 function typecheck(selection, packageDir, root, env, spawn) {
   return target(selection, packageDir, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, root, env, spawn);
@@ -5314,7 +5046,7 @@ var runHook = (argv2, io2) => {
 };
 
 // src/init/cli.ts
-var import_node_child_process5 = require("node:child_process");
+var import_node_child_process4 = require("node:child_process");
 
 // src/init/project.ts
 var import_node_fs26 = require("node:fs");
@@ -5328,10 +5060,8 @@ var EXIT_USAGE = 64;
 var USAGE = "usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]";
 var REQUIRED_SIBLINGS = ["hooks/scaffold-layout.sh", "hooks/layout-manifest.sh", "registries/layout-manifest.json"];
 var CLAUDE_MD_TEMPLATE = "templates/project-claude.md";
-var CLAUDE_MD_TEMPLATE_PYTHON = "templates/project-claude-python.md";
-function claudeMdTemplate(packages) {
-  const pythonOnly = packages.length > 0 && packages.every((pkg) => pkg.language === "python");
-  return pythonOnly ? CLAUDE_MD_TEMPLATE_PYTHON : CLAUDE_MD_TEMPLATE;
+function claudeMdTemplate(_packages) {
+  return CLAUDE_MD_TEMPLATE;
 }
 function claudeMdSeed(template) {
   return [{ dir: "", seeds: [{ src: `@${template}`, dest: "CLAUDE.md" }] }];
@@ -5399,6 +5129,9 @@ function initProject(argv2, deps) {
   }
   const packages = stack.kind === "declared" ? stack.packages : resolveStack(project, null).packages;
   const source = stack.kind === "declared" ? "config" : "detected";
+  if (stack.kind === "auto" && packages.length === 0 && hasStackSignal(project)) {
+    io2.out("  existing stack signal found; no supported JavaScript package detected \u2014 non-JavaScript stacks are unsupported, existing files are preserved\n");
+  }
   writeProjectConfig({ io: io2, project, packages, source, dryRun });
   writeProjectClaudeMd({ io: io2, project, root, template: claudeMdTemplate(packages), dryRun });
   for (const name of AGENT_SKILLS_DOCS) writeAgentSkillsDoc({ io: io2, project, root, name, dryRun });
@@ -5465,8 +5198,14 @@ function parseStackSpec(spec) {
     const at = entry.indexOf("@");
     const framework = at === -1 ? entry : entry.slice(0, at);
     const rawDir = at === -1 ? "." : entry.slice(at + 1);
+    if (framework === "node" || framework === "express") {
+      return { ok: false, message: `--stack: "${framework}" is not a supported application framework; choose nestjs for application backends, or next, react, react-native for UI. Node.js remains the runtime for tooling; use --stack auto to detect existing packages truthfully.` };
+    }
+    if (isFramework(framework) && FRAMEWORK_LANGUAGE[framework] !== "node") {
+      return { ok: false, message: `--stack: "${framework}" is deprecated and unsupported; choose ${ACTIVE_FRAMEWORKS.join(", ")} (application backends require nestjs)` };
+    }
     if (!isFramework(framework)) {
-      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${FRAMEWORKS.join(", ")})` };
+      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${ACTIVE_FRAMEWORKS.join(", ")}; application backends require nestjs)` };
     }
     if (rawDir.startsWith("/") || rawDir.split("/").includes("..")) {
       return { ok: false, message: `--stack: "${rawDir}" must be a directory relative to the repo root` };
@@ -5474,9 +5213,7 @@ function parseStackSpec(spec) {
     const dir = normalizeDir(rawDir);
     if (seen.has(dir)) return { ok: false, message: `--stack: "${dir}" is declared twice` };
     seen.add(dir);
-    const language = FRAMEWORK_LANGUAGE[framework];
-    const pkg = { dir, language, framework, compose_service: null };
-    if (language === "python") pkg.python_env = "auto";
+    const pkg = { dir, language: "node", framework, compose_service: null };
     packages.push(pkg);
   }
   return { ok: true, stack: { kind: "declared", packages } };
@@ -5607,7 +5344,7 @@ var runInit = (argv2, io2) => {
     io2.err("[engineos] broken checkout: cannot locate the EngineOS root (no registries/routing.json above the runtime)\n");
     return 1;
   }
-  return initProject(argv2, { io: io2, root, spawn: import_node_child_process5.spawnSync });
+  return initProject(argv2, { io: io2, root, spawn: import_node_child_process4.spawnSync });
 };
 
 // src/install/cli.ts
@@ -5880,13 +5617,13 @@ function fail3(io2, message2) {
 }
 
 // src/bypass/cli.ts
-var import_node_child_process6 = require("node:child_process");
+var import_node_child_process5 = require("node:child_process");
 var import_node_fs28 = require("node:fs");
 var EXIT_OK3 = 0;
 var EXIT_FAILURE2 = 1;
 var EXIT_USAGE2 = 2;
 var USAGE3 = "usage: engineos bypass on|off|status [cwd]";
-var DEFAULT_DEPS = { spawn: import_node_child_process6.spawnSync };
+var DEFAULT_DEPS = { spawn: import_node_child_process5.spawnSync };
 function runBypass(argv2, io2, deps = DEFAULT_DEPS) {
   const action = argv2[0] ?? "status";
   const target2 = argv2[1] ?? io2.cwd();
@@ -6220,7 +5957,7 @@ var runGen = (argv2, io2) => {
 };
 
 // src/evals/run.ts
-var import_node_child_process7 = require("node:child_process");
+var import_node_child_process6 = require("node:child_process");
 var import_node_fs33 = require("node:fs");
 var import_node_path26 = require("node:path");
 
@@ -6522,7 +6259,7 @@ function liveDeps(env) {
     // bash `$(claude -p "$inp" 2>/dev/null)` did: a case whose model call died
     // grades as a missing router line, never as a pass.
     runClaude: (prompt) => {
-      const result2 = (0, import_node_child_process7.spawnSync)("claude", ["-p", prompt], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      const result2 = (0, import_node_child_process6.spawnSync)("claude", ["-p", prompt], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
       return result2.stdout ?? "";
     }
   };
@@ -6546,7 +6283,7 @@ function isExecutable(path) {
 }
 
 // src/bench/run.ts
-var import_node_child_process8 = require("node:child_process");
+var import_node_child_process7 = require("node:child_process");
 var import_node_fs35 = require("node:fs");
 var import_node_os3 = require("node:os");
 var import_node_path30 = require("node:path");
@@ -6804,9 +6541,9 @@ var DEFAULT_HOST_DEPS = {
   cpus: () => (0, import_node_os3.cpus)().map((cpu) => ({ model: cpu.model })),
   nodeVersion: () => process.version
 };
-var defaultSpawn3 = (command, args, options) => (0, import_node_child_process8.spawnSync)(command, args, options);
+var defaultSpawn2 = (command, args, options) => (0, import_node_child_process7.spawnSync)(command, args, options);
 var DEFAULT_DEPS2 = {
-  spawn: defaultSpawn3,
+  spawn: defaultSpawn2,
   now: () => import_node_perf_hooks.performance.now(),
   mkdtemp: () => (0, import_node_fs35.mkdtempSync)((0, import_node_path30.join)((0, import_node_os3.tmpdir)(), "engineos-bench-"))
 };
@@ -6970,7 +6707,7 @@ function hookEnv2(env) {
 }
 
 // src/report/usage.ts
-var import_node_child_process9 = require("node:child_process");
+var import_node_child_process8 = require("node:child_process");
 var import_node_fs36 = require("node:fs");
 var import_node_path31 = require("node:path");
 var EXIT_OK7 = 0;
@@ -7032,7 +6769,7 @@ var runUsageReport = (argv2, io2) => {
 `);
     return EXIT_FAILURE6;
   }
-  return renderReport(days, { env: io2.env, cwd: io2.cwd(), now: () => Date.now(), spawn: import_node_child_process9.spawnSync }, io2);
+  return renderReport(days, { env: io2.env, cwd: io2.cwd(), now: () => Date.now(), spawn: import_node_child_process8.spawnSync }, io2);
 };
 function parseDays(raw) {
   if (!/^[0-9]+$/.test(raw)) return null;
@@ -7823,7 +7560,7 @@ var ROWS = [
     scope: "file",
     direction: "doc-names-registry",
     kind: "quotes",
-    pattern: "Cap concurrency at ~{n}"
+    pattern: "policy cap of {n}"
   },
   {
     id: "spec-threshold-drift",
@@ -9063,6 +8800,7 @@ function checkC17(ctx) {
   if (routing === void 0) return [preconditionResult("C17", C17_TITLE, ROUTING_JSON)];
   const findings = [];
   for (const domain of routing.domains) {
+    if (inactiveCompatibilityDomain(ctx, domain.id)) continue;
     if (domain.match.paths.length + domain.match.basenames.length === 0) {
       findings.push(finding("C17", "no-patterns", domain.id));
     }
@@ -9072,12 +8810,23 @@ function checkC17(ctx) {
   }
   return [result("C17", C17_TITLE, findings)];
 }
+function inactiveCompatibilityDomain(ctx, id) {
+  var _a;
+  const rows3 = (_a = rawJson(ctx, ROUTING_JSON)) == null ? void 0 : _a["domains"];
+  if (!Array.isArray(rows3)) return false;
+  return rows3.some((row) => {
+    if (!isRecord(row)) return false;
+    const match = subRecord(row, "match");
+    return row["id"] === id && row["enabled"] === false && row["deprecated"] === true && row["sample_path"] === null && Array.isArray(match == null ? void 0 : match["paths"]) && match["paths"].length === 0 && Array.isArray(match == null ? void 0 : match["basenames"]) && match["basenames"].length === 0;
+  });
+}
 function checkC17b(ctx) {
   if (missingInputs(ctx, KERNEL_INPUTS)) return skipOnce(ctx, "C17b", C17B_TITLE, KERNEL_TOKEN);
   const routing = loadedOr(() => ctx.registries.routing);
   if (routing === void 0) return [preconditionResult("C17b", C17B_TITLE, ROUTING_JSON)];
   const findings = [];
   for (const domain of routing.domains) {
+    if (inactiveCompatibilityDomain(ctx, domain.id)) continue;
     const answer = kernelAnswer(ctx, ["route-path", domain.sample_path ?? ""]);
     const got = answer == null ? void 0 : answer["domain"];
     const routed = typeof got === "string" ? got : "null";
@@ -9654,8 +9403,8 @@ function invalidSignals(rules) {
   return [...broken].sort(byteOrder3).map((name) => finding("C14", "invalid-signal", name));
 }
 var VERIFICATION_SOURCE = "rules/verification.md";
-var VERIFICATION_REQUIRE = "lint output-shown tests-when-in-scope typecheck";
-var VERIFICATION_RULE_SENTENCE = "Tests join the gate ONLY when tests were ON";
+var VERIFICATION_REQUIRE = "lint output-shown tests-after-integration-when-user-approved typecheck";
+var VERIFICATION_RULE_SENTENCE = "Tests join the gate ONLY after implementation and integration are complete";
 var VERIFICATION_GATE_SENTENCE = "`rules/verification.md` owns which checks are in";
 function verificationDrift(ctx, rules) {
   const rule = rules.find((candidate) => candidate["id"] === "rule-verification");
@@ -11710,7 +11459,7 @@ function applyOutcome(outcome) {
     case "proceed":
       return;
     case "reexec": {
-      const r = (0, import_node_child_process10.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
+      const r = (0, import_node_child_process9.spawnSync)(outcome.bin, [__filename, ...argv], { stdio: "inherit", env: { ...process.env, ENGINEOS_REEXEC: "1" } });
       if (r.error === void 0 && r.status !== null) {
         process.exit(r.status);
       }

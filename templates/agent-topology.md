@@ -7,15 +7,13 @@ pattern_ids: [<react-tool-loop | grounded-pipeline | supervisor-workers | typed-
 
 # Agent topology — <system or feature name>
 
-> Written by the `agent-system-design` form (`/engineos:design-agents`), one section
-> per step, in step order, as the developer answers. Sections are filled in order;
-> a later section is never filled before the one above it. `<placeholders>` are
-> replaced by the developer's answers — a placeholder left in an approved spec is a
-> defect. The change record's `spec:` field points at this file and its
-> `## Human decisions` carries the approval line from §12.
+> Fill sections in order from developer answers via /engineos:design-agents.
+> Approved specs contain no placeholders. Change record spec: points here;
+> ## Human decisions records §12 approval.
 
 Change record: `.engineos/changes/<YYYY-MM-DD>-<slug>.md`
 Grounding repos consulted: <paths, or "none">
+Stack: Node.js/TypeScript; Mastra agents/tools/workflows/memory hosted by NestJS providers.
 
 ## 1. Topology
 
@@ -24,7 +22,7 @@ Grounding repos consulted: <paths, or "none">
 - Pattern id(s): `<id>`<, `<id>`>
 - Why: <the reason in the developer's words>
 - Rejected alternative: `<id>` — <why not>
-- Graph needed: <yes — LangGraph | no — plain async use case per python-patterns>
+- Orchestration: <Mastra agent with tools | Mastra workflow with typed steps>
 
 ## 2. Agent roster
 
@@ -61,8 +59,8 @@ Envelope shape shared by every tool that returns data:
 
 ## 4. Communication protocol
 
-- Carrier: <shared graph state | typed message envelopes | network protocol (A2A)>
-- Protocol constants module: `<graph/protocol.py>`
+- Carrier: <typed workflow state | typed message envelopes | network protocol (A2A)>
+- Protocol constants module: `<src/mastra/protocol.ts>`
 
 | From | To | Carrier | Sync / async | Envelope type |
 |---|---|---|---|---|
@@ -70,50 +68,45 @@ Envelope shape shared by every tool that returns data:
 
 ## 5. Context scoping — task packets
 
-One frozen Pydantic model per agent, in roster order. `extra="forbid"` makes §2's
-"never sees" testable.
+One strict, readonly zod task-packet schema per agent, in roster order.
+Unexpected keys fail schema validation at the boundary.
 
-```python
-class <Agent1>TaskPacket(BaseModel):
-    """What <agent_1> receives — its task, not the whole picture."""
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    run_id: str
-    tenant_id: str
-    task: str
-    inputs: <Agent1Inputs>
-    constraints: <Agent1Constraints>      # tool_allowlist, forbidden_fields, language
-    budget: Budget                        # max_tokens <n>, max_tool_calls <n>, timeout_s <n> (from §7)
-    output_contract: str = "<Agent1Output>"
+```typescript
+import { z } from 'zod';
 
-
-class <Agent1>Output(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    <field>: <type>
-```
-
-```python
-class <Agent2>TaskPacket(BaseModel):
-    ...
+const Budget = z.object({
+  maxTokens: z.number().int().positive(),
+  maxToolCalls: z.number().int().positive(),
+  timeoutMs: z.number().positive(),
+}).strict().readonly();
+const TaskPacket = z.object({
+  runId: z.string(), tenantId: z.string(), task: z.string(),
+  inputs: AgentInputsSchema,
+  constraints: AgentConstraintsSchema,
+  budget: Budget, outputContract: z.literal('AgentOutput'),
+}).strict().readonly();
+type AgentTaskPacket = z.infer<typeof TaskPacket>;
+// Define a strict AgentOutput schema for the fields the next agent consumes.
 ```
 
 ## 6. Memory
 
 | Agent | Memory kind | Scope | Survives a turn | Storage key |
 |---|---|---|---|---|
-| `<agent_1>` | <none | summary buffer | store> | <session | user | tenant> | <what, exactly — or "nothing"> | `<company__user__profile__session>` |
+| `<agent_1>` | <none | scoped Mastra conversation/working memory | store> | <session | user | tenant> | <what, exactly — or "nothing"> | `<company__user__profile__session>` |
 
 ## 7. Harness
 
-Entry point: `<api/routes/<name>.py | cli>`
+Entry point: `<NestJS controller/worker → Mastra provider | approved CLI>`
 
 | Bound | Value | Where enforced |
 |---|---|---|
-| Iteration cap | <n> | <routing function `should_continue`> |
-| Recursion limit | <(max_retries + 1) × cap + buffer> | <service, `graph.ainvoke(config={"recursion_limit": …})`> |
-| Wall-clock timeout | <n s> | <`asyncio.wait_for` around the run> |
+| Iteration cap | <n> | <agent-step guard and workflow routing> |
+| Workflow transition cap | <bounded loops/handoffs> | <NestJS provider and bounded workflow routing> |
+| Wall-clock timeout | <n s> | <AbortSignal timeout propagated through the run> |
 | Retry budget | <n> | <state `max_retries`, mirrored in `should_retry`> |
 | Token / cost budget | <n tokens / <currency> per run> | <callback per role> |
-| Evaluator | `<evaluator>` — verdict `<Verdict>` | <conditional edge: retry only on `retry_recommended` and non-empty `retry_instruction`> |
+| Evaluator | `<evaluator>` — verdict `<Verdict>` | <workflow branch: retry only on `retry_recommended` and non-empty `retry_instruction`> |
 
 ## 8. Guardrails
 
@@ -136,17 +129,20 @@ Entry point: `<api/routes/<name>.py | cli>`
 - Spans: <one per agent and per tool sub-agent — chain / llm / tool, with role tag>
 - Token accounting: <per role and per model, in <callback | tool result>; internal tool model calls included>
 - Usage record: <once per prompt version, in a `finally`>
-- Trace destination: <log | LangSmith | OpenTelemetry | decided later on <date>>
+- Trace destination: <log | Mastra observability | OpenTelemetry | decided later on <date>>
 
 ## 11. Evals
+
+Plan criteria here; author and run executable cases only after integration and
+explicit current-task final-stage user approval (rules/verification.md).
 
 | Level | Fixture | Assertion | Count | Owner |
 |---|---|---|---|---|
 | Per tool | question → query | <query equals / matches> | <n> | <who> |
-| Per agent | `<Agent>TaskPacket` → `<Agent>Output` | `model_validate` + <fields the next agent reads> | <n> | <who> |
+| Per agent | `<Agent>TaskPacket` → `<Agent>Output` | zod schema parsing + <fields the next agent reads> | <n> | <who> |
 | End-to-end | <the one input §12 draws> | <final output contract> | 1 | <who> |
 
-No test calls the provider. Runtime scoring: <evaluator node + deterministic check `<name>`>.
+No test calls the provider. Runtime scoring: <Mastra evaluator agent/workflow step + deterministic check `<name>`>.
 
 ## 12. Diagrams and approval
 
@@ -188,5 +184,6 @@ Recorded in the change record under `## Human decisions`:
 <YYYY-MM-DD> | <developer> | topology-approval | approved | docs/specs/<YYYY-MM-DD>-<slug>-agent-topology.md
 ```
 
-Only after this line exists: front-matter `status: approved`, `langgraph-patterns`
-loaded, wave plan derived from §2 and §3 per `rules/parallelism.md`.
+Only after this line exists: front-matter `status: approved`, multi-agent
+implementation authorized, wave plan derived from §2 and §3 per
+`rules/parallelism.md`. `mastra-patterns` may be read earlier for planning.

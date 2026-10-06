@@ -13,14 +13,19 @@ import { repoRoot } from '../lib/git';
 
 export const STACK_QUESTION_NOTE =
   '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. ' +
-  'Before writing any code, your FIRST reply must ask the developer which stack to use for each tier ' +
-  'the work touches (backend, frontend, mobile, LLM/agent runtime) — never pick one yourself ' +
+  'Before writing any code, state the mandatory NestJS application backend policy within the JavaScript/TypeScript ecosystem. ' +
+  'Application backends (including API, worker ' +
+  'and LLM service hosts) require NestJS; Node.js is the runtime and tooling environment, not a backend framework choice. ' +
+  'Ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), ' +
+  'and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers; ' +
+  'do not ask the developer to reconfirm NestJS or Mastra. ' +
+  'never offer plain Node.js or standalone Express application backends ' +
   '(rules/base.md "New projects — stack first"). Persist the answer with ' +
   '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
 
 /** Intents whose work depends on a language/framework choice. */
 export const STACK_DEPENDENT_INTENTS: readonly string[] = [
-  'new-feature', 'backend', 'backend-python', 'frontend', 'mobile', 'llm', 'agent-system',
+  'new-feature', 'backend', 'frontend', 'mobile', 'llm', 'agent-system',
 ];
 
 export interface StackQuestionOptions {

@@ -31,19 +31,31 @@
   in `~/.claude/settings.local.json`. Only the exact word `auto` switches it off.
 
 ## Branches
-- DO branch from main per unit of work: `feat/<short-slug>`, `fix/<short-slug>`, `chore/<short-slug>`.
+- DO keep the active branch and current PR for related follow-ups until the user
+  requests a different branch or PR. Task count does not determine PR count.
+- If no PR exists, continue on the existing branch. Create or switch branches,
+  create a PR, or create a worktree only at the user's direction and under the
+  git-write policy above; never silently reset the work context between tasks.
+- If the current PR is merged, closed, or otherwise unusable, report its state
+  and obtain the user's direction before replacing it or moving to another branch.
+- When the user requests a new branch, follow the project's naming convention
+  and agreed base.
 - DON'T commit directly to main.
-- DO keep branches short-lived (days, not weeks); rebase on main before PR.
+- DO keep the active branch current with its base when needed, under the git-write
+  policy above; branch age alone is not permission to replace it.
 
 ## Commits
 - DO use Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:` (+ optional scope: `feat(orders):`).
-- DO keep commits atomic: one logical change, builds and passes tests on its own.
+- DO keep commits atomic: one logical change with reviewable evidence; builds at final validation, and tests only at the approved final stage.
 - DO write subject ≤50 chars, imperative mood; body explains WHY when not obvious.
 - DON'T mix refactoring and behavior change in one commit.
 - DON'T commit commented-out code, debug logs, or unrelated formatting churn.
 
 ## Pull requests
-- **Size limit: ≤400 lines changed.** Bigger work splits into stacked/sequential PRs. Hard cases (codegen, lockfiles, migrations) get called out in the description and excluded from the count.
+- **Reviewability target: ≤400 lines changed.** Report larger diffs and suggest
+  a split when useful, but keep the current PR unless the user directs a split.
+  Hard cases (codegen, lockfiles, migrations) get called out in the description
+  and excluded from the count.
 - DO write a description: what + why + how verified (test output, screenshots for UI).
 - DO self-review the diff before requesting review — you catch 80% of issues yourself.
 - DO keep PRs green: CI passes before review requested.

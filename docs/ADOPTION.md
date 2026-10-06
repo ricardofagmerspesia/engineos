@@ -1,13 +1,11 @@
 # Adopting EngineOS in a New Project
 
-Step-by-step to bring the EngineOS patterns — intent router, domain coordinators,
-audit/implement orchestrators, quality + change-governance gates — into a real
-project. Follow in order. Each step says what it does and how to verify it.
+Follow in order to install routing, scoped workers, and final gates. Read only
+the current setup step; daily usage is in [START.md](START.md).
 
 > Conventions: `~/projects/engineos` is the cloned EngineOS repo; `<project>` is the
 > repo you're adopting into. `$` commands run in a normal terminal.
 
----
 
 ## 0. Prerequisites
 
@@ -25,7 +23,6 @@ project. Follow in order. Each step says what it does and how to verify it.
 
 Verify: `node --version` (>= 18) and `claude --version` both print.
 
----
 
 ## 1. Install EngineOS (once per machine)
 
@@ -92,19 +89,17 @@ Only the exact word `auto` switches it off; anything else (unset, empty, a typo)
 means `ask`. `/engineos:bypass` does not touch it. The full read/write split is in
 `rules/git.md` under "Who may write".
 
----
 
 ## 2. Adopt EngineOS in the project (one command)
 
 ```bash
 cd <project>
 ~/projects/engineos/scripts/init-project.sh                       # --stack auto (default): detect
-~/projects/engineos/scripts/init-project.sh --stack fastapi@backend,react@frontend
+~/projects/engineos/scripts/init-project.sh --stack nestjs@backend,next@frontend
 ```
 Or, inside a Claude Code session in `<project>`: `/engineos:init`. Add `--dry-run`
 to see what it would do first. `--stack` takes `auto` or a comma list of
-`<framework>[@dir]` — one of `fastapi`, `django`, `flask`, `nestjs`, `react`, `next`,
-`react-native`; `@dir` is the package directory relative to the repo root (omit it
+`<framework>[@dir]` — one of `nestjs`, `react`, `next`, `react-native`; `@dir` is the package directory relative to the repo root (omit it
 for `.`).
 
 A brand-new repo has nothing to detect: the SessionStart hook tells Claude to ask you for
@@ -120,19 +115,15 @@ What it creates:
   first use.
 - `.engineos/config.json` — the project's declared stack, written **once** from
   `--stack` (or from what detection found) and never overwritten, so edit it freely:
-  `{ "version": 1, "stack": { "packages": [{ "dir": "backend", "language": "python",
-  "framework": "fastapi", "compose_service": null, "python_env": "auto" }, …] } }`.
+  `{ "version": 1, "stack": { "packages": [{ "dir": "backend", "language": "node",
+  "framework": "nestjs", "compose_service": null, "python_env": "auto" }] } }`.
   It is what `scripts/kernel.sh resolve-stack` answers from, and so what the Stop
   gate, the SessionStart `[engineos] stack: …` line and the coordinators read.
   Nothing is written when detection finds no package; declare one with `--stack`.
-- `CLAUDE.md` from `templates/project-claude.md`, **only if the project has none**
-  — or from `templates/project-claude-python.md` when every package the stack
-  resolves to (`--stack`, or detection) is Python. The general template carries a
-  Node block and a Python block; delete the one your repo does not use, a mixed
-  repo keeps both. An existing `CLAUDE.md` is never touched. Edit it: project
-  name, stack, build/test/lint commands, any rule overrides. **Do not** copy EngineOS rules in — project
-  `CLAUDE.md` > EngineOS > defaults, and the routing hook already appends "follow
-  project CLAUDE.md" on every edit.
+- `CLAUDE.md` from `templates/project-claude.md`, only when absent. Set the
+  project name, commands and rule deltas; do not copy shared rules. Project
+  instructions take precedence. NestJS is mandatory for application backends;
+  Node is the runtime/tooling, Next.js/React the UI, Mastra the LLM framework.
 
 It is idempotent (re-run after every `git pull`) and it never overwrites a file you
 own. Exit codes: `0` done, `1` cannot proceed from this machine — the machine install
@@ -140,18 +131,10 @@ is missing (Step 1 first), `$HOME` is unset, or the checkout is broken; the mess
 says which, `2` not a git work tree, `3` you are inside the EngineOS repo itself,
 `64` bad usage.
 
-**Python packages.** The Stop gate runs `ruff` and `pyright` (and `pytest` when tests
-are on) for every package the stack resolves to Python, and it never installs
-anything, so two things must already be true: the three tools are **pinned to exact
-versions in the project's dev dependencies** (`[dependency-groups] dev` or
-`[project.optional-dependencies]` in `pyproject.toml`; an unpinned tool gets an
-advisory line every Stop), and there is an environment to run them in — a `.venv`
-(in the package or at the repo root), a `uv.lock` (then `uv run`), or a
-`compose_service` in `.engineos/config.json` (then `docker compose exec -T`). Without
-one the gate **skips loudly** — `[engineos] stop-verify skipped for <pkg>: no Python
-environment found (venv, uv or compose)` — rather than blocking on a toolchain it
-cannot start. `ENGINEOS_VERIFY_BUDGET_S=<seconds>` raises the per-target timeout when
-pyright's first run over a large repo needs it.
+Legacy Python config fields/templates remain compatibility surface; active init
+and automatic verification target JS/TS. Explicit `node` or `express` application
+backend declarations are rejected with NestJS guidance. Existing apps/configs are
+not silently converted.
 
 **Commit `.engineos/` and `CLAUDE.md`.** That commit is what makes EngineOS the
 default for every teammate: the presence of `.engineos/` is the opt-in signal the
@@ -175,7 +158,6 @@ Claude Code session in `<project>` and the hook creates anything missing —
 non-blocking, safe to run every session. `ENGINEOS_SCAFFOLD=0` disables it entirely.
 You then copy `templates/project-claude.md` to `<project>/CLAUDE.md` by hand.
 
----
 
 ## 4. Connect MCP servers (powers the leaf specialists)
 
@@ -213,7 +195,6 @@ read-only creds.
 
 Verify: in a session, `/audit dba` returns real findings instead of `UNKNOWN`.
 
----
 
 ## 5. Add the CI agents (optional but recommended)
 
@@ -227,31 +208,26 @@ cp ~/projects/engineos/templates/github/claude-security.yml <project>/.github/wo
 
 Verify: open a PR; both workflows run.
 
----
 
 ## 6. Confirm the gates are live
 
 In a `<project>` session, make a trivial code edit. You should see:
 - a `[router]` line naming the rules/skill/specialist for that file (PreToolUse routing);
 - on finishing without verifying, a one-time **Stop block** asking for lint + typecheck
-  (Node) or ruff + pyright (Python) — tests only when they were in scope, or
-  `ENGINEOS_VERIFY_TESTS=1` is set;
+  for JS/TS; tests/evals require a separate approved final-stage command;
 - on finishing with unrecorded changes, a one-time **Stop block** asking to run `record-change`.
 
 If a Stop block loops or never fires, see Troubleshooting.
 
----
 
 ## 7. Daily workflow
 
-**Routing is automatic.** Editing `*.controller.ts` injects backend rules +
-`nestjs-patterns` + `backend-coordinator`; `app/routers/*.py`, `schemas.py`,
-`main.py` and the like inject `rules/backend-python.md` + `python-patterns` + the
-same coordinator (`*/alembic/versions/*` stays DBA, `*/agents/*` and `*/graph/*`
-route to LLM); `*.tsx` injects frontend; a `.tsx`
-under `mobile/`, `android/`, `ios/`, or `react-native/` injects mobile instead
-(checked before the frontend pattern) + `mobile-coordinator`; `*.sql` injects
-DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
+Claude Code routes each edit: NestJS controllers → backend, `.tsx` → frontend
+(or mobile paths → mobile), SQL → DBA, workflows → DevOps, Mastra/agents → LLM.
+Codex has no hooks: follow `templates/adapters/codex.md`. One supervisor owns
+contracts and integration; workers have exclusive files and no git/forge writes.
+Schedule ready tasks up to useful host capacity, without unrelated wave barriers.
+Keep the active branch/PR for related follow-ups until user-directed change.
 
 **Audit the system** (read-only, fans out + consolidates):
 ```
@@ -269,20 +245,16 @@ DBA; `.github/workflows/*` injects devops; etc. Follow what it surfaces.
 **Close every unit of work** with the record-change skill:
 ```
 record-change            # marks the .engineos/changes/ record done, registers files+movements,
-                         # git mv .engineos/changes/ -> .engineos/archived/YYYY/MM/<domain>/, clears the Stop flag
+                         # archive under git-write policy -> .engineos/archived/YYYY/MM/<domain>/
 ```
 
 **Verification before "done"** is enforced: lint + typecheck, output shown, run once
 after the last unit of work. The Stop gates make this non-optional.
 
-**Tests are opt-in.** EngineOS writes no tests and runs no suite unless you ask
-("write tests", "add coverage", "integration tests", "TDD this"), your project's
-`CLAUDE.md` requires them, or a test agent (`test-writer` / `qa-tester`) is
-dispatched on purpose. When they are off, the session says so in one line:
-`[tests] skipped — not requested`. Full policy: `rules/verification.md`. Set
-`ENGINEOS_VERIFY_TESTS=1` to force tests into the Stop gate unconditionally.
+**Tests/evals: final stage, explicit current-task user approval only.**
+No feature, agent dispatch, environment flag or gate grants consent. Without it:
+`[tests] pending — final-stage user approval required`. See `rules/verification.md`.
 
----
 
 ## 8. Changing a standard
 
@@ -290,7 +262,6 @@ Rules are code. Don't edit your local copy — open a PR to the EngineOS repo
 (`CONTRIBUTING.md` has the workflow + per-artifact rules). Team merges, everyone
 `git pull && ./install.sh`. Project-specific deltas stay in `<project>/CLAUDE.md`.
 
----
 
 ## 9. Troubleshooting
 
@@ -304,7 +275,6 @@ Rules are code. Don't edit your local copy — open a PR to the EngineOS repo
   it and ROTATE the secret (removal alone is not enough), then re-install.
 - **macOS: typecheck hangs an edit** — install `coreutils` (Step 0) for the timeout.
 
----
 
 ## Quick reference — what you get
 

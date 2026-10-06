@@ -22,12 +22,13 @@
 - DO use `Number.parseInt` / `Number.parseFloat`, not the globals.
 - DO put mappers/transformers in their own file so they're reusable, not inlined per call site.
 
-## Language idioms (Python)
-- DO type-hint every signature and module-level constant; `X | None`, never `Optional[X]`; `list[str]`, never `List[str]`. `from __future__ import annotations` only when a forward reference needs it.
-- DON'T use `Any` at a boundary — a payload is `dict[str, object]` or a Pydantic model, then narrowed.
-- DO model closed sets as `Literal[...]` unions (`Literal["ok", "error"]`), not bare `str`.
-- DO follow PEP 8 names: `snake_case` functions and variables, `PascalCase` classes, `UPPER_SNAKE` constants, `_leading_underscore` for module-private.
-- DO define ports as `typing.Protocol` and domain values as `@dataclass(frozen=True)`; Pydantic models only at boundaries (HTTP, settings, model output), never inside the domain.
+## Active ecosystem
+- Use JavaScript/TypeScript; every application backend (API, worker, webhook, or LLM/agent service host) uses NestJS. Frontend uses Next.js/React, mobile React Native, all LLM applications, agents and chatbots use Mastra.
+- Next handlers serve frontend integration/proxies/BFF; domain APIs/jobs/LLM hosts use Nest modules/providers. Pure domain functions/shared TS libraries stay independent.
+- Node supports runtime/CLI/build/shared libraries/kernel; never bootstrap standalone Node HTTP or Express application backends.
+- Nest’s Express adapter/transitive dependencies are allowed; composition/lifecycle/boundaries remain Nest-owned.
+- Existing non-Nest backends: report deviation, scope migration before extension; preserve truthful detection and compatibility, never silently rewrite/relabel.
+- Python interfaces retained for compatibility are deprecated; do not use them for new work.
 
 ## Errors
 - DO fail fast at boundaries: validate input where it enters the system, then trust it inside.
@@ -50,18 +51,9 @@
 - DON'T add a dependency for what 20 lines of code can do.
 
 ## New projects — stack first
-A repo is greenfield when it has no `.engineos/config.json` and no package manifest (the
-SessionStart and UserPromptSubmit hooks detect it and say so).
-- DO ask the developer for the stack in your first reply in a greenfield repo, before any
-  code — one question per tier the work touches: backend, frontend, mobile, LLM/agent
-  runtime. Offer the stacks EngineOS supports first (NestJS, FastAPI, React/Next, React
-  Native, Python + LangGraph for agent systems), and accept any other answer.
-- DON'T choose a stack yourself, and don't infer one from which skills or patterns happen
-  to exist — that inference is how a TypeScript team got a Python project.
-- DO persist a supported answer with `engineos init --stack <framework>[@dir],...` and record
-  the choice as the project's first ADR (`docs/adr/`).
-- DO say plainly which EngineOS parts will not apply when the answer is a stack EngineOS has
-  no patterns for (e.g. "`langgraph-patterns` and the agent-design form are Python-only; the
-  Stop gate has no Go runner"), then proceed on the generic rules.
-- A dispatched agent cannot ask: a coordinator whose scope is greenfield returns `BLOCKED`
-  with `stack undeclared`, and the orchestrator asks the developer.
+Greenfield means neither `.engineos/config.json` nor a package manifest exists; SessionStart/UserPromptSubmit announce detection.
+- Record mandatory NestJS backend/Mastra agent choices without asking again.
+- Before code ask only unresolved tiers/deployment needs; offer supported choices, explain unsupported requests and obtain compatible scope.
+- Never infer unresolved choices from available skills/patterns; Node remains runtime.
+- DO persist the selected NestJS backend and supported answers with `engineos init --stack <framework>[@dir],...` and record the choices in the project's first ADR (`docs/adr/`).
+- Required unresolved decisions yield `BLOCKED` for supervisor clarification; undeclared backend alone does not require framework selection.

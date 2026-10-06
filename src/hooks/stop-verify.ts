@@ -1,8 +1,9 @@
 // EngineOS Stop hook: runs scoped lint + typecheck for the packages changed this
 // session and blocks finishing if any fail. No-op when there is nothing to run.
 // Never blocks on infra quirks — only on genuine red (a real lint/type/test
-// failure). Tests are opt-in, not part of the default gate (rules/verification.md
-// "Tests are opt-in"); ENGINEOS_VERIFY_TESTS=1 folds the test target back in.
+// failure). Automatic hooks run lint/typecheck only. Approved tests are a
+// separate orchestrator command after implementation is fully integrated
+// (rules/verification.md); environment flags cannot provide user consent.
 // It runs ONLY in projects that have adopted EngineOS — a working tree carrying
 // `.engineos/` — because the checks it runs are the target repo's own scripts.
 //
@@ -23,12 +24,12 @@ import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { classify, type InfraReason } from './classify-failure';
-import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
+import { PYTHON_UNAVAILABLE_REASON, runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
 import { unpinnedTools } from './runner-python';
 import { event, telemetrySink, withSpan, type EventData, type SpanFacts } from './telemetry';
 import type { SpanStatus } from '../registry/policy-exec-journal';
 import type { ProjectConfig } from '../registry/project-config';
-import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
+import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasPythonExtension, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
 import { lazyRegistries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
 import { isRecord } from '../lib/json';
@@ -124,15 +125,17 @@ export function verify(
   const files = changedFiles(env.transcriptPath);
   if (files.length === 0) return silent;
 
-  const packages = packageDirs(files, root);
-  if (packages.length === 0) return silent;
+  const skippedFiles = files.filter(hasPythonExtension).map((file) => `[engineos] skipped ${file}: ${PYTHON_UNAVAILABLE_REASON}`);
+  const packages = packageDirs(files.filter((file) => !hasPythonExtension(file)), root);
+  if (packages.length === 0) return skippedFiles.length === 0 ? silent : message(skippedFiles.join('\n'));
 
-  const targets = targetsFor(ctx.io.env);
+  const targets = DEFAULT_TARGETS;
   // The nvm default is tried first; a node still too old is judged per Node
   // package in planRuns, so a Python package in the same repo is verified
   // regardless — its toolchain never ran on node.
   const environment = verifyEnvironment(ctx.io.env, nodeVersion);
   const plan = planRuns(packages, targets, root, projectConfig(root), environment, spawn);
+  plan.lines.unshift(...skippedFiles);
   // Nothing to run means nothing was verified, so there is no verdict to record
   // and no span to open — only the lines that say why.
   if (plan.runs.length === 0) return plan.lines.length === 0 ? silent : message(plan.lines.join('\n'));
@@ -152,7 +155,10 @@ export function verify(
   // Skip, infra and advisory lines ride along on a block too: a red lint must
   // not hide that pyright was skipped or that ruff is unpinned, or the
   // developer fixes the red and meets the next finding one Stop later.
-  const lines = [...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
+  const testNotice = ctx.io.env['ENGINEOS_VERIFY_TESTS'] === '1'
+    ? ['[engineos] ENGINEOS_VERIFY_TESTS is deprecated and ignored: tests require explicit user approval and a separate final command after integration.']
+    : [];
+  const lines = [...testNotice, ...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
   if (ladder.failures.length > 0) {
     const reason = blockReason(ctx.root, ladder.failures);
     return block(lines.length === 0 ? reason : `${reason}\n${lines.join('\n')}`);
@@ -161,10 +167,6 @@ export function verify(
 }
 
 // ------------------------------------------------------------------ internals
-
-function targetsFor(env: NodeJS.ProcessEnv): readonly string[] {
-  return env['ENGINEOS_VERIFY_TESTS'] === '1' ? [...DEFAULT_TARGETS, TEST_TARGET] : DEFAULT_TARGETS;
-}
 
 // The one timeout table, applied to whichever runner was selected. The budget
 // is a setting, not a new constant (design §A1.5): pyright's first run over a

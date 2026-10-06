@@ -68,9 +68,9 @@ export function loadIntents(root: string): IntentsRegistry {
       // decision rule name a row by; an empty one can be referenced by nothing.
       if (id === '') reader.malformed(`${path}.id must not be empty`);
       const signals = reader.requireStrings(row['signals'], `${path}.signals`);
-      // A row with no signal can never match, so it is a registry defect rather
-      // than a row the matcher simply skips.
-      if (signals.length === 0) reader.malformed(`${path}.signals must not be empty`);
+      // Only explicitly inactive deprecated compatibility entries may have no
+      // signals. Active rows still refuse accidental silent disappearance.
+      if (signals.length === 0 && !(row['enabled'] === false && row['deprecated'] === true)) reader.malformed(`${path}.signals must not be empty`);
       return {
         id,
         title: reader.requireString(row['title'], `${path}.title`),
