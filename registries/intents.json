@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
   "multi_match": true,
   "intents": [
@@ -16,7 +16,8 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. brainstorming first, then writing-plans for spec/design/tasks, then whichever stack rows also match — so this row names no rules of its own. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the brainstorm/plan flow and to the matched stack rows.",
-      "suppressible": true
+      "suppressible": true,
+      "generic_signals": ["add", "build", "create", "implement"]
     },
     {
       "id": "big-sweep",
@@ -45,7 +46,8 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Tier is design per registries/models.json work type hard-debugging."
+      "note": "Tier is design per registries/models.json work type hard-debugging.",
+      "generic_signals": []
     },
     {
       "id": "backend",
@@ -61,7 +63,11 @@
       "hook_mirrored": true,
       "domain": "backend",
       "note": "Rules follow registries/routing.json's order (the registry wins for this field); CLAUDE.md lists the same five rules in a different order, architecture first. data.md is loaded because the signals include migrations and nestjs-patterns defers migration safety to it; architecture.md and observability.md are closure targets of backend.md. The nestjs MCP is for codegen. backend-coordinator (alias borisenko) is dual-mode AUDIT/IMPLEMENT. Suppressed by backend-python: a prompt naming a Python framework loads the FastAPI shapes, not the NestJS ones — the two rows share the stack-neutral words (API, service, endpoint, migration) and differ on the framework names.",
-      "suppressed_by": ["backend-python"]
+      "suppressed_by": ["backend-python"],
+      "stack": "node",
+      "stack_sibling": "backend-python",
+      "stack_frameworks": ["nestjs"],
+      "generic_signals": ["API", "service", "controller", "migration", "queue", "router", "endpoint"]
     },
     {
       "id": "backend-python",
@@ -76,7 +82,11 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "backend-python",
-      "note": "Hook-mirrored as the routing.json domain `backend-python` (docs/specs/2026-09-28-python-stack-and-agent-design-design.md §A3); exists as its own intent because C16 requires every routing domain to be claimed by exactly one intent. Rules follow routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. Signals are the Python framework names only; the stack-neutral backend words live on the backend row, which this row suppresses when both match. backend-coordinator (alias borisenko) covers both stacks."
+      "note": "Hook-mirrored as the routing.json domain `backend-python` (docs/specs/2026-09-28-python-stack-and-agent-design-design.md §A3); exists as its own intent because C16 requires every routing domain to be claimed by exactly one intent. Rules follow routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. Signals are the Python framework names only; the stack-neutral backend words live on the backend row, which this row suppresses when both match. backend-coordinator (alias borisenko) covers both stacks.",
+      "stack": "python",
+      "stack_sibling": "backend",
+      "stack_frameworks": ["fastapi", "django", "flask"],
+      "generic_signals": []
     },
     {
       "id": "frontend",

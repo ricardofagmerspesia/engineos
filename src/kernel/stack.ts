@@ -42,9 +42,12 @@ const defaultDeps: StackDeps = {
 
 // Directories the walk never enters: dependency trees, virtualenvs, build
 // output and the git dir all hold package.json / pyproject.toml files that are
-// somebody else's packages.
+// somebody else's packages. `fixtures` too: a test fixture is a sample package,
+// never one of the project's own, and the routing rebind reads frameworks — a
+// FastAPI fixture inside a TypeScript repository (EngineOS's own
+// test/fixtures/py-fastapi) made the repository look like a FastAPI service.
 export const SKIPPED_DIRS: readonly string[] = [
-  'node_modules', '.venv', '.git', 'dist', 'build', '__pycache__', 'site-packages', '.next',
+  'node_modules', '.venv', '.git', 'dist', 'build', '__pycache__', 'site-packages', '.next', 'fixtures',
 ];
 
 export const PYTHON_MARKERS: readonly string[] = ['pyproject.toml', 'requirements.txt'];

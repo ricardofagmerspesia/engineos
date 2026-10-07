@@ -420,7 +420,7 @@ test('resolve answers each section identically to the legacy projection that own
     const composite = portedFacts(root, { prompt, taskContract: true });
     const task = legacyAnswer(root, ['resolve-task', '--prompt', prompt]);
 
-    assertSame(field(composite, 'route', label), legacyAnswer(root, ['route-escalate', '--prompt', prompt]), `${label}: route`);
+    assertSame(withoutFloorFields(field(composite, 'route', label)), legacyAnswer(root, ['route-escalate', '--prompt', prompt]), `${label}: route`);
     assertSame(field(composite, 'decision_rules', label), legacyAnswer(root, ['decision-rules', '--prompt', prompt]), `${label}: decision_rules`);
     assertSame(field(composite, 'task_contract', label), field(task, 'task_contract', label), `${label}: task_contract`);
     // A null hitl in the legacy composite is an ABSENT hitl in the sparse
@@ -430,7 +430,7 @@ test('resolve answers each section identically to the legacy projection that own
     assertSame(narrowedHitl(field(composite, 'hitl', label)), field(task, 'hitl', label), `${label}: hitl`);
 
     // The two sections a prompt answers on its own, against their own arms.
-    assertSame(field(portedFacts(root, { prompt }), 'route', label), legacyAnswer(root, ['route-intent', prompt]), `${label}: route (intent form)`);
+    assertSame(withoutFloorFields(field(portedFacts(root, { prompt }), 'route', label)), legacyAnswer(root, ['route-intent', prompt]), `${label}: route (intent form)`);
     assertSame(field(portedFacts(root, { scale: { prompt } }), 'scale', label), legacyAnswer(root, ['scale', '--prompt', prompt]), `${label}: scale`);
   }
 });
@@ -486,7 +486,7 @@ function parityCase(root: string, arm: string, args: string[]): void {
   const legacy = runLegacy(root, argv);
   const ported = runPorted(root, argv);
   const legacyAnswer = parseAnswer(legacy, `${label} (pinned bash kernel)`);
-  const portedAnswer = parseAnswer(ported, `${label} (typescript projection)`);
+  const portedAnswer = legacyProjection(arm, parseAnswer(ported, `${label} (typescript projection)`));
 
   assert.deepEqual(portedAnswer, legacyAnswer, `${label}: answers differ`);
   // Key order is part of the answer's contract, not a formatting detail: callers
@@ -495,6 +495,25 @@ function parityCase(root: string, arm: string, args: string[]): void {
   // exactly when the key order does.
   assert.equal(JSON.stringify(portedAnswer), JSON.stringify(legacyAnswer), `${label}: key order differs`);
   assert.equal(ported.status, legacy.status, `${label}: exit codes differ`);
+}
+
+// The routing floor (docs/specs/2026-10-06-routing-decision-layer-contracts.md
+// §2) appended `rebound` and `generic_only` to both prompt forms of the route
+// section. The pinned bash kernel predates them and has no stack to rebind by,
+// so parity holds over every OTHER key, in order; the two additive keys are
+// pinned by route.test.ts and resolve.test.ts instead.
+const FLOOR_FIELDS: readonly string[] = ['rebound', 'generic_only'];
+
+function withoutFloorFields(section: unknown): unknown {
+  if (!isRecord(section)) return section;
+  return Object.fromEntries(Object.entries(section).filter(([key]) => !FLOOR_FIELDS.includes(key)));
+}
+
+function legacyProjection(arm: string, answer: unknown): unknown {
+  if (arm === 'route-intent' || arm === 'route-escalate') return withoutFloorFields(answer);
+  // An error answer carries no route key, and must not grow one.
+  if (arm === 'resolve-task' && isRecord(answer) && 'route' in answer) return { ...answer, route: withoutFloorFields(answer['route']) };
+  return answer;
 }
 
 function portedFacts(root: string, facts: Record<string, unknown>): unknown {

@@ -55,6 +55,11 @@ Rules for routing:
   backend-python → ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
   every row that applies; when the hook speaks, it is giving you the single
   highest-precedence domain, not the complete set.
+- **Stack rows follow the repository's stack.** An intent row carrying a `stack`
+  (`backend` is node, `backend-python` is python) is rebound to its `stack_sibling`
+  when the repository's resolved stack (`scripts/kernel.sh resolve-stack`) lacks
+  that stack — "add an endpoint" in a FastAPI-only repo loads the FastAPI row.
+  A mixed repo keeps the keyword result. The kernel reports each swap as `rebound`.
 - **The hooks need node >= 18.** Every `hooks/*.sh` is a shim over
   `dist/engineos.cjs`; `jq` is no longer a hook dependency. Under a missing or
   too-old node, `route-before-change.sh`, `mark-unrecorded.sh`,

@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { KernelError, isRecord } from '../lib/json';
+import { ROUTER_SETTINGS, isRouterSetting, type RouterSetting } from './policy-router-decision';
 
 export type Language = 'python' | 'node';
 export type Framework = 'fastapi' | 'django' | 'flask' | 'nestjs' | 'react' | 'next' | 'react-native' | null;
@@ -26,9 +27,20 @@ export interface PackageStack {
   python_env?: PythonEnv;            // default 'auto'; ignored for node
 }
 
+// The repo's cap on the routing decision layer (routing-decision-layer
+// contracts §1): the personal setting and this one merge on policy.json
+// `router_decision.restrictiveness`, the more restrictive winning.
+export interface ProjectRouterConfig {
+  mode: RouterSetting;
+}
+
 export interface ProjectConfig {
   version: 1;
   stack: { packages: PackageStack[] };
+  // Optional in the type so a literal written before the router key existed
+  // still compiles; the loader always fills it, null when the file has none,
+  // which reads as "no repo cap".
+  router?: ProjectRouterConfig | null;
 }
 
 export const PROJECT_CONFIG_PATH = '.engineos/config.json';
@@ -103,7 +115,7 @@ export function loadProjectConfig(root: string, readFile: ReadFile = readUtf8): 
 // is about to write with the same code that will read it back.
 export function parseProjectConfig(parsed: unknown, path: string = PROJECT_CONFIG_PATH): ProjectConfig {
   const document = requireRecord(path, parsed, '');
-  rejectUnknownKeys(path, document, '', ['version', 'stack']);
+  rejectUnknownKeys(path, document, '', ['version', 'stack', 'router']);
   if (document['version'] !== 1) malformed(path, '.version must be 1');
   const stack = requireRecord(path, document['stack'], '.stack');
   rejectUnknownKeys(path, stack, '.stack', ['packages']);
@@ -151,7 +163,16 @@ export function parseProjectConfig(parsed: unknown, path: string = PROJECT_CONFI
     return pkg;
   });
 
-  return { version: 1, stack: { packages } };
+  return { version: 1, stack: { packages }, router: parseRouter(path, document['router']) };
+}
+
+function parseRouter(path: string, value: unknown): ProjectRouterConfig | null {
+  if (value === undefined) return null;
+  const router = requireRecord(path, value, '.router');
+  rejectUnknownKeys(path, router, '.router', ['mode']);
+  const mode = router['mode'];
+  if (!isRouterSetting(mode)) malformed(path, `.router.mode must be one of ${ROUTER_SETTINGS.join('|')}`);
+  return { mode };
 }
 
 // Function declarations rather than closures: a `never`-returning call only

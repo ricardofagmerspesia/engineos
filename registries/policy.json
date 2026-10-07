@@ -1,6 +1,6 @@
 {
-  "version": "1.7.0",
-  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop, circuit-breaker and telemetry policy — eleven blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, breaker, hitl, telemetry), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure'); C25 checks breaker (the per-resource circuit breaker, answered by kernel.sh breaker and mirrored in rules/parallelism.md 'Circuit breaker'); C26 checks hitl (human-in-the-loop as a queryable entity, answered by kernel.sh hitl, folded into resolve-task as .hitl, and mirrored in rules/risk-autonomy.md 'Human-in-the-loop'); C27 checks telemetry.exec_journal (the agent-span journal, written by the hooks through src/hooks/telemetry.ts's span lifecycle and mirrored in rules/observability.md 'Agent traces'), C28 the retrieval-metrics reference and its RAG mirror, and C29 the adoption entrypoint wiring — so a future prose edit or block change that diverges fails CI.",
+  "version": "1.8.0",
+  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop, circuit-breaker, telemetry and routing-decision policy — twelve blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, breaker, hitl, telemetry, router_decision), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry) and the 2026-10-06 routing decision layer (router_decision). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure'); C25 checks breaker (the per-resource circuit breaker, answered by kernel.sh breaker and mirrored in rules/parallelism.md 'Circuit breaker'); C26 checks hitl (human-in-the-loop as a queryable entity, answered by kernel.sh hitl, folded into resolve-task as .hitl, and mirrored in rules/risk-autonomy.md 'Human-in-the-loop'); C27 checks telemetry.exec_journal (the agent-span journal, written by the hooks through src/hooks/telemetry.ts's span lifecycle and mirrored in rules/observability.md 'Agent traces'), C28 the retrieval-metrics reference and its RAG mirror, and C29 the adoption entrypoint wiring — so a future prose edit or block change that diverges fails CI.",
   "risk": {
     "aggregation": "max",
     "inputs": [
@@ -268,5 +268,21 @@
       {"prompt": "build the ios release and upload to TestFlight",                             "escalate": false, "reasons": [],                          "intents": ["ios-release"]},
       {"prompt": "why does the login handler fail with a 500",                                 "escalate": false, "reasons": [],                          "intents": ["bug"]}
     ]
+  },
+  "router_decision": {
+    "note": "Decision layer over the keyword floor (docs/specs/2026-10-06-routing-decision-layer-design.md section 3.2). `default` is WRITTEN by scripts/router-golden.sh run, never by hand; null = shadow (apply best available, log keyword alongside). `default` and `default_written_by` are null together or set together, and the loader (src/registry/policy-router-decision.ts, a sibling of policy.ts so the kernel answers never depend on this block) refuses a hand-set default. Sibling of `router` on purpose: `router` = when a model must plan, `router_decision` = which layer decides the intents. `restrictiveness` is the merge order for the personal setting vs the repo's .engineos/config.json router.mode (the more restrictive wins).",
+    "modes": ["keyword", "llm", "jev"],
+    "restrictiveness": ["keyword", "llm", "jev", "auto"],
+    "default": null,
+    "default_written_by": null,
+    "min_confidence": 0.6,
+    "tie_margin": 0.15,
+    "jev": {
+      "endpoint": "https://api.typesafe.ai/v1/systemone",
+      "model": "jev-latest",
+      "budget_ms": 400,
+      "key_env": "TYPESAFE_API_KEY"
+    },
+    "state_fields": ["prompt", "languages", "frameworks", "files_named"]
   }
 }

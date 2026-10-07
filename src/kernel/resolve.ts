@@ -1,4 +1,6 @@
+import { isAbsolute, relative, sep } from 'node:path';
 import { KernelError } from '../lib/json';
+import { loadProjectConfig, type Language, type PackageStack, type ProjectConfig } from '../registry/project-config';
 import { admitSection, type AdmitFacts, type AdmitSection } from './admit';
 import { breakerSection, type BreakerFacts, type BreakerSection } from './breaker';
 import type { KernelContext, Registries, RiskTier } from './context';
@@ -7,9 +9,10 @@ import { hitlSection, type HitlFacts, type HitlSection } from './hitl';
 import { modelSection, type ModelSection } from './model';
 import { repairSection, type RepairFacts, type RepairSection } from './repair';
 import { riskSection, type RiskSection } from './risk';
-import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type SuppressedIntent } from './route';
+import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type StackFacts, type SuppressedIntent } from './route';
 import { asciiDowncase, compilePromptRegex, scaleSection, type ScaleFacts, type ScaleSection } from './scale';
 import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
+import { resolveStack } from './stack';
 import { wavesSection, type WavesFacts, type WavesSection } from './waves';
 
 // Declared facts, sparse by design: a section is answered iff the facts it needs
@@ -129,10 +132,13 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     // answering "ambiguous" would report absence of a request as absence of an
     // intent.
     if (prompt === '') throw new KernelError('a declared prompt fact must not be empty');
+    // Once per resolve, and only for a prompt: a path fact never reads the
+    // stack, so it never pays for the tree walk.
+    const stack = repositoryStack(ctx.project, ctx.projectCwd);
     answer.route =
       facts.escalate === true || facts.taskContract === true
-        ? routeEscalate(prompt, ctx.registries)
-        : routeByIntent(prompt, ctx.registries);
+        ? routeEscalate(prompt, ctx.registries, stack)
+        : routeByIntent(prompt, ctx.registries, stack);
   }
   if (facts.workType !== undefined) {
     answer.model = modelSection({ workType: facts.workType }, ctx.registries);
@@ -216,6 +222,48 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
   }
   return answer;
+}
+
+// The repository's packages, and the one holding the working directory, or
+// none when no project was named or its stack cannot be read. Routing is
+// advisory: a broken .engineos/config.json or an unreadable tree degrades to
+// the plain keyword result, never to a refusal — the same leniency
+// src/hooks/verify-targets.ts projectConfig() applies.
+function repositoryStack(project: string | undefined, cwd: string | undefined): StackFacts | undefined {
+  if (project === undefined) return undefined;
+  try {
+    const packages = resolveStack(project, safeConfig(project)).packages;
+    return { packages, focus: focusPackage(project, cwd, packages) };
+  } catch {
+    return undefined;
+  }
+}
+
+// The deepest package whose directory contains the working directory. The root
+// package (`.`) counts only when nothing deeper does.
+function focusPackage(project: string, cwd: string | undefined, packages: readonly PackageStack[]): PackageStack | null {
+  if (cwd === undefined) return null;
+  const rel = relative(project, cwd).split(sep).join('/');
+  if (rel.startsWith('..') || isAbsolute(rel)) return null;
+  let best: PackageStack | null = null;
+  for (const pkg of packages) {
+    const inside = pkg.dir === '.' || rel === pkg.dir || rel.startsWith(`${pkg.dir}/`);
+    if (!inside) continue;
+    if (best === null || depth(pkg.dir) > depth(best.dir)) best = pkg;
+  }
+  return best;
+}
+
+function depth(dir: string): number {
+  return dir === '.' ? 0 : dir.split('/').length;
+}
+
+function safeConfig(project: string): ProjectConfig | null {
+  try {
+    return loadProjectConfig(project);
+  } catch {
+    return null;
+  }
 }
 
 // The closed policy bundle for substantive work. gates references

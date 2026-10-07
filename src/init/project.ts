@@ -28,6 +28,7 @@ import {
   type PackageStack,
   type ProjectConfig,
 } from '../registry/project-config';
+import { ROUTER_SETTINGS, isRouterSetting, type RouterSetting } from '../registry/policy-router-decision';
 
 // The one regex install.sh writes and greps for, carried here as the same
 // literal string so the two sides cannot drift (plan Task 26). It is a POSIX
@@ -44,7 +45,12 @@ const EXIT_NOT_GIT = 2;
 const EXIT_SELF = 3;
 const EXIT_USAGE = 64;
 
-const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]';
+const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--router keyword|llm|jev|auto] [--dry-run]';
+
+// `auto` caps nothing: the repo leaves the choice to the personal setting and
+// the policy default, which is what a project that never thought about routing
+// should say (routing-decision-layer contracts §1).
+const DEFAULT_ROUTER: RouterSetting = 'auto';
 
 // The bash halves of the scaffold stay on disk (versioned, sourced surface,
 // frozen until 2.0) and their absence still reads as a broken checkout; the JSON
@@ -90,6 +96,7 @@ interface Options {
   dir: string;
   dryRun: boolean;
   stack: StackSpec;
+  router: RouterSetting;
 }
 
 type Parsed = { ok: true; options: Options } | { ok: false; message: string };
@@ -101,7 +108,7 @@ export function initProject(argv: string[], deps: InitDeps): number {
     io.err(`${parsed.message}\n`);
     return EXIT_USAGE;
   }
-  const { dir: target, dryRun, stack } = parsed.options;
+  const { dir: target, dryRun, stack, router } = parsed.options;
 
   const project = repoRoot(target, deps.spawn);
   if (project === null) {
@@ -152,7 +159,7 @@ export function initProject(argv: string[], deps: InitDeps): number {
   // template is picked from it, so the two can never disagree about the stack.
   const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
   const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
-  writeProjectConfig({ io, project, packages, source, dryRun });
+  writeProjectConfig({ io, project, packages, source, router, dryRun });
   writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
   io.out(doneMessage(root));
   return EXIT_OK;
@@ -168,9 +175,10 @@ function writeProjectConfig(opts: {
   project: string;
   packages: readonly PackageStack[];
   source: StackSource;
+  router: RouterSetting;
   dryRun: boolean;
 }): void {
-  const { io, project, packages, source, dryRun } = opts;
+  const { io, project, packages, source, router, dryRun } = opts;
   io.out(stackTable(packages, source));
   const target = join(project, PROJECT_CONFIG_PATH);
   if (lstatOk(target)) {
@@ -181,7 +189,7 @@ function writeProjectConfig(opts: {
     io.out(`  ${PROJECT_CONFIG_PATH}: not written — no package detected; declare one with --stack <framework>[@dir]\n`);
     return;
   }
-  const config: ProjectConfig = { version: 1, stack: { packages: [...packages] } };
+  const config: ProjectConfig = { version: 1, stack: { packages: [...packages] }, router: { mode: router } };
   const text = `${JSON.stringify(config, null, 2)}\n`;
   if (dryRun) {
     io.out(`  would write ${PROJECT_CONFIG_PATH}:\n${indent(text, '    ')}`);
@@ -284,6 +292,7 @@ function parseArgs(argv: string[], cwd: string): Parsed {
   let dir = cwd;
   let dryRun = false;
   let stack: StackSpec = { kind: 'auto' };
+  let router: RouterSetting = DEFAULT_ROUTER;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dir') {
@@ -298,13 +307,18 @@ function parseArgs(argv: string[], cwd: string): Parsed {
       if (!parsedStack.ok) return { ok: false, message: parsedStack.message };
       stack = parsedStack.stack;
       i += 1;
+    } else if (arg === '--router') {
+      const value = argv[i + 1];
+      if (!isRouterSetting(value)) return { ok: false, message: `--router needs one of ${ROUTER_SETTINGS.join(', ')}` };
+      router = value;
+      i += 1;
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else {
       return { ok: false, message: USAGE };
     }
   }
-  return { ok: true, options: { dir, dryRun, stack } };
+  return { ok: true, options: { dir, dryRun, stack, router } };
 }
 
 // Two independent signals: the repo's own marker files, or the target simply

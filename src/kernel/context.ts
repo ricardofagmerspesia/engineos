@@ -43,8 +43,18 @@ export interface Registries extends RegistryFiles {
 }
 
 export interface KernelContext {
+  // The EngineOS checkout the registries are read from.
   root: string;
   registries: Registries;
+  // The caller's repository, whose resolved stack rebinds stack-bearing intents
+  // (contracts §2). Optional and never defaulted to `root`: the EngineOS
+  // checkout's own stack says nothing about the repository a prompt is about,
+  // and absent means "no stack known", which leaves the keyword result alone.
+  project?: string;
+  // The caller's working directory inside `project`. The package that holds it
+  // is consulted first when rebinding, so a prompt typed from `backend/` is
+  // decided by the backend package before the repository as a whole.
+  projectCwd?: string;
 }
 
 export function lazyRegistries(root: string): Registries {

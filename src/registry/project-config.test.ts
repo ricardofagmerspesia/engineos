@@ -65,6 +65,7 @@ test('the contract example loads with python_env defaulted and the node package 
         { dir: 'frontend', language: 'node', framework: 'react', compose_service: null },
       ],
     },
+    router: null,
   };
   assert.deepEqual(loadProjectConfig(ROOT, reading(JSON.stringify(VALID))), expected);
   const loaded = loadProjectConfig(ROOT, reading(JSON.stringify(VALID)));
@@ -144,6 +145,24 @@ test('wrong shapes are errors naming the JSON path', () => {
     '.stack.packages[0].compose_service must be a string or null');
   rejects({ version: 1, stack: { packages: [{ dir: '.', language: 'python', framework: null, compose_service: null, python_env: 'conda' }] } },
     '.stack.packages[0].python_env must be one of venv|uv|compose|auto');
+});
+
+test('an absent router key answers router: null, meaning no repo cap', () => {
+  assert.equal(parseProjectConfig(VALID, PATH).router, null);
+});
+
+test('router.mode accepts every setting, auto included', () => {
+  for (const mode of ['keyword', 'llm', 'jev', 'auto'] as const) {
+    assert.deepEqual(parseProjectConfig({ ...VALID, router: { mode } }, PATH).router, { mode });
+  }
+});
+
+test('a malformed router block is an error naming the JSON path', () => {
+  rejects({ ...VALID, router: 'keyword' }, '.router must be an object');
+  rejects({ ...VALID, router: null }, '.router must be an object');
+  rejects({ ...VALID, router: {} }, '.router.mode must be one of keyword|llm|jev|auto');
+  rejects({ ...VALID, router: { mode: 'regex' } }, '.router.mode must be one of keyword|llm|jev|auto');
+  rejects({ ...VALID, router: { mode: 'keyword', budget_ms: 100 } }, '.router has an unknown key "budget_ms"');
 });
 
 test('the default reader reads .engineos/config.json under the root from disk', (t) => {

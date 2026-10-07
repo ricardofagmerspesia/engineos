@@ -1,0 +1,192 @@
+# Routing decision layer — frozen contracts (wave 0)
+
+*Companion to `2026-10-06-routing-decision-layer-design.md`. Implementation waves build
+against these shapes and change none of them; a change comes back here first.*
+
+## 1. Registries
+
+### intents.json (additive, per row, all optional)
+
+```json
+{ "id": "backend",
+  "stack": "node",                   // "node" | "python"; absent = stack-neutral
+  "stack_sibling": "backend-python", // must name an existing intent with the other stack; reciprocal
+  "generic_signals": ["API", "service", "controller", "migration", "queue", "router", "endpoint"] }
+{ "id": "backend-python", "stack": "python", "stack_sibling": "backend", "generic_signals": [] }
+{ "id": "new-feature", "generic_signals": ["add", "build", "create", "implement"] }
+{ "id": "bug", "generic_signals": ["fix"] }
+```
+
+Loader rules (`src/registry/intents.ts`, strict): `stack` ∈ {node, python}; `stack`
+and `stack_sibling` come together or not at all; the sibling exists, has the other
+stack, and names this row back; every `generic_signals` entry is also in `signals`.
+Validator check (new, `src/checks/`): the same four rules, plus "every stack-bearing
+intent has a routing domain whose `sample_path` routes to it" (reuses C17).
+
+### policy.json (new block, additive)
+
+```json
+"router_decision": {
+  "note": "Decision layer over the keyword floor. `default` is WRITTEN by scripts/router-golden.sh run, never by hand; null = shadow (apply best available, log keyword alongside).",
+  "modes": ["keyword", "llm", "jev"],
+  "restrictiveness": ["keyword", "llm", "jev", "auto"],
+  "default": null,
+  "default_written_by": null,
+  "min_confidence": 0.6,
+  "tie_margin": 0.15,
+  "jev": { "endpoint": "https://api.typesafe.ai/v1/systemone", "model": "jev-latest", "budget_ms": 400, "key_env": "TYPESAFE_API_KEY" },
+  "state_fields": ["prompt", "languages", "frameworks", "files_named"]
+}
+```
+
+`default_written_by`: `{ "date", "golden_set", "scores": { "<mode>": { "intent_accuracy", "stack_correctness", "p95_ms", "fallback_rate" } } }` or null. The existing
+`policy.router` block (escalation to the router agent) is untouched; the two are
+siblings on purpose: `router` = when a model must plan, `router_decision` = which
+layer decides the intents.
+
+### .engineos/config.json (additive, optional)
+
+```json
+"router": { "mode": "keyword" }   // "keyword" | "llm" | "jev" | "auto"
+```
+
+`init --stack …` writes `"router": { "mode": "auto" }` unless `--router <mode>` is given.
+`src/registry/project-config.ts` validates the enum; absent = no repo cap.
+
+## 2. Kernel
+
+```ts
+// src/kernel/route.ts — floor (wave 1)
+export interface Rebound { from: string; to: string | null; reason: 'stack-absent' | 'stack-absent-no-sibling' }
+export interface IntentRouteSection {      // existing, + two additive fields
+  matches: IntentMatch[]; ambiguous: boolean;
+  rebound: Rebound[];                      // [] when no stack info or mixed repo
+  generic_only: boolean;                   // every surviving match hit only generic_signals
+}
+export function routeByIntent(text, regs, languages?: readonly Language[]): IntentRouteSection;
+export function routeEscalate(text, regs, languages?: readonly Language[]): EscalateRouteSection; // forwards; section gains rebound + generic_only
+
+// Rebind rule, applied to the RAW matches before suppression:
+//   stack-bearing intent, its stack ∉ languages, sibling's stack ∈ languages → replace by sibling (dedupe if sibling already matched)
+//   stack-bearing intent, its stack ∉ languages, sibling's stack ∉ languages → drop
+//   languages empty (no manifest) or both stacks present → unchanged
+```
+
+```ts
+// src/kernel/decision-layer.ts (wave 2)
+export type RouterMode = 'keyword' | 'llm' | 'jev';
+export type RouterSetting = RouterMode | 'auto';
+export interface DecisionInput {
+  prompt: string; languages: Language[]; frameworks: string[]; filesNamed: string[];
+  candidates: IntentMatch[];              // floor result after rebind + suppression
+  offered: IntentRow[];                   // every intent whose stack is absent-or-neutral, i.e. what the layer MAY choose
+  genericOnly: boolean;
+}
+export interface Decision {
+  mode: RouterMode;                       // the mode that actually decided
+  requested: RouterSetting;               // after the restrictiveness merge
+  intents: string[];                      // chosen primary + kept specific extras
+  confidence: number | null;              // null for keyword
+  escalate: boolean;                      // low confidence / tie / llm residue → router agent
+  fallback_reason: string | null;         // "no-key" | "timeout" | "http-429" | "http-529" | "bad-answer" | "repo-cap" | null
+  shadow: { keyword_intents: string[]; disagreement: boolean } | null;  // non-null iff policy default is null
+  latency_ms: number;
+}
+export function effectiveSetting(personal: string | undefined, repo: string | undefined, policyDefault: RouterMode | null): RouterSetting;
+//   most restrictive of (personal ?? policyDefault ?? 'auto', repo ?? 'auto') on the restrictiveness order
+export function decide(input: DecisionInput, setting: RouterSetting, regs: Registries, deps?: DecisionDeps): Decision;
+export interface DecisionDeps { fetch?: typeof fetch; env?: NodeJS.ProcessEnv; now?: () => number; hasClaudeCli?: () => boolean }
+```
+
+Mode semantics:
+- `keyword`: `intents = candidates`, `confidence = null`, `escalate` = the existing
+  policy.router rules only.
+- `llm`: no network. `escalate = genericOnly || candidates.length === 0 || existing rules`;
+  `intents = candidates`. (The in-session router agent is the decider; its brief gets
+  `offered`, `languages`, `genericOnly`.)
+- `jev`: one `fetch` to `policy.router_decision.jev.endpoint`, body
+  `{ model, state: { prompt, languages, frameworks, files_named }, questions: { intent: { type: "choice", instructions: <fixed text>, criteria: { <id>: "<title>. <note>" ..., "__none__": "none of these" } }, needs_router: { type: "noul", instructions: <fixed text> } } }`,
+  `criteria` keys = `offered` ids only. Answer validated: `choice` ∈ offered ∪ {__none__},
+  `confidence` ∈ [0,1]. `intents = [choice] ∪ specific extras from candidates`;
+  `escalate = confidence < min_confidence || top2 gap < tie_margin || needs_router ≥ 0.5 || existing rules`.
+  Any failure → `mode: 'keyword'`, `fallback_reason` set, candidates returned.
+- `auto` resolves to `jev` when `env[key_env]` is set, else `llm` when the claude CLI
+  is on PATH, else `keyword`; the resolved mode is reported in `requested` as `auto`
+  and in `mode` as what ran.
+- Shadow (policy `default === null`): the keyword result is always computed; when
+  `mode !== 'keyword'`, `shadow.disagreement = intents differ from keyword_intents`.
+
+```ts
+// src/kernel/resolve.ts — task contract gains one additive section
+answer.router = Decision;   // emitted only for resolve-task (taskContract: true)
+```
+
+### §2 amendment (2026-10-07, wave-1 barrier) — framework-first, package-first
+
+Found at the barrier: a language-only rebind left every FastAPI-plus-React
+repository (portal_dds, nexxus, ppp, lana, the opensearch demo) on the NestJS
+row, because the React frontend made the repository "mixed". Replaced by:
+
+- `intents.json` rows gain `stack_frameworks` (`backend`: `["nestjs"]`;
+  `backend-python`: `["fastapi","django","flask"]`). Each entry must be a known
+  framework of the row's own stack; absent = count by language.
+- The router takes `StackInput = readonly Language[] | { packages: PackageStack[]; focus: PackageStack | null }`.
+  A bare language list becomes framework-less packages with no focus.
+- `KernelContext.project` is the repo root of the caller's cwd (NOT `root`,
+  which is the EngineOS checkout); `KernelContext.projectCwd` is the cwd, and
+  `focus` is the deepest package containing it.
+- Rebind order, first place that holds either row decides: frameworks in the
+  focus package → frameworks in the repo → language in the focus package →
+  language in the repo. The row itself holding keeps the keyword result; only
+  the sibling holding swaps; nothing holding anywhere keeps the keyword result
+  (no more drop).
+- `Rebound = { from, to, reason: 'framework' | 'language', scope: 'package' | 'repo' }`.
+- Eval `stack` entries may be `<language>:<framework>`; one package directory per entry.
+
+## 3. Prompt-advisor and journal
+
+- Contract line (prompt-advisor-guidance.ts) gains ` router=<mode>` and, when
+  `confidence !== null`, `/<confidence to 2 decimals>`.
+- New line when `fallback_reason !== null`:
+  `[engineos] router: keyword (<requested> unavailable: <fallback_reason>)`.
+- New line when `escalate` and the existing route did not already escalate:
+  `[engineos] router: <mode> could not decide (<reason>) — dispatch the router agent … (same wording as the existing escalation note)`.
+- Router span (`withSpan` in prompt-advisor.ts) fields, all EXISTING journal fields:
+  `provider = <mode>`, `model = policy jev model | "keyword" | "router-agent"`,
+  `cost_micros` (from Jev `usage.cost` when present), `cache_hit`,
+  `note = "req=<requested> conf=<c> esc=<0|1> fb=<reason|-> kw=<keyword intents csv> dis=<0|1>"` (≤ 256 chars, slug-safe inside note is not required).
+  No journal schema change in this change.
+- Cache (`src/hooks/cache.ts`): `languages` per root for the session; `Decision`
+  per `sha256(prompt)+languages+mode` for the session (Jev calls are not repeated for
+  an identical prompt).
+
+## 4. Router agent brief (wave 2c)
+
+`agents/router.md` gains an input section: `languages`, `frameworks`, `offered`
+(ids with titles), `candidates`, `genericOnly`, `decision.mode`. Its output contract is
+unchanged (dispatch plan). It may choose only among `offered`.
+
+## 5. Golden set (wave 3/4 shapes, frozen now so shadow logging matches)
+
+`evals/router-golden/cases.jsonl`, one line per case:
+```json
+{ "id": "rg-001", "source": "real" | "synthetic", "repo": "labv-assist", "stack": ["python"], "frameworks": ["fastapi"],
+  "prompt": "add an endpoint that lists invoices", "expect_intents": ["backend-python"], "expect_escalate": false,
+  "collected_at": "2026-10-20", "note": "" }
+```
+`scripts/router-golden.sh collect` reads the journal (router spans, `note` fields)
+into candidate lines with `expect_intents: null`; the developer fills them.
+`scripts/router-golden.sh run [--mode m]` runs every mode through `dist/engineos.cjs`
+against `repo`'s checkout and writes `evals/router-golden/RESULTS.md` + the
+`policy.json` `default`/`default_written_by` when the acceptance rule holds
+(stack_correctness = 1.0 for the winner and intent_accuracy strictly highest; else
+leaves `default` null and says why).
+
+## 6. Wave 1 ownership (disjoint)
+
+| Unit | Owns | Reads |
+|---|---|---|
+| 1a floor | `src/kernel/route.ts` (+test), `src/registry/intents.ts` (+test), `registries/intents.json` (fields on backend/backend-python/new-feature/bug), `src/kernel/resolve.ts` (languages once from `resolveStack(ctx.root)`, pass to route), new validator check in `src/checks/`, `CLAUDE.md`/`AGENTS.md` one router bullet | §1 intents, §2 route |
+| 1b evals + config | `evals/intent-routing-cases.jsonl` (stack-tagged cases; schema gains optional `stack`), `src/evals/deterministic.ts` (+test) honouring `stack` by passing languages, `scripts/run-evals.sh` if needed, `src/registry/project-config.ts` (+test) `router.mode`, `src/init/project.ts` (+test) `--router`, `registries/policy.json` `router_decision` block + `src/registry/policy.ts` (+test) loader | §1 policy/config, §5 |
+
+Wave 2: (a) `decision-layer.ts` + tests with fake fetch · (b) prompt-advisor rendering + span + cache · (c) `agents/router.md` brief + `rules/` prose + docs. Wave 3: shadow collect script + docs + change record.

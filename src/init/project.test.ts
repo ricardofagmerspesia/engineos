@@ -47,7 +47,7 @@ test('bad usage is refused with 64 before anything is touched', () => {
   assert.deepEqual(init(['--wat'], { home: '/nonexistent' }), {
     status: 64,
     stdout: '',
-    stderr: 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]\n',
+    stderr: 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--router keyword|llm|jev|auto] [--dry-run]\n',
   });
   assert.deepEqual(init(['--stack'], { home: '/nonexistent' }), {
     status: 64,
@@ -266,6 +266,7 @@ test('--stack auto (the default) writes what detection found, pretty-printed wit
         { dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
       ],
     },
+    router: { mode: 'auto' },
   });
 });
 
@@ -288,6 +289,7 @@ test('--stack with a declared list writes exactly that list', (t) => {
         { dir: 'frontend', language: 'node', framework: 'react', compose_service: null },
       ],
     },
+    router: { mode: 'auto' },
   });
 });
 
@@ -402,5 +404,44 @@ test('--dry-run prints the config it would write and writes nothing', (t) => {
   const run = init(['--dir', repo, '--dry-run', '--stack', 'nestjs'], { home: fakeHome(root) });
   assert.equal(run.status, 0);
   assert.ok(run.stdout.includes(`  would write ${CONFIG}:\n    {\n      "version": 1,\n`), run.stdout);
+  assert.equal(existsSync(join(repo, '.engineos')), false);
+});
+
+// ----------------------------------------------------------------- --router
+
+test('a bad --router value is refused with 64 before anything is touched', () => {
+  const message = '--router needs one of keyword, llm, jev, auto\n';
+  assert.deepEqual(init(['--router'], { home: '/nonexistent' }), { status: 64, stdout: '', stderr: message });
+  assert.deepEqual(init(['--router', 'regex'], { home: '/nonexistent' }), { status: 64, stdout: '', stderr: message });
+});
+
+test('--router writes the mode next to the stack', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--stack', 'fastapi', '--router', 'keyword'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  const text = readFileSync(join(repo, CONFIG), 'utf8');
+  assert.deepEqual(Object.keys(JSON.parse(text)), ['version', 'stack', 'router']);
+  assert.deepEqual(readConfig(repo), {
+    version: 1,
+    stack: { packages: [{ dir: '.', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' }] },
+    router: { mode: 'keyword' },
+  });
+});
+
+test('--dry-run shows the router mode in the config it would write', (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const root = tempRoot(t);
+  const repo = fixtureRepo(root);
+  const run = init(['--dir', repo, '--dry-run', '--stack', 'nestjs', '--router', 'jev'], { home: fakeHome(root) });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes('      "router": {\n        "mode": "jev"\n      }\n'), run.stdout);
   assert.equal(existsSync(join(repo, '.engineos')), false);
 });
