@@ -58,10 +58,26 @@ fail (`resolve --facts: unknown fact <key>`, exit 1), never silently drop policy
    Copy the JSON verbatim into `kernel.resolve`. It answers in two sections:
 
    - `.route` — the route-escalation answer: `escalate`, `reasons`, `intents`,
-     `suppressed`, `agents`, `model_tier`, `risk_floor`, `scale`, `ambiguous`.
+     `suppressed`, `agents`, `model_tier`, `risk_floor`, `scale`, `ambiguous`,
+     then the trailing `ranked`, `margin` and `judge`.
      `"escalate": true` is the modifier that selects this form; without it the
      same `prompt` fact answers the plain intent form, which is not enough to
      plan from.
+     - `.route.ranked` — every scored candidate, score descending: `id`,
+       `score`, `confidence` (score share among candidates) and `features`
+       (deterministic strings such as `+2 "add an endpoint"`, `+1 pair
+       add+endpoint`, `-1 "explain"`, `+1 path src/api/x.ts`, `+0.45 exemplar`).
+       Suppression does not edit it, so a suppressed intent still appears here.
+     - `.route.margin` — `(top score - second score) / top score`; `1` with one
+       candidate, `null` with none.
+     - `.route.judge` — `{source, reason, model}`. This call declares no judge
+       fact (a judge fact needs a task-contract fact, which a planner does not
+       declare), so it reads `{"source": "fallback", "reason": "no-judge-fact",
+       "model": null}`: the ranking is the deterministic classifier alone. Quote
+       it as returned; never declare a `judge` fact or call a judge yourself.
+     - `.route.reasons` may end with `low-confidence`: the top candidate's
+       confidence or the margin fell under `policy.json` `router.scoring`. That
+       reason is why you were dispatched; it is the tiebreak step 3 settles.
    - `.risk` — the classified tier: `risk`, `autonomy_ceiling`, `gates`,
      `floors_applied`. The gates arrive nested in `.risk.gates`; there is no
      separate gates call to make. The tier may never come out below
@@ -72,9 +88,18 @@ fail (`resolve --facts: unknown fact <key>`, exit 1), never silently drop policy
    without the kernel there is no ground truth, and re-deriving policy from
    memory is exactly the failure this phase exists to prevent.
 3. **Resolve the intent set.** Start from `.route.intents` — suppression
-   is already applied there. Drop or add an intent ONLY with a reason recorded
-   in `intent_overrides`. Then build `rules` as the union over the resolved
-   intents and verify closure: for each rule, check whether it defers to a
+   is already applied there. Read `.route.ranked` before deciding anything: it
+   is the evidence for every tiebreak. Drop or add an intent ONLY with a reason
+   recorded in `intent_overrides`, and that reason MUST cite the candidate it
+   overrides, in this form, values copied from `.route.ranked`:
+
+   `candidate <id> score=<score> confidence=<confidence> features=<features joined by "; "> — <why>`
+
+   An added intent absent from `.route.ranked` cites
+   `candidate <id> unranked — <why>`. An override that cites no candidate is
+   a defect: the retro mines these reasons to correct the registry, and an
+   uncited override teaches it nothing. Then build `rules` as the union over
+   the resolved intents and verify closure: for each rule, check whether it defers to a
    non-always-on rule and add that rule too if it is missing (CLAUDE.md's
    closure rule).
 4. **Decompose into units.** Each unit owns a disjoint file scope named with
@@ -121,7 +146,8 @@ What you MUST copy verbatim: every `kernel.*` subtree; `risk.tier` /
 each unit's `model_tier` / `model`.
 
 What you MAY override, with a reason recorded in `intent_overrides` or
-`residue`: the intent set (add/drop); the risk tier **upward only**, by
+`residue`: the intent set (add/drop), each override citing its `.route.ranked`
+candidate (step 3); the risk tier **upward only**, by
 supplying stronger `signals` facts and re-running the `resolve` call; a
 unit's model tier **upward only** per `rules/models.md` escalation; the unit
 decomposition itself — `files`, `depends_on`, `mode`, `must_not_read`; and
@@ -137,11 +163,11 @@ agent absent from `registries/agents.json`; emit a plan with a non-empty
 
 Everything the kernel answered is quoted, not re-decided. The only original
 content anywhere in the plan is the intent tiebreak (`intent_overrides` and its
-reasons), the file-scope decomposition into units, and the risk-input evidence
-you gathered from the request and the repo. If a field in the plan could have
-been copied from a `resolve` answer — its `.route`, `.risk` (gates included),
-`.model` or `.waves` section — and was not, that is a defect, not a judgment
-call.
+reasons, each citing the `.route.ranked` candidate it overrides), the
+file-scope decomposition into units, and the risk-input evidence you gathered
+from the request and the repo. If a field in the plan could have been copied
+from a `resolve` answer — its `.route`, `.risk` (gates included), `.model` or
+`.waves` section — and was not, that is a defect, not a judgment call.
 
 ## Return format
 
@@ -191,3 +217,25 @@ respectively — so nothing downstream has to learn a new shape. This block IS
 the deliverable; do not summarize it in prose instead of emitting it, and do
 not write it to a file — you hold no `Write` tool, so the plan travels only in
 the reply.
+
+`candidates`: after the JSON block, quote `kernel.resolve.route.ranked` as a
+table so a reviewer can check every override against the scores without
+parsing JSON. Values are copied verbatim, one row per candidate, in kernel
+order; an empty `ranked` prints the header and the single row
+`| (none) | | | |`:
+
+```markdown
+### Candidates (kernel.resolve.route.ranked)
+
+| id | score | confidence | features |
+|---|---|---|---|
+| <id> | <score> | <confidence> | <features joined by "; "> |
+
+margin: <kernel.resolve.route.margin> · judge: <source>/<reason or model> · reasons: <kernel.resolve.route.reasons joined by ",">
+```
+
+The table adds no key to `dispatch_plan`: the frozen shape is unchanged, and
+`kernel.resolve.route.ranked` inside the JSON remains the authoritative copy.
+For the supervisor's `[router]` line, `next_actions` names every kernel-ranked
+intent the plan dropped or displaced as `corrected_from=<id>[,<id>...]`, so
+the supervisor can append that token verbatim (CLAUDE.md `[router]` format).

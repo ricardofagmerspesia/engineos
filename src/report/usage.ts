@@ -5,7 +5,9 @@
 // The section headers and the line formats are the surface the retro skill reads,
 // so they are reproduced byte for byte from the bash: GNU `uniq -c`'s width-7
 // count column, `printf "%6s  %s"`, and jq's `group_by` ordering. Three
-// behaviours deliberately differ, each marked DEVIATION where it happens.
+// behaviours deliberately differ, each marked DEVIATION where it happens. One
+// section postdates the bash and has no byte-for-byte ancestor: Misroutes,
+// marked ADDITION.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, type Dirent } from 'node:fs';
 import { join } from 'node:path';
@@ -51,6 +53,9 @@ export interface UsageDeps {
 // more than once and produces identical numbers.
 interface TranscriptStats {
   intents: Map<string, number>;
+  // Keyed `<kernel intent> -> <corrected intent>`; ids are slugs, so the
+  // separator cannot occur inside either half.
+  misroutes: Map<string, number>;
   skillFiles: Map<string, number>;
   agentFiles: Map<string, number>;
   gateBlocks: number;
@@ -64,6 +69,17 @@ interface TelemetryEvent {
 // `[router] intent=<slug>` as the bash grep -oE saw it: letters and hyphens only,
 // so a trailing ` risk=low` never bleeds into the captured intent.
 const ROUTER_INTENT = /\[router\] intent=([a-zA-Z-]+)/g;
+
+// The same announce line when it ends with the supervisor's correction token,
+// `corrected_from=<id>[,<id>...]` (contracts §13): the kernel-ranked ids the
+// supervisor overrode. Both groups take comma lists. The gap between them stops
+// at a backslash, a quote and a newline because transcripts are JSONL: a line
+// break inside a message is the two characters `\n`, and stopping there keeps
+// one announce line's token from pairing with an earlier line's intent. The id
+// alphabet matches ROUTER_INTENT, so a template line (`intent=<intent>`) or a
+// spec excerpt (`corrected_from=<id>`) never counts.
+const ROUTER_CORRECTION = /\[router\] intent=([a-zA-Z,-]+)[^\\"\n]*? corrected_from=([a-zA-Z,-]+)/g;
+const PAIR_SEPARATOR = ' -> ';
 
 // bash matched `"skill"[[:space:]]*:[[:space:]]*"<name>"` — zero or more spaces on
 // both sides of the colon. Built once; every reported skill name is a slug, so
@@ -97,6 +113,7 @@ export function renderReport(days: number, deps: UsageDeps, io: Io): number {
 
   const stats = readTranscripts(files);
   writeIntents(stats, io);
+  writeMisroutes(stats, io);
   writeSkills(stats, io);
   writeAgents(stats, io);
   writeGateHits(stats, io);
@@ -176,6 +193,7 @@ function readText(path: string): string | null {
 function readTranscripts(files: string[]): TranscriptStats {
   const stats: TranscriptStats = {
     intents: new Map(),
+    misroutes: new Map(),
     skillFiles: new Map(),
     agentFiles: new Map(),
     gateBlocks: 0,
@@ -186,6 +204,9 @@ function readTranscripts(files: string[]): TranscriptStats {
     for (const match of text.matchAll(ROUTER_INTENT)) {
       const intent = match[1];
       if (intent !== undefined) bump(stats.intents, intent);
+    }
+    for (const match of text.matchAll(ROUTER_CORRECTION)) {
+      for (const pair of correctionPairs(match[2], match[1])) bump(stats.misroutes, pair);
     }
     // grep -l counts FILES, not occurrences: a session that invoked one skill
     // forty times is still one session.
@@ -207,6 +228,28 @@ function bump(counts: Map<string, number>, key: string): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
+// One announce line yields every (overridden, announced) pair once. A line that
+// only dropped a kernel intent still pairs it with the intents that were kept:
+// the report cannot see the kernel's full set, and "frontend was overridden in
+// favour of backend" is the reading retro needs for a negative/phrases delta.
+// An id named on both sides is not a correction and yields no pair.
+function correctionPairs(correctedFrom: string | undefined, announced: string | undefined): string[] {
+  const kernelIds = idList(correctedFrom);
+  const correctedIds = idList(announced);
+  const pairs = new Set<string>();
+  for (const kernelId of kernelIds) {
+    for (const correctedId of correctedIds) {
+      if (kernelId !== correctedId) pairs.add(`${kernelId}${PAIR_SEPARATOR}${correctedId}`);
+    }
+  }
+  return [...pairs];
+}
+
+function idList(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  return raw.split(',').filter((id) => id !== '');
+}
+
 function writeIntents(stats: TranscriptStats, io: Io): void {
   io.out('\n## Router intents ([router] announce lines)\n');
   if (stats.intents.size === 0) {
@@ -223,6 +266,22 @@ function writeIntents(stats: TranscriptStats, io: Io): void {
   for (const [intent, count] of rows) {
     // GNU `uniq -c` prints the count right-aligned in seven columns, then a space.
     io.out(`${String(count).padStart(7)} ${intent}\n`);
+  }
+}
+
+// ADDITION: no bash ancestor. Line format is contracts §13's
+// `<kernel intent> -> <corrected intent>  <count>`, which skills/retro step 1
+// reads. Count descending, then the pair in ascending byte order, so the output
+// is stable across runs.
+function writeMisroutes(stats: TranscriptStats, io: Io): void {
+  io.out('\n## Misroutes ([router] corrected_from tokens)\n');
+  if (stats.misroutes.size === 0) {
+    io.out('(none recorded)\n');
+    return;
+  }
+  const rows = [...stats.misroutes.entries()].sort((a, b) => b[1] - a[1] || compareAsc(a[0], b[0]));
+  for (const [pair, count] of rows) {
+    io.out(`${pair}  ${count}\n`);
   }
 }
 
@@ -331,4 +390,8 @@ function column(count: number): string {
 function compareDesc(a: string, b: string): number {
   if (a === b) return 0;
   return a < b ? 1 : -1;
+}
+
+function compareAsc(a: string, b: string): number {
+  return -compareDesc(a, b);
 }

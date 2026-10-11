@@ -39,7 +39,19 @@ route and stop.
 
    Node >=18 safely JSON-escapes request quotes/newlines; jq is unnecessary.
    escalate:true selects route-escalation fields (escalate/reasons/intents/agents/
-   risk_floor/scale/ambiguous). Empty root: report unreachable kernel and stop.
+   risk_floor/scale/ambiguous, then ranked/margin/judge). Empty root: report
+   unreachable kernel and stop.
+
+   The one-line summary carries the ranking as well as the decision, copied
+   from `.route`, in this order:
+
+   `[route] escalate=<bool> reasons=<ids|none> intents=<ids|none> ranked=<id:confidence,...|none> margin=<n|null> judge=<source>/<reason or model>`
+
+   `ranked` lists `.route.ranked` in kernel order (`id:confidence` per
+   candidate); `judge` reads `fallback/no-judge-fact` here because this call
+   declares no judge fact. A trailing `low-confidence` in `reasons` means the
+   top candidate or the margin was too weak to trust — the router agent settles
+   it in step 2.
 2. Dispatch the `router` agent via the Task tool with `model: opus`, passing
    `$ARGUMENTS` as the request. **Explicit invocation always dispatches**, even
    when `escalate` is `false` — the user asked for a plan, and the fast path in
@@ -48,7 +60,12 @@ route and stop.
    dispatch was optional.
 3. Print, in this order:
    - the `[router]` line in CLAUDE.md's format
-     (`[router] intent=<ids> risk=<tier> autonomy=<A?> loaded=<rules/skills>`);
+     (`[router] intent=<ids> risk=<tier> autonomy=<A?> loaded=<rules/skills>`),
+     ending with ` corrected_from=<id>[,<id>...]` when the plan's
+     `intent_overrides` dropped or displaced kernel-ranked intents (the ids the
+     router names in `next_actions`); omit the token when the kernel's set was
+     taken as-is. `engineos usage-report` mines it into its Misroutes section;
+   - the plan's `Candidates` table, verbatim;
    - the plan's `fanout_line`;
    - the `dispatch_plan` JSON block, verbatim;
    - `unresolved` as a bulleted list, when non-empty.
