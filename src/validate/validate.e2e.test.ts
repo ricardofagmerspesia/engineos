@@ -39,14 +39,14 @@ function okLines(text: string): string[] {
   return lines(text).filter((line) => line.startsWith(OK_PREFIX));
 }
 
-test('--list prints the 68 registered Checks in natural order (C1 first, C37 last)', () => {
+test('--list prints the 72 registered Checks in natural order (C1 first, C38d last)', () => {
   const listed = validate(['--list'], checkoutRoot());
   assert.equal(listed.status, 0);
   const ids = lines(listed.stdout);
   assert.deepEqual(ids.filter((id) => !CHECK_ID.test(id)), [], 'every --list line is a check id');
-  assert.equal(ids.length, 68);
+  assert.equal(ids.length, 72);
   assert.equal(ids[0], 'C1');
-  assert.equal(ids[ids.length - 1], 'C37');
+  assert.equal(ids[ids.length - 1], 'C38d');
 });
 
 test('--only with an id no Check answers to exits 2', () => {
@@ -77,9 +77,10 @@ test('--only C17 runs its letter-suffixed sub-checks, --only C17c runs only C17c
 // The exact result count IS the point, not just `failed 0`. A family that stops
 // emitting a result — a guard that returns [] where it used to report, a check
 // silently dropped from a registry — keeps every other assertion green and the
-// lost evidence is invisible. 113 is the registered checks' result count on this
-// tree; changing it is a deliberate edit here, never a side effect elsewhere.
-const RESULT_COUNT = 113;
+// lost evidence is invisible. 117 is the registered checks' result count on this
+// tree (113 before the router-v2 family C38, C38b, C38c and C38d, one result
+// each); changing it is a deliberate edit here, never a side effect elsewhere.
+const RESULT_COUNT = 117;
 
 test('a clean tree validates green with the header and the exact result count', () => {
   const clean = validate([], checkoutRoot());

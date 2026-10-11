@@ -170,7 +170,9 @@ test('C22c passes on an unmutated checkout', (t) => {
 
 test('the route telemetry event removed from prompt-advisor.ts is caught', (t) => {
   const findings = run(t, 'C22c', (root) => {
-    editFile(root, ADVISOR, (text) => replaceOnce(text, "event(sink, 'route',", "event(sink, 'route-missing',"));
+    // Global: prompt-advisor.ts emits `route` twice (the routed answer and the
+    // not-user-input skip), and the event is removed only when every emission is.
+    editFile(root, ADVISOR, (text) => replaceOnce(text, /event\(sink, 'route',/g, "event(sink, 'route-missing',"));
   });
   assert.ok(hasFinding(findings, 'does-not-emit-event', `${ADVISOR}:route`));
 });

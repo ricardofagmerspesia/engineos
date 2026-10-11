@@ -1,14 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { KernelError } from '../lib/json';
+import { KernelError, isRecord } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
 import { lazyRegistries } from './context';
 import { riskSection, type RiskFacts } from './risk';
 
-const regs = lazyRegistries(resolveRoot({}, __dirname));
+const shippedRoot = resolveRoot({}, __dirname);
+const regs = lazyRegistries(shippedRoot);
 
 // --- classification (the --signals form of cmd_risk) -----------------------
 
@@ -158,9 +159,20 @@ function policyRootWith(aggregation: string): string {
     breaker: source.breaker,
     hitl: source.hitl,
     router: source.router,
+    judge: shippedJudgeBlock(),
   };
   writeFileSync(join(dir, 'registries', 'policy.json'), JSON.stringify(policy), 'utf8');
   return dir;
+}
+
+// The loader requires a judge block before it reaches .risk.aggregation. It is
+// copied verbatim from the shipped file rather than from the parsed policy or
+// written by hand: judge.redaction is SHA-256 pinned, so only the shipped bytes
+// load.
+function shippedJudgeBlock(): unknown {
+  const shipped: unknown = JSON.parse(readFileSync(join(shippedRoot, 'registries', 'policy.json'), 'utf8'));
+  if (!isRecord(shipped)) throw new Error('registries/policy.json is not an object');
+  return shipped['judge'];
 }
 
 function kernelError(message: string): (error: unknown) => boolean {
