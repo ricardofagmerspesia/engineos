@@ -34,6 +34,108 @@ Checks case/schema drift against current policy.
 7. `expect_risk`, when present, is a real tier (`low` / `medium` / `high`) and is
    **at or above** the `risk_floor` that `registries/routing.json` sets for every
    expected domain. Resolve case/registry disagreements before approving execution.
+8. **Case schema v2 shape** (conditional) — printed only when at least one case
+   carries a v2 field, so a v1-only set keeps its exact output and pass count.
+   Fails on any problem listed under "Case schema v2" below. Its lines read
+   `ok   v2 case fields are well-formed and name active intents` or
+   `FAIL v2 field problems: <id>(<problem>) ...`.
+
+The coverage floor (25 intent cases) is a separate size line, not a numbered check.
+
+## Case schema v2
+
+Contract: `docs/specs/2026-10-10-routing-replacement-contracts.md` §8 (rev 2).
+The v1 fields (`id`, `input`, `expect_intents`, `must_load`, `must_not_load`,
+`notes`, optional `expect_risk`) are unchanged. Every v2 field is optional, and
+an unrelated extra key is still not a failure.
+
+| Field | Type | Meaning | Deterministic check (check 8) |
+|---|---|---|---|
+| `expect_primary` | string | The single best intent for the prompt: an active intent id, or `other` for a project change that no active intent covers (for example configuring Claude Code itself) | Names an active intent (`enabled` is not `false` in `registries/intents.json`) or `other`; absent on a `notification` case |
+| `expect_not_intents` | string[] | Intent ids that must be absent from the tier's `intents` | Every entry is a registry intent id; none equals `expect_primary` or appears in `expect_intents` |
+| `exemplar` | `true` | The case's `input` seeds `intents.json` `exemplars` for its one intent | Value is exactly `true`; `expect_intents` has exactly one entry and it is an active intent id; `expect_primary`, when present, equals that entry; not a `notification` case |
+| `source` | `"user"` \| `"notification"` | Who wrote the text. Default `user`. A `notification` case is text the user did not type (a background-task report, a tool result) and expects no route at all (speed step S0) | One of the two values; a `notification` case has empty `expect_intents` and no `expect_primary` or `judge` |
+| `judge` | object | Shadow-tier expectations on the judge's answers (below) | Shape only: an object; `primary` an active intent or `other`; `intent_above`, `intent_below`, `fact_above`, `fact_below` arrays of non-empty strings, with no entry both above and below; `design_work_above` a number in `[0, 1]` |
+
+`judge` keys, all optional:
+
+| Key | Holds when |
+|---|---|
+| `primary` | the `primary_intent` Choice's top option equals it |
+| `intent_above` / `intent_below` | each `intent.<id>` Noul is at or above / below that intent's threshold (`intents.json` row `threshold`, else `policy.judge.thresholds.intent_default`) |
+| `fact_above` / `fact_below` | each `fact.<name>` Noul is at or above / below its decision rule's `judge_threshold`, else `policy.judge.thresholds.rule_default` |
+| `design_work_above` | the `design_work` Noul is strictly above the value |
+
+`expect_intents` is still not checked against registry ids: v1 cases name
+router-table rows with labels that are not intent ids (see the alias table
+below). Relabelling them is a golden-set authoring decision.
+
+## Shadow tier (approved final stage only)
+
+The shadow tier compares two answers for every user-sourced intent case:
+
+- **fallback** — the deterministic kernel answer with the judge off: Tier 1
+  scored classifier (`route.ranked`, `route.intents`; `judge.source=fallback`).
+- **judge** — the Jev answer folded by contract §4.2 (`noul-then-primary`):
+  every `intent.<id>` Noul at or above its threshold, else `primary_intent`
+  when its confidence clears `policy.judge.thresholds.primary_confidence`, else
+  no intents and `ambiguous`.
+
+Neither answer is graded live until the developer records the T13 human
+decision that allows prompts to leave the machine (contract D5). A run without
+that decision reports the judge column as SKIPPED with a count, never as passed.
+
+### Metrics, per tier
+
+| Metric | Definition |
+|---|---|
+| Precision per intent | `TP / (TP + FP)` over the graded cases. TP: the intent is in the tier's `intents` and in the case's expected set. FP: it is in `intents` but not expected, or it is listed in `expect_not_intents` |
+| Recall per intent | `TP / (TP + FN)`. FN: expected but absent from the tier's `intents` |
+| Macro precision / recall | Unweighted mean over the active intents that have at least one expected case |
+| MRR@3 | Over cases with `expect_primary`: `1 / rank` of `expect_primary` in the tier's top three (fallback: `route.ranked`; judge: `primary_intent` options by probability), `0` when absent. `expect_primary: "other"` counts as rank 1 when the tier routes no intent and as `0` otherwise |
+| Notification pass rate | `source: notification` cases pass only when no kernel call and no judge request was made: the route event reads `{ "skipped": "not-user-input" }` |
+| Judge expectation pass rate | `judge` keys that hold, over `judge` keys present (judge tier only) |
+
+An intent's undefined precision (no prediction) or recall (no expected case) is
+reported as `n/a`, never as `0` or `1`.
+
+### Expected set and label aliases
+
+A case's expected set is `expect_intents`, mapped through this alias table for
+the v1 labels that are not intent ids:
+
+| v1 label | Intent id(s) |
+|---|---|
+| `sweep` | `big-sweep` |
+| `security` | `security-files` |
+| `architecture-decision` | `adr` |
+| `test` | `test-writing` |
+| `api-qa` | `qa-endpoints` |
+| `critic` | `critic-verification` |
+| `mobile-store-release` | `ios-release`, `android-release` (either satisfies the case) |
+
+A label that is neither an intent id nor in this table is excluded from the
+per-intent metrics and reported as a count of unmapped labels.
+
+### Exemplar leakage
+
+`exemplar: true` inputs become BM25 documents of the fallback classifier, so
+grading the fallback on them is grading on training data. Metrics are reported
+twice: over every case, and over the held-out set (cases without
+`exemplar: true`). Promotion decisions use the held-out set only.
+
+### Promotion (plan §4a rollout)
+
+- **Advisory** needs no metric bar beyond a complete shadow run.
+- **Authoritative for intents** requires, on the held-out set, judge macro
+  precision AND macro recall at or above the fallback's, the three misroute
+  cases passing, and every intent whose judge recall falls below the fallback's
+  listed with a reason. Gates and risk stay add-only regardless of the result.
+
+Every threshold the shadow tier reads (`router.scoring.*`,
+`policy.judge.thresholds.*`, per-intent `threshold`) is a placeholder until
+T13 calibrates it from this set at the approved final stage.
+`evals/BASELINE.md` holds the recorded numbers.
 
 ## Live tier (opt-in)
 
@@ -73,7 +175,12 @@ Agent cases are graded by an independent judge session against the `must` /
   either cosmetic or missing coverage. Propose the case; author after final approval.
 - A case that fails for a reason the team accepts is a **rule** change, not a case
   deletion. Preserve inconvenient cases rather than weakening coverage.
-- Target 30–60 intent cases. Below 30 the set is decorative; above ~60 the live
-  tier gets slow enough that people stop running it.
+- Target 30–60 intent cases for the live tier. Below 30 the set is decorative;
+  above ~60 the live tier gets slow enough that people stop running it. The
+  routing-replacement golden set (T13) grows past 120 cases for the shadow
+  tier's per-intent metrics; the printed `RUBRIC target 30-60` size line is
+  frozen output and changes only through `docs/COMPATIBILITY.md`.
+- Every active intent carries at least three expected cases and at least three
+  `exemplar: true` cases (validator C38b bounds exemplars at 3–10 per active row).
 - Every case carries a `notes` field saying which router row or rule it pins.
   A case whose reason nobody can state is a case nobody can maintain.
