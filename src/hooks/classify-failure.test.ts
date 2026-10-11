@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadPolicy } from '../registry/policy';
+import { loadPolicy, type InfraPattern } from '../registry/policy';
 import { resolveRoot } from '../registry/paths';
-import { SITUATIONS, classify } from './classify-failure';
+import { INFRA_PATTERN_REASONS, RUNNER_KINDS, SITUATIONS, classify, infraRegExp } from './classify-failure';
 
 function run(over: { code?: number; output?: string; timedOut?: boolean; target?: string }) {
   return {
@@ -142,4 +142,38 @@ test('flaky is a situation the kernel answers for, never a verdict this returns'
     classify(run({ code: 1, output: 'missing script: lint' })),
   ];
   for (const verdict of verdicts) assert.notEqual(verdict?.situation, 'flaky');
+});
+
+// ------------------------------------------------------------------ injected patterns
+
+const CUSTOM: readonly InfraPattern[] = [{ runner: 'npm-family', pattern: 'registry says <t> is gone', reason: 'runner-missing' }];
+
+test('patterns a caller passes in decide the verdict instead of the registry', () => {
+  assert.deepEqual(classify(run({ code: 1, output: 'registry says lint is gone' }), CUSTOM), {
+    situation: 'infra',
+    reason: 'runner-missing',
+  });
+  // The registry phrase means nothing to a caller that supplied its own table.
+  assert.deepEqual(classify(run({ code: 1, output: 'npm ERR! missing script: lint' }), CUSTOM), { situation: 'red' });
+});
+
+test('a runner with no row in the passed table is red on any failure', () => {
+  assert.deepEqual(classify(run({ code: 1, output: 'npm ERR! missing script: lint' }), []), { situation: 'red' });
+});
+
+test('injected patterns are never consulted for a green or timed-out run', () => {
+  assert.equal(classify(run({ code: 0, output: 'registry says lint is gone' }), CUSTOM), null);
+  assert.deepEqual(classify(run({ code: 1, timedOut: true }), []), { situation: 'infra', reason: 'timeout' });
+});
+
+test('infraRegExp substitutes every target slot literally and ignores case', () => {
+  const pattern = infraRegExp('"<t>" then "<t>"', 'a+b');
+  assert.equal(pattern.test('"A+B" then "a+b"'), true);
+  assert.equal(pattern.test('"aab" then "aab"'), false);
+});
+
+test('every runner kind and both pattern reasons are covered by the registry rows', () => {
+  const rows = loadPolicy(resolveRoot({}, __dirname)).repair.infra_patterns;
+  assert.deepEqual(rows.map((row) => row.runner).sort(), Object.keys(RUNNER_KINDS).sort());
+  for (const row of rows) assert.ok(INFRA_PATTERN_REASONS.includes(row.reason), row.reason);
 });

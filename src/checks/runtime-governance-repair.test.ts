@@ -103,6 +103,129 @@ test('a by_situation row with an emptied response is caught', (t) => {
   assert.ok(hasFinding(findings, 'by-situation-empty-response'));
 });
 
+// The answer data src/kernel/repair.ts and src/hooks/classify-failure.ts read.
+
+test('an emptied repair ladder is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      repair['ladder'] = [];
+    });
+  });
+  assert.ok(hasFinding(findings, 'ladder-malformed', 'ladder'));
+});
+
+test('a ladder row testing a fact the repair arm does not measure is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      recordIn(arrayAt(repair, 'ladder'), 0)['when'] = { within_budget: true };
+    });
+  });
+  assert.ok(hasFinding(findings, 'ladder-malformed', 'ladder[0].when.within_budget'));
+});
+
+test('a ladder whose last row still tests a fact is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      repair['ladder'] = arrayAt(repair, 'ladder').slice(0, -1);
+    });
+  });
+  assert.ok(hasFinding(findings, 'ladder-no-catch-all', 'ladder[1]'));
+});
+
+test('a by_situation row carrying an action without a reason is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      delete rowWhere(arrayAt(repair, 'by_situation'), 'situation', 'infra')['reason'];
+    });
+  });
+  assert.ok(hasFinding(findings, 'situation-answer-malformed', 'by_situation[1].reason'));
+});
+
+test('the red by_situation row answering through neither action nor reason passes', (t) => {
+  const findings = run(t, 'C20');
+  assert.ok(!hasFinding(findings, 'situation-answer-malformed'));
+});
+
+test('a never-repair answer naming a slot the arm cannot fill is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      const never = repair['never_repair_answer'];
+      if (!isRecord(never)) throw new Error('never_repair_answer is not an object');
+      never['reason'] = 'situation {situation} on {weekday}';
+    });
+  });
+  assert.ok(hasFinding(findings, 'never-repair-answer-malformed', 'never_repair_answer.reason{weekday}'));
+});
+
+test('a never-repair answer with no action is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      const never = repair['never_repair_answer'];
+      if (!isRecord(never)) throw new Error('never_repair_answer is not an object');
+      delete never['action'];
+    });
+  });
+  assert.ok(hasFinding(findings, 'never-repair-answer-malformed', 'never_repair_answer.action'));
+});
+
+test('infra_patterns deleted from policy.json is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      delete repair['infra_patterns'];
+    });
+  });
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns'));
+});
+
+test('a runner with no infra pattern row is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      repair['infra_patterns'] = arrayAt(repair, 'infra_patterns').filter(
+        (row) => !(isRecord(row) && row['runner'] === 'nx'),
+      );
+    });
+  });
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns:nx'));
+});
+
+test('a duplicated infra pattern runner is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      const rows = arrayAt(repair, 'infra_patterns');
+      repair['infra_patterns'] = [...rows, { ...recordIn(rows, 0) }];
+    });
+  });
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns[3].runner'));
+});
+
+test('an infra pattern for a runner kind the classifier does not know is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      recordIn(arrayAt(repair, 'infra_patterns'), 0)['runner'] = 'gradle';
+    });
+  });
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns[0].runner'));
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns:nx'));
+});
+
+test('an infra pattern rendering a reason outside the vocabulary is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      recordIn(arrayAt(repair, 'infra_patterns'), 0)['reason'] = 'looked-bad';
+    });
+  });
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns[0].reason'));
+});
+
+test('an infra pattern that does not compile as a regular expression is caught', (t) => {
+  const findings = run(t, 'C20', (root) => {
+    editRepair(root, (repair) => {
+      recordIn(arrayAt(repair, 'infra_patterns'), 0)['pattern'] = 'cannot find (project';
+    });
+  });
+  assert.ok(hasFinding(findings, 'infra-patterns-malformed', 'infra_patterns[0].pattern'));
+});
+
 // ------------------------------------------------------------------ C20b
 
 test('C20b passes on an unmutated checkout', (t) => {
@@ -213,6 +336,17 @@ test('the Stop-gate hook deleted outright is caught', (t) => {
   });
   assert.deepEqual(findings.map((entry) => entry.code), ['missing']);
 });
+
+// ------------------------------------------------------------------ internals
+
+// The row at `index`, replaced in place by a plain copy the case may edit.
+function recordIn(rows: unknown[], index: number): Record<string, unknown> {
+  const row: unknown = rows[index];
+  if (!isRecord(row)) throw new Error(`row ${index} is not an object`);
+  const record: Record<string, unknown> = { ...row };
+  rows[index] = record;
+  return record;
+}
 
 // ------------------------------------------------------------------- coverage
 

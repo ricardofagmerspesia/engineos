@@ -13,9 +13,9 @@ import {
   result,
 } from './findings';
 
-test('CHECK_IDS carries the 68 check ids with no duplicate', () => {
-  assert.equal(CHECK_IDS.length, 68);
-  assert.equal(new Set(CHECK_IDS).size, 68);
+test('CHECK_IDS carries the 72 check ids with no duplicate', () => {
+  assert.equal(CHECK_IDS.length, 72);
+  assert.equal(new Set(CHECK_IDS).size, 72);
 });
 
 test('every check id is a C-number with at most a one-letter suffix', () => {

@@ -9,11 +9,16 @@ import { SettingsMergeError, isEngineosCommand, mergeSettings, type MergeResult 
 
 const ROOT = '/plugin/root';
 const HOOKS_JSON = `${ROOT}/hooks/hooks.json`;
-const EXPECTED_FORMS = 'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh or node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>';
+// The PR added the per-call bundle as a third accepted form, so the message
+// the installer prints on an abort names all three.
+const EXPECTED_FORMS =
+  'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh, node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name> or node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook <name>';
 
 const OLD_STOP = '"${CLAUDE_PLUGIN_ROOT}"/hooks/stop-verify.sh';
 const NEW_STOP = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook stop-verify';
 const NEW_ROUTE = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook route-before-change';
+const HOT_GUARD = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook git-write-guard';
+const HOT_STOP = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook stop-verify';
 const FOREIGN = '/opt/other-tool/on-stop.sh';
 
 interface HookSource { event: string; matcher?: string; command: string }
@@ -83,6 +88,16 @@ test('isEngineosCommand matches the hooks dir, its backslash form and the runtim
   assert.equal(isEngineosCommand(FOREIGN, ROOT), false);
 });
 
+test('isEngineosCommand matches the per-call hook bundle, also from another checkout', () => {
+  assert.equal(isEngineosCommand(`node "${ROOT}/dist/engineos-hot.cjs" hook git-write-guard`, ROOT), true);
+  assert.equal(isEngineosCommand('node "/somewhere/else/dist/engineos-hot.cjs" hook git-write-guard', ROOT), true);
+  assert.equal(isEngineosCommand('node "C:\\other\\dist\\engineos-hot.cjs" hook git-write-guard', ROOT), true);
+});
+
+test('isEngineosCommand does not claim a foreign bundle that merely ends in .cjs', () => {
+  assert.equal(isEngineosCommand('node "/opt/tool/dist/other-hot.cjs" hook git-write-guard', ROOT), false);
+});
+
 test('isEngineosCommand ignores a trailing separator on the plugin root', () => {
   assert.equal(isEngineosCommand(`${ROOT}/hooks/stop-verify.sh`, `${ROOT}/`), true);
 });
@@ -113,6 +128,20 @@ test('the old form loses its quotes and the new form keeps them', () => {
     `${ROOT}/hooks/stop-verify.sh`,
     `node "${ROOT}/dist/engineos.cjs" hook stop-verify`,
   ]);
+});
+
+test('the per-call bundle form derives its name and keeps its quotes', () => {
+  const { settings, result } = merge({}, [{ event: 'PreToolUse', matcher: 'Bash', command: HOT_GUARD }]);
+  assert.deepEqual(result, { added: 1, removed: 0, changed: true });
+  assert.deepEqual(entriesOf(settings, 'PreToolUse'), [
+    { matcher: 'Bash', commands: [`node "${ROOT}/dist/engineos-hot.cjs" hook git-write-guard`] },
+  ]);
+});
+
+test('a per-call bundle command whose derived name carries a space aborts naming the three accepted forms', () => {
+  const error = abortOf('node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook git write guard');
+  assert.match(error.message, /^ABORT: unrecognized hook command in /);
+  assert.equal(error.detail, EXPECTED_FORMS);
 });
 
 test('hooks are added in hooks.json order under each event', () => {
@@ -185,6 +214,35 @@ test('prior EngineOS entries of both forms are scrubbed from every event', () =>
   assert.equal(result.added, 1);
   assert.deepEqual(commandsOf(merged, 'Stop'), [`node "${ROOT}/dist/engineos.cjs" hook stop-verify`]);
   assert.deepEqual(commandsOf(merged, 'PostToolUse'), []);
+});
+
+test('an entry moved from the full bundle to the per-call bundle is scrubbed, not duplicated', () => {
+  const settings = {
+    hooks: {
+      Stop: [{ matcher: '', hooks: [{ type: 'command', command: `node "${ROOT}/dist/engineos.cjs" hook stop-verify` }] }],
+    },
+  };
+  const { settings: merged, result } = merge(settings, [{ event: 'Stop', command: HOT_STOP }]);
+  assert.equal(result.removed, 1);
+  assert.equal(result.added, 1);
+  assert.deepEqual(commandsOf(merged, 'Stop'), [`node "${ROOT}/dist/engineos-hot.cjs" hook stop-verify`]);
+});
+
+test('an entry moved from the per-call bundle of another checkout back to the full bundle is scrubbed, not duplicated', () => {
+  const settings = {
+    hooks: {
+      Stop: [{ matcher: '', hooks: [{ type: 'command', command: 'node "/old/checkout/dist/engineos-hot.cjs" hook stop-verify' }] }],
+    },
+  };
+  const { settings: merged, result } = merge(settings, [{ event: 'Stop', command: NEW_STOP }]);
+  assert.equal(result.removed, 1);
+  assert.deepEqual(commandsOf(merged, 'Stop'), [`node "${ROOT}/dist/engineos.cjs" hook stop-verify`]);
+});
+
+test('a second install of the per-call form leaves exactly one entry', () => {
+  const first = merge({}, [{ event: 'PreToolUse', matcher: 'Bash', command: HOT_GUARD }]);
+  const second = merge(first.settings, [{ event: 'PreToolUse', matcher: 'Bash', command: HOT_GUARD }]);
+  assert.deepEqual(commandsOf(second.settings, 'PreToolUse'), [`node "${ROOT}/dist/engineos-hot.cjs" hook git-write-guard`]);
 });
 
 test('a foreign hook survives in place, keeping its position and its siblings', () => {

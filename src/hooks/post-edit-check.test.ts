@@ -4,8 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { memoryIo } from '../io';
+import { isRecord } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
-import { envelope, tempRoot } from '../testing/harness';
+import { envelope, relocatedRoot, tempRoot } from '../testing/harness';
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { silent, type HookContext } from './output';
 import type { SpawnSyncLike } from './runner';
@@ -240,6 +241,32 @@ test('a stale target probe is infra, never exit 2', (t) => {
   const { dir, file } = pkg(t, { 'package.json': scripts({ typecheck: 'tsc --noEmit' }) });
   const { spawn } = spawnWith(() => ({ status: 1, stdout: 'npm ERR! Missing script: "typecheck"' }));
   assert.deepEqual(verify(editOf(dir, file), context(), spawn), silent);
+});
+
+// The infra patterns are policy of the EngineOS checkout the hook runs from
+// (ctx.root), not of the process's own registry: a relocated root whose
+// npm-family row speaks a different phrase decides the verdict on its own.
+function withNpmInfraPattern(pattern: string): (policy: Record<string, unknown>) => void {
+  return (policy) => {
+    const repair = policy['repair'];
+    if (!isRecord(repair) || !Array.isArray(repair['infra_patterns'])) throw new Error('policy.json has no repair.infra_patterns');
+    repair['infra_patterns'] = repair['infra_patterns'].map((row: unknown) => (isRecord(row) && row['runner'] === 'npm-family' ? { ...row, pattern } : row));
+  };
+}
+
+function contextAt(root: string): HookContext {
+  return { io: memoryIo({ env: ISOLATED }), root, now: () => 1000, spawn: spawnSync };
+}
+
+test('the infra patterns come from the checkout in ctx.root', (t) => {
+  if (skipWithoutGit(t)) return;
+  const root = relocatedRoot(tempRoot(t), { mutate: withNpmInfraPattern('relocated registry says gone') });
+  const { dir, file } = pkg(t, { 'package.json': scripts({ typecheck: 'tsc --noEmit' }) });
+  const relocatedPhrase = spawnWith(() => ({ status: 1, stdout: 'relocated registry says gone' }));
+  assert.deepEqual(verify(editOf(dir, file), contextAt(root), relocatedPhrase.spawn), silent);
+  // The phrase only the real checkout's row knows is a genuine red here.
+  const defaultPhrase = spawnWith(() => ({ status: 1, stdout: 'npm ERR! Missing script: "typecheck"' }));
+  assert.equal(verify(editOf(dir, file), contextAt(root), defaultPhrase.spawn).kind, 'fail');
 });
 
 test('the nx arm addresses the project by name and asks whether the target exists', (t) => {

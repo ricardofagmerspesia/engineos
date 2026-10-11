@@ -1,6 +1,6 @@
 import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Command } from '../dispatch';
 import { memoryIo } from '../io';
@@ -23,9 +23,14 @@ interface Call {
 interface Fixture {
   root: string;
   bytes: number;
+  hotBundleBytes: number;
 }
 
-// A root with the CLAUDE.md and rules/ files the always-on measurement stats.
+// The per-call bundle the sixth budget stats (dist/runtime/engineos-hot.cjs).
+const HOT_BUNDLE_TEXT = "'use strict';\nmodule.exports = {};\n";
+
+// A root with the CLAUDE.md and rules/ files the always-on measurement stats,
+// and the per-call bundle the bundle-size budget stats.
 // scripts/ and hooks/ are never created: every command is faked, and a case that
 // accidentally reached the real ones would spawn this checkout's hooks.
 function fixtureRoot(t: TestContext): Fixture {
@@ -37,7 +42,13 @@ function fixtureRoot(t: TestContext): Fixture {
   writeFileSync(join(root, 'CLAUDE.md'), claudeMd);
   writeFileSync(join(root, 'rules', 'base.md'), base);
   writeFileSync(join(root, 'rules', 'security.md'), security);
-  return { root, bytes: Buffer.byteLength(claudeMd) + Buffer.byteLength(base) + Buffer.byteLength(security) };
+  mkdirSync(join(root, 'dist', 'runtime'), { recursive: true });
+  writeFileSync(join(root, 'dist', 'runtime', 'engineos-hot.cjs'), HOT_BUNDLE_TEXT);
+  return {
+    root,
+    bytes: Buffer.byteLength(claudeMd) + Buffer.byteLength(base) + Buffer.byteLength(security),
+    hotBundleBytes: Buffer.byteLength(HOT_BUNDLE_TEXT),
+  };
 }
 
 // Five samples each for the three kernel/advisor budgets, seven for the cache
@@ -105,8 +116,10 @@ function run(root: string, deps: BenchDeps, env: NodeJS.ProcessEnv = {}): { stat
   return { status, stdout: io.stdout.join(''), stderr: io.stderr.join('') };
 }
 
-test('the report is the header and the five budgets, in order', (t) => {
-  const { root, bytes } = fixtureRoot(t);
+// The PR appended a sixth line, the per-call bundle size, after the five
+// original budgets (whose names and order stay public surface).
+test('the report is the header, the five budgets in order, then the per-call bundle size', (t) => {
+  const { root, bytes, hotBundleBytes } = fixtureRoot(t);
   const { deps } = harness(root, durations());
   const result = run(root, deps);
   assert.equal(result.stderr, '');
@@ -119,6 +132,7 @@ test('the report is the header and the five budgets, in order', (t) => {
       'ok   prompt-advisor (end to end): median=200.0ms budget<600.0ms',
       'ok   route-before-change (cache hit): median=20.0ms budget<150.0ms',
       `ok   always-on context: ${bytes} bytes budget<32000 bytes`,
+      `ok   per-call hook bundle: ${hotBundleBytes} bytes budget<320000 bytes`,
       '',
     ].join('\n'),
   );
@@ -170,7 +184,9 @@ test('the cache-hit budget gets one warm run before its seven samples', (t) => {
   );
 });
 
-test('the timed hooks run with the bypass flag and telemetry pinned', (t) => {
+// The PR pinned ENGINEOS_QUIET_SHIMS as well, so a deprecated shim's stderr
+// warning is not part of what is timed.
+test('the timed hooks run with the bypass flag, telemetry and shim warnings pinned', (t) => {
   const { root } = fixtureRoot(t);
   const { deps, calls, temps } = harness(root, durations());
   run(root, deps);
@@ -179,6 +195,7 @@ test('the timed hooks run with the bypass flag and telemetry pinned', (t) => {
     ENGINEOS_ROOT: root,
     ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass',
     ENGINEOS_TELEMETRY: '0',
+    ENGINEOS_QUIET_SHIMS: '1',
   });
   assert.equal(advisor?.input, JSON.stringify({ prompt: 'add a paginated orders endpoint and mirror the screen to mobile', cwd: '/tmp', session_id: 'performance-budget' }));
   // The kernel measurements inherit the environment, as python's env=None did.
@@ -198,6 +215,37 @@ test('a failing hot path reports red and still removes its throwaway repo', (t) 
   });
   assert.equal(temps.length, 1);
   assert.equal(existsSync(temps[0] ?? ''), false);
+});
+
+test('a missing per-call bundle is refused with the build hint and no report', (t) => {
+  const { root } = fixtureRoot(t);
+  rmSync(join(root, 'dist', 'runtime', 'engineos-hot.cjs'));
+  const { deps } = harness(root, durations());
+  const result = run(root, deps);
+  assert.deepEqual(result, {
+    status: 1,
+    stdout: '',
+    stderr: 'bench: dist/runtime/engineos-hot.cjs is missing — run npm run build\n',
+  });
+});
+
+test('a per-call bundle over its byte budget turns the run red', (t) => {
+  const { root } = fixtureRoot(t);
+  writeFileSync(join(root, 'dist', 'runtime', 'engineos-hot.cjs'), Buffer.alloc(320001, 0x20));
+  const { deps } = harness(root, durations());
+  const result = run(root, deps);
+  assert.match(result.stdout, /^FAIL per-call hook bundle: 320001 bytes budget<320000 bytes$/m);
+  assert.match(result.stdout, /^ok {3}always-on context: /m);
+  assert.equal(result.status, 1);
+});
+
+test('the multiplier raises the per-call bundle budget too', (t) => {
+  const { root } = fixtureRoot(t);
+  writeFileSync(join(root, 'dist', 'runtime', 'engineos-hot.cjs'), Buffer.alloc(320001, 0x20));
+  const { deps } = harness(root, durations());
+  const result = run(root, deps, { ENGINEOS_PERF_MULTIPLIER: '2' });
+  assert.match(result.stdout, /^ok {3}per-call hook bundle: 320001 bytes budget<640000 bytes$/m);
+  assert.equal(result.status, 0);
 });
 
 test('the command binding is the one src/cli.ts registers', (t) => {

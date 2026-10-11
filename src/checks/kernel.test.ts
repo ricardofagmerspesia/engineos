@@ -364,6 +364,57 @@ test('hooks/prompt-advisor.sh losing its executable bit is caught', (t) => {
   assert.ok(hasFinding(findings, 'adapter-not-executable', 'hooks/prompt-advisor.sh'));
 });
 
+// hook-target-missing: a hooks.json row whose script, or whose loader's
+// runtime bundle, is not in the tree fails every event it is registered on.
+
+const PLUGIN_ROOT_TOKEN = '${CLAUDE_PLUGIN_ROOT}';
+
+// Rewrites the stop-verify registration to run `node "<root>/<script>" hook stop-verify`.
+function pointStopVerifyAt(root: string, script: string): void {
+  editJson(root, 'hooks/hooks.json', (document) => {
+    let rewritten = 0;
+    for (const entry of rowsAt(recordAt(document, 'hooks'), 'Stop')) {
+      for (const hook of rowsAt(entry, 'hooks')) {
+        if (typeof hook['command'] === 'string' && hook['command'].endsWith(' hook stop-verify')) {
+          hook['command'] = `node "${PLUGIN_ROOT_TOKEN}/${script}" hook stop-verify`;
+          rewritten += 1;
+        }
+      }
+    }
+    if (rewritten === 0) throw new Error('hooks.json registers no stop-verify command to rewrite');
+  });
+}
+
+test('a hooks.json command naming a script that does not exist is caught', (t) => {
+  const findings = findingsFor(t, 'C18f', (root) => {
+    pointStopVerifyAt(root, 'dist/engineos-gone.cjs');
+  });
+  assert.ok(hasFinding(findings, 'hook-target-missing', 'dist/engineos-gone.cjs'));
+});
+
+test('a committed loader whose runtime bundle is missing is caught', (t) => {
+  const findings = findingsFor(t, 'C18f', (root) => {
+    rmSync(join(root, 'dist/runtime/engineos-hot.cjs'));
+  });
+  assert.ok(hasFinding(findings, 'hook-target-missing', 'dist/runtime/engineos-hot.cjs'));
+  // The loader itself is present, so only the bundle behind it is reported.
+  assert.ok(!hasFinding(findings, 'hook-target-missing', 'dist/engineos-hot.cjs'));
+});
+
+test('a hooks.json script path that climbs out of the plugin root is caught even when the file exists', (t) => {
+  const findings = findingsFor(t, 'C18f', (root) => {
+    pointStopVerifyAt(root, 'dist/../dist/engineos.cjs');
+  });
+  assert.ok(hasFinding(findings, 'hook-target-missing', 'dist/../dist/engineos.cjs'));
+});
+
+test('a hooks.json script path carrying a backslash is caught', (t) => {
+  const findings = findingsFor(t, 'C18f', (root) => {
+    pointStopVerifyAt(root, 'dist\\engineos.cjs');
+  });
+  assert.ok(hasFinding(findings, 'hook-target-missing', 'dist\\engineos.cjs'));
+});
+
 // ------------------------------------------------------------------ C18g
 
 test('C18g passes on an unmutated checkout', (t) => {
