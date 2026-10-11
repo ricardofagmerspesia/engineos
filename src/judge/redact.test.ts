@@ -452,3 +452,107 @@ test('cutAtCodeUnit keeps short text, cuts long text and backs off a high surrog
   assert.equal(cutAtCodeUnit('ab\u{1F600}', 4), 'ab\u{1F600}');
   assert.equal(cutAtCodeUnit('\u{1F600}', 1), '');
 });
+
+// The critic's construction (W2): PEM blocks far upstream shrink to a few dozen
+// characters each, so the redacted prefix fits any final limit, while a quoted,
+// whitespace-holding secret straddles the pre-cap. Cutting there used to leave
+// the quoted branch without its closing quote and send the words after it.
+const STATE_PRE_CAP = 32_768;
+const PHRASE_WORDS = ['correct', 'horse', 'battery', 'staple', 'zebra'];
+const pemBlock = (lines: number): string => `${pemHeader('RSA ')}\n${('A'.repeat(64) + '\n').repeat(lines)}${pemFooter('RSA ')}\n`;
+
+function quotedSecrets(): { style: string; secret: string }[] {
+  const phrase = PHRASE_WORDS.join(' ');
+  return [
+    { style: 'double', secret: assign('pass' + 'word', ': ', `"${phrase}"`) },
+    { style: 'single', secret: assign('sec' + 'ret', ' = ', `'${phrase}'`) },
+    { style: 'json', secret: JSON.stringify({ ['pass' + 'word']: phrase }) },
+  ];
+}
+
+// `inside` units of the secret fit under the pre-cap; the rest lies past it.
+function straddling(head: string, secret: string, preCap: number, inside: number): string {
+  const room = preCap - head.length - inside;
+  const filler = (room % 2 === 1 ? ' ' : '') + 'x '.repeat(Math.floor(room / 2));
+  return head + filler + secret + ' and more text after the cap';
+}
+
+function leakedWords(text: string): string[] {
+  return PHRASE_WORDS.filter((word) => text.includes(word));
+}
+
+test('a quoted secret straddling the pre-cap after heavy upstream shrinkage leaves no fragment, at every cut', () => {
+  const head = pemBlock(120).repeat(3);
+
+  for (const { style, secret } of quotedSecrets()) {
+    for (let inside = 1; inside < secret.length; inside += 1) {
+      const text = straddling(head, secret, STATE_PRE_CAP, inside);
+
+      const bounded = redactBounded(text, patterns, STATE_PRE_CAP);
+
+      assert.equal(bounded.capped, true, `${style} cut ${inside}`);
+      assert.ok(bounded.text.length < 16_384, `${style} cut ${inside}: the shrinkage the construction relies on`);
+      assert.deepEqual(leakedWords(bounded.text), [], `${style} cut ${inside}: ${JSON.stringify(bounded.text.slice(-60))}`);
+      assert.ok(redactText(text, patterns).startsWith(bounded.text), `${style} cut ${inside}`);
+    }
+  }
+});
+
+test('redactBounded output is always a prefix of redacting the whole text, for every cap', () => {
+  const fragments = [
+    'pass' + 'word', 'tok' + 'en', ': ', '="', '"', "'", ' ', '\n', '@', '.', '-', '/', '<', '>',
+    'eyJ', 'sk-', 'gh' + 'p_', 'Bear' + 'er ', 'Bas' + 'ic ', 'https:/' + '/', 'x'.repeat(20), '1', '+5', '(11) 9',
+    pemHeader(''), pemFooter(''), '\u{1F600}',
+  ];
+  let seed = 7;
+  const next = (bound: number): number => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+    return seed % bound;
+  };
+
+  for (let sample = 0; sample < 80; sample += 1) {
+    let text = '';
+    const parts = 5 + next(60);
+    for (let part = 0; part < parts; part += 1) text += fragments[next(fragments.length)] ?? '';
+    const whole = redactText(text, patterns);
+    for (let cap = 1; cap < text.length; cap += 1) {
+      const bounded = redactBounded(text, patterns, cap);
+      assert.ok(whole.startsWith(bounded.text), `sample ${sample} cap ${cap}: ${JSON.stringify(bounded.text)}`);
+    }
+  }
+});
+
+test('redactBounded keeps nothing of a capped pass whose pattern the analysis cannot model', () => {
+  const unmodelled: RedactionPattern[] = [{ kind: 'backreference', pattern: '(a)\\1' }];
+
+  assert.deepEqual(redactBounded('b b b b b b', unmodelled, 5), { text: '', capped: true });
+  assert.deepEqual(redactBounded('b b', unmodelled, 5), { text: 'b b', capped: false });
+});
+
+test('bounded redaction of capped adversarial inputs stays well inside a time bound', () => {
+  const size = 40_000;
+  const fill = (unit: string): string => unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  const inputs = [
+    fill('eyJ'),
+    fill('eyJ' + 'abcd.'),
+    'eyJ' + fill('a'),
+    fill(pemHeader('') + 'A'.repeat(40)),
+    fill('Basic '),
+    fill('Bearer '),
+    fill('pass' + 'word="'),
+    fill(assign('pass' + 'word', ': ', '"a ')),
+    fill('ab:/' + '/x:'),
+    fill('a' + '@' + 'b.'),
+    fill('"'),
+    fill('a'),
+  ];
+  const started = process.hrtime.bigint();
+
+  for (const input of inputs) {
+    redactBounded(input, patterns, STATE_PRE_CAP);
+    redactBounded(input, patterns, 4_000);
+  }
+
+  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(elapsedMs < 2_000, `bounded adversarial redaction took ${elapsedMs.toFixed(1)} ms`);
+});

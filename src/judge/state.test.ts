@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadPolicy } from '../registry/policy';
 import { resolveRoot } from '../registry/paths';
+import { redactText } from './redact';
 import { buildJudgeState } from './state';
 import type { JudgeInput, JudgePolicy, JudgeState } from './types';
 
@@ -102,6 +103,39 @@ test('a prompt longer than twice the cap is pre-capped and still reported trunca
 
   assert.equal(state.request.truncated, true);
   assert.ok(bytesOf(state) <= max);
+});
+
+// The critic's construction (W2), through the shipped policy: three PEM blocks
+// redact to a few dozen characters each, so the state has room to spare, while
+// a quoted secret holding spaces straddles the 2 x max_state_bytes pre-cap.
+const DASHES = '-'.repeat(5);
+const pemBlock = (): string =>
+  `${DASHES}BEGIN RSA PRIVATE` + ` KEY${DASHES}\n` + ('A'.repeat(64) + '\n').repeat(120) + `${DASHES}END RSA PRIVATE` + ` KEY${DASHES}\n`;
+const PHRASE_WORDS = ['correct', 'horse', 'battery', 'staple', 'zebra'];
+
+function quotedSecrets(): string[] {
+  const phrase = PHRASE_WORDS.join(' ');
+  return ['pass' + 'word' + ': ' + `"${phrase}"`, 'sec' + 'ret' + ' = ' + `'${phrase}'`, JSON.stringify({ ['pass' + 'word']: phrase })];
+}
+
+test('a quoted secret straddling the pre-cap after heavy upstream shrinkage never reaches the state', () => {
+  const preCap = 2 * shippedPolicy.max_state_bytes;
+  const head = pemBlock().repeat(3);
+
+  for (const secret of quotedSecrets()) {
+    for (let inside = 1; inside < secret.length; inside += 1) {
+      const room = preCap - head.length - inside;
+      const text = head + (room % 2 === 1 ? ' ' : '') + 'x '.repeat(Math.floor(room / 2)) + secret + ' and more after the cap';
+
+      const state = okState(buildJudgeState(input(text), shippedPolicy));
+
+      assert.equal(state.request.truncated, true);
+      assert.ok(bytesOf(state) <= shippedPolicy.max_state_bytes);
+      const leaked = PHRASE_WORDS.filter((word) => state.request.text.includes(word));
+      assert.deepEqual(leaked, [], `cut ${inside} into ${secret.slice(0, 8)}: ${JSON.stringify(state.request.text.slice(-60))}`);
+      assert.ok(redactText(text, shippedPolicy.redaction.patterns).startsWith(state.request.text), `cut ${inside}`);
+    }
+  }
 });
 
 test('repository facts that alone exceed the cap make the state oversize', () => {

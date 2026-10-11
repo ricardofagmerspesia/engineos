@@ -6,9 +6,11 @@ import type { JudgeInput, JudgePolicy, JudgeState } from './types';
 
 export type StateResult = { kind: 'ok'; state: JudgeState } | { kind: 'oversize' };
 
-// The prompt is pre-capped before redaction (D3): the state can never carry
-// more than max_state_bytes of text, and every character takes at least one
-// byte, so twice that many characters is all redaction ever needs to see.
+// The prompt is pre-capped before redaction (D3) to bound its cost. The state
+// carries at most max_state_bytes of text and every character takes at least
+// one byte; the second half is headroom for redactBounded, which gives back
+// only the prefix that provably matches redaction of the whole prompt, so it
+// may end well short of the pre-cap.
 const PRE_CAP_FACTOR = 2;
 
 export function buildJudgeState(input: JudgeInput, policy: JudgePolicy): StateResult {
@@ -20,8 +22,9 @@ export function buildJudgeState(input: JudgeInput, policy: JudgePolicy): StateRe
 
 // Cuts request.text at a code-point boundary (never inside a UTF-8 sequence or
 // a surrogate pair) to the longest prefix whose serialized state still fits.
-// Redaction already ran on the whole pre-capped prefix, so a cut can never
-// expose part of a secret that the prefix would have hidden.
+// `text` is already a prefix of the whole prompt's redaction, and so is any
+// shorter prefix of it: this cut only drops text (at worst half a placeholder),
+// never exposes part of a secret that redaction of the whole prompt hides.
 function truncateToFit(input: JudgeInput, text: string, maxBytes: number): StateResult {
   const codePoints = Array.from(text);
   if (byteLength(stateWith(input, '', true)) > maxBytes) return { kind: 'oversize' };

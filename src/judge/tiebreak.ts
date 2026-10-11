@@ -97,9 +97,10 @@ export async function tiebreak(input: TiebreakInput, deps: TiebreakDeps): Promis
   const socket = privateSocket(deps);
   if (socket.kind === 'skipped') return socket;
   // Pre-cap, redact, then trim (D3): redaction sees a bounded prefix, never the
-  // whole prompt, and runs before the trim so a secret cut in half by the trim
-  // cannot escape its pattern. The daemon never logs text, but it does hold it
-  // in memory.
+  // whole prompt, and returns a prefix of the whole prompt's redaction. The trim
+  // is a further prefix cut, so neither a secret straddling the trim nor one
+  // straddling the pre-cap is sent in part. The daemon never logs text, but it
+  // does hold it in memory.
   const { text: redacted } = redactBounded(input.text, deps.redaction, PRE_CAP_FACTOR * LIMITS.maxTextChars);
   const text = cutAtCodeUnit(redacted, LIMITS.maxTextChars);
   if (text.trim() === '') return skipped('no-candidates');

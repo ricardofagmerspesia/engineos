@@ -29,8 +29,9 @@ that code disagree, the code wins and the line is corrected here. Full text:
    endpoint refuses the **whole** `policy.json` load (§17.4).
 4. §10.1 — enablement order gains `endpoint off-origin → skipped: disabled`
    after `no-fetch`, before the breaker.
-5. §10.2, §10.6 — text is pre-capped, the trailing fragment dropped, then
-   redacted, then cut (§17.4).
+5. §10.2, §10.6 — text is pre-capped, redacted to a prefix that agrees with
+   redaction of the whole prompt, then cut (§17.4; item 9(d) replaced the
+   trailing-fragment drop).
 6. §17.1–§17.3 — new presence section: record v2, the handshake, the
    heartbeat and the full stand-down list (the presence file had no section
    before; §16.7 described it informally).
@@ -62,6 +63,13 @@ that code disagree, the code wins and the line is corrected here. Full text:
    message names bash >= 4; the macOS `/bin/bash` 3.2 fails it). CI's
    `ENGINEOS_REQUIRE_PARITY=1` turns that skip into a failure and is the
    enforcing control.
+   (d) §10.2, §17.4 — redaction order corrected to the critic fix: a capped
+   prompt no longer drops a trailing non-whitespace run. `redactBounded`
+   runs each pattern on the pre-capped prefix and keeps only the prefix in
+   which that pass provably agrees with the same pass on the whole prompt,
+   so its output is always a prefix of `redactText(wholePrompt)`. The
+   earlier "final limit is at most half the pre-cap" argument failed once
+   earlier redactions shrank the text (critic, PR #132).
 
 **rev 3 (2026-10-11)** — five T06 questions, the T12 tie-break fact, and T12's
 accepted spawn-count deviation. Full text and consumer deltas: **§16 Revision 3**.
@@ -1032,9 +1040,11 @@ Redaction (`src/judge/redact.ts`): each `policy.judge.redaction.patterns[]`
 match in `text` is replaced by `<redacted:<kind>>`, in list order, before
 serialization; asserted on the serialized body. rev 4 order (`redactBounded`):
 (1) pre-cap the raw text to `2 × max_state_bytes` UTF-16 units (never splitting a
-surrogate pair); (2) if it was capped, drop the trailing run of non-whitespace
-(it may be half of a secret whose pattern needs the rest); (3) redact; (4) the
-size cut below. A capped prompt carries `"truncated": true`. Size: when the serialized
+surrogate pair); (2) redact pattern by pattern, keeping after each pass only the prefix in
+which that pass provably matches as it would on the whole prompt (rev 4
+item 9(d)); the result is always a prefix of the whole prompt's redaction, and
+a pattern the analysis cannot model keeps nothing (fail closed); (3) the size
+cut below. A capped prompt carries `"truncated": true`. Size: when the serialized
 `state` exceeds `max_state_bytes`, `request.text` is cut at a UTF-8 character
 boundary until it fits and `"truncated": true` is added to `request`; a state
 that cannot fit with an empty text → `failed: oversize-state`.
@@ -1524,8 +1534,8 @@ failure or exception runs the hook:
 - **Bounded quantifiers.** The loader refuses a pattern using `*`, `+` or
   `{m,}` outside a character class.
 - **Order.** Pre-cap (judge `2 × max_state_bytes`, tie-break `2 × 2,000`
-  characters) → when capped, drop the trailing non-whitespace run → redact →
-  final cut; a capped judge prompt carries `request.truncated: true`.
+  characters) → redact to the prefix that agrees with redaction of the
+  whole prompt (rev 4 item 9(d)) → final cut; a capped judge prompt carries `request.truncated: true`.
 
 ### 17.5 Judge-only source rule
 

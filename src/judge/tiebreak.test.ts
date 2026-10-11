@@ -327,6 +327,38 @@ test('the trim runs after redaction, so a secret straddling the 2,000-character 
   });
 });
 
+// The critic's construction (W2) scaled to the tie-break: PEM blocks upstream
+// shrink the redacted prefix well under the 2,000-character trim, so only the
+// pre-cap (2 x 2,000, mirroring tiebreak.ts) cuts the quoted secret.
+const TIEBREAK_PRE_CAP = 4_000;
+const DASHES = '-'.repeat(5);
+const pemBlock = (): string =>
+  `${DASHES}BEGIN RSA PRIVATE` + ` KEY${DASHES}\n` + ('A'.repeat(64) + '\n').repeat(20) + `${DASHES}END RSA PRIVATE` + ` KEY${DASHES}\n`;
+const PHRASE_WORDS = ['correct', 'horse', 'battery', 'staple', 'zebra'];
+
+function quotedSecrets(): string[] {
+  const phrase = PHRASE_WORDS.join(' ');
+  return ['pass' + 'word' + ': ' + `"${phrase}"`, 'sec' + 'ret' + ' = ' + `'${phrase}'`, JSON.stringify({ ['pass' + 'word']: phrase })];
+}
+
+test('a quoted secret straddling the redaction pre-cap after heavy upstream shrinkage is never sent in part', async () => {
+  const head = pemBlock().repeat(2);
+  for (const secret of quotedSecrets()) {
+    for (const inside of [1, 12, Math.floor(secret.length / 2), secret.length - 3, secret.length - 1]) {
+      const room = TIEBREAK_PRE_CAP - head.length - inside;
+      const text = head + (room % 2 === 1 ? ' ' : '') + 'x '.repeat(Math.floor(room / 2)) + secret + ' and more after the cap';
+      await withDaemon(answering(OK_SCORES), async (daemon) => {
+        await tiebreak(request({ text }), depsFor({ connectTo: daemon.path }).deps);
+
+        const line = sent(daemon);
+        assert.ok(line.text.length < 2_000, 'the trim must not be what removes the secret');
+        const leaked = PHRASE_WORDS.filter((word) => line.text.includes(word));
+        assert.deepEqual(leaked, [], `cut ${inside} into ${secret.slice(0, 8)}: ${JSON.stringify(line.text.slice(-60))}`);
+      });
+    }
+  }
+});
+
 const refusedReplies: [string, unknown, string][] = [
   ['a busy daemon', { v: 1, ok: false, error: 'busy' }, 'busy'],
   ['any other daemon error', { v: 1, ok: false, error: 'model-missing' }, 'invalid-response'],
