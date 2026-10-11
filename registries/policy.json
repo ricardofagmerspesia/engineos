@@ -326,7 +326,7 @@
       "hook_echo": ["[engineos]"]
     },
     "tiebreak": {
-      "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Not calibrated by T13d: min_similarity needs the pinned MiniLM daemon, whose model download is outside the offline calibration run, so both values stay placeholders. margin is compared as a literal float (best - second < margin), so a two-decimal gap of exactly 0.1 can fall below it; that is the fail-closed side, because not narrowing keeps the full deterministic answer (evals/BASELINE.md).",
+      "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Not calibrated by T13d: min_similarity needs the pinned MiniLM daemon, whose model download is outside the offline calibration run, so both values stay placeholders. The gap is accepted when best - second >= margin, with a 1e-9 tolerance for float subtraction error (src/kernel/tiebreak-facts.ts SCORE_GAP_TOLERANCE), so a two-decimal gap of exactly 0.1 selects as contract §4.7 step 4 states (evals/BASELINE.md).",
       "min_similarity": 0.6,
       "margin": 0.1
     },

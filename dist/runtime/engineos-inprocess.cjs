@@ -2764,6 +2764,7 @@ function refuseUnrankedTiebreak(fact, ranked) {
   }
 }
 var MIN_SURVIVORS = 2;
+var SCORE_GAP_TOLERANCE = 1e-9;
 function tiebreakWinner(survivors, ranked, fact, policy) {
   if (survivors.length < MIN_SURVIVORS) return null;
   const scores = new Map(Object.entries(fact));
@@ -2779,7 +2780,7 @@ function tiebreakWinner(survivors, ranked, fact, policy) {
   const [best, second] = scored2;
   if (best === void 0 || second === void 0) return null;
   if (best.score < policy.min_similarity) return null;
-  if (best.score - second.score < policy.margin) return null;
+  if (best.score - second.score + SCORE_GAP_TOLERANCE < policy.margin) return null;
   return best.id;
 }
 
