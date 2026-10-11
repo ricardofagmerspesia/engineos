@@ -616,11 +616,14 @@
         { "text": "deploy to", "weight": 1 },
         { "text": "deploy the", "weight": 1 },
         { "text": "helm", "weight": 0.6 },
+        { "text": "deployment pipeline", "weight": 1 },
+        { "text": "deploy pipeline", "weight": 1 },
+        { "text": "release pipeline", "weight": 1 },
         { "text": "resource limits", "weight": 0.5 },
-        { "text": "pipeline", "weight": 0.4 },
+        { "text": "build pipeline", "weight": 0.6 },
         { "text": "rollout", "weight": 0.3 }
       ],
-      "verb_object": { "verbs": ["add", "set up", "configure", "write", "provision"], "objects": ["pipeline", "workflow", "dockerfile", "helm chart", "terraform", "deployment", "probe"], "weight": 0.5 },
+      "verb_object": { "verbs": ["add", "set up", "configure", "write", "provision"], "objects": ["ci pipeline", "build pipeline", "release pipeline", "workflow", "dockerfile", "helm chart", "terraform", "deployment", "probe"], "weight": 0.5 },
       "exemplars": [
         "add resource limits to the helm chart for the api deployment",
         "set up a github actions workflow that builds the docker image",

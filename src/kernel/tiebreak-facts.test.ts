@@ -97,9 +97,8 @@ test('scores of non-survivors are not read', () => {
 // Contract §4.7 step 4 reads `best.score - second.score >= margin`. 0.7 - 0.6
 // is 0.09999999999999998 in binary floating point, so a literal subtraction
 // refuses a gap the contract (and the registry author) states as exactly the
-// margin. Expected red against src/kernel/tiebreak-facts.ts (the
-// `best.score - second.score < policy.margin` comparison) until it compares
-// with a tolerance or on rounded values.
+// margin. src/kernel/tiebreak-facts.ts compares the gap with a small tolerance
+// (SCORE_GAP_TOLERANCE) so this boundary selects.
 test('a gap equal to the margin selects at a decimal boundary (0.7 - 0.6 vs 0.1)', () => {
   assert.equal(tiebreakWinner(['web', 'api'], RANKED, { web: 0.7, api: 0.6 }, POLICY), 'web');
 });

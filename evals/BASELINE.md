@@ -16,7 +16,7 @@ a prototype or a single manual prompt.
 | Source revision (commit) | `b0291ed` (PR #132, `feat/routing-replacement`) plus the uncommitted T13d changes to `evals/intent-routing-cases.jsonl`, `registries/intents.json`, `registries/policy.json` (`router.scoring.note` and `router.tiebreak.note` only), `evals/RUBRIC.md` and `docs/specs/2026-10-10-jev-shadow-request.json` |
 | Golden set (`evals/intent-routing-cases.jsonl`) case count / content hash | 284 cases / sha256 `7f76056fd6464b7f327e121d04f83eb32049999571e86e5db87c85bf5e5b61b7` |
 | Held-out cases (no `exemplar: true`) | 148 (145 graded, 3 `source: notification`) |
-| `registries/intents.json` version / content hash | 2.0.0 / sha256 `8d79dbd9f5d5a14eed657ccde04a37c37c1c108b8b207522a6eba2462590f92f` |
+| `registries/intents.json` version / content hash | 2.0.0 / sha256 `e41d10cc253a5f9953402fbe5e14dfb136f869ffba246dc485422bf06a1964cf` (T13d recorded `8d79dbd9f5d5a14eed657ccde04a37c37c1c108b8b207522a6eba2462590f92f`; changed by the 2026-10-11 devops pipeline repair below) |
 | `registries/policy.json` version (`router.scoring`, `judge.thresholds`) | sha256 `0b6ffe89cb14d85e636dd72496ec1f18422cb6b828d884333a2a23fa4519d871`; `router.scoring` numbers unchanged from `b0291ed`; `judge.thresholds` untouched placeholders |
 | Judge model (`policy.judge.model`) | `jev-1.13.0` (not called: no judge request left the machine) |
 | Human decision allowing judge requests (T13, contract D5) | pending approved run |
@@ -58,10 +58,10 @@ a prototype or a single manual prompt.
 
 | Metric | fallback before (`b0291ed`) | fallback after (T13d) | judge (Jev, folded by contract §4.2) |
 |---|---|---|---|
-| Macro precision | 0.854 | 0.929 | pending approved run (SKIPPED: 145 cases, no D5 decision) |
+| Macro precision | 0.854 | 0.935 (T13d: 0.929; 2026-10-11 repair) | pending approved run (SKIPPED: 145 cases, no D5 decision) |
 | Macro recall | 0.609 | 0.965 | pending approved run (SKIPPED) |
 | MRR@3 (cases with `expect_primary`, n=102) | 0.858 | 0.990 | pending approved run (SKIPPED) |
-| Exact cases (expected set routed, no extra, primary at rank 1) | 69/145 | 124/145 | pending approved run (SKIPPED) |
+| Exact cases (expected set routed, no extra, primary at rank 1) | 69/145 | 125/145 (T13d: 124/145; 2026-10-11 repair) | pending approved run (SKIPPED) |
 | Notification pass rate (`source: notification`) | 3/3 inputs begin with a `router.source_markers.notification` literal (inspection); the hook path that yields `{ "skipped": "not-user-input" }` was not executed: pending approved run | same | pending approved run |
 | Judge expectation pass rate (`judge` keys) | n/a | n/a | pending approved run (SKIPPED) |
 | Misroute 1 (`other`, no `llm`) | fail: routed `new-feature` | pass: no intent, `ambiguous`, escalates with `unrouted-scale` | pending approved run |
@@ -76,15 +76,32 @@ fallback column cannot pass or fail those cases by itself.
 
 | Set | Graded | Exact | Macro precision | Macro recall | MRR@3 (n) |
 |---|---|---|---|---|---|
-| All cases | 281 | 130 -> 232 | 0.854 -> 0.919 | 0.585 -> 0.958 | 0.889 -> 0.992 (238) |
-| Held-out | 145 | 69 -> 124 | 0.854 -> 0.929 | 0.609 -> 0.965 | 0.858 -> 0.990 (102) |
+| All cases | 281 | 130 -> 233 | 0.854 -> 0.922 | 0.585 -> 0.958 | 0.889 -> 0.992 (238) |
+| Held-out | 145 | 69 -> 125 | 0.854 -> 0.935 | 0.609 -> 0.965 | 0.858 -> 0.990 (102) |
 | Held-out minus the untuned subset | 114 | 60 -> 102 | 0.827 -> 0.940 | 0.703 -> 0.995 | 0.892 -> 1.000 (71) |
-| Untuned subset (`para-*-3`) | 31 | 9 -> 22 | 0.769 -> 0.907 | 0.306 -> 0.871 | 0.780 -> 0.968 (31) |
+| Untuned subset (`para-*-3`) | 31 | 9 -> 23 | 0.769 -> 0.926 | 0.306 -> 0.871 | 0.780 -> 0.968 (31) |
 | Exemplar cases (training data) | 136 | 61 -> 108 | 0.847 -> 0.909 | 0.553 -> 0.950 | 0.913 -> 0.993 (136) |
 | v1 cases (`intent-001`..`036`) | 36 | 17 -> 35 | | | |
 
 The tuned-to-untuned gap (macro recall 0.995 vs 0.871, macro precision 0.940
-vs 0.907) is the overfitting estimate for the phrase weights.
+vs 0.926) is the overfitting estimate for the phrase weights.
+
+**2026-10-11 repair (devops pipeline).** The T13d `devops` phrase `pipeline`
+(0.4) plus exemplar similarity (0.88) put any "pipeline" prompt over
+`min_score`, so "wire the LangGraph state machine for the order pipeline"
+routed `[llm, agent-system, devops]` (floor high, hitl `high-risk`) instead of
+`[llm, agent-system]` (floor medium, hitl `topology-approval`; pinned by
+`src/kernel/resolve.test.ts`). The bare phrase was replaced by delivery-scoped
+wording (`deployment pipeline`, `deploy pipeline`, `release pipeline` 1;
+`build pipeline` 0.6) and the `verb_object` object `pipeline` by `ci pipeline`,
+`build pipeline`, `release pipeline`. Re-graded with the same method on the
+same 284 cases: exactly one case changed, para-llm-3 (`[llm, devops]` ->
+`[llm]`), so the All, Held-out and Untuned rows above moved by one exact case
+each; every `devops`-expected case (10) still routes `devops` and recall,
+MRR@3, the tuned held-out row, the exemplar row and the v1 row are unchanged.
+Disclosure: para-llm-3 is in the untuned subset; the change was made for the
+pinned LangGraph prompt, not because of that case, and its effect on the
+subset is reported here rather than hidden.
 
 ## Intent routing, per intent (held-out set)
 
@@ -105,7 +122,7 @@ cells read `after (before)`.
 | llm | 8 | 0.889 (0.700) | 1.000 (0.875) | pending approved run | pending approved run |
 | agent-system | 4 | 1.000 (1.000) | 1.000 (0.750) | pending approved run | pending approved run |
 | dba | 7 | 0.778 (0.500) | 1.000 (0.143) | pending approved run | pending approved run |
-| devops | 5 | 0.833 (1.000) | 1.000 (0.200) | pending approved run | pending approved run |
+| devops | 5 | 1.000 (1.000) | 1.000 (0.200) | pending approved run | pending approved run |
 | security-files | 5 | 0.714 (0.667) | 1.000 (0.800) | pending approved run | pending approved run |
 | system-comprehension | 4 | 1.000 (1.000) | 1.000 (0.500) | pending approved run | pending approved run |
 | interview-gaps | 3 | 1.000 (1.000) | 1.000 (0.667) | pending approved run | pending approved run |
@@ -126,10 +143,11 @@ cells read `after (before)`.
 | verify-done | 3 | 1.000 (1.000) | 1.000 (0.333) | pending approved run | pending approved run |
 | route-planning | 3 | 1.000 (1.000) | 1.000 (1.000) | pending approved run | pending approved run |
 
-Precision drops (devops 1.000 -> 0.833, retro 1.000 -> 0.800) are one false
-positive each, bought by the recall gains on the same rows.
+The precision drop (retro 1.000 -> 0.800) is one false positive, bought by the
+recall gain on the same row. devops read 1.000 -> 0.833 at T13d (para-llm-3 on
+"pipeline"); the 2026-10-11 repair removed that false positive.
 
-### Remaining fallback misses (held-out, 21)
+### Remaining fallback misses (held-out, 20)
 
 Recorded for the judge tier, which reads meaning rather than words:
 
@@ -142,8 +160,8 @@ Recorded for the judge tier, which reads meaning rather than words:
   para-dba-2, para-route-planning-1); `dba` on "migration"
   (para-critic-verification-1, para-route-planning-1); `security-files` on
   "auth" (para-critic-verification-2); `refactor` on "after the refactor"
-  (para-qa-endpoints-1); `devops` on "pipeline" (para-llm-3); `retro` on "the
-  retro" (para-task-observer-3).
+  (para-qa-endpoints-1); `retro` on "the retro" (para-task-observer-3).
+  (`devops` on "pipeline", para-llm-3, was fixed by the 2026-10-11 repair.)
 - The v1 signal `Next` (frontend) matches "next session", "next wave" and
   "next steps" (para-handoff-3 here; ex-handoff-1/3/4 in the exemplar set).
   Signals are kept through the 1.x window (C38), so the fix is a frontend
@@ -212,7 +230,7 @@ stays below `min_score`, a pair plus the top exemplar similarity can route).
 | llm | 21 -> 28 (+7) | | 5 -> 15 | 0.05 -> 0.4 |
 | agent-system | 14 -> 21 (+7) | multi-agent, multi agent, multiagent, orchestrate, orchestration, orchestrator 1 -> 1.5 | 5 -> 9 | |
 | dba | 5 -> 17 (+12) | | 0 | 0.05 -> 0.5, terms widened |
-| devops | 6 -> 19 (+13) | | 0 | 0.05 -> 0.5, terms widened |
+| devops | 6 -> 22 (+16; 2026-10-11 repair: bare `pipeline` 0.4 removed, four delivery-scoped pipeline phrases added) | | 0 | 0.05 -> 0.5, terms widened (2026-10-11: object `pipeline` -> `ci pipeline`, `build pipeline`, `release pipeline`) |
 | security-files | 6 -> 16 (+10) | | 0 | |
 | system-comprehension | 4 -> 11 (+7) | | 0 | |
 | interview-gaps | 3 -> 8 (+5) | | 0 | |
@@ -241,17 +259,20 @@ unrouted (`refactor` negative `local`), which keeps intent-032 passing.
 
 ### Tie-break margin (contracts §4.7)
 
-`tiebreak-facts.ts` declines to narrow when `best.score - second.score <
-policy.margin`, compared as floats. With two-decimal inputs, 0.7 - 0.6 is
-0.09999999999999998, below 0.1, so a gap of exactly 0.1 does not narrow.
-Decision: keep `router.tiebreak.margin` 0.1 and the literal float comparison.
-Not narrowing is the fail-closed side, because the tie-break only removes
-intents from an ambiguous deterministic answer; a borderline gap keeps the
-full answer. The daemon returns unrounded cosine similarities, so an exact
-0.1 gap arises only in hand-written two-decimal fixtures. The tie-break is
-also inert while `router.scoring.threshold` and `margin` are 0, since only an
-ambiguous route reads it. A test that pins this edge (0.70 against 0.60 does
-not narrow) and a contracts note belong to T13 tests and the contracts owner.
+`router.tiebreak.margin` stays 0.1. Contract §4.7 step 4 accepts a gap
+`>= margin`; with two-decimal inputs a literal float subtraction gives
+0.7 - 0.6 = 0.09999999999999998 and would refuse a gap the contract states as
+exactly the margin. T13d first recorded keeping the literal comparison; the
+2026-10-11 final-stage repair follows the contract instead:
+`tiebreak-facts.ts` compares the gap with a named tolerance
+(`SCORE_GAP_TOLERANCE`, 1e-9), far below any meaningful similarity
+difference, so only subtraction error is absorbed and a real shortfall still
+declines. `min_similarity` compares an authored score with an authored
+threshold, with no arithmetic, and keeps the plain comparison.
+`src/kernel/tiebreak-facts.test.ts` pins the edge (0.70 against 0.60 with
+margin 0.1 selects). The tie-break remains inert while
+`router.scoring.threshold` and `margin` are 0, since only an ambiguous route
+reads it.
 
 ## Hook latency, per bench scenario (`engineos bench`)
 

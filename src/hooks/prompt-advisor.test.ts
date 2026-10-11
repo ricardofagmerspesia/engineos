@@ -651,7 +651,10 @@ test('the judge in shadow mode adds no note to the guidance', async (t) => {
 // ------------------------------------------------------------------ the tie-break
 
 test('without the daemon switch the contract line carries no tie-break winner', async () => {
-  const text = await guidance('add a paginated orders endpoint to the API and mirror the screen to mobile');
+  // A single-intent prompt: a multi-agent prompt escalates to the router and
+  // prints the escalation line instead, so it never reaches the contract line
+  // this assertion is about.
+  const text = await guidance('add a paginated orders endpoint to the API');
   assert.match(text, /task contract \(kernel, deterministic\)/);
   assert.ok(!text.includes(' tiebreak='), `an unswitched tie-break must not name a winner: ${text}`);
 });

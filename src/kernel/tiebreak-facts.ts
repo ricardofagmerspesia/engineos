@@ -41,6 +41,15 @@ export function refuseUnrankedTiebreak(fact: TiebreakFact, ranked: readonly Rank
 // Fewer than this many survivors leaves nothing to break (§4.7 step 1).
 const MIN_SURVIVORS = 2;
 
+// Contract §4.7 step 4 accepts a gap >= margin, but the gap is a binary
+// floating-point subtraction: 0.7 - 0.6 is 0.09999999999999998, which a literal
+// comparison would refuse against an authored margin of 0.1. Similarities are
+// in [0,1] with far fewer meaningful digits than this, so the tolerance only
+// absorbs subtraction error and never turns a real shortfall into a selection.
+// min_similarity needs no tolerance: it compares an authored score with an
+// authored threshold, with no arithmetic in between.
+const SCORE_GAP_TOLERANCE = 1e-9;
+
 interface ScoredSurvivor {
   id: string;
   score: number;
@@ -70,6 +79,6 @@ export function tiebreakWinner(
   const [best, second] = scored;
   if (best === undefined || second === undefined) return null;
   if (best.score < policy.min_similarity) return null;
-  if (best.score - second.score < policy.margin) return null;
+  if (best.score - second.score + SCORE_GAP_TOLERANCE < policy.margin) return null;
   return best.id;
 }
