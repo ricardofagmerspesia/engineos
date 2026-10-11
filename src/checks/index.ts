@@ -14,6 +14,7 @@ import { KERNEL_CHECKS } from './kernel';
 import { PORTABILITY_CHECKS } from './portability';
 import { PROSE_TRUTH_CHECKS } from './prose-truth';
 import { REGISTRIES_CHECKS } from './registries';
+import { ROUTER_V2_CHECKS } from './router-v2';
 import { RULES_CHECKS } from './rules';
 import { RUNTIME_GOVERNANCE_CHECKS } from './runtime-governance';
 import { RUNTIME_SURFACE_CHECKS } from './runtime-surface';
@@ -43,6 +44,7 @@ export const CHECKS: readonly Check[] = [
   ...PORTABILITY_CHECKS,
   ...SKILL_ENABLEMENT_CHECKS,
   ...PROSE_TRUTH_CHECKS,
+  ...ROUTER_V2_CHECKS,
 ];
 
 // Natural id order: the numeric part numerically, then the letter suffix

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "description": "Gate requirements as data. CLAUDE.md states the constitution; this file states which artifacts a given condition demands, so a new requirement is a registry entry rather than a constitutional amendment. Read by hooks/prompt-advisor.sh (keyword tier, via scripts/kernel.sh resolve-task) and by the model directly (full tier, via rules/gates.md).",
+  "version": "1.2.0",
+  "description": "Gate requirements as data. CLAUDE.md states the constitution; this file states which artifacts a given condition demands, so a new requirement is a registry entry rather than a constitutional amendment. Read by hooks/prompt-advisor.sh (keyword tier, via scripts/kernel.sh resolve-task) and by the model directly (full tier, via rules/gates.md). Each rule also names the judge fact that can add it (judge_fact, the fact.<name> question suffix src/judge/questions.ts generates, so this registry is the one source of the fact vocabulary) and the probability cut at which a jev fact adds it (judge_threshold, a placeholder until T13; null falls back to policy.json judge.thresholds.rule_default). A null judge_fact means the rule is never judge-added: it is derived in code or applies to every change (contracts.md@rev2 §6.3). The judge only ever adds a rule; it never removes one the keyword tier matched.",
   "precedence": [
     "security and compliance",
     "explicit user constraints",
@@ -24,6 +24,8 @@
         ],
         "gate": "design"
       },
+      "judge_fact": null,
+      "judge_threshold": null,
       "signals": [
         "\\b(add|build|create|implement)\\b.{0,40}\\b(feature|module|service|screen|page|endpoint|integration|workflow)s?\\b"
       ]
@@ -44,6 +46,8 @@
         ],
         "gate": "validation"
       },
+      "judge_fact": null,
+      "judge_threshold": null,
       "signals": [
         "\\b(is (it|this) done|are we done|ship it|ready to (ship|merge|release))\\b",
         "\\b(mark|call) (it|this) (done|complete)\\b"
@@ -60,7 +64,9 @@
         "require": [
           "change-record"
         ]
-      }
+      },
+      "judge_fact": null,
+      "judge_threshold": null
     },
     {
       "id": "rule-large-change",
@@ -77,6 +83,8 @@
         ],
         "gate": "design"
       },
+      "judge_fact": "large_change",
+      "judge_threshold": 0.5,
       "signals": [
         "\\b(rewrite|overhaul|redesign|re-?architect)\\b",
         "\\bmigrate\\b.{0,30}\\b(whole|entire|everything|all)\\b"
@@ -97,6 +105,8 @@
         ],
         "gate": "design"
       },
+      "judge_fact": "affects_public_contract",
+      "judge_threshold": 0.5,
       "signals": [
         "\\b(public|published|external)\\b.{0,20}\\b(api|contract|schema|endpoint)\\b",
         "\\bbreaking change\\b",
@@ -119,6 +129,8 @@
         ],
         "risk": "high"
       },
+      "judge_fact": "handles_sensitive_data",
+      "judge_threshold": 0.5,
       "signals": [
         "\\b(pii|personal data|credit card|payment details|cardholder|cpf|ssn|clinical|patient|medical record|lgpd|gdpr|hipaa)\\b"
       ]
@@ -140,6 +152,8 @@
         "risk": "high",
         "gate": "release"
       },
+      "judge_fact": "production_write",
+      "judge_threshold": 0.5,
       "signals": [
         "\\b(deploy|rollout|roll out|release|push|ship)\\b.{0,40}\\b(prod|production|live)\\b",
         "\\bin production\\b",
@@ -161,6 +175,8 @@
         ],
         "risk": "high"
       },
+      "judge_fact": "destructive_ddl_or_dml",
+      "judge_threshold": 0.5,
       "signals": [
         "\\bdrop\\b.{0,30}\\b(table|column|index|schema)\\b",
         "\\btruncate\\b",
@@ -183,6 +199,8 @@
         ],
         "risk": "high"
       },
+      "judge_fact": "secret_reached_git_or_shared_file",
+      "judge_threshold": 0.5,
       "signals": [
         "\\b(leaked|committed|exposed|hardcoded|pushed)\\b.{0,30}\\b(secret|api key|token|password|credential)s?\\b",
         "\\bsecret\\b.{0,20}\\bin (git|the repo|history)\\b"
@@ -202,7 +220,9 @@
           "named-owner"
         ],
         "gate": "release"
-      }
+      },
+      "judge_fact": null,
+      "judge_threshold": null
     },
     {
       "id": "rule-fanout",
@@ -218,6 +238,8 @@
           "single-message-dispatch"
         ]
       },
+      "judge_fact": null,
+      "judge_threshold": null,
       "signals": [
         "\\b(across|in) (all|every|the whole|the entire)\\b",
         "\\bsystem.?wide\\b",
@@ -239,6 +261,8 @@
           "freshness-policy"
         ]
       },
+      "judge_fact": "knowledge_changes_frequently",
+      "judge_threshold": 0.5,
       "signals": [
         "\\bfine.?tun\\w+\\b",
         "\\brag\\b",
@@ -261,6 +285,8 @@
         ],
         "gate": "design"
       },
+      "judge_fact": "multi_agent_system",
+      "judge_threshold": 0.5,
       "signals": [
         "\\b(multi[- ]?agent|agents? (that|which) (talk|hand ?off|coordinate)|supervisor agent|agent topology|orchestrat(e|ion|or) .{0,30}agents?)\\b",
         "\\b(langgraph|a2a|agent[- ]to[- ]agent)\\b"
@@ -280,6 +306,8 @@
         ],
         "gate": "design"
       },
+      "judge_fact": "retrieval_over_shared_corpus",
+      "judge_threshold": 0.5,
       "signals": [
         "\\brag\\b",
         "\\bretrieval.?augmented\\b",
