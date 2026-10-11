@@ -17,7 +17,7 @@ a prototype or a single manual prompt.
 | Golden set (`evals/intent-routing-cases.jsonl`) case count / content hash | 284 cases / sha256 `7f76056fd6464b7f327e121d04f83eb32049999571e86e5db87c85bf5e5b61b7` |
 | Held-out cases (no `exemplar: true`) | 148 (145 graded, 3 `source: notification`) |
 | `registries/intents.json` version / content hash | 2.0.0 / sha256 `e41d10cc253a5f9953402fbe5e14dfb136f869ffba246dc485422bf06a1964cf` (T13d recorded `8d79dbd9f5d5a14eed657ccde04a37c37c1c108b8b207522a6eba2462590f92f`; changed by the 2026-10-11 devops pipeline repair below) |
-| `registries/policy.json` version (`router.scoring`, `judge.thresholds`) | sha256 `0b6ffe89cb14d85e636dd72496ec1f18422cb6b828d884333a2a23fa4519d871`; `router.scoring` numbers unchanged from `b0291ed`; `judge.thresholds` untouched placeholders |
+| `registries/policy.json` version (`router.scoring`, `judge.thresholds`) | sha256 `e69ee25097202c7067fc7406f0e8b00a8c277f27dec1c5f5791a09a1783ee2fe` at `8742ba6` (2026-10-11: was `0b6ffe89…` at measurement; since then only the `router.tiebreak` and `router.scoring` note texts changed, in `455634e` and `b3c041d`, so no number below moves); `router.scoring` numbers unchanged from `b0291ed`; `judge.thresholds` untouched placeholders |
 | Judge model (`policy.judge.model`) | `jev-1.13.0` (not called: no judge request left the machine) |
 | Human decision allowing judge requests (T13, contract D5) | pending approved run |
 | Bench host (OS, CPU, Node version) | pending approved run (calibration host: Darwin arm64, Apple M5, Node v24.21.0; no bench run) |
