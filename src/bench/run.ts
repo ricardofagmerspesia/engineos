@@ -3,10 +3,11 @@
 //
 // Measures warm medians, not single noisy samples. ENGINEOS_PERF_MULTIPLIER may
 // be raised explicitly for a known-slow CI host; the published budgets remain
-// the source values. The five names, their order and the budgets are the ones CI
-// asserts on, so they are literals here rather than registry entries.
+// the source values. The five original names, their order and the budgets are
+// the ones CI asserts on, so they are literals here rather than registry
+// entries; later lines are appended after them, never interleaved.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { cpus, platform, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -183,7 +184,24 @@ function fileBaselineIo(): BaselineIo {
   };
 }
 
-// Measured in this order, and printed only once all five are in: a partial
+// The bundle the per-call hooks parse on every Edit/Write, Bash and Agent call
+// (scripts/build.mjs; dist/engineos-hot.cjs is only its loader).
+const HOT_BUNDLE = 'dist/runtime/engineos-hot.cjs';
+// What this line guards against is the per-call bundle quietly regrowing into
+// the full CLI through one stray import: the single bundle was 446,919 bytes
+// before the split (1.7.0), so the bound sits well below it. Tighten it to the
+// measured size plus headroom once the first build records one.
+const HOT_BUNDLE_BUDGET_BYTES = 320000;
+
+function bundleBytes(root: string, relative: string): number {
+  try {
+    return statSync(join(root, relative)).size;
+  } catch {
+    throw new KernelError(`bench: ${relative} is missing — run npm run build`);
+  }
+}
+
+// Measured in this order, and printed only once all of them are in: a partial
 // report next to a failed hot path would read as a passing run with a short tail.
 function measureAll(root: string, env: NodeJS.ProcessEnv, deps: BenchDeps): Measurement[] {
   const kernel = join(root, 'scripts/kernel.sh');
@@ -206,6 +224,8 @@ function measureAll(root: string, env: NodeJS.ProcessEnv, deps: BenchDeps): Meas
     { name: 'prompt-advisor (end to end)', actual: promptAdvisor, budget: 600, unit: 'ms' },
     { name: 'route-before-change (cache hit)', actual: routeBeforeChange, budget: 150, unit: 'ms' },
     { name: 'always-on context', actual: alwaysOnBytes(root), budget: 32000, unit: 'bytes' },
+    // Appended after the five, which keep their names and order (public surface).
+    { name: 'per-call hook bundle', actual: bundleBytes(root, HOT_BUNDLE), budget: HOT_BUNDLE_BUDGET_BYTES, unit: 'bytes' },
   ];
 }
 

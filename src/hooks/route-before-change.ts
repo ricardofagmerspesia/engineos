@@ -8,14 +8,14 @@
 // in-process `resolve({ path })` call answers both `excluded` and
 // `hook_guidance`, and the guidance string itself is rendered by the kernel
 // (src/kernel/route.ts renderGuidance), never here.
-import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { lazyRegistries, type KernelContext } from '../kernel/context';
 import { resolve } from '../kernel/resolve';
 import { findUpFile } from '../lib/git';
 import { isRecord } from '../lib/json';
-import { bypassActive } from './bypass';
 import { routeCachePaths, type RouteCachePaths } from './cache';
+import { editContext, routeCacheBuster, routingSignature, writeAtomic, type WorktreeFacts } from './edit-context';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import type { HookEnvelope } from './envelope';
 
@@ -38,14 +38,6 @@ const CODE_EXTENSIONS: readonly string[] = ['.ts', '.tsx', '.js', '.jsx', '.py',
 // members of [[:space:]] can never participate.
 const ACTIVE_RECORD = /^status:[ \t\f\v\r]*active/m;
 
-interface GitInfo {
-  repo: string;
-  gitDir: string;
-  prefix: string;
-}
-
-const NO_GIT: GitInfo = { repo: '', gitDir: '', prefix: '' };
-
 export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (env.file === '') return silent;
   const start = dirOf(env.file);
@@ -54,10 +46,12 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   const from = env.cwd === '' ? start : env.cwd;
 
   // Before any kernel work, any cache work and any filesystem walk: a bypassed
-  // session must cost nothing and say nothing.
-  if (bypassActive(from, ctx.io.env, ctx.spawn)) return silent;
+  // session must cost nothing and say nothing. One git process answers both the
+  // per-repo bypass marker and the worktree facts (./edit-context).
+  const edit = editContext(from, ctx);
+  if (edit.status === 'bypassed') return silent;
 
-  const git = gitInfo(from, ctx);
+  const git = edit.worktree;
   const cache = cachePaths(env, git, ctx);
 
   // A path's route is immutable until routing.json changes, so the compact
@@ -98,46 +92,21 @@ function dirOf(file: string): string {
   return cut === 0 ? '/' : file.slice(0, cut);
 }
 
-// The three facts the rest of the hook needs, in one git process. It is the
-// second `rev-parse` of the fire — ./bypass resolved the git dir on its own —
-// and that is the deliberate trade: the alternative is a private copy of the
-// bypass policy here, and the prefix is answered by no shared helper anyway.
-function gitInfo(cwd: string, ctx: HookContext): GitInfo {
-  const result = ctx.spawn('git', ['-C', cwd, 'rev-parse', '--show-toplevel', '--absolute-git-dir', '--show-prefix'], { encoding: 'utf8' });
-  if (result.error !== undefined || result.status !== 0) return NO_GIT;
-  const lines = (typeof result.stdout === 'string' ? result.stdout : '').split('\n');
-  return { repo: lines[0] ?? '', gitDir: lines[1] ?? '', prefix: lines[2] ?? '' };
-}
-
-function cachePaths(env: HookEnvelope, git: GitInfo, ctx: HookContext): RouteCachePaths | null {
+function cachePaths(env: HookEnvelope, git: WorktreeFacts, ctx: HookContext): RouteCachePaths | null {
   if (git.gitDir === '') return null;
   const rel = cacheRel(env.file, git, env.cwd);
   if (rel === '') return null;
-  return routeCachePaths(git.gitDir, env.sessionId, routingSignature(ctx.root), ctx.io.env['ENGINEOS_ROUTE_CACHE_BUSTER'] ?? '', rel);
+  return routeCachePaths(git.gitDir, env.sessionId, routingSignature(ctx.root), routeCacheBuster(ctx.io.env), rel);
 }
 
 // The edited file as a repo-relative path: under the repo root directly, or
 // under the harness cwd, in which case the repo prefix puts it back on the root.
 // Empty means "not placeable", which means "do not cache".
-function cacheRel(file: string, git: GitInfo, cwd: string): string {
+function cacheRel(file: string, git: WorktreeFacts, cwd: string): string {
   if (git.repo !== '' && file.startsWith(`${git.repo}/`)) return file.slice(git.repo.length + 1);
   const base = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd;
   if (file.startsWith(`${base}/`)) return `${git.prefix}${file.slice(base.length + 1)}`;
   return '';
-}
-
-// bash `stat -f '%m-%z'` / `stat -c '%Y-%s'`: mtime seconds and size. Any edit to
-// the registry invalidates every entry without touching a project file.
-function routingSignature(root: string): string {
-  try {
-    const stats = statSync(join(root, 'registries', 'routing.json'));
-    return `${Math.floor(stats.mtimeMs / 1000)}-${stats.size}`;
-  } catch {
-    // A registry that cannot be stat'd still produces a stable key, so the fire
-    // answers from cache instead of failing on the key alone. Same literal the
-    // bash `|| printf unknown` fallback used.
-    return 'unknown';
-  }
 }
 
 // The first line of the cache entry, or null for a miss. An entry holding the
@@ -226,19 +195,4 @@ function hasActiveRecord(dir: string): boolean {
     if (ACTIVE_RECORD.test(contents)) return true;
   }
   return false;
-}
-
-// tmp + rename, so a concurrent hook fire never reads half an entry.
-function writeAtomic(path: string, contents: string): void {
-  const cut = path.lastIndexOf('/');
-  try {
-    if (cut > 0) mkdirSync(path.slice(0, cut), { recursive: true });
-    const tmp = `${path}.${process.pid}`;
-    writeFileSync(tmp, contents);
-    renameSync(tmp, path);
-  } catch {
-    // A cache that cannot be written costs a kernel call next time and nothing
-    // else. Reporting it would turn an unwritable git dir into hook noise on
-    // every single edit.
-  }
 }

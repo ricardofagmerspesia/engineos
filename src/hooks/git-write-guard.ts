@@ -428,6 +428,21 @@ function isGhApiWrite(args: readonly string[]): boolean {
 const GIT_MENTION = /\b(git|gh)\s/;
 const SETTING_NOTE = 'ENGINEOS_GIT_WRITES=ask';
 
+// The fast path in front of the tokenizer: most Bash calls (`ls`, `npm run x`)
+// name neither tool, and the host offers no command-content filter this hook can
+// rely on to skip them. GIT_MENTION is NOT a safe test for that — `"git" push`
+// and `g\it push` both tokenize to a git call it does not match. Every word the
+// tokenizer builds is a contiguous run of the command once quotes and
+// backslashes are taken out (those are the only characters it drops from inside
+// a word), so a command whose stripped text contains neither `git` nor `gh` can
+// produce no git/gh call, and no GIT_MENTION match on the unparsable path either.
+const MAY_NAME_TOOL = /g(?:it|h)/;
+const WORD_QUOTING = /['"\\]/g;
+
+function mayNameGitTool(command: string): boolean {
+  return MAY_NAME_TOOL.test(command.replace(WORD_QUOTING, ''));
+}
+
 export function gitWriteGuard(env: HookEnvelope, ctx: HookContext): HookDecision {
   try {
     return decide(env, ctx.io.env);
@@ -445,6 +460,7 @@ function decide(env: HookEnvelope, processEnv: NodeJS.ProcessEnv): HookDecision 
   if (env.tool !== 'Bash') return silent;
   const command = commandOf(env);
   if (command === null) return silent;
+  if (!mayNameGitTool(command)) return silent;
   const calls = gitCalls(command);
   if (calls === null) {
     return GIT_MENTION.test(command) ? ask(`[engineos] git write: unparsable command containing git/gh — ${SETTING_NOTE}`) : silent;
