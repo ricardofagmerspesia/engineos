@@ -48,18 +48,33 @@ Claude Code ──classic.<Event>──▶ mod (hooks/register.ts)
 1. Have the host bundle `dist/engineos-inprocess.cjs` in the checkout. It is
    committed together with `dist/engineos-hot.cjs` and `dist/runtime/*.cjs` by
    the approved final build of this change, so a released tree carries it.
-   `engineos validate` reports any `hooks/hooks.json` command whose
-   `${CLAUDE_PLUGIN_ROOT}/<path>` script is missing from the tree (a finding of
-   the existing hooks.json check in `src/checks/kernel-router.ts`).
+   Until that build lands, the PR tree does not carry those files.
+   `engineos validate` reports the gap as C18f `hook-target-missing` (the
+   existing hooks.json check in `src/checks/kernel-router.ts`; the registry
+   stays at 72 checks):
+   - every `${CLAUDE_PLUGIN_ROOT}/<path>` script named by a `hooks/hooks.json`
+     command must exist in the tree;
+   - a path that is absolute, contains a backslash or has a `..` segment is
+     reported, because it cannot be in the tree;
+   - for a `dist/` loader that exists, the `dist/runtime/` bundle it requires
+     (`require('./runtime/...')`) must exist too.
+
+   The finding fires at the PR head until the approved final build commits the
+   bundles.
 2. Install the adapter as a plugin, for example
    `claude --plugin-dir adapters/claude-code-mod`.
 3. Export `ENGINEOS_INPROCESS=1` in the environment Claude Code starts from.
 
-Optional overrides. Each one must be an **absolute path**; a relative or empty
-value is ignored and the default is used:
+Optional overrides. Each one must be an **absolute path** with no NUL
+character. A relative, empty or NUL-bearing value is ignored, the mod writes one
+debug-log line saying so, and the default is used:
 - `ENGINEOS_ROOT` points at the EngineOS checkout. The default is two directories
   above the adapter.
 - `ENGINEOS_NODE` names the Node binary. The default is `node` on `PATH`.
+
+The rule exists because a relative value would resolve against the directory
+the session started in, so a repository under review could plant the host
+bundle or a `node` binary that the mod then runs.
 
 ### Decision mapping
 
@@ -99,8 +114,9 @@ publishes the record in a private runtime directory:
 
 These path and privacy rules have one home, `src/lib/runtime-dir.ts`. The host's
 presence writer, the shell-side guard (`src/hooks/adapter.ts`) and the tie-break
-client (`src/judge/tiebreak.ts`) all import it. The daemon package cannot import
-`src/`, so it keeps its own copy of the directory rule.
+client (`src/judge/tiebreak.ts`) all import it. The daemon package and the
+generated bundle loaders (the compile cache below) cannot import `src/`, so each
+keeps its own copy of the directory rule.
 
 The directory and its files are locked down:
 - The directory is created `0700`.
@@ -115,42 +131,82 @@ The record is version 2:
   "served": ["<hook name>", "..."], "root": "<checkout>", "version": "<engineos version>" }
 ```
 
-- `served` lists the hooks the host actually serves.
-- `root` and `version` record which checkout and EngineOS version the host loaded.
-- A version-1 record, or any record missing a field, is not a presence record.
+- `served` lists the hooks the host actually serves: at most 64 names, each
+  matching the hook-name pattern `^[a-z][a-z0-9-]{0,63}$`.
+- `root` is the real path of the checkout whose `hooks/hooks.json` the host
+  read its route table from (`realpath` of `ENGINEOS_ROOT`, or the default).
+  It must be absolute and at most 4,096 characters.
+- `version` is the host bundle's build version, at most 64 characters. A host
+  run unbundled records `unbuilt`, which no bundled shell entry carries, so an
+  unbundled host never silences a shell hook.
+- A version-1 record, or any record missing a field or carrying one out of
+  bounds, is not a presence record.
 
-**When the record is written.** The host does not write it when the socket
-starts listening. It writes it only after the mod's first `GET /v1/routes`
-handshake. A host that is listening but has not yet been reached by its mod
-leaves no record, so the shell keeps running every hook.
+**When the record is written: the handshake.** The host does not write the
+record when the socket starts listening. It writes it while answering the mod's
+first `GET /v1/routes`, and that request is the handshake:
+- A host that is listening but has not yet been reached by its mod leaves no
+  record, so the shell keeps running every hook.
+- If the write fails, the host answers `500` (`presence-unwritable`) instead of
+  the route table. The mod treats that as unreadable routes, abandons the host
+  (ends the child, whose exit removes its paths) and keeps the shell hooks in
+  charge. A mod never believes it is served beside a record nobody can read.
+- A host that misses its 5 s ready deadline, or whose route answer does not
+  arrive within 1 s, is ended the same way. It never publishes presence with
+  nobody serving.
+
+**The heartbeat.** While it serves, the host re-stamps the record's mtime every
+5 s (`PRESENCE_HEARTBEAT_MS`). A record not stamped within 30 s
+(`PRESENCE_STALE_MS`) is a dead host's record: a host killed without cleanup
+leaves its record behind, and its pid may be reused. The shell guard ignores a
+stale record, and a new host for the same session (`claimPaths`) removes a
+stale record and socket instead of refusing to start. A missed stamp is logged,
+not fatal; its failure direction is a double fire.
 
 **When a shell hook stands down.** A shell hook exits silently only when every
-one of these holds:
+one of these holds, checked in this order (`servedInProcess` in
+`src/hooks/adapter.ts`):
 1. The hook is not `git-write-guard`.
 2. `ENGINEOS_INPROCESS=1`.
 3. The envelope carries a raw `session_id` matching `^[A-Za-z0-9._-]{1,128}$`.
 4. The platform has a POSIX uid.
-5. The runtime directory passes the privacy rule above.
-6. The presence file is a regular file, owned by this uid, with no group or
+5. The shell entry is a bundled build that carries its version. An unbundled
+   run never stands down.
+6. The runtime directory passes the privacy rule above.
+7. The presence file is a regular file, owned by this uid, with no group or
    other bits. It is opened without following a symlink, and it is at most
    4 KiB.
-7. The record parses as version 2 with every field present and typed, and its
-   pid is a positive integer.
-8. The record's `session` equals the envelope's `session_id`, and its `socket`
+8. The record parses as version 2 with every field present, typed and in
+   bounds, and its pid is a positive integer.
+9. The record's `session` equals the envelope's `session_id`, and its `socket`
    equals the expected socket path.
-9. A socket owned by this uid exists at that path.
-10. The recorded pid is not the hook's own pid.
-11. `process.kill(pid, 0)` succeeds for the recorded pid.
-12. The hook's name appears in the record's `served` list.
+10. The hook's name appears in the record's `served` list.
+11. The record's `version` equals this shell bundle's version.
+12. The record's mtime is within 30 s of now (the heartbeat above).
+13. A socket owned by this uid exists at that path. It must be a socket, not a
+    file or a symlink.
+14. The recorded pid is not the hook's own pid.
+15. `process.kill(pid, 0)` succeeds for the recorded pid.
+16. The record's `root` equals the real path of the nearest directory above
+    the shell entry's own file that holds `hooks/hooks.json`, which is the
+    checkout or installed plugin the harness registered this entry from. This
+    is deliberately not `ENGINEOS_ROOT`, which names where registries are read,
+    not who registered the hook. A host routing from another checkout may serve
+    a different body of the hook, or serve it on another event or matcher.
 
 Any failed condition, and any exception, runs the hook normally. Every failure
 mode therefore resolves toward running twice, never toward not running.
 
-**The mod's own git fallback.** The mod answers `ask` itself on a Bash call that
-may name `git` or `gh` whenever the host cannot answer for it:
-- the host is not ready (still starting, failed, timed out or exited);
-- the host returned no answer for the call;
-- no hook is routed to the call.
+**The mod's own git fallback.** With the flag on, the mod answers `ask` itself
+on a Bash call when all of these hold:
+- the command may name `git` or `gh`;
+- `git-write-guard` did not answer for the call, because the host is not ready
+  (still starting, failed, timed out or exited), returned no answer in time, or
+  routes no hook to the call;
+- no other EngineOS hook already asked or blocked.
+
+The fallback stands in for the guard, so it honours the guard's switch: it is
+skipped only when `ENGINEOS_GIT_WRITES` is exactly `auto` (`rules/git.md`).
 
 The test strips quotes and backslashes (`'`, `"`, `\`) from the command and then
 looks for `git` or `gh` anywhere. That is the same over-inclusive test as
@@ -158,9 +214,10 @@ looks for `git` or `gh` anywhere. That is the same over-inclusive test as
 so it carries a commented copy. The test may ask on a command that is not a git
 write, but it never lets one through unseen.
 
-One more safeguard: a host that misses its 5 s startup deadline is killed. It
-never completes the handshake, so it never publishes presence with nobody
-serving.
+**Fail-closed error path.** If the mod's own PreToolUse handler throws before it
+has called `next`, its `.catch` handler answers `ask` for a Bash call that may
+name `git` or `gh`, with no `ENGINEOS_GIT_WRITES` check, because nothing
+EngineOS-side judged the call. Any other call passes to `next`.
 
 ### Known gaps (host API)
 
@@ -181,6 +238,21 @@ serving.
 - `$.http.fetch` takes no timeout. Deadlines are enforced with `$.clock.sleep`
   and an `AbortController`.
 
+### Known residuals (security)
+
+Both resolve toward a hook running twice or the adapter not starting, never
+toward a silenced `git-write-guard`, which never stands down.
+- **A second process on the same session.** The presence record names a
+  session, not an owner. If a second Claude Code process runs on the same
+  session id with the adapter flag on, its advisory shell hooks (every hook
+  except `git-write-guard`) can stand down on host A's live record while
+  host A serves only process A. Closing this needs an owner field in the
+  record, which is out of scope for PR #132.
+- **The listen-to-handshake window.** There is a narrow race between the host
+  binding its socket and the mod's first `GET /v1/routes`. The worst case is a
+  hook that fires twice or an adapter that fails to start; the shell hooks then
+  stay in charge.
+
 ## Embedding tie-break daemon (`tools/embedding-daemon/`)
 
 ### What it does
@@ -194,7 +266,9 @@ that case, and only then, the prompt advisor may call `tiebreak()` from
    `skipped` with no further I/O, which keeps it well inside the 50 ms budget.
 2. If the socket is present and private, the client:
    - caps the prompt at twice the prompt-text limit (4,000 characters) before
-     redaction, so the redaction patterns never run over unbounded input;
+     redaction, so the redaction patterns never run over unbounded input; when
+     the prompt is capped, the trailing run of non-whitespace is dropped too,
+     since it may be the first half of a token whose pattern needs the rest;
    - redacts it using the `policy.judge.redaction` patterns (the same set the
      judge uses; see the ADR's "Threat model and redaction");
    - trims the redacted prompt and the candidates to the protocol limits;
@@ -233,11 +307,13 @@ npm --prefix tools/embedding-daemon ci --ignore-scripts
   under explicit consent. Until that lockfile is committed and reviewed, the
   daemon is not installable.
 - **Always pass `--ignore-scripts`.** It stops every dependency's lifecycle
-  scripts, including the `onnxruntime-node` postinstall, which would otherwise
+  scripts, so a large third-party tree gets no install-time code execution.
+  That includes the `onnxruntime-node` postinstall, which would otherwise
   download CUDA libraries from NuGet on linux/x64. The CPU binaries ship inside
   the package, so the daemon needs nothing from that download.
-  `tools/embedding-daemon/.npmrc` also sets `onnxruntime-node-install=skip`, as
-  a second guard for an install run without the flag.
+- **`tools/embedding-daemon/.npmrc` repeats both guards** for an install run
+  without the flag: `ignore-scripts=true` and `onnxruntime-node-install=skip`.
+  Explicit scripts such as `npm start` still run.
 
 ### Running
 
@@ -253,7 +329,7 @@ The daemon is controlled by these environment variables:
 | Variable | Default | Effect |
 |---|---|---|
 | `ENGINEOS_EMBED_DAEMON` | unset | Must be `1`, otherwise the daemon prints a notice and exits 0 |
-| `ENGINEOS_EMBED_CACHE` | `$XDG_CACHE_HOME/engineos/models` (or `~/.cache/...`) | Model cache root. The model is stored in a subdirectory per pinned revision, so a revision bump never reads weights cached for another revision |
+| `ENGINEOS_EMBED_CACHE` | `$XDG_CACHE_HOME/engineos/models` (or `~/.cache/...`) | Model cache root. The model is stored in `<cache root>/<MODEL_REVISION>/`, created mode `0700`, so a revision bump never reads weights cached (or planted) for another revision |
 | `ENGINEOS_EMBED_OFFLINE` | unset | `1` never contacts the Hugging Face hub; the model must already be cached |
 | `ENGINEOS_EMBED_IDLE_MINUTES` | `120` | Exits after this long with no connection |
 
@@ -303,13 +379,21 @@ deterministic answer untouched.
 
 This is not an opt-in tier, but it is a local cache, so its privacy rule is
 recorded here. The committed loaders in front of `dist/runtime/` (generated by
-`scripts/build.mjs`) enable V8's compile cache on node 22.8 and later. They use
-it only in a private per-user directory:
-- The loader creates the directory `0700`.
-- It then verifies that the directory is owned by the current uid, has no group
-  or other bits, and is not a symlink.
-- When any check fails, the loader skips the cache and runs uncached. It never
-  falls back to a shared directory.
+`scripts/build.mjs`) enable V8's compile cache on node 22.8 and later. Node's
+default location, `<os.tmpdir()>/node-compile-cache`, is created `0755` on a
+shared `/tmp` and can be pre-created by another user, who would then supply the
+compiled code of every hook, `git-write-guard` included. The loader therefore
+uses only a private per-user directory:
+
+```
+<XDG_RUNTIME_DIR | TMPDIR | os.tmpdir()>/engineos-<uid>/compile-cache
+```
+
+- The loader creates both `engineos-<uid>/` and `compile-cache/` with mode `0700`.
+- It then checks each one with `lstat`: a real directory (not a symlink), owned
+  by the current uid, with no group or other bits.
+- When any check fails, or the platform has no POSIX uid, the loader skips the
+  cache and runs uncached. It never falls back to a shared directory.
 
 `NODE_DISABLE_COMPILE_CACHE=1` still turns the cache off.
 
@@ -318,7 +402,9 @@ it only in a private per-user directory:
 | Symptom | Check |
 |---|---|
 | `git-write-guard` asks twice, or fires from both host and shell | Expected: the guard never stands down. The two asks fold into one permission prompt |
-| Other hooks fire twice with the adapter on | Expected while the host is starting, before the mod's first `GET /v1/routes` handshake, or after the host exits. Expected too for a hook missing from the record's `served` list. Check the debug log for `host-exited`, and check that `dist/engineos-inprocess.cjs` exists |
+| Other hooks fire twice with the adapter on | Expected while the host is starting, before the mod's first `GET /v1/routes` handshake, or after the host exits. Expected too for a hook missing from the record's `served` list, when the host's `version` differs from the shell bundle's (an unbundled host records `unbuilt`), when the host routes from another checkout (`root` differs), and when the record has not been re-stamped within 30 s. Check the debug log for `host-exited`, `routes-unreadable`, `presence-failed` and `heartbeat-failed`, and check that `dist/engineos-inprocess.cjs` exists |
+| A Bash call that names `git` or `gh` asks even though `git-write-guard` stays silent from the shell | The mod's fallback: the host did not answer for `git-write-guard` on that call. Set `ENGINEOS_GIT_WRITES=auto` only if you want unprompted git writes everywhere (`rules/git.md`) |
+| `engineos validate` reports C18f `hook-target-missing` | A `hooks/hooks.json` script, or the `dist/runtime/` bundle a loader requires, is missing from the tree. At the PR head this is expected until the approved final build commits the bundles |
 | `ENGINEOS_ROOT` or `ENGINEOS_NODE` seems ignored | Both must be absolute paths; a relative value falls back to the default |
 | Hooks never fire from the adapter | Check that `ENGINEOS_INPROCESS=1` is visible to Claude Code (`$.env`), and check the host's stderr in the debug log |
 | `socket path is over 100 bytes` | Set `XDG_RUNTIME_DIR` to a short private directory, for example `/run/user/<uid>` |
@@ -328,11 +414,15 @@ it only in a private per-user directory:
 
 ## Wiring owned elsewhere
 
-These changes belong to other owners and are tracked as wiring requests, not
-done in these directories:
-- The build entry for `dist/engineos-inprocess.cjs`.
-- The shell-side presence guard in the hook entry adapters.
-- `combine.ts` reading `tiebreak`, and the prompt advisor calling `tiebreak()`.
-- The new policy keys `router.tiebreak.{min_similarity, margin}`.
-- COMPATIBILITY entries for the new environment variables.
-- `.gitignore` entries for the daemon's `node_modules` and model cache.
+These changes belong to other owners and were tracked as wiring requests, not
+done in these directories. Status at the PR #132 head:
+
+| Wiring | Status |
+|---|---|
+| Build entry for `dist/engineos-inprocess.cjs` | Landed: `scripts/build.mjs` `ENTRIES` builds `adapters/claude-code-mod/host/server.ts` behind its own loader. The built files themselves are committed by the approved final build |
+| Shell-side presence guard | Landed: `servedInProcess` in `src/hooks/adapter.ts`, shared by both hook entries |
+| `combine.ts` reading `tiebreak`; the prompt advisor calling `tiebreak()` | Landed: `src/kernel/combine.ts` (`narrowed()`) and `src/hooks/prompt-judge.ts` / `prompt-advisor.ts` |
+| Policy keys `router.tiebreak.{min_similarity, margin}` | Landed in `registries/policy.json` (placeholders until T13 calibrates them) |
+| COMPATIBILITY entries for the new environment variables | Landed: `docs/COMPATIBILITY.md` "Unreleased", Environment row |
+| `.gitignore` for the daemon | Landed for `tools/embedding-daemon/node_modules/`. The model cache defaults to `$XDG_CACHE_HOME/engineos/models`, outside the checkout, so it needs no entry |
+| The daemon's `package-lock.json` | Pending: generated and reviewed at the approved final stage (T13) |

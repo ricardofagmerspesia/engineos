@@ -1,13 +1,41 @@
-# Routing replacement — frozen contracts (rev 3)
+# Routing replacement — frozen contracts (rev 4)
 
 *Companion to `2026-10-10-routing-replacement-plan.md` (the plan) and
 `docs/adr/2026-10-10-three-tier-router-and-jev-judge.md` (the decision). Every
 ticket T02–T13 of the plan's task graph builds against the shapes below and
-changes none of them. A change to a contract comes back here first (rev 4, ...),
-then to the units that consume it. Consumers cite `contracts.md@rev3`; a rev1 or
-rev2 citation stays valid for every section the changelog below does not name.*
+changes none of them. A change to a contract comes back here first (rev 5, ...),
+then to the units that consume it. Consumers cite `contracts.md@rev4`; a rev1,
+rev2 or rev3 citation stays valid for every section the changelog below does not
+name.*
 
 ## Changelog
+
+**rev 4 (2026-10-11) — security fix pass on PR #132.** Ratifies the security
+fixes merged at PR head `a481025`; where an earlier line of this document and
+that code disagree, the code wins and the line is corrected here. Full text:
+**§17 Revision 4**. Sections edited in place: §4.1, §4.2, §4.3, §5, §6.2,
+§10.1, §10.2, §10.6, §14, §15, §16.7.
+
+1. §4.1–§4.3 — the authoritative fold is **add-only for high-floor intents**:
+   every deterministic survivor with a `high` risk floor is appended after the
+   judge's choice and protected from suppression; `model_tier` is the higher of
+   `route.model_tier` and the folded set's tier; `rule-spec-threshold` reads the
+   folded set (§17.6).
+2. §5 — new `judgeMayReceive`: the judge-only source rule, stricter than
+   `classifyPromptSource` and fail-closed (§17.5). Routing and the tie-break
+   keep `classifyPromptSource`.
+3. §6.2 — `judge.redaction` grows to 25 kinds; the loader refuses unbounded
+   quantifiers; the endpoint origin is fixed in code and an off-origin
+   endpoint refuses the **whole** `policy.json` load (§17.4).
+4. §10.1 — enablement order gains `endpoint off-origin → skipped: disabled`
+   after `no-fetch`, before the breaker.
+5. §10.2, §10.6 — text is pre-capped, the trailing fragment dropped, then
+   redacted, then cut (§17.4).
+6. §17.1–§17.3 — new presence section: record v2, the handshake, the
+   heartbeat and the full stand-down list (the presence file had no section
+   before; §16.7 described it informally).
+7. §17.7–§17.9 — mod git fallback, C18f `hook-target-missing`, compile cache,
+   daemon install and model cache, and the known residuals.
 
 **rev 3 (2026-10-11)** — five T06 questions, the T12 tie-break fact, and T12's
 accepted spawn-count deviation. Full text and consumer deltas: **§16 Revision 3**.
@@ -62,7 +90,13 @@ byte-identical to rev 1.
    from `src/kernel/index.ts`) is owned by T06; `README.md` is in T09's
    exclusive paths (D4).
 
-- **Revision:** rev 3 (2026-10-11); rev 2 (2026-10-11); rev 1 (2026-10-10). **Owner:** T01 (contract owner).
+- **Revision:** rev 4 (2026-10-11); rev 3 (2026-10-11); rev 2 (2026-10-11); rev 1 (2026-10-10). **Owner:** T01 (contract owner).
+- **rev 4 evidence read** (PR checkout `feat/routing-replacement` at `a481025`):
+  `src/kernel/{combine,combine-aggregate}.ts`, `src/hooks/{adapter,prompt-source,prompt-judge}.ts`,
+  `src/judge/{jev,redact,state,tiebreak}.ts`, `src/registry/policy-judge.ts`,
+  `src/lib/runtime-dir.ts`, `src/inprocess/*`, `src/checks/kernel-router.ts`,
+  `adapters/claude-code-mod/hooks/register.ts`, `scripts/build.mjs`,
+  `tools/embedding-daemon/{.npmrc,src/*}`, `registries/policy.json`.
 - **rev 3 evidence read** (PR checkout `feat/routing-replacement` at `64dfce8`):
   `src/kernel/{combine,judge-facts,resolve,decisions,route}.ts`,
   `src/judge/tiebreak.ts`, `docs/OPT-IN-TIERS.md`, `src/hooks/prompt-advisor.ts`,
@@ -450,6 +484,13 @@ With a `jev` fact in `authoritative` mode:
 Every regex decision match, every path/intent-derived floor and every existing
 escalation reason is kept. Nothing below removes an entry.
 
+rev 4 (§17.6): the same holds for high-floor intents. `keptHigh` = the
+deterministic survivors (`route.intents`) whose registry risk floor is `high`.
+They are appended to the judge's choice (§4.2) and protected from suppression,
+and `model_tier` = the higher of `route.model_tier` and the folded set's tier in
+`registries/models.json` `escalation_order`. A judge answer can neither drop a high-floor
+intent nor lower the model tier.
+
 ### 4.2 Rule 3 — intents (`combination.intents: "noul-then-primary"`)
 1. `qualifying = ids of judge.intents with p >= thresholdOf(id)` where
    `thresholdOf(id) = intents.json row.threshold ?? judge.thresholds.intent_default`,
@@ -461,11 +502,15 @@ escalation reason is kept. Nothing below removes an entry.
    intent: answer directly or use a general worker); otherwise
    `intents = [primary.id]`, `ambiguous = false`.
 4. Else → `intents = []`, `ambiguous = true`.
+5. (rev 4) Folded ids = the choice from steps 1–4, then every `keptHigh` id not
+   already in it, in registry order (§4.1). The cap in step 1 applies to the
+   judge's choice only; `ambiguous` is the choice's.
 
 The contract's derived lists (`agents`, `rules`, `skills`, `commands`, `mcp`,
 `model_tier`, `risk_floor`, `suppressed`) are recomputed from the folded
 `intents` by the existing aggregation in `resolve.ts` (suppression runs over the
-folded set exactly as `routeEscalate` runs it over the raw set).
+folded set exactly as `routeEscalate` runs it over the raw set; rev 4: a
+`keptHigh` id is never suppressed).
 
 ### 4.3 Rule 2a — gates add-only (`combination.judge: "add-only"`)
 For each decision rule `r` with `judge_fact !== null`, when
@@ -475,7 +520,8 @@ and `r` is not already matched: synthesize `DecisionMatch` from the registry row
 `matchFromRule(id, regs)` exported by `src/kernel/decisions.ts`) and append.
 Two rules are derived in code, not from `judge.rules`:
 - `rule-fanout` ← `judge.scale === 2`;
-- `rule-spec-threshold` ← `'new-feature'` is in the folded `intents`.
+- `rule-spec-threshold` ← `'new-feature'` is in the folded ids (rev 4: the
+  judge's choice plus `keptHigh`, read before suppression).
 `rule-verification`, `rule-change-record`, `rule-high-risk-critic` stay
 regex/model-only (never synthesized). `anyHigh` is recomputed over the union.
 
@@ -593,7 +639,20 @@ export interface SourceMarkers {            // policy.router.source_markers
 // after trimming leading whitespace, case-sensitive; first match wins in the
 // order notification, tool_result, hook_echo; no match -> 'user'.
 export function classifyPromptSource(env: HookEnvelope, markers: SourceMarkers): PromptSource;
+
+// rev 4 (§17.5): the judge-only source rule. True only when, with nothing
+// thrown (the markers thunk reads the registry and may throw):
+//   classifyPromptSource(env, markers()) === 'user'
+//   AND !/^<[A-Za-z][A-Za-z0-9_.:-]{0,63}(?:[\s/>]|$)/.test(env.prompt.trimStart())
+// The tag-frame test applies even when the host declares the source 'user'.
+// Any throw -> false (fail closed).
+export function judgeMayReceive(env: HookEnvelope, markers: () => SourceMarkers): boolean;
 ```
+
+rev 4: `src/hooks/prompt-judge.ts` declares a judge fact only when
+`judgeMayReceive` is true; otherwise it returns no fact, so doubt resolves
+toward no egress. The kernel route and the §10.6 tie-break keep
+`classifyPromptSource`, unchanged.
 
 Hook behaviour for a non-`user` source: no kernel call, no judge call, one
 `route` event `{ "skipped": "not-user-input" }` (§6.4), `silent` decision
@@ -658,7 +717,7 @@ margin would let an exact tie decide (refusal text as T09a's other cuts:
 
 ```json
 "judge": {
-  "note": "TypeSafe Jev as the opt-in semantic judge (ADR docs/adr/2026-10-10-three-tier-router-and-jev-judge.md). Off unless the enabled_env equals enabled_value AND key_env is non-empty. Prompts leave the machine: redaction runs before the request; mode shadow records only. Every threshold is a placeholder until T13.",
+  "note": "TypeSafe Jev as the opt-in semantic judge (ADR docs/adr/2026-10-10-three-tier-router-and-jev-judge.md). Off unless the enabled_env equals enabled_value AND key_env is non-empty; key_env is the NAME of the environment variable holding the key, and no key material ever lives in this registry. Prompts leave the machine: redaction runs before the request, only text the judge-only source test proves the user typed is sent, and the endpoint origin is fixed in code to https://api.typesafe.ai (the loader refuses any other); mode shadow records only. Every threshold is a placeholder until T13; intent_default and rule_default must be above 0, because a zero cut would make an intent or rule the judge never scored qualify.",
   "enabled_env": "ENGINEOS_JUDGE",
   "enabled_value": "jev",
   "provider": "typesafe",
@@ -676,21 +735,13 @@ margin would let an exact tie decide (refusal text as T09a's other cuts:
     "rule_default": 0.5
   },
   "redaction": {
-    "note": "Applied to request.text before it enters state; each match becomes <redacted:kind>. Same set as install.sh SECRET_PATTERNS, kept as data here; install.sh keeps its bash copy (no node at install time).",
+    "note": "(rev 4) Applied in list order before the judge state and the tie-break daemon; see registries/policy.json for the authoritative note.",
     "patterns": [
-      { "kind": "anthropic-key", "pattern": "sk-ant-[A-Za-z0-9_-]{10,}" },
-      { "kind": "openai-key", "pattern": "sk-proj-[A-Za-z0-9_-]{10,}" },
-      { "kind": "sk-key", "pattern": "sk-[A-Za-z0-9]{20,}" },
-      { "kind": "aws-key", "pattern": "AKIA[0-9A-Z]{16}" },
-      { "kind": "github-token", "pattern": "gh[opsu]_[A-Za-z0-9]{20,}" },
-      { "kind": "github-pat", "pattern": "github_pat_[A-Za-z0-9_]{20,}" },
-      { "kind": "gitlab-token", "pattern": "glpat-[A-Za-z0-9_-]{20,}" },
-      { "kind": "google-key", "pattern": "AIza[0-9A-Za-z_-]{35}" },
-      { "kind": "atlassian-token", "pattern": "ATATT[A-Za-z0-9_=.-]{20,}" },
-      { "kind": "slack-token", "pattern": "xox[baprs]-[A-Za-z0-9-]{10,}" },
-      { "kind": "private-key", "pattern": "-----BEGIN ([A-Z]+ )?PRIVATE KEY-----" },
-      { "kind": "private-key-id", "pattern": "\"private_key_id\"\\s*:" },
-      { "kind": "url-credentials", "pattern": "[a-z][a-z+]+://[^/\\s]+:[^@\\s]+@" }
+      "... 25 { kind, pattern } entries, authoritative in registries/policy.json (rev 4, §17.4):",
+      "private-key-block, private-key, private-key-id, jwt, anthropic-key, openai-key,",
+      "sk-key, stripe-key, aws-key, github-token, github-pat, gitlab-token, npm-token,",
+      "huggingface-token, google-key, atlassian-token, slack-token, url-credentials,",
+      "bearer-token, aws-secret, secret-assignment, email, phone, cnpj, cpf"
     ]
   },
   "breaker": {
@@ -711,7 +762,16 @@ and `margin` in `[0, 1]` — they compare fields that are always present, and `0
 is a meaningful (if aggressive) calibration that disables that doubt test;
 `patterns[].pattern` a JavaScript
 `RegExp` source compiled with flag `g` at load (a non-compiling pattern is a
-refusal); `breaker.scope` must be a member of `policy.breaker.scopes`.
+refusal; rev 4: so is a pattern that uses `*`, `+` or an open range `{m,}`
+outside a character class, so every pattern is linear-time); `breaker.scope`
+must be a member of `policy.breaker.scopes`. rev 4: `endpoint` must parse as a
+URL whose origin is exactly `https://api.typesafe.ai` (default port, no URL
+credentials); the allowlist lives in code. Because `parseJudge` runs inside the
+strict `policy.json` loader, an off-origin endpoint, like any other refusal in
+this block, refuses the **whole** `policy.json` load (every kernel answer that
+reads the policy exits 1; `validate` reports C38c `judge-block-malformed`).
+The `patterns` array shown above is abbreviated; the 25 entries in
+`registries/policy.json` are the contract (§17.4).
 `failure_threshold` is read from the existing `policy.breaker.failure_threshold` (3).
 
 ### 6.3 `registries/decision-rules.json` per-rule additions
@@ -894,7 +954,10 @@ export function judge(input: JudgeInput, deps: JudgeDeps): Promise<JudgeOutcome>
 ### 10.1 Enablement order (first hit wins)
 `source !== 'user'` → `skipped: not-user-input`; `env[enabled_env] !== enabled_value`
 → `skipped: disabled`; `env[key_env]` empty → `skipped: no-key`; `fetch`
-undefined → `skipped: no-fetch`; breaker open and `now - opened_at < cooldown_ms`
+undefined → `skipped: no-fetch`; (rev 4) endpoint origin not exactly
+`https://api.typesafe.ai`, or URL credentials present → `skipped: disabled`
+(re-check for a policy built without the loader; no breaker file is read or
+written and no request is sent); breaker open and `now - opened_at < cooldown_ms`
 → `skipped: breaker-open` (no file write). Half-open (cooldown elapsed): one
 probe proceeds; success closes, failure re-opens.
 
@@ -915,7 +978,11 @@ same registries), and
 
 Redaction (`src/judge/redact.ts`): each `policy.judge.redaction.patterns[]`
 match in `text` is replaced by `<redacted:<kind>>`, in list order, before
-serialization; asserted on the serialized body. Size: when the serialized
+serialization; asserted on the serialized body. rev 4 order (`redactBounded`):
+(1) pre-cap the raw text to `2 × max_state_bytes` UTF-16 units (never splitting a
+surrogate pair); (2) if it was capped, drop the trailing run of non-whitespace
+(it may be half of a secret whose pattern needs the rest); (3) redact; (4) the
+size cut below. A capped prompt carries `"truncated": true`. Size: when the serialized
 `state` exceeds `max_state_bytes`, `request.text` is cut at a UTF-8 character
 boundary until it fits and `"truncated": true` is added to `request`; a state
 that cannot fit with an empty text → `failed: oversize-state`.
@@ -998,7 +1065,9 @@ Hook integration (T09d, `src/hooks/prompt-advisor.ts` / `prompt-judge.ts`):
    the fact, so the call is skipped.
 3. `candidates = route.ranked.map(r => ({ id: r.id, exemplars: <intents.json row r.id>.exemplars }))`
    in ranked order; `text` = the raw prompt (the client redacts with
-   `policy.judge.redaction.patterns`); `deps = nodeTiebreakDeps(env, policy.judge.redaction.patterns)`.
+   `policy.judge.redaction.patterns`, rev 4: after the same pre-cap and
+   trailing-fragment drop as §10.2, at `2 × 2,000` = 4,000 characters, then cuts
+   to its 2,000-character limit); `deps = nodeTiebreakDeps(env, policy.judge.redaction.patterns)`.
 4. On `kind === 'scores'` only, re-resolve with `tiebreak: outcome.scores` added
    to the same facts and use that answer; any other outcome keeps the first
    answer. Kernel calls are sub-millisecond; the second one is the cost of
@@ -1087,6 +1156,12 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | `hooks/*.sh`, `scripts/*.sh` shims | Warn step (stderr line; `ENGINEOS_QUIET_SHIMS`) | deprecated → warn |
 | `src/kernel/parity.test.ts` intent arms | retired per ADR (`route-intent`, `route-escalate`, `resolve-task`) | test surface, recorded |
 | Environment | `ENGINEOS_JUDGE`, `TYPESAFE_API_KEY`, `ENGINEOS_QUIET_SHIMS` (new; opt-in); rev 3 (T12): `ENGINEOS_INPROCESS`, `ENGINEOS_ROOT`, `ENGINEOS_NODE`, `ENGINEOS_EMBED_DAEMON`, `ENGINEOS_EMBED_CACHE`, `ENGINEOS_EMBED_OFFLINE`, `ENGINEOS_EMBED_IDLE_MINUTES` | added |
+| In-process presence record v2 and shell stand-down (rev 4, §17.1–§17.3) | record `{ v: 2, pid, socket, session, started_at, served, root, version }`; written at the handshake; 5 s heartbeat, 30 s staleness; full condition list; `git-write-guard` never stands down | MINOR (tightening) |
+| Mod git fallback (rev 4, §17.7) | asks on a git-like Bash call `git-write-guard` did not answer, unless `ENGINEOS_GIT_WRITES=auto`; `.catch` asks with no env check | MINOR (tightening) |
+| `validate` C18f (rev 4, §17.8) | finding `hook-target-missing`; check count stays 72 | MINOR (new failing finding) |
+| `judge.endpoint`, `judge.redaction`, judge source rule (rev 4, §17.4–§17.5) | exact origin, whole-load refusal; 25 kinds, bounded quantifiers, pre-cap order; `judgeMayReceive` | MINOR (tightening) |
+| Authoritative fold (rev 4, §17.6) | high-floor survivors kept and protected; tier max; `rule-spec-threshold` on the folded ids | MINOR (tightening) |
+| Compile cache, daemon install and cache (rev 4, §17.9) | per-uid private compile cache; `--ignore-scripts` + `.npmrc`; per-revision model cache, 0700 | MINOR |
 | `adapters/claude-code-mod/`, `dist/engineos-inprocess.cjs`, `tools/embedding-daemon/` (rev 3, T12) | opt-in in-process adapter plugin, its host bundle, and the tie-break daemon package; none loaded by `dist/engineos.cjs`. Documented limit: with the adapter on, the registered `hooks.json` command hooks still spawn once per call and exit immediately (§16.7) | MINOR (opt-in) |
 
 ---
@@ -1108,7 +1183,8 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | T12 | §4 (`tiebreak` slot), §10.6 (client ratified as merged); rev 3 records its accepted spawn-count deviation (§16.7) |
 | T09a (rev 3) | §1.2 `threshold`, §6.1 `router.tiebreak`, §6.2 thresholds, §6.3 `judge_threshold` bounds (§16.5, §16.6) |
 | T09d (rev 3) | §3.1, §4.5 rev 3, §4.7, §10.6 hook integration, §2.4 key 23 (§16.4, §16.6) |
-| T13 | D5, D6, every placeholder (rev 3 adds `router.tiebreak.*`), the §16 test list, the §16.7 spawn measurement |
+| T13 | D5, D6, every placeholder (rev 3 adds `router.tiebreak.*`), the §16 test list, the §16.7 spawn measurement, the §17.10 test list, the daemon lockfile and the committed `dist/` bundles |
+| SF (rev 4, security fix pass) | §4.1–§4.3, §5, §6.2, §10.1, §10.2, §10.6, §17 (ratified as merged at `a481025`) |
 
 ---
 
@@ -1280,7 +1356,8 @@ T12's acceptance target was zero per-call hook spawns with
 `ENGINEOS_INPROCESS=1`. That target **cannot be met on the current host**.
 Claude Code spawns every registered command hook in the root `hooks.json`
 whatever the plugin does. With the adapter on, the shell side finds a live,
-private, same-session presence file and exits immediately. The cost is
+private, same-session v2 presence record that lists its hook and passes every
+§17.3 condition (rev 4), and exits immediately. The cost is
 **one immediate-exit spawn per registered `hooks.json` route per call**.
 
 Zero needs one of two host-side changes:
@@ -1294,3 +1371,167 @@ Status: **DEGRADED, accepted with caveat**, never relabelled OK. T13 measures
 and reports the per-route immediate-exit count and its latency. The ADR
 consequences record the gap. Revisit when the host ships per-plugin
 command-hook disable.
+
+---
+
+## 17. Revision 4 (2026-10-11) — security fix pass
+
+Owner: T01. Inputs: the security review of PR #132 and its fix units, checked
+against the code merged at PR head `a481025`. Rule applied: the merged code is
+the contract; every earlier line here that it contradicts is corrected in
+place (changelog rev 4). Operator-facing detail lives in `docs/OPT-IN-TIERS.md`;
+the decision and threat model live in the ADR ("Threat model and redaction").
+
+### 17.1 Presence record v2 (`src/inprocess/`, `src/lib/runtime-dir.ts`)
+
+Paths (one home, `src/lib/runtime-dir.ts`; directory `0700`, refused when a
+symlink, owned by another uid, or carrying any group/other bit; socket `0600`;
+record written atomically `0600`):
+
+```
+<XDG_RUNTIME_DIR | TMPDIR | os.tmpdir()>/engineos-<uid>/h-<sha256(session_id)[0:16]>.json
+<XDG_RUNTIME_DIR | TMPDIR | os.tmpdir()>/engineos-<uid>/h-<sha256(session_id)[0:16]>.sock
+```
+
+```ts
+interface PresenceRecordV2 {
+  v: 2;
+  pid: number;            // positive integer
+  socket: string;         // the expected socket path above
+  session: string;        // the envelope session_id
+  started_at: number;     // epoch ms
+  served: string[];       // <= 64 names, each ^[a-z][a-z0-9-]{0,63}$
+  root: string;           // realpath(resolveRoot(env)); absolute, <= 4096 chars
+  version: string;        // host bundle ENGINEOS_VERSION, <= 64 chars; 'unbuilt' when unbundled
+}
+```
+
+A version-1 record, or any record missing a field or out of bounds, is not a
+presence record.
+
+### 17.2 Handshake and heartbeat
+
+- The host writes the record while answering the mod's first
+  `GET /v1/routes`, never on listen. A write failure answers `500`
+  `presence-unwritable`; the mod abandons the host (ends the child) and the
+  shell hooks stay in charge.
+- The mod's deadlines: `READY_DEADLINE_MS` 5,000 for the host to be ready,
+  `ROUTES_DEADLINE_MS` 1,000 for the route answer. Abandon reasons:
+  `routes-unreadable`, `ready-timeout`, `host-exited`.
+- Heartbeat: the host re-stamps the record mtime every `PRESENCE_HEARTBEAT_MS`
+  (5,000). A record older than `PRESENCE_STALE_MS` (30,000) is dead; the shell
+  ignores it and `claimPaths` removes it (and its socket) for a new host on the
+  same session. A missed stamp is logged, not fatal.
+
+### 17.3 Stand-down (`servedInProcess`, `src/hooks/adapter.ts`)
+
+A shell hook exits silently only when all of these hold, in this order; any
+failure or exception runs the hook:
+
+1. hook is not `git-write-guard` (**the guard never stands down**);
+2. `ENGINEOS_INPROCESS=1`;
+3. raw `session_id` matches `^[A-Za-z0-9._-]{1,128}$`;
+4. a POSIX uid exists;
+5. the shell entry is bundled and carries its version (unbundled never stands down);
+6. the runtime directory passes the privacy rule;
+7. the record file is regular, owned by uid, no group/other bits, opened with
+   `O_NOFOLLOW`, at most 4 KiB;
+8. it parses as `PresenceRecordV2`;
+9. `session` and `socket` match;
+10. the hook is in `served`;
+11. `version` equals this bundle's `ENGINEOS_VERSION`;
+12. mtime within `PRESENCE_STALE_MS`;
+13. a socket owned by uid exists at the path (not a file or symlink);
+14. `pid` is not the hook's own;
+15. `process.kill(pid, 0)` succeeds;
+16. `root` equals the realpath of the nearest directory above the shell entry's
+    own file that holds `hooks/hooks.json` (search depth `MAX_ROOT_DEPTH` 8),
+    deliberately not `ENGINEOS_ROOT`.
+
+### 17.4 Judge egress (`src/registry/policy-judge.ts`, `src/judge/{jev,redact,state,tiebreak}.ts`)
+
+- **Endpoint.** The loader refuses any `judge.endpoint` whose origin is not
+  exactly `https://api.typesafe.ai` (default port; no URL credentials). The
+  refusal is inside the strict `policy.json` loader, so the whole load fails
+  (C38c `judge-block-malformed`). `jev.ts` re-checks after `no-fetch` and before
+  the breaker, answering `skipped: disabled` (§10.1).
+- **Redaction kinds**, in application order: `private-key-block`,
+  `private-key`, `private-key-id`, `jwt`, `anthropic-key`, `openai-key`,
+  `sk-key`, `stripe-key` (`sk_`/`rk_` with `live_`/`test_`), `aws-key`
+  (`AKIA`, `ASIA`), `github-token` (`gh[opsur]_`), `github-pat`,
+  `gitlab-token`, `npm-token`, `huggingface-token`, `google-key`,
+  `atlassian-token`, `slack-token` (`xox[abprs]-`), `url-credentials`,
+  `bearer-token`, `aws-secret`, `secret-assignment`, `email`, `phone`, `cnpj`,
+  `cpf`. Sources are authoritative in `registries/policy.json`. Every
+  pre-existing kind keeps its name.
+- **Bounded quantifiers.** The loader refuses a pattern using `*`, `+` or
+  `{m,}` outside a character class.
+- **Order.** Pre-cap (judge `2 × max_state_bytes`, tie-break `2 × 2,000`
+  characters) → when capped, drop the trailing non-whitespace run → redact →
+  final cut; a capped judge prompt carries `request.truncated: true`.
+
+### 17.5 Judge-only source rule
+
+`judgeMayReceive(env, markers)` (§5) is true only when `classifyPromptSource`
+answers `user`, the prompt with leading whitespace trimmed does not match
+`^<[A-Za-z][A-Za-z0-9_.:-]{0,63}(?:[\s/>]|$)`, and nothing throws (including the
+marker registry read). It applies even when the host declares the source
+`user`. Routing and the tie-break are unchanged.
+
+### 17.6 Authoritative fold (`src/kernel/combine.ts` `folded()`)
+
+`keptHigh` = deterministic survivors with risk floor `high`; folded ids =
+judge choice, then `keptHigh` ids not already chosen; `aggregateIntents(ids,
+regs, keptHigh)` protects `keptHigh` from suppression; `modelTier =
+highest(route.model_tier, aggregate.modelTier)`; `rule-spec-threshold` reads the
+folded ids. Note: a kept high-floor id still takes part in suppression of other
+ids, judge-chosen ones included, exactly as the existing aggregation does. The
+§4.7 `narrowed()` path already kept high-floor survivors and the tier max
+(rev 3); rev 4 makes the fold match it.
+
+### 17.7 Mod git fallback (`adapters/claude-code-mod/hooks/register.ts`)
+
+- `ENGINEOS_ROOT` / `ENGINEOS_NODE` are honoured only when absolute and NUL-free;
+  otherwise a debug line and the default.
+- `needsGitFallback`: flag on, tool `Bash`, `git-write-guard` did not answer,
+  no other EngineOS hook asked or blocked, and `looksLikeGitCommand` (strip
+  `'`, `"`, `\`, then `/g(?:it|h)/`) → `ask`, **unless**
+  `ENGINEOS_GIT_WRITES === 'auto'`.
+- The `.catch` path, when the handler throws before `next`: `ask` on a git-like
+  Bash call, with no environment check.
+
+### 17.8 `validate` C18f — `hook-target-missing` (`src/checks/kernel-router.ts`)
+
+Reports a `hooks.json` command whose `${CLAUDE_PLUGIN_ROOT}/<path>` target is
+missing; a path that is absolute, contains a backslash or has a `..` segment;
+and, for an existing `dist/` loader, a missing `require('./runtime/...')`
+bundle. No new check id (72 checks). It fires at the PR head until the approved
+final build commits the `dist/` bundles.
+
+### 17.9 Compile cache and daemon
+
+- **Compile cache** (generated `dist/` loaders):
+  `<XDG_RUNTIME_DIR || TMPDIR || os.tmpdir()>/engineos-<uid>/compile-cache`.
+  Both directories are created `0700` and verified by `lstat` (a real
+  directory, owned by uid, no group/other bits); otherwise, or without a POSIX
+  uid, the cache is skipped. This avoids Node's shared default
+  `<tmpdir>/node-compile-cache`.
+- **Daemon install:** `npm --prefix tools/embedding-daemon ci --ignore-scripts`;
+  `tools/embedding-daemon/.npmrc` sets `ignore-scripts=true`,
+  `onnxruntime-node-install=skip`, `save-exact`, `engine-strict` and
+  `fund=false`. The lockfile is pending until T13 (needs network).
+- **Model cache:** `<cacheDir>/<MODEL_REVISION>/`, created recursively with
+  mode `0700`; `MODEL_REVISION` is the pinned
+  `751bff37182d3f1213fa05d7196b954e230abad9`.
+
+### 17.10 Known residuals and tests
+
+Residuals (accepted; both resolve toward a double fire or a failed adapter
+start, never a silenced guard):
+- a second Claude Code process on the same session id can have its advisory
+  hooks stand down on the first process's live record (needs an owner field;
+  out of scope for PR #132);
+- the listen-to-handshake race.
+
+Tests: no new list. The existing T13 list (§16 and the plan) covers these
+surfaces at the approved final stage.

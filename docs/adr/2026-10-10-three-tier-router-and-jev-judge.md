@@ -4,9 +4,11 @@ Date: 2026-10-10
 Status: proposed (accepted on merge of PR #132; developer approved the direction and the prototype preview, revision `71ce35fb93a0`, on 2026-10-10)
 
 Source: `docs/specs/2026-10-10-routing-replacement-plan.md` §1–§4a, §8;
-contracts `docs/specs/2026-10-10-routing-replacement-contracts.md` (rev 3;
+contracts `docs/specs/2026-10-10-routing-replacement-contracts.md` (rev 4;
 rev 3 adds the embedding tie-break semantics and records the in-process spawn
-deviation, both reflected below);
+deviation; rev 4, the security fix pass on PR #132, records the presence v2
+contract, the judge egress rules and the add-only fold; all are reflected
+below);
 GitHub issue #118 (plan), #119 (this ticket).
 
 ## Context
@@ -101,17 +103,21 @@ Option 1, with these bound sub-decisions:
   size before it enters the request. The request body carries only `model`,
   `state` and `questions`, and the endpoint's origin is allowlisted in code
   (`https://api.typesafe.ai`); "Threat model and redaction" below is the
-  binding description. An authoritative fold is add-only: it unions every
-  deterministic intent with a high risk floor into the judge-chosen set and
-  takes the higher of `route.model_tier` and the folded set's tier.
+  binding description. An authoritative fold is add-only: every deterministic
+  survivor with a high risk floor is appended after the judge-chosen set and is
+  never suppressed by it, and the model tier is the higher of
+  `route.model_tier` and the folded set's tier.
   Zero-data-retention terms from TypeSafe are a precondition for any team-wide
   default-on; until then the judge is a per-machine opt-in.
 - **Source check.** `classifyPromptSource` runs before anything else; a
   notification, tool result or hook echo gets no routing and no judge call.
-  For the judge only, the check fails closed toward no egress: a prompt whose
-  first non-space character opens an unlisted `<tag` frame is treated as
-  non-user, and so is a prompt whose classification throws. Kernel routing
-  keeps its own source behaviour unchanged.
+  For the judge only, the check fails closed toward no egress
+  (`judgeMayReceive`): a prompt is sent only when `classifyPromptSource` says
+  `user`, the prompt with leading whitespace trimmed does not open a tag frame
+  (`^<[A-Za-z][A-Za-z0-9_.:-]{0,63}(?:[\s/>]|$)`), and nothing throws,
+  including the registry read that supplies the markers. The tag-frame test
+  applies even when the host declares the source `user`. Kernel routing and
+  the tie-break keep their own source behaviour unchanged.
 - **Embedding tie-break (P5, opt-in).** The warm MiniLM daemon from option 5
   is consulted only when the deterministic route is ambiguous and
   `ENGINEOS_EMBED_DAEMON=1`. Its scores reach the kernel as a journaled
@@ -192,47 +198,80 @@ other two artifacts are covered at the end of this section.
   Face hub on first run, which carries no prompt text and is off under
   `ENGINEOS_EMBED_OFFLINE=1`.
 
-**Endpoint allowlist.** The judge's policy loader refuses any `judge.endpoint`
-whose origin is not `https://api.typesafe.ai`. The allowlist lives in code, not
-in the registry, so editing `policy.json` cannot redirect prompts to another
-host.
+**Endpoint allowlist.** The judge's policy loader
+(`src/registry/policy-judge.ts`) refuses any `judge.endpoint` whose origin is
+not exactly `https://api.typesafe.ai`; a different host or a non-default port
+is refused, as are credentials in the URL. The allowlist lives in code, not in
+the registry, so editing `policy.json` cannot redirect prompts to another host.
+The refusal is a malformed `judge` block, and `judge` is part of the strict
+`policy.json` loader, so the **whole `policy.json` load is refused**: every
+kernel answer that reads the policy exits 1, and `validate` reports C38c
+`judge-block-malformed`. `src/judge/jev.ts` checks the origin again for a
+policy built any other way, and answers `skipped: disabled` before the breaker
+file is read and before any byte is sent.
 
 **Order of operations.**
 1. Cap the text before redaction, so no pattern runs over unbounded input. The
    judge caps at twice `max_state_bytes` in characters; the tie-break caps at
-   twice its prompt-text limit.
-2. Redact the capped text.
-3. Cut the result to the final limit. Redaction has already run on the whole
+   twice its 2,000-character prompt-text limit.
+2. When the text was capped, drop its trailing run of non-whitespace as well.
+   It may be the first half of a token whose pattern needs the rest (a minimum
+   length, a JWT's second dot), and half a secret is still a secret.
+3. Redact the capped text.
+4. Cut the result to the final limit. Redaction has already run on the whole
    capped text, so the cut cannot expose part of a secret that redaction would
-   have hidden.
+   have hidden. A judge prompt that was capped or cut carries
+   `request.truncated: true`.
 
 **Redaction classes** (`policy.judge.redaction.patterns`). Each match is
-replaced with `<redacted:<kind>>`. Every pattern is bounded, with no unbounded
-nested quantifier, so a crafted prompt cannot make redaction run away. The set
-covers:
-- a PEM private-key block, matched end to end (header, body and footer);
-- a JWT (`eyJ...` `.` `eyJ...` `.` signature);
-- underscore-prefixed and vendor-prefixed tokens: `sk_live_`, `sk_test_`,
-  `rk_live_`, `ghp_`, `gho_`, `ghs_`, `ghu_`, `ghr_`, `github_pat_`, `npm_`,
-  `hf_`, `xox[abpr]-`;
-- an AWS secret access key in an assignment context;
-- generic `password`, `secret`, `token` and `api_key` assignments;
-- email addresses;
-- phone numbers (E.164-like, bounded);
-- Brazilian CPF and CNPJ numbers;
-- URL credentials, bounded as
-  `[a-z][a-z+]{0,31}://[^/\s:@]{1,256}:[^@\s/]{1,256}@`.
+replaced with `<redacted:<kind>>`. The patterns apply in list order, so an
+earlier, more specific kind wins over a later, broader one. The kinds, in
+order:
+1. `private-key-block`: a PEM or PGP private-key block, header to footer;
+2. `private-key`: a private-key header with no footer, and its body;
+3. `private-key-id`: a Google service-account `private_key_id` field;
+4. `jwt`: `eyJ...` `.` `eyJ...` `.` signature;
+5. `anthropic-key`, `openai-key`, `sk-key`: `sk-ant-`, `sk-proj-`, `sk-`
+   prefixed keys;
+6. `stripe-key`: `sk_live_`, `sk_test_`, `rk_live_`, `rk_test_`;
+7. `aws-key`: `AKIA` and `ASIA` access key ids;
+8. `github-token`, `github-pat`: `gho_`, `ghp_`, `ghr_`, `ghs_`, `ghu_`,
+   `github_pat_`;
+9. `gitlab-token`, `npm-token`, `huggingface-token`, `google-key`,
+   `atlassian-token`, `slack-token`: `glpat-`, `npm_`, `hf_`, `AIza`, `ATATT`,
+   `xox[abprs]-`;
+10. `url-credentials`: `[a-z][a-z+]{0,31}://[^/\s:@]{1,256}:[^@\s/]{1,256}@`;
+11. `bearer-token`: a bearer authorization value;
+12. `aws-secret`: an AWS secret access key in an assignment;
+13. `secret-assignment`: a password, passwd, pwd, secret, token, API key, access
+    key, private key or credential(s) name assigned a value with `=` or `:`;
+14. `email`, `phone` (E.164-like, bounded), `cnpj`, `cpf`.
 
-**Prompt-source check fails closed for the judge.** A prompt that opens with an
-unlisted `<tag` frame, or whose classification throws, is treated as non-user.
-A non-user prompt is never sent. Doubt therefore resolves toward no egress.
-Kernel routing is unaffected by this judge-only rule.
+Every pattern is linear-time by construction. The loader refuses a pattern that
+uses `*`, `+` or an open range `{m,}` outside a character class, which also
+rules out nested unbounded repetition, so a crafted prompt cannot make
+redaction run away. Only bounded forms (`{m,n}`, `{m}`, `?`) remain.
+
+**Prompt-source check fails closed for the judge.** The judge receives a prompt
+only when all three hold:
+- `classifyPromptSource` says `user`;
+- the prompt, with leading whitespace trimmed, does not match
+  `^<[A-Za-z][A-Za-z0-9_.:-]{0,63}(?:[\s/>]|$)`, which is any tag frame,
+  listed in `router.source_markers` or not;
+- nothing throws, including the registry read that supplies the markers.
+
+The tag-frame test applies even when the host declares the source `user`. A
+non-user prompt is never sent, and no judge fact is declared for it. Doubt
+therefore resolves toward no egress. Kernel routing and the tie-break are
+unaffected by this judge-only rule.
 
 **The authoritative fold is add-only.** Even a fully trusted judge answer
 cannot remove a deterministic high-floor intent or lower the model tier:
-- every deterministic intent with a high risk floor is unioned into the
-  judge-chosen set;
-- the tier is the higher of `route.model_tier` and the folded set's tier.
+- every deterministic survivor with a high risk floor is appended after the
+  judge's choice and is protected from suppression by it;
+- the tier is the higher of `route.model_tier` and the folded set's tier;
+- `rule-spec-threshold` reads the folded set (the judge's choice plus those
+  kept survivors) before suppression.
 
 A manipulated or wrong judge answer can add work or raise a tier. It cannot
 remove a gate.
@@ -243,16 +282,35 @@ remove a gate.
   financial details) can pass through. Shadow mode records only, but the request
   is still sent in shadow mode.
 - Processes running as the same user are trusted. The runtime directory, the
-  presence record, the sockets and the compile cache are protected against
-  other users, not against code already running under the developer's uid.
+  presence record, the sockets, the compile cache and the daemon's model cache
+  are protected against other users, not against code already running under
+  the developer's uid.
+- The presence record names a session, not an owner. A second Claude Code
+  process on the same session id, with the adapter flag on, could have its
+  advisory shell hooks stand down on the first process's live record. Closing
+  this needs an owner field in the record, out of scope for PR #132.
+  `git-write-guard` is unaffected: it never stands down.
+- A narrow race remains between the host binding its socket and the mod's
+  first route handshake. Its worst case is a hook that fires twice or an
+  adapter that fails to start; it never silences the guard.
+- The daemon installs a large third-party tree. Lifecycle scripts are off
+  (`npm ci --ignore-scripts`, and `ignore-scripts=true` in the package's
+  `.npmrc`), and the model is cached per pinned revision in an owner-only
+  directory, but the packages themselves are trusted once the lockfile is
+  reviewed at the approved final stage.
 - TypeSafe has not yet granted zero-data-retention terms. Until it does, the
   judge stays a per-machine opt-in (see "Judge" above).
 
 **Security review and human approval.** A security review of the PR head
-`3b38ce4` returned BLOCK on 2026-10-11. The fixes recorded in this section
-(guard stand-down, presence handshake, endpoint allowlist, bounded redaction,
-fail-closed source check, add-only fold, private compile cache) answer that
-verdict. They go back to `security-reviewer` after integration. Accepting this
+`3b38ce4` returned BLOCK on 2026-10-11. The fixes recorded in this section and
+in `docs/OPT-IN-TIERS.md` answer that verdict: `git-write-guard` never stands
+down; the presence record is version 2, published only on the route handshake,
+kept fresh by a heartbeat and bound to the hooks served, the build version and
+the registering checkout; the mod asks on a possible git command the guard did
+not answer for; `validate` reports a missing hook target; the endpoint is
+allowlisted; redaction is bounded and pre-capped; the source check fails closed
+for the judge; the fold is add-only; the compile cache is private; and the
+daemon installs without lifecycle scripts. They go back to `security-reviewer` after integration. Accepting this
 ADR does not approve a live judge call. Before the first live call with a real
 key, the developer gives a separate approval, recorded under `## Human
 decisions` in the change record (`rules/risk-autonomy.md`).
@@ -276,7 +334,9 @@ decisions` in the change record (`rules/risk-autonomy.md`).
 - Accepted limit (contracts rev 3 §16.7): the in-process adapter
   (`ENGINEOS_INPROCESS=1`) does **not** reach zero per-call spawns. Claude Code
   still spawns every command hook registered in `hooks.json`; the shell side
-  exits at once when a live adapter host owns the session. The real cost is
+  exits at once only when a live adapter host serves that hook for that
+  session, as its version-2 presence record states (`docs/OPT-IN-TIERS.md`
+  "Avoiding double-fire"). The real cost is
   one immediate-exit spawn per registered route per call. Reaching zero needs
   a host feature to disable one plugin's command hooks, or an install variant
   without `hooks.json` when the adapter is on. Until then the adapter saves the
