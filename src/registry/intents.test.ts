@@ -154,3 +154,34 @@ function refusal(dir: string): string {
   }
   throw new Error('expected a KernelError, the loader accepted the registry');
 }
+
+// The judge's noul cut for intent.<id> (T06): an intent the judge never scored
+// reads as probability 0, so a zero cut would qualify it on every prompt.
+test('a judge threshold of zero, below zero or above one is refused', () => {
+  for (const threshold of [0, -0.1, 1.5]) {
+    assert.match(
+      refusal(rootWith({ version: '1.0.0', intents: [row({ threshold })] })),
+      /\.intents\[0\]\.threshold must be greater than 0 and at most 1/,
+      String(threshold),
+    );
+  }
+});
+
+test('a judge threshold inside (0, 1] loads, and an absent one reads as null', () => {
+  const loaded = loadIntents(rootWith({ version: '1.0.0', intents: [row({ threshold: 1 }), row({ id: 'frontend' })] })).intents;
+
+  assert.equal(loaded[0]?.threshold, 1);
+  assert.equal(loaded[1]?.threshold, null);
+});
+
+test('only an explicit enabled false makes a row inactive for the judge', () => {
+  const loaded = loadIntents(
+    rootWith({ version: '1.0.0', intents: [row({ enabled: false }), row({ id: 'frontend', enabled: true }), row({ id: 'mobile' })] }),
+  ).intents;
+
+  assert.deepEqual(loaded.map((intent) => intent.active), [false, true, true]);
+  assert.match(
+    refusal(rootWith({ version: '1.0.0', intents: [row({ enabled: 'no' })] })),
+    /\.intents\[0\]\.enabled must be a boolean/,
+  );
+});
