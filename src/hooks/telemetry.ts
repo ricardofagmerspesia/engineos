@@ -110,6 +110,14 @@ export function withSpan<T>(
   return outcome.result;
 }
 
+// One span for work the caller already timed — an awaited call withSpan cannot
+// wrap, because withSpan's fn is synchronous. The duration is clamped like every
+// other span's; the write never throws.
+export function recordSpan(sink: Sink | null, facts: SpanFacts, durationMs: number): void {
+  if (sink === null) return;
+  writeSpan(sink, facts, clampMs(durationMs), null);
+}
+
 // The ONE id derivation both announce hooks call. The harness's tool-use id when
 // there is one; otherwise a hash of the brief, which is still joinable by
 // trace_id and collapses only when the same agent is dispatched twice

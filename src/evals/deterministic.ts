@@ -5,6 +5,12 @@
 // that respect the registry floors, and a coverage floor under which the set is
 // decorative.
 //
+// Case schema v2 (docs/specs/2026-10-10-routing-replacement-contracts.md §8)
+// adds optional expect_primary, expect_not_intents, exemplar, source and judge.
+// Their shape is graded (./case-schema-v2) by one extra assertion that prints
+// ONLY when some case carries a v2 field, so a v1 set keeps its exact output
+// and pass count.
+//
 // Every printed line is byte-identical to the bash it replaces. The ok/FAIL lines
 // and the exit code are public surface (docs/COMPATIBILITY.md) and CI's "Evals
 // (deterministic tier)" step reads them.
@@ -16,6 +22,7 @@ import { join } from 'node:path';
 import type { Io } from '../io';
 import { isRecord, readJsonFile } from '../lib/json';
 import { alwaysOnRules, deferralsOf } from '../lib/deferrals';
+import { carriesV2Field, registryIntentIds, v2Problems } from './case-schema-v2';
 
 export const INTENTS = 'evals/intent-routing-cases.jsonl';
 export const AGENTS = 'evals/agent-cases.jsonl';
@@ -97,11 +104,18 @@ function gradeIntentCases(root: string, alwaysOn: readonly string[], g: Grader):
   const badBoth: string[] = [];
   const badAlwaysOn: string[] = [];
   const badClosed: string[] = [];
+  const badV2: string[] = [];
+  let carriesV2 = false;
   const floors = riskFloors(root);
+  const intentIds = registryIntentIds(root);
 
   for (const line of nonEmptyLines(root, INTENTS)) {
     const parsed = parseCase(line);
     const id = jqStringOr(parsed, 'id', '');
+    if (carriesV2Field(parsed)) {
+      carriesV2 = true;
+      badV2.push(...v2Problems(parsed, id, intentIds));
+    }
     const input = jqStringOr(parsed, 'input', '');
     const notes = jqStringOr(parsed, 'notes', '');
     if (id === '' || input === '' || notes === '') badFields.push(id === '' ? '<no-id>' : id);
@@ -145,6 +159,7 @@ function gradeIntentCases(root: string, alwaysOn: readonly string[], g: Grader):
   report(g, badBoth, 'no rule is both required and forbidden in the same case', 'contradictory expectations');
   report(g, badAlwaysOn, 'no case asserts on an always-on rule (they are implicit)', 'always-on rules asserted');
   report(g, badClosed, 'every must_load set is closed under rule deferrals', 'unclosed must_load sets');
+  if (carriesV2) report(g, badV2, 'v2 case fields are well-formed and name active intents', 'v2 field problems');
 }
 
 function gradeAgentCases(root: string, g: Grader): void {

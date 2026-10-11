@@ -23,6 +23,7 @@ import { realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { fail, message, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
+import { lazyRegistries, type Registries } from '../kernel/context';
 import { classify } from './classify-failure';
 import { PYTHON_UNAVAILABLE_REASON, runnerHandle, runnerHasTarget, runnerRun, runnerSelect, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
 import { PROBE_TIMEOUT_SECONDS, SUMMARY_LINES, containedIn, execRun, failureBlock, findUpAny, firstLines, hasPythonExtension, hasVerifyExtension, isFile, packageOwner, startDir, verifyEnvironment } from './verify-targets';
@@ -87,7 +88,7 @@ export function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike
   const root = workspace !== null && containedIn(stopReal, workspace) ? workspace : packageDir;
 
   const environment = verifyEnvironment(ctx.io.env);
-  const failures = nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn);
+  const failures = nodeChecks(env.file, start, packageDir, root, stopReal, environment.env, spawn, lazyRegistries(ctx.root));
   if (failures.length === 0) return silent;
   // bash accumulated each block behind a newline and printed the lot with
   // `printf '%b' | head -80`, so the report opens on a blank line.
@@ -107,9 +108,12 @@ function nodeChecks(
   stop: string,
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
+  // The EngineOS checkout's registries (ctx.root): the infra patterns the
+  // classifier reads are policy, not project configuration.
+  registries: Registries,
 ): Failure[] {
   const selection = runnerSelect(root);
-  return [...typecheck(selection, packageDir, root, env, spawn), ...lint(selection, file, start, root, stop, env, spawn)];
+  return [...typecheck(selection, packageDir, root, env, spawn, registries), ...lint(selection, file, start, root, stop, env, spawn, registries)];
 }
 
 // Nx addresses the project by name and runs from the workspace root; a package
@@ -122,8 +126,9 @@ function typecheck(
   root: string,
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
+  registries: Registries,
 ): Failure[] {
-  return target(selection, packageDir, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, root, env, spawn);
+  return target(selection, packageDir, TYPECHECK_TARGET, TYPECHECK_TIMEOUT_SECONDS, root, env, spawn, registries);
 }
 
 // One rung of the ladder for one target: handle, hasTarget, run, classify.
@@ -135,12 +140,13 @@ function target(
   root: string,
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
+  registries: Registries,
 ): Failure[] {
   const handle = runnerHandle(selection, packageDir);
   if (handle === null) return [];
   if (!runnerHasTarget(selection, handle, name, undefined, spawn, root)) return [];
   const result = runnerRun(selection, handle, name, timeoutSeconds, env, spawn, root);
-  return redOf(selection, name, handle, result);
+  return redOf(selection, name, handle, result, registries);
 }
 
 // Probe the binary before running it: a config file existing while the linter is
@@ -153,6 +159,7 @@ function lint(
   stop: string,
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
+  registries: Registries,
 ): Failure[] {
   // biome and eslint are driven through the package manager's exec form, which
   // only the Node arms carry.
@@ -170,15 +177,18 @@ function lint(
     if (execRun(spawn, command, [...rest, linter.target, '--version'], root, env, PROBE_TIMEOUT_SECONDS).code !== 0) return [];
     const args = linter.target === 'biome' ? [...rest, linter.target, 'check', file] : [...rest, linter.target, file];
     const result = execRun(spawn, command, args, root, env, LINT_TIMEOUT_SECONDS);
-    return redOf(selection, linter.target, file, result);
+    return redOf(selection, linter.target, file, result, registries);
   }
   return [];
 }
 
 // The only failure this hook reports. `infra` — a timeout, a stale target probe,
 // a runtime too old — is not the edit's fault and never becomes exit 2.
-function redOf(selection: RunnerSelection, target: string, subject: string, result: RunResult): Failure[] {
-  const verdict = classify({ kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+function redOf(selection: RunnerSelection, target: string, subject: string, result: RunResult, registries: Registries): Failure[] {
+  const verdict = classify(
+    { kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut },
+    registries.policy.repair.infra_patterns,
+  );
   if (verdict === null || verdict.situation !== 'red') return [];
   return [{ target, subject, output: result.output }];
 }
