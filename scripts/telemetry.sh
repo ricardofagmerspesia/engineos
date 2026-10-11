@@ -20,4 +20,7 @@
 #   scripts/telemetry.sh append <file> --session <sid> --event <id> --data <json> [--ts <iso8601>]
 #   scripts/telemetry.sh validate <file>
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Warn step of the 1.7.0 deprecation: stderr only, because stdout is what the
+# caller parses; ENGINEOS_QUIET_SHIMS=1 keeps bench and e2e spawns clean.
+[ "${ENGINEOS_QUIET_SHIMS:-}" = "1" ] || printf '%s\n' '[engineos] scripts/telemetry.sh is deprecated since 1.7.0 and will be removed in 2.0 — use: node dist/engineos.cjs telemetry ...' >&2
 ENGINEOS_ROOT="$ROOT" exec node "$ROOT/dist/engineos.cjs" telemetry "$@"
