@@ -1,13 +1,37 @@
-# Routing replacement — frozen contracts (rev 2)
+# Routing replacement — frozen contracts (rev 3)
 
 *Companion to `2026-10-10-routing-replacement-plan.md` (the plan) and
 `docs/adr/2026-10-10-three-tier-router-and-jev-judge.md` (the decision). Every
 ticket T02–T13 of the plan's task graph builds against the shapes below and
-changes none of them. A change to a contract comes back here first (rev 3, ...),
-then to the units that consume it. Consumers cite `contracts.md@rev2`; a rev1
-citation stays valid for every section the changelog below does not name.*
+changes none of them. A change to a contract comes back here first (rev 4, ...),
+then to the units that consume it. Consumers cite `contracts.md@rev3`; a rev1 or
+rev2 citation stays valid for every section the changelog below does not name.*
 
 ## Changelog
+
+**rev 3 (2026-10-11)** — five T06 questions, the T12 tie-break fact, and T12's
+accepted spawn-count deviation. Full text and consumer deltas: **§16 Revision 3**.
+Sections edited in place: §1.2, §2.4, §2.5, §3, §4 (preamble, §4.4, §4.5, new
+§4.7), §6.1, §6.2, §6.3, §10.6 (new), §14, §15.
+
+1. §2.5, §4 — `risk_proposal` is **reported in every mode** and folded only in
+   `authoritative` (ratifies T06; the §4 preamble's "`riskProposal: null`" was
+   the contradiction).
+2. §4.4 — `hitl` receives the **post-fold** floor, judge proposal included
+   (ratified). A proposal still never triggers `hitl` on its own.
+3. §4.4 — an authoritative `jev` fact turns a `null` floor into at least `low`
+   (§4.4 read literally; ratified).
+4. §4.5 — **changed:** `multi-agent-dispatch` and `requires-dispatch-plan` are
+   re-evaluated over the folded survivors and **added** (union, never removed).
+   Consumer delta for T09d (`combine.ts`).
+5. §1.2, §6.2, §6.3 — a threshold that compares against a sparse probability is
+   in `(0, 1]`; zero is refused (ratifies T09a's loaders).
+6. §4.7, §6.1, §3, §2.4, §10.6 — new: the **embedding tie-break fact**
+   (`resolve --facts` key `tiebreak`), policy `router.tiebreak.{min_similarity, margin}`,
+   task-contract key 23 `tiebreak`. Consumer deltas for T09a, T09d, T13.
+7. §16.7, ADR consequences — accepted deviation (T12): with the in-process
+   adapter on, each call costs **one immediate-exit spawn per registered
+   `hooks.json` route**, not zero.
 
 **rev 2 (2026-10-11)** — four consumer-raised deltas; every other line is
 byte-identical to rev 1.
@@ -38,7 +62,13 @@ byte-identical to rev 1.
    from `src/kernel/index.ts`) is owned by T06; `README.md` is in T09's
    exclusive paths (D4).
 
-- **Revision:** rev 2 (2026-10-11); rev 1 (2026-10-10). **Owner:** T01 (contract owner).
+- **Revision:** rev 3 (2026-10-11); rev 2 (2026-10-11); rev 1 (2026-10-10). **Owner:** T01 (contract owner).
+- **rev 3 evidence read** (PR checkout `feat/routing-replacement` at `64dfce8`):
+  `src/kernel/{combine,judge-facts,resolve,decisions,route}.ts`,
+  `src/judge/tiebreak.ts`, `docs/OPT-IN-TIERS.md`, `src/hooks/prompt-advisor.ts`,
+  `src/hooks/prompt-advisor-guidance.ts`; T09a's in-flight loaders
+  `src/registry/{policy-judge,policy-router,intents,decision-rules}.ts`
+  (threshold bounds only).
 - **Base:** branch `feat/routing-replacement` at `0b2e442`, HEAD-only (decision D1).
 - **Evidence read:** `src/registry/intents.ts`, `src/registry/policy.ts`,
   `src/kernel/{route,resolve,decisions,scale,breaker,cli}.ts`,
@@ -92,7 +122,7 @@ loader reads v2 fields on any row regardless of `version`, so a v1 file
 | `verb_object` | `{ verbs: string[]; objects: string[]; weight: number }` | no | both arrays non-empty strings; `weight` finite `> 0`. Absent → no pair feature |
 | `negative` | `Array<{ text: string; weight: number }>` | no | same shape rule as `phrases`; weights are **subtracted** |
 | `exemplars` | `string[]` | no | non-empty strings. Count 3–10 on an active row is enforced by validator C38b, not the loader. Absent → `[]` (no BM25 document) |
-| `threshold` | `number` | no | in `[0, 1]`; the Jev noul cut for `intent.<id>`. Absent → `policy.judge.thresholds.intent_default` |
+| `threshold` | `number` | no | in `(0, 1]` (rev 3: `0` refused — an absent id reads as `0` and would qualify); the Jev noul cut for `intent.<id>`. Absent → `policy.judge.thresholds.intent_default` |
 | `router_row` | `{ intent: string; load: string }` | no | both non-empty strings; the generated router-table cells (§11). Absent → cells derived from the other fields |
 
 Existing refusals stay verbatim (empty `.intents`, empty `id`, malformed
@@ -257,7 +287,8 @@ The six `policy.router.fixtures` (C18e) assert `escalate`, `reasons`,
 | Position | Key | Type | Value |
 |---|---|---|---|
 | 21 | `judge` | `JudgeSummary` | same object as `route.judge` |
-| 22 | `risk_proposal` | `RiskTier \| null` | §4.4; `null` without a `jev` fact |
+| 22 | `risk_proposal` | `RiskTier \| null` | §4.4; `null` without a `jev` fact; reported in **every** mode (rev 3) |
+| 23 | `tiebreak` | `string \| null` | rev 3, §4.7: the winning intent id when the embedding tie-break narrowed `intents`; `null` otherwise (no fact, not consulted, or no selection) |
 
 `decision_rules` (the section the task-contract block composes) gains a
 trailing key **only in answers composed with a `taskContract` fact**:
@@ -278,7 +309,14 @@ is unchanged in shape; the sections inside carry the keys above.
 
 `route.*` is always the deterministic answer. Only the task-contract block folds
 judge facts, and only in `authoritative` mode. `task_contract.judge` and
-`task_contract.risk_proposal` are reported in every mode.
+`task_contract.risk_proposal` are reported in every mode (rev 3 confirms this
+over the old §4 preamble): reporting is not folding, and shadow mode exists to
+record what the judge *would* have changed. The advisor still prints no judge
+note in `shadow` (§10.5).
+
+The embedding tie-break fact (§4.7, rev 3) is independent of `judge.mode`: it
+is read on the deterministic branch in every mode, and ignored when an
+authoritative `jev` fact folds the intents. It never edits `route.*` either.
 
 ---
 
@@ -331,6 +369,37 @@ Rules:
 - Replayability: `prompt` + a journaled `judge` fact reproduce the answer
   offline; the kernel reads no clock, no network and no env for this fact.
 
+### 3.1 Tie-break fact — `resolve --facts` key `tiebreak` — MINOR (rev 3)
+
+```ts
+// intent id -> the daemon's similarity in [0,1] (src/judge/tiebreak.ts
+// TiebreakOutcome 'scores'.scores, passed through unchanged).
+export type TiebreakFact = Record<string, number>;
+```
+
+```json
+{ "prompt": "...", "taskContract": true, "judge": { "...": "..." }, "tiebreak": { "adr": 0.71, "new-feature": 0.52 } }
+```
+
+Rules (parsed in `src/kernel/cli.ts parseFacts` as `case 'tiebreak'`, validated
+kernel-side; the kernel imports nothing from `src/judge/**`):
+- A `tiebreak` fact without `taskContract: true` is refused:
+  `a tiebreak fact cannot be declared without a task-contract fact` (same
+  reason as D7: only the task contract reads it).
+- Must be an object; each key an **active** intent id (else
+  `resolve --facts: unknown fact tiebreak.<id>`); each value a finite number in
+  `[0,1]` (else `resolve --facts: tiebreak.<id> must be a number in [0,1]`).
+- Each key must be an id in the deterministic `route.ranked` for the same
+  prompt (else `resolve --facts: tiebreak.<id> is not a ranked candidate`). The
+  ranking is a pure function of prompt and registries, so a journaled fact
+  replays; a score for a candidate the kernel never ranked is a broken caller.
+- Sparse: an absent id is **unscored**, never `0` (§4.7 treats unscored
+  survivors as blocking a selection).
+- `{}` is accepted and selects nothing.
+- The hook passes the fact only when the client outcome is `kind === 'scores'`;
+  `skipped` and `failed` outcomes pass no fact (they leave the deterministic
+  answer untouched, `docs/OPT-IN-TIERS.md` "Client outcomes").
+
 ---
 
 ## 4. Combination policy (`src/kernel/combine.ts`, authoritative mode)
@@ -345,9 +414,7 @@ export interface CombineInput {
   judge: JudgeFact | null;
   mode: 'shadow' | 'advisory' | 'authoritative';
   regs: Registries;                   // intents thresholds, decision rules, policy.judge, policy.router
-  tiebreak?: Record<string, number>;  // reserved for T12 (embedding daemon): intent id -> similarity
-                                      // in [0,1]; read only when the output would be ambiguous;
-                                      // ignored by T06, which never sets it
+  tiebreak?: Record<string, number>;  // rev 3, §3.1/§4.7: validated TiebreakFact; absent = not consulted
 }
 export interface CombineOutput {
   intents: string[];
@@ -359,13 +426,23 @@ export interface CombineOutput {
   riskProposal: RiskTier | null;
   judgeSummary: JudgeSummary;
   escalateReasons: string[];          // policy.router.reasons order
+  // T06's implemented trailing keys (ratified rev 3): the derived lists §4.2
+  // recomputes, emitted so the task contract reads one answer.
+  suppressed: SuppressedIntent[];
+  agents: string[];
+  modelTier: string | null;
+  riskFloor: RiskTier | null;
+  tiebreakWinner: string | null;      // rev 3, §4.7; -> task_contract.tiebreak
 }
 export function combine(input: CombineInput): CombineOutput;
 ```
 
 In `shadow`/`advisory`, or with `judge === null` / `source: 'fallback'`, the
-output is the deterministic input re-packaged (`judgeAdded: []`,
-`riskProposal: null`, summary from the fact or `no-judge-fact`).
+intents, gates, floor and reasons are the deterministic input re-packaged
+(`judgeAdded: []`, summary from the fact or `no-judge-fact`), except that the
+§4.7 tie-break may narrow the intents. `riskProposal` is computed from a `jev`
+fact in **every** mode and is `null` only without one (rev 3; it is reported,
+not folded).
 
 With a `jev` fact in `authoritative` mode:
 
@@ -409,6 +486,19 @@ is reported and ignored. A judge-raised floor **does not** by itself fold the
 `hitl` section (a proposal is not a classification); `hitl` folds exactly as
 today from `anyHigh` (now over the union) or the topology fact.
 
+Rev 3 clarifications (both ratify T06):
+- **`null` is below `low`.** `max(null, p) = p`, and a `jev` proposal is never
+  `null`, so in `authoritative` mode a prompt with no deterministic floor (a
+  pure question) gets `risk_floor: "low"` and `autonomy_ceiling_at_floor` of the
+  low tier. This is the safe direction: a `null` ceiling is the value a caller
+  could misread as "no ceiling" (`resolve.ts ceilingAt`). `substantive`, the
+  policy bundle and `hitl` are unaffected (none reads the floor).
+- **`hitl` tier is the post-fold floor.** When `hitl` folds (from `anyHigh` or
+  the topology fact), it is handed the same floor and ceiling the task contract
+  publishes, judge proposal included. One answer never carries two tiers. The
+  proposal can therefore add the `high-risk` reason to a `hitl` section that
+  `anyHigh` or the topology fact already required, never create one.
+
 ### 4.5 Rule 4 — escalate on doubt (`combination.escalate_on_doubt: true`)
 Append `low-confidence` to `escalateReasons` (policy order) when
 `primary.confidence < judge.thresholds.primary_confidence || primary.margin < judge.thresholds.margin`,
@@ -416,8 +506,74 @@ or when §4.2 ended ambiguous. `task_contract.escalates` is true when
 `escalateReasons` is non-empty. `route.reasons` is not edited (it is the
 deterministic answer; its own `low-confidence` comes from §2.3).
 
+**Rev 3 (changed): intent-derived reasons are re-evaluated over the fold, add-only.**
+`escalateReasons` is the policy-ordered union of:
+- every reason in `route.reasons` (Rule 1: none is removed);
+- `multi-agent-dispatch` when the folded **survivors** (after §4.2 suppression)
+  with a non-empty `agents` list number at least
+  `policy.router.escalate_when.multi_agent_intents_min` — the same condition
+  `routeEscalate` applies to the raw survivors;
+- `requires-dispatch-plan` when some folded survivor has
+  `requires_dispatch_plan: true`;
+- `low-confidence` on doubt, as above.
+
+`unrouted-scale` is **not** re-evaluated: it is defined on zero *raw* matches
+and stays exactly as `route.reasons` reports it. Reason: without this, a judge
+fold that routes to two agent-carrying intents publishes two agents with
+`escalates: false`, and the advisor tells the supervisor that no dispatch plan
+is needed — the folded contract would contradict its own escalation policy.
+
 ### 4.6 Rule 5 — fallback is visible
 `judgeSummary` is always emitted; `source: 'fallback'` carries the reason.
+
+### 4.7 Embedding tie-break (rev 3) — `CombineInput.tiebreak`
+
+Consulted **only on the deterministic branch** (no `jev` fact, a `fallback`
+fact, or a `jev` fact in `shadow`/`advisory`) and **only when
+`route.ambiguous === true`**. On the folded branch (authoritative `jev`) it is
+ignored: the judge is the semantic tier above it.
+
+Selection, in order; the first failing step means **no selection** and the
+deterministic output stands unchanged (`tiebreakWinner: null`):
+1. `survivors = route.intents` (post-suppression, registry order). At least
+   **two** survivors are required — there is nothing to break otherwise.
+2. Every survivor must be in `route.ranked` **and** carry a score in
+   `tiebreak`. An unscored survivor (beyond `top_k`, no exemplars, or dropped
+   by the client's limits) blocks selection: the kernel never narrows on
+   missing evidence.
+3. Order survivors by score descending, ties by `route.ranked` order. `best` is
+   the first, `second` the next.
+4. `best.score >= router.tiebreak.min_similarity` and
+   `best.score - second.score >= router.tiebreak.margin`.
+
+On selection:
+- **Never adds an intent.** The winner is one of the deterministic survivors;
+  candidates that are ranked but not survivors (below `min_score`, suppressed,
+  or unmatched) can receive a score but can never be selected. A prompt with
+  zero survivors is never routed by the tie-break.
+- **Narrowing.** `kept = [winner]` plus every other survivor whose registry
+  `risk_floor` is `"high"` (a similarity score never drops a high-floor
+  domain's rules or agents). `kept` is in registry order.
+- **Re-aggregation.** `intents`, `agents`, `model_tier` and `risk_floor` are
+  recomputed over `kept` with the same aggregation §4.2 uses
+  (`aggregateIntents`; `kept` is a subset of survivors, so its suppression pass
+  drops nothing). `suppressed = route.suppressed` followed by one
+  `{ id, by: <winner id> }` per dropped survivor (registry order), so the
+  answer says what displaced it.
+- **Never lowers risk or tier.** `riskFloor = anyHigh ? 'high' : max(route.risk_floor, aggregate.riskFloor)`;
+  `modelTier = max(route.model_tier, aggregate.modelTier)` by
+  `models.escalation_order` (uncertainty favours the stronger tier,
+  `rules/models.md`). Decision matches and `anyHigh` are untouched (the
+  deterministic branch has no judge-added rules).
+- **Reasons add-only.** `escalateReasons = route.reasons` unchanged —
+  `low-confidence` stays when the route had it, so the router agent still sees
+  the doubt; nothing is recomputed, because narrowing can only remove agents.
+- `ambiguous = false`; `ranked` unchanged; `tiebreakWinner = winner`.
+
+With the §6.1 scoring placeholders (`threshold: 0`, `margin: 0`) `ambiguous` is
+true only when `matches` is empty, so step 1 always fails and the tie-break is
+inert until T13 calibrates `router.scoring`. That is intended: a v1 registry
+still routes exactly as the any-match router did (§1.5).
 
 ---
 
@@ -479,12 +635,24 @@ naming the JSON path. Prose `note` fields are allowed in each block and ignored.
   "notification": ["<task-notification>", "<background-task", "[Task notification]"],
   "tool_result": ["<function_results>", "<tool_result>", "<tool-result>"],
   "hook_echo": ["[engineos]"]
+},
+"tiebreak": {
+  "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Placeholders until T13 calibrates against the golden set with the pinned MiniLM revision.",
+  "min_similarity": 0.6,
+  "margin": 0.1
 }
 ```
 
+(The `source_markers` literals shown are the rev 1 placeholders; T05's verified
+strings, landed by T09, replace them.)
+
 Loader types: `scoring` all numbers (`min_score >= 0`, `threshold`, `margin` in
 `[0,1]`, `top_k`, `max_intents` positive integers, `bm25_weight`, `path_weight >= 0`);
-`combination` exact literals; `source_markers` three non-empty string arrays.
+`combination` exact literals; `source_markers` three non-empty string arrays;
+`tiebreak` (rev 3, required) `min_similarity` and `margin` numbers in `(0, 1]`
+— `0` is refused: a zero similarity floor would let any score win, and a zero
+margin would let an exact tie decide (refusal text as T09a's other cuts:
+`.router.tiebreak.<key> must be greater than 0 and at most 1`).
 
 ### 6.2 New top-level `judge` block
 
@@ -536,7 +704,12 @@ Loader types: `scoring` all numbers (`min_score >= 0`, `threshold`, `margin` in
 Loader types: `mode` one of `shadow | advisory | authoritative`; `timeout_ms`,
 `max_state_bytes`, `cooldown_ms` positive integers; `retries` integer `>= 0`
 (the hook honours only `0` on the hot path; any other value is a loader
-refusal in 1.8); thresholds in `[0,1]`; `patterns[].pattern` a JavaScript
+refusal in 1.8); thresholds (rev 3): `intent_default` and `rule_default` in
+`(0, 1]` — they cut sparse probabilities where an absent id reads as `0`, so a
+zero cut would make every absent intent or rule qualify; `primary_confidence`
+and `margin` in `[0, 1]` — they compare fields that are always present, and `0`
+is a meaningful (if aggressive) calibration that disables that doubt test;
+`patterns[].pattern` a JavaScript
 `RegExp` source compiled with flag `g` at load (a non-compiling pattern is a
 refusal); `breaker.scope` must be a member of `policy.breaker.scopes`.
 `failure_threshold` is read from the existing `policy.breaker.failure_threshold` (3).
@@ -544,7 +717,9 @@ refusal); `breaker.scope` must be a member of `policy.breaker.scopes`.
 ### 6.3 `registries/decision-rules.json` per-rule additions
 
 Every rule gains two keys after `then`: `judge_fact: string | null` and
-`judge_threshold: number | null` (`[0,1]`). Version → `"1.2.0"`.
+`judge_threshold: number | null` (rev 3: in `(0, 1]`, `0` refused for the same
+sparse-read reason as `rule_default`; a non-null `judge_threshold` requires a
+non-null `judge_fact`). Version → `"1.2.0"`.
 
 | Rule | `judge_fact` | `judge_threshold` |
 |---|---|---|
@@ -798,6 +973,42 @@ authoritative modes only):
 [engineos] judge (<source>, <model>): ranked=<id:p,...> flags=<rule:p,...> risk_proposal=<tier> — model judgment, not a gate
 ```
 
+### 10.6 Embedding tie-break client (`src/judge/tiebreak.ts`) — internal, frozen as implemented by T12 (rev 3)
+
+The interface is ratified exactly as merged in `64dfce8`: `tiebreak(input: TiebreakInput, deps: TiebreakDeps): Promise<TiebreakOutcome>`,
+`nodeTiebreakDeps(env, redaction)`, `TiebreakInput { text; ambiguous; candidates: { id; exemplars }[] }`,
+and
+
+```ts
+export type TiebreakOutcome =
+  | { kind: 'scores'; scores: Record<string, number>; model: string; latency_ms: number }
+  | { kind: 'skipped'; reason: 'disabled' | 'not-ambiguous' | 'no-candidates' | 'no-socket' | 'unsafe-socket' | 'oversize' }
+  | { kind: 'failed'; reason: 'timeout' | 'network' | 'busy' | 'invalid-response' };
+```
+
+`scores` holds only offered ids, each in `[0,1]` (the client refuses the whole
+reply otherwise), so it satisfies §3.1's value and ranked-candidate rules
+whenever `candidates` is drawn from `route.ranked`.
+
+Hook integration (T09d, `src/hooks/prompt-advisor.ts` / `prompt-judge.ts`):
+1. Resolve the task contract as today (`resolve({ prompt, taskContract: true, judge? })`).
+2. Consult the client only when `route.ambiguous` is true, `route.intents.length >= 2`,
+   and the answer is not on the folded branch (no `jev` fact with
+   `policy.judge.mode === 'authoritative'`); otherwise the kernel would ignore
+   the fact, so the call is skipped.
+3. `candidates = route.ranked.map(r => ({ id: r.id, exemplars: <intents.json row r.id>.exemplars }))`
+   in ranked order; `text` = the raw prompt (the client redacts with
+   `policy.judge.redaction.patterns`); `deps = nodeTiebreakDeps(env, policy.judge.redaction.patterns)`.
+4. On `kind === 'scores'` only, re-resolve with `tiebreak: outcome.scores` added
+   to the same facts and use that answer; any other outcome keeps the first
+   answer. Kernel calls are sub-millisecond; the second one is the cost of
+   keeping the kernel free of I/O.
+5. Budget: the client's own 150 ms deadline plus the judge's `timeout_ms`
+   (400) stays inside the 600 ms advisor budget even when run one after the
+   other; the hook may run the two concurrently (the deterministic route does
+   not depend on the judge). No new telemetry event in rev 3: the route event
+   keeps reporting `route.*`, which the tie-break never edits.
+
 ---
 
 ## 11. Router-table generation (`engineos gen router-table`) — MINOR
@@ -865,9 +1076,9 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | `registries/intents.json` | `version "2.0.0"`; per-row `phrases`, `verb_object`, `negative`, `exemplars`, `threshold`, `router_row`; `signals` optional when `phrases` exists (read through 1.x, removed 2.0) | MINOR, one window opened |
 | `route-intent` / `resolve {prompt}` | trailing `ranked`, `margin`; `ambiguous` may be true on weak confidence/margin | MINOR (tightening) |
 | `route-escalate` / `resolve-task` route | trailing `ranked`, `margin`, `judge`; reason `low-confidence` appended to `policy.router.reasons` | MINOR |
-| `resolve-task` task_contract | trailing `judge`, `risk_proposal`; `decision_rules.judge_added` in task-contract answers | MINOR |
-| `resolve --facts` | new fact key `judge` | MINOR |
-| `registries/policy.json` | `router.scoring`, `router.combination`, `router.source_markers`, `judge`, telemetry `judge` event, route event key `skipped`; version 1.8.0 | MINOR |
+| `resolve-task` task_contract | trailing `judge`, `risk_proposal`, `tiebreak` (rev 3); `decision_rules.judge_added` in task-contract answers; authoritative fold may add `multi-agent-dispatch` / `requires-dispatch-plan` to `escalation_reasons` (rev 3, add-only) | MINOR |
+| `resolve --facts` | new fact keys `judge`, `tiebreak` (rev 3) | MINOR |
+| `registries/policy.json` | `router.scoring`, `router.combination`, `router.source_markers`, `router.tiebreak` (rev 3), `judge`, telemetry `judge` event, route event key `skipped`; version 1.8.0 | MINOR |
 | `registries/decision-rules.json` | per-rule `judge_fact`, `judge_threshold`; version 1.2.0 | MINOR |
 | `hooks/hooks.json` | the five per-call hooks run `dist/engineos-hot.cjs` (T08); event contract unchanged | MINOR |
 | `dist/engineos-hot.cjs` | new bundle (hot hooks only) | MINOR |
@@ -875,7 +1086,8 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | `validate` | C38, C38b, C38c, C38d | MINOR (new failing checks) |
 | `hooks/*.sh`, `scripts/*.sh` shims | Warn step (stderr line; `ENGINEOS_QUIET_SHIMS`) | deprecated → warn |
 | `src/kernel/parity.test.ts` intent arms | retired per ADR (`route-intent`, `route-escalate`, `resolve-task`) | test surface, recorded |
-| Environment | `ENGINEOS_JUDGE`, `TYPESAFE_API_KEY`, `ENGINEOS_QUIET_SHIMS` (new; opt-in) | added |
+| Environment | `ENGINEOS_JUDGE`, `TYPESAFE_API_KEY`, `ENGINEOS_QUIET_SHIMS` (new; opt-in); rev 3 (T12): `ENGINEOS_INPROCESS`, `ENGINEOS_ROOT`, `ENGINEOS_NODE`, `ENGINEOS_EMBED_DAEMON`, `ENGINEOS_EMBED_CACHE`, `ENGINEOS_EMBED_OFFLINE`, `ENGINEOS_EMBED_IDLE_MINUTES` | added |
+| `adapters/claude-code-mod/`, `dist/engineos-inprocess.cjs`, `tools/embedding-daemon/` (rev 3, T12) | opt-in in-process adapter plugin, its host bundle, and the tie-break daemon package; none loaded by `dist/engineos.cjs`. Documented limit: with the adapter on, the registered `hooks.json` command hooks still spawn once per call and exit immediately (§16.7) | MINOR (opt-in) |
 
 ---
 
@@ -893,5 +1105,192 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | T09 | every registry section (§1, §6), §11, §14, D1, D4 (`README.md` is in T09's exclusive paths, rev 2), D8 |
 | T10 | D1 |
 | T11 | §12, D1, D3 |
-| T12 | §4 (`tiebreak` slot: `CombineInput.tiebreak?: Record<string, number>`, consulted only when `ambiguous`; reserved here, unused until T12) |
-| T13 | D5, D6, every placeholder |
+| T12 | §4 (`tiebreak` slot), §10.6 (client ratified as merged); rev 3 records its accepted spawn-count deviation (§16.7) |
+| T09a (rev 3) | §1.2 `threshold`, §6.1 `router.tiebreak`, §6.2 thresholds, §6.3 `judge_threshold` bounds (§16.5, §16.6) |
+| T09d (rev 3) | §3.1, §4.5 rev 3, §4.7, §10.6 hook integration, §2.4 key 23 (§16.4, §16.6) |
+| T13 | D5, D6, every placeholder (rev 3 adds `router.tiebreak.*`), the §16 test list, the §16.7 spawn measurement |
+
+---
+
+## 16. Revision 3 (2026-10-11) — decisions and consumer deltas
+
+Owner: T01. Inputs: the T06 questions and the T12 wiring requests (supervisor
+notes, "Contract rev3 queue" and "T12 returned DEGRADED"), checked against the
+code merged at `64dfce8`. Rule applied: ratify implemented behaviour unless it
+is unsafe or contradicts the ADR. Five items are ratified, one is changed, one
+is new, one records a deviation.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | `risk_proposal` in shadow/advisory | **Ratified** (T06): reported in every mode, folded only in authoritative |
+| 2 | `hitl` tier on a topology fold | **Ratified**: the post-fold floor, judge proposal included |
+| 3 | Authoritative `jev` turns a `null` floor into `low` | **Ratified**: §4.4 literally |
+| 4 | Intent-derived reasons over judge-added intents | **Changed**: re-evaluated over the fold, add-only |
+| 5 | Zero judge thresholds | **Ratified** (T09a): refused where the cut reads a sparse probability |
+| 6 | Embedding tie-break fact | **New**: §3.1, §4.7, §6.1, §10.6, key 23 |
+| 7 | Spawn count with the in-process adapter on | **Accepted deviation** (T12) |
+
+### 16.1 `risk_proposal` reporting (ratified)
+
+§2.4 and §2.5 already said "reported in every mode"; only the §4 preamble said
+`riskProposal: null` in shadow/advisory. The preamble was the error. Reporting
+is not folding, and shadow mode has no purpose if it does not record what the
+judge would have proposed. The advisor still prints no judge note in shadow.
+No consumer delta: `combine.ts` already computes the proposal before the mode
+branch.
+
+### 16.2 `hitl` tier (ratified)
+
+`resolve.ts` hands `hitlSection` the floor the task contract publishes. Keeping
+one tier per answer is the stronger invariant. The proposal can only add the
+`high-risk` reason to a `hitl` section that `anyHigh` or the topology fact
+already required, so it never creates a human gate by itself. No consumer delta.
+
+### 16.3 `null` floor to `low` (ratified)
+
+A `jev` proposal is never `null`, and `null` sorts below `low`. The result is
+the low ceiling instead of a `null` ceiling, and a `null` ceiling is the value
+`resolve.ts` warns a caller could read as "no ceiling". `substantive`, the
+policy bundle and `hitl` do not read the floor, so a pure question still loads
+nothing. The span `risk` field already defaults a `null` floor to `low`. This
+applies only in authoritative mode. No consumer delta.
+
+### 16.4 Intent-derived escalation reasons (changed)
+
+**Why:** the fold replaces the intents and recomputes `agents`, but T06 kept
+`route.reasons` plus `low-confidence`. A judge that folds to two
+agent-carrying intents therefore publishes two agents with `escalates: false`.
+The advisor guidance then says "No router dispatch needed", which contradicts
+the escalation condition `routeEscalate` applies to the same kind of set.
+Re-evaluating adds reasons and never removes one, so Rule 1 holds.
+
+**Consumer delta, T09d:**
+- `src/kernel/combine.ts`, `aggregateIntents`: also return the surviving rows,
+  or two booleans (`multiAgent`: surviving rows with `agents.length > 0`
+  number at least `regs.policy.router.escalate_when.multi_agent_intents_min`;
+  `dispatchPlan`: some surviving row has `requires_dispatch_plan`).
+- `src/kernel/combine.ts`, `folded`: the `escalateReasons` filter keeps
+  `reason` when `route.reasons.includes(reason)`, or `reason === 'multi-agent-dispatch' && multiAgent`,
+  or `reason === 'requires-dispatch-plan' && dispatchPlan`, or
+  `reason === 'low-confidence' && doubt`. `unrouted-scale` keeps only the
+  `route.reasons` term.
+- The `deterministic` branch is unchanged.
+- T13 tests: (a) a fold to two agent intents adds `multi-agent-dispatch` and
+  sets `escalates: true`; (b) a fold to one intent keeps the deterministic
+  `multi-agent-dispatch` (add-only); (c) a fold to a `requires_dispatch_plan`
+  row adds that reason; (d) the policy order is preserved.
+
+### 16.5 Zero thresholds (ratified)
+
+These cuts are in `(0, 1]` because each one compares a sparse probability where
+an absent key reads as `0`:
+- `judge.thresholds.intent_default` and `rule_default`;
+- intents row `threshold`;
+- decision-rules `judge_threshold`, which also requires a non-null
+  `judge_fact`.
+
+`primary_confidence` and `margin` stay in `[0, 1]`: they compare fields that are
+always present.
+
+This matches T09a's in-flight loaders (`src/registry/policy-judge.ts`
+`aboveZero` and `unitInterval`, `src/registry/intents.ts` `judgeCut`,
+`src/registry/decision-rules.ts` `judgeFields`). **Consumer delta, T09a:** none
+beyond what it already implements. T13 adds the refusal tests (each `0` cut
+refused with its JSON path; `primary_confidence: 0` and `margin: 0` accepted).
+
+### 16.6 Embedding tie-break (new)
+
+Contract: §3.1 (the fact), §4.7 (selection), §6.1 (`router.tiebreak`), §10.6
+(client and hook), §2.4 key 23. The ADR's own words, "only as a tie-breaker
+when the fallback is ambiguous", become five invariants:
+- the fact is read on the deterministic branch only;
+- it is read only when `route.ambiguous` is true;
+- the winner must already be a deterministic survivor;
+- it never adds an intent, never lowers risk or model tier, and never edits
+  `route.*`;
+- it never removes an escalation reason.
+
+The placeholders keep it inert until T13 calibrates `router.scoring` (§4.7,
+last paragraph).
+
+**Consumer delta, T09a (registries/loaders):**
+- `src/registry/policy-router.ts`: add `TiebreakPolicy { min_similarity: number; margin: number }`
+  and `RouterPolicy.tiebreak: TiebreakPolicy` (required). Parse both keys in
+  `(0, 1]` with the error
+  `.router.tiebreak.<key> must be greater than 0 and at most 1`. Prose `note`
+  is allowed.
+- `registries/policy.json`: add the `router.tiebreak` block of §6.1 after
+  `source_markers`. Version stays `1.8.0` (unreleased).
+- `test/fixtures/legacy-kernel/registries/policy.json`: only if the fixture is
+  read by the strict TS loader (T03 W4 precedent). Add the same block there.
+
+**Consumer delta, T09d (kernel + hook wiring):**
+- `src/kernel/` (a new `tiebreak-facts.ts`, or `judge-facts.ts`):
+  `tiebreakFact(value: unknown, regs: Registries): Record<string, number>`.
+  It requires an object with active-intent keys and finite `[0,1]` values, with
+  the §3.1 messages.
+- `src/kernel/cli.ts` `parseFacts`: `case 'tiebreak': facts.tiebreak = value; break;`.
+- `src/kernel/resolve.ts`:
+  - `DeclaredFacts.tiebreak?: unknown`;
+  - refuse it without `taskContract: true` (§3.1 message);
+  - after `routeEscalate`, refuse keys not in `route.ranked` (§3.1 message);
+  - pass `tiebreak` into `combine`;
+  - add `TaskContractSection.tiebreak: string | null` as key 23, filled from
+    `combined.tiebreakWinner`.
+- `src/kernel/combine.ts`:
+  - `CombineOutput.tiebreakWinner: string | null`;
+  - in `deterministic`, apply §4.7 when `input.tiebreak !== undefined && route.ambiguous`;
+  - in `folded`, ignore `tiebreak` and set `tiebreakWinner: null`;
+  - reuse `aggregateIntents` and `highest`;
+  - replace the "Reserved for T12; never read here" comment.
+- `src/hooks/prompt-advisor.ts` / `src/hooks/prompt-judge.ts`: apply the
+  §10.6 hook-integration steps 1–5, using `tiebreak` and `nodeTiebreakDeps`
+  from `src/judge/tiebreak.ts`. Pass the exemplars from the loaded intents
+  registry.
+- `src/hooks/prompt-advisor-guidance.ts` (optional): print `tiebreak=<id>` on
+  the task-contract line when it is non-null.
+- T09d's other T12 items (build entry, shell guard, optional
+  `src/lib/runtime-dir.ts`) are wiring, not contract. The shell guard stays
+  security-sensitive and needs `security-reviewer`; rev 3 does not change it.
+
+**T13 tests and calibration:**
+- Calibrate `router.tiebreak.{min_similarity, margin}` with
+  `router.scoring.{threshold, margin}`. The tie-break only acts after the
+  scoring cuts are non-zero.
+- Kernel tests:
+  - no selection with fewer than two survivors;
+  - no selection when a survivor is unscored;
+  - no selection below `min_similarity` or within `margin`;
+  - the winner is kept, and a high-floor survivor is kept too;
+  - dropped survivors are appended to `suppressed` with `by: <winner>`;
+  - `risk_floor` and `model_tier` are never lowered;
+  - `escalation_reasons` are unchanged;
+  - ignored on the authoritative fold;
+  - applied in shadow and advisory with a `jev` fact;
+  - every §3.1 refusal;
+  - `route.*` is byte-identical with and without the fact.
+- Hook tests:
+  - the client is not called when the route is not ambiguous, has fewer than
+    two survivors, or is on the authoritative fold;
+  - only a `scores` outcome causes the re-resolve.
+
+### 16.7 Spawn count with the in-process adapter (accepted deviation)
+
+T12's acceptance target was zero per-call hook spawns with
+`ENGINEOS_INPROCESS=1`. That target **cannot be met on the current host**.
+Claude Code spawns every registered command hook in the root `hooks.json`
+whatever the plugin does. With the adapter on, the shell side finds a live,
+private, same-session presence file and exits immediately. The cost is
+**one immediate-exit spawn per registered `hooks.json` route per call**.
+
+Zero needs one of two host-side changes:
+- a host feature to disable one plugin's command hooks;
+- an install variant that ships without `hooks.json` when the adapter is on.
+
+Answering classic events without `next` is rejected, because it would also
+suppress the user's own hooks.
+
+Status: **DEGRADED, accepted with caveat**, never relabelled OK. T13 measures
+and reports the per-route immediate-exit count and its latency. The ADR
+consequences record the gap. Revisit when the host ships per-plugin
+command-hook disable.

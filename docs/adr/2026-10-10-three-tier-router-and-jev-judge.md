@@ -4,7 +4,9 @@ Date: 2026-10-10
 Status: proposed (accepted on merge of PR #132; developer approved the direction and the prototype preview, revision `71ce35fb93a0`, on 2026-10-10)
 
 Source: `docs/specs/2026-10-10-routing-replacement-plan.md` §1–§4a, §8;
-contracts `docs/specs/2026-10-10-routing-replacement-contracts.md` (rev 1);
+contracts `docs/specs/2026-10-10-routing-replacement-contracts.md` (rev 3;
+rev 3 adds the embedding tie-break semantics and records the in-process spawn
+deviation, both reflected below);
 GitHub issue #118 (plan), #119 (this ticket).
 
 ## Context
@@ -101,6 +103,14 @@ Option 1, with these bound sub-decisions:
   default-on; until then the judge is a per-machine opt-in.
 - **Source check.** `classifyPromptSource` runs before anything else; a
   notification, tool result or hook echo gets no routing and no judge call.
+- **Embedding tie-break (P5, opt-in).** The warm MiniLM daemon from option 5
+  is consulted only when the deterministic route is ambiguous and
+  `ENGINEOS_EMBED_DAEMON=1`. Its scores reach the kernel as a journaled
+  `tiebreak` fact, so the kernel still does no I/O. The scores may only narrow
+  the deterministic survivors to one winner. They never add an intent, never
+  lower the risk floor or model tier, never remove an escalation reason and
+  never edit `route.*`. The judge's authoritative fold takes precedence over
+  them (contracts rev 3 §4.7).
 - **Parity retirement.** Intent-routing byte parity with the pinned bash kernel
   is retired: the arms `route-intent answers identically to the pinned bash
   kernel`, `route-escalate answers identically to the pinned bash kernel` and
@@ -157,6 +167,19 @@ Option 1, with these bound sub-decisions:
   until the golden set says otherwise; a judge fact is replayable but a judge
   *call* is not, so shadow comparisons are single-pass evidence with a pinned
   model.
+- Accepted limit (contracts rev 3 §16.7): the in-process adapter
+  (`ENGINEOS_INPROCESS=1`) does **not** reach zero per-call spawns. Claude Code
+  still spawns every command hook registered in `hooks.json`; the shell side
+  exits at once when a live adapter host owns the session. The real cost is
+  one immediate-exit spawn per registered route per call. Reaching zero needs
+  a host feature to disable one plugin's command hooks, or an install variant
+  without `hooks.json` when the adapter is on. Until then the adapter saves the
+  hook *work*, not the spawns. It is reported as degraded, not as meeting the
+  original target.
+- The tie-break stays inert until T13 calibrates `router.scoring`. With the
+  placeholder cuts (`threshold: 0`, `margin: 0`) a route is ambiguous only when
+  nothing matched, and the tie-break never routes a prompt that has no
+  deterministic survivors.
 - We commit to maintaining: the golden set (120+ cases, 3+ per active intent,
   exemplars mirrored into the registry), `evals/BASELINE.md`, the question
   generator and the committed shadow request file in lockstep, the redaction
@@ -175,4 +198,5 @@ prompt-advisor p95 above its 600 ms budget with the judge on (lower
 `timeout_ms` or move the call off the prompt path); a real need for a visual
 rule editor (reopen option 3 for the policy tables only); Claude Code's
 function-hook API leaving early access (promote the P5 in-process adapter from
-opt-in).
+opt-in); the host gaining a way to disable one plugin's command hooks (adopt it
+when the adapter is on, closing the immediate-exit spawn gap).
