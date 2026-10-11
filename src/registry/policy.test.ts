@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KernelError, isRecord } from '../lib/json';
@@ -36,11 +36,13 @@ test('the shipped policy registry loads with every field the kernel reads', () =
   assert.equal(policy.gates.by_risk.high['validation'], 'required-plus-critic');
   assert.deepEqual(policy.gates.spec_threshold, { files_greater_than: 2, or_any_new_feature: true });
   assert.equal(policy.parallelism.wave_concurrency_cap, 6);
-  assert.deepEqual(policy.parallelism.backpressure, {
-    max_queued_units: 12,
-    overload_action: 'defer',
-    actions: ['dispatch', 'defer', 'reject'],
-  });
+  assert.equal(policy.parallelism.backpressure.max_queued_units, 12);
+  assert.equal(policy.parallelism.backpressure.overload_action, 'defer');
+  assert.deepEqual(policy.parallelism.backpressure.actions, ['dispatch', 'defer', 'reject']);
+  assert.deepEqual(
+    policy.parallelism.backpressure.rows.map((row) => row.action),
+    ['dispatch', '{overload_action}', 'reject'],
+  );
   assert.equal(policy.breaker.failure_threshold, 3);
   assert.equal(policy.breaker.cooldown_waves, 1);
   assert.equal(policy.breaker.half_open_probes, 1);
@@ -68,10 +70,22 @@ test('the shipped policy registry loads with every field the kernel reads', () =
     'multi-agent-dispatch',
     'unrouted-scale',
     'requires-dispatch-plan',
+    'low-confidence',
   ]);
   assert.equal(policy.router.escalate_when.multi_agent_intents_min, 2);
   assert.deepEqual(policy.router.escalate_when.unrouted_scale_signals, ['big_task', 'design_work']);
   assert.ok(policy.router.fixtures.length > 0);
+  assert.deepEqual(policy.router.combination, {
+    gates: 'deterministic-wins',
+    judge: 'add-only',
+    intents: 'noul-then-primary',
+    escalate_on_doubt: true,
+  });
+  assert.equal(policy.judge.key_env, 'TYPESAFE_API_KEY');
+  assert.equal(policy.judge.enabled_env, 'ENGINEOS_JUDGE');
+  assert.equal(policy.judge.enabled_value, 'jev');
+  assert.equal(policy.judge.mode, 'shadow');
+  assert.equal(policy.judge.retries, 0);
 });
 
 test('gate statuses keep the registry key order they are emitted in', () => {
@@ -114,6 +128,18 @@ const malformed: [string, (policy: Record<string, unknown>) => void, string][] =
   ['a missing escalate_when block', (p) => { delete record(p, 'router')['escalate_when']; }, '.router.escalate_when must be an object'],
   ['a non-numeric multi-agent threshold', (p) => { record(record(p, 'router'), 'escalate_when')['multi_agent_intents_min'] = '2'; }, '.router.escalate_when.multi_agent_intents_min must be a number'],
   ['a fixture without an escalate verdict', (p) => { record(p, 'router')['fixtures'] = [{ prompt: 'x', reasons: [], intents: [] }]; }, '.router.fixtures[0].escalate must be a boolean'],
+  ['a missing never-repair answer', (p) => { delete record(p, 'repair')['never_repair_answer']; }, '.repair.never_repair_answer must be an object'],
+  ['an empty repair ladder', (p) => { record(p, 'repair')['ladder'] = []; }, '.repair.ladder must not be empty'],
+  ['an infra pattern with an unknown reason', (p) => { record(p, 'repair')['infra_patterns'] = [{ runner: 'nx', pattern: 'x', reason: 'flaky' }]; }, '.repair.infra_patterns[0].reason must be target-absent or runner-missing'],
+  ['a backpressure row with an unknown capacity', (p) => { record(record(p, 'parallelism'), 'backpressure')['rows'] = [{ when: {}, action: 'reject', capacity: 'some', reason: 'r' }]; }, '.parallelism.backpressure.rows[0].capacity must be remaining or none'],
+  ['an empty breaker transition table', (p) => { record(p, 'breaker')['transitions'] = []; }, '.breaker.transitions must not be empty'],
+  ['a hitl reason row without a when', (p) => { record(p, 'hitl')['reason_table'] = [{ reason: 'high-risk' }]; }, '.hitl.reason_table[0].when must be an object'],
+  ['a missing router scoring block', (p) => { delete record(p, 'router')['scoring']; }, '.router.scoring must be an object'],
+  ['a missing router tiebreak block', (p) => { delete record(p, 'router')['tiebreak']; }, '.router.tiebreak must be an object'],
+  ['a zero tiebreak margin', (p) => { record(record(p, 'router'), 'tiebreak')['margin'] = 0; }, '.router.tiebreak.margin must be greater than 0 and at most 1'],
+  ['a missing judge block', (p) => { delete p['judge']; }, '.judge must be an object'],
+  ['a zero judge intent threshold', (p) => { record(record(p, 'judge'), 'thresholds')['intent_default'] = 0; }, '.judge.thresholds.intent_default must be greater than 0 and at most 1'],
+  ['a judge breaker scope outside .breaker.scopes', (p) => { record(record(p, 'judge'), 'breaker')['scope'] = 'agent'; }, '.judge.breaker.scope must be one of .breaker.scopes'],
 ];
 
 for (const [name, breakIt, detail] of malformed) {
@@ -152,6 +178,9 @@ function basePolicy(): Record<string, unknown> {
       escalations: 1,
       by_situation: [{ situation: 'infra', response: 'report-tooling-gap-no-attempt-consumed' }],
       never_repair: ['weaken-the-check'],
+      never_repair_answer: { action: 'never-repair', reason: 'situation {situation} is on the never-repair list' },
+      ladder: [{ when: {}, action: 'stop-report-red', reason: 'the bound is exhausted' }],
+      infra_patterns: [{ runner: 'nx', pattern: 'cannot find project', reason: 'target-absent' }],
     },
     autonomy: {
       levels: [{ id: 'A0' }],
@@ -169,7 +198,12 @@ function basePolicy(): Record<string, unknown> {
     },
     parallelism: {
       wave_concurrency_cap: 6,
-      backpressure: { max_queued_units: 12, overload_action: 'defer', actions: ['dispatch', 'defer', 'reject'] },
+      backpressure: {
+        max_queued_units: 12,
+        overload_action: 'defer',
+        actions: ['dispatch', 'defer', 'reject'],
+        rows: [{ when: {}, action: 'reject', capacity: 'none', reason: 'queue full' }],
+      },
       prompt_signals: {
         action: '\\b(add|build)\\b',
         substantive_action: '\\b(add|build|review)\\b',
@@ -185,20 +219,37 @@ function basePolicy(): Record<string, unknown> {
       half_open_probes: 1,
       states: ['closed', 'half-open', 'open'],
       scopes: ['provider'],
+      transitions: [{ from: 'closed', guard: {}, to: 'closed', allow: true, reason: 'healthy' }],
     },
     hitl: {
       reasons: ['high-risk'],
       situations: ['destructive'],
       record_home: '.engineos/changes/<record>.md#human-decisions',
+      reason_table: [{ reason: 'high-risk', when: { risk: 'high' } }],
     },
     router: {
       agent: 'router',
       capability: 'route',
       reasons: ['multi-agent-dispatch'],
       escalate_when: { multi_agent_intents_min: 2, unrouted_scale_signals: ['big_task'] },
+      scoring: { min_score: 0, threshold: 0.5, margin: 0.1, top_k: 5, max_intents: 3, bm25_weight: 1, path_weight: 0 },
+      combination: { gates: 'deterministic-wins', judge: 'add-only', intents: 'noul-then-primary', escalate_on_doubt: true },
+      source_markers: { notification: ['<task-notification>'], tool_result: ['<tool_result>'], hook_echo: ['[engineos]'] },
+      tiebreak: { min_similarity: 0.6, margin: 0.1 },
       fixtures: [{ prompt: 'modernize all services', escalate: true, reasons: ['unrouted-scale'], intents: [] }],
     },
+    judge: shippedJudgeBlock(),
   };
+}
+
+// The judge block's redaction list is pinned by hash in code, so the minimal
+// fixture carries the shipped block verbatim rather than a hand-written one.
+function shippedJudgeBlock(): Record<string, unknown> {
+  const raw: unknown = JSON.parse(readFileSync(join(root, 'registries', 'policy.json'), 'utf8'));
+  if (!isRecord(raw)) throw new Error('registries/policy.json is not an object');
+  const judge = raw['judge'];
+  if (!isRecord(judge)) throw new Error('registries/policy.json carries no judge block');
+  return judge;
 }
 
 // The fixture is built fresh per case, so a nested block can be reached and
