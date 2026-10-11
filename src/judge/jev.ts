@@ -1,4 +1,4 @@
-// Jev judge client (contracts.md@rev1 §10). One POST per user prompt, opt-in
+// Jev judge client (contracts.md@rev2 §10). One POST per user prompt, opt-in
 // only, no retry, hard deadline, breaker-guarded. Nothing here touches the
 // network on its own: `fetch` arrives through JudgeDeps, so the module is inert
 // until a caller (T05's prompt advisor) injects a transport, and no live call is
@@ -8,7 +8,7 @@
 // ({ model, state, questions }); `state` holds the redacted prompt and nothing
 // from the environment. The API key goes into the Authorization header only and
 // never into an outcome, an error or a log line.
-import { parseJevResponse } from './response';
+import { parseJevResponse, reportedInputTokens } from './response';
 import { buildJudgeState } from './state';
 import type { FailedReason, JudgeDeps, JudgeInput, JudgeOutcome, JudgePolicy, SkippedReason } from './types';
 
@@ -22,8 +22,8 @@ export async function judge(input: JudgeInput, deps: JudgeDeps): Promise<JudgeOu
   const admission = admit(input, deps);
   if (admission.kind === 'skipped') return admission;
 
-  // Oversize is a property of this prompt, not of the provider's health, so it
-  // fails without counting against the breaker.
+  // Oversize is decided before any request and describes the prompt, not the
+  // provider's health, so it fails without touching the breaker (rev2 §10.3).
   const built = buildJudgeState(input, deps.policy);
   if (built.kind === 'oversize') return { kind: 'failed', reason: 'oversize-state' };
 
@@ -36,7 +36,7 @@ export async function judge(input: JudgeInput, deps: JudgeDeps): Promise<JudgeOu
   const facts = parseJevResponse(exchange.raw, deps.questions, latencyMs);
   if (facts === null) return fail('invalid-response', deps);
   deps.breaker.recordSuccess();
-  return { kind: 'facts', facts };
+  return { kind: 'facts', facts, tokens_in: reportedInputTokens(exchange.raw) };
 }
 
 // Enablement order, first hit wins (contracts §10.1). Only the last step reads
