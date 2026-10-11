@@ -92,20 +92,14 @@ export function routeByPath(file: string, regs: Registries, root: string): PathR
 }
 
 // Scored multi-match (contracts.md@rev1 §2.2): every intent whose score clears
-// router.scoring.min_score matches, at most max_intents (highest scores kept,
-// ties by registry order), emitted in registry order with the eleven pinned
-// fields. With a v1 registry every firing signal scores 1, so the placeholders
-// (min_score 1) reproduce the any-match set. The router agent still owns real
-// ambiguity and reads `ranked` instead of a flat set.
+// router.scoring.min_score matches, emitted in registry order with the eleven
+// pinned fields. With a v1 registry every firing signal scores 1, so the
+// placeholders (min_score 1) reproduce the any-match set. The router agent
+// still owns real ambiguity and reads `ranked` instead of a flat set.
 export function routeByIntent(text: string, regs: Registries): IntentRouteSection {
   const scoring = regs.policy.router.scoring;
   const candidates = scoreIntents(text, regs);
-  const kept = new Set(
-    candidates
-      .filter((candidate) => candidate.score >= scoring.min_score)
-      .slice(0, scoring.max_intents)
-      .map((candidate) => candidate.id),
-  );
+  const kept = keptIntentIds(text, candidates, regs);
   const matches = regs.intents.intents.filter((intent) => kept.has(intent.id)).map((intent) => intentMatch(intent, regs));
   const margin = marginOf(candidates);
   const top = candidates[0];
@@ -115,6 +109,52 @@ export function routeByIntent(text: string, regs: Registries): IntentRouteSectio
     top.confidence < scoring.threshold ||
     (margin !== null && margin < scoring.margin);
   return { matches, ambiguous, ranked: candidates.slice(0, scoring.top_k), margin };
+}
+
+const CAP_EXEMPT_FLOOR: RiskTier = 'high';
+
+// max_intents trims only what any-match would never have routed. Two kinds of
+// admitted candidate are exempt, mirroring combine.ts `keptHigh`: a high-floor
+// intent (dropping it would lower the floor and lose the reviewer a high-risk
+// prompt needs), and an intent whose declared evidence alone (phrases, pair,
+// path, minus negatives) clears min_score, which is the §1.5 any-match set.
+// The cap fills its remaining slots, score then registry order, from intents
+// that needed exemplar similarity to clear min_score. A v1 registry has no
+// exemplars, so there the cap can never bind.
+function keptIntentIds(text: string, candidates: readonly RankedIntent[], regs: Registries): Set<string> {
+  const scoring = regs.policy.router.scoring;
+  const admitted = candidates.filter((candidate) => candidate.score >= scoring.min_score);
+  if (admitted.length <= scoring.max_intents) return new Set(admitted.map((candidate) => candidate.id));
+  const highFloor = new Set(regs.intents.intents.filter((row) => row.risk_floor === CAP_EXEMPT_FLOOR).map((row) => row.id));
+  const declared = new Set(
+    scoreIntents(text, withoutExemplars(regs))
+      .filter((candidate) => candidate.score >= scoring.min_score)
+      .map((candidate) => candidate.id),
+  );
+  const isExempt = (id: string): boolean => highFloor.has(id) || declared.has(id);
+  const exempt = admitted.filter((candidate) => isExempt(candidate.id));
+  const slots = Math.max(0, scoring.max_intents - exempt.length);
+  // `admitted` is already score descending, ties by registry order.
+  const capped = admitted.filter((candidate) => !isExempt(candidate.id)).slice(0, slots);
+  return new Set([...exempt, ...capped].map((candidate) => candidate.id));
+}
+
+// The same registries with bm25_weight 0, so the scorer answers from declared
+// evidence only. Getters delegate rather than spread: spreading lazyRegistries
+// would load every registry file just to override one number.
+function withoutExemplars(regs: Registries): Registries {
+  const policy = regs.policy;
+  const declaredOnly = { ...policy, router: { ...policy.router, scoring: { ...policy.router.scoring, bm25_weight: 0 } } };
+  return {
+    get routing(): Registries['routing'] { return regs.routing; },
+    get intents(): Registries['intents'] { return regs.intents; },
+    get models(): Registries['models'] { return regs.models; },
+    policy: declaredOnly,
+    get decisionRules(): Registries['decisionRules'] { return regs.decisionRules; },
+    get capabilities(): Registries['capabilities'] { return regs.capabilities; },
+    get agents(): Registries['agents'] { return regs.agents; },
+    get skillState(): Registries['skillState'] { return regs.skillState; },
+  };
 }
 
 function intentMatch(intent: IntentRow, regs: Registries): IntentMatch {
