@@ -1,0 +1,509 @@
+{
+  "model": "jev-1.13.0",
+  "state": {
+    "request": {
+      "text": "create a plan to replace our routing and check the other files which could be replaceable by julia or jev or a more suitable decision framework to make this enginoes framework faster and intelligent",
+      "source": "user"
+    },
+    "repository": {
+      "declared_stack": [
+        "typescript",
+        "nextjs"
+      ],
+      "active_spec": false,
+      "open_change_record": false
+    },
+    "session": {
+      "last_intent": null
+    }
+  },
+  "questions": {
+    "primary_intent": {
+      "type": "choice",
+      "instructions": {
+        "question": "Which kind of work does `request.text` mainly ask the assistant to do?",
+        "focus": "Judge what the user wants done, not which topics the text mentions."
+      },
+      "criteria": {
+        "new-feature": {
+          "what": "Build new behavior or a new capability in a project, such as a feature, module, endpoint, screen or integration spanning several files",
+          "not_for": "Plans, evaluations or decisions about how to build something without building it yet; restructuring that keeps behavior; fixing broken behavior"
+        },
+        "big-sweep": {
+          "what": "Apply one change across many places or domains, such as a migration, backfill, rename or upgrade across all modules, services or files",
+          "not_for": "A change confined to one module or feature"
+        },
+        "bug": {
+          "what": "Investigate or fix something that is broken, failing, erroring or behaving unexpectedly",
+          "not_for": "Adding behavior that never existed"
+        },
+        "backend": {
+          "what": "Server-side application code: NestJS modules, controllers, services, API endpoints, queues or workers",
+          "not_for": "Database schema or migrations alone; LLM agent logic; Claude Code tooling or the EngineOS framework itself"
+        },
+        "frontend": {
+          "what": "Web user interface: React or Next.js components, pages, styling, client state or forms",
+          "not_for": "React Native mobile screens"
+        },
+        "mobile": {
+          "what": "React Native mobile app work: screens, navigation, native modules, or mirroring a web feature to mobile",
+          "not_for": "Building, signing or publishing the app to an app store"
+        },
+        "ios-release": {
+          "what": "Build, sign or publish the iOS app to TestFlight or the Apple App Store",
+          "not_for": "Android or Google Play releases"
+        },
+        "android-release": {
+          "what": "Build, sign or publish the Android app to Google Play",
+          "not_for": "iOS or Apple App Store releases"
+        },
+        "llm": {
+          "what": "Build or change an LLM-powered product feature: a chatbot, prompts, retrieval, embeddings, model tool schemas, evals or Mastra agents inside an application",
+          "not_for": "Designing how several product agents coordinate; Claude Code subagents, hooks, skills or mods that help the developer work; the EngineOS framework's own agents"
+        },
+        "agent-system": {
+          "what": "Design the topology of a product system in which several AI agents cooperate: a supervisor, handoffs or orchestration between agents",
+          "not_for": "A single chatbot or agent; Claude Code development subagents"
+        },
+        "dba": "Database layer work: SQL, schema design, migrations, indexes or query performance",
+        "devops": "Infrastructure and delivery: CI/CD pipelines, GitHub workflows, Docker, Kubernetes, Helm, Terraform or cloud resources",
+        "security-files": "Change authentication, authorization, guards, middleware, secrets, credentials or environment-file handling",
+        "system-comprehension": {
+          "what": "Write documentation that explains how an existing system works, for onboarding or architecture understanding",
+          "not_for": "Finding defects or health problems"
+        },
+        "interview-gaps": "Have the assistant interview the user with questions to fill gaps in system documentation",
+        "qa-endpoints": {
+          "what": "Run end-to-end QA across all API endpoints of an integrated system, for example a Postman or Newman run",
+          "not_for": "Writing unit or integration tests for specific code"
+        },
+        "audit": {
+          "what": "Run a read-only health check across a system or several domains to find what is broken or risky",
+          "not_for": "Reviewing one diff or pull request; writing onboarding documentation"
+        },
+        "refactor": "Restructure or clean up existing code without changing its behavior: simplify, remove technical debt or rename",
+        "adr": {
+          "what": "Choose between technical options or decide how to structure something, and record the decision; includes planning or evaluating an architectural change before building it",
+          "not_for": "Business, career or market decisions"
+        },
+        "release-notes": "Write release notes or document what changed in a version",
+        "strategy": {
+          "what": "Business, market, career, positioning or monetization strategy",
+          "not_for": "Choosing between technical options"
+        },
+        "review": {
+          "what": "Review a diff, branch or pull request before merging, or judge whether a specific change is safe",
+          "not_for": "A system-wide audit"
+        },
+        "test-writing": "Write or add automated tests or test coverage for specific code",
+        "eval-setup": "Set up evaluations or a golden set for an LLM feature",
+        "critic-verification": "Independently challenge whether completed high-risk work is actually correct",
+        "handoff": "Hand work over to another agent, wave or session with a written account of progress",
+        "retro": {
+          "what": "Run a retrospective over past work to propose improvements to rules, skills or registries",
+          "not_for": "Logging a single observation"
+        },
+        "task-observer": {
+          "what": "Log one observation about friction with a rule or skill noticed during work",
+          "not_for": "Running a full retrospective"
+        },
+        "record-change": {
+          "what": "Write or close the change record that describes work already done",
+          "not_for": "Confirming that the work is correct"
+        },
+        "route-planning": "Ask which agents should handle a request or how to split it into a dispatch plan",
+        "verify-done": {
+          "what": "Confirm that work is done, shipped or ready to archive, with evidence",
+          "not_for": "Writing the change record"
+        },
+        "other": {
+          "what": "None of the listed kinds of work: a general question, or work outside these categories, such as configuring Claude Code itself (hooks, settings, mods or the status line)",
+          "not_for": "Requests that fit one of the listed kinds of work"
+        }
+      }
+    },
+    "intent.new-feature": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Build new behavior or a new capability in a project, such as a feature, module, endpoint, screen or integration spanning several files",
+          "not_for": "Plans, evaluations or decisions about how to build something without building it yet; restructuring that keeps behavior; fixing broken behavior"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.big-sweep": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Apply one change across many places or domains, such as a migration, backfill, rename or upgrade across all modules, services or files",
+          "not_for": "A change confined to one module or feature"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.bug": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Investigate or fix something that is broken, failing, erroring or behaving unexpectedly",
+          "not_for": "Adding behavior that never existed"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.backend": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Server-side application code: NestJS modules, controllers, services, API endpoints, queues or workers",
+          "not_for": "Database schema or migrations alone; LLM agent logic; Claude Code tooling or the EngineOS framework itself"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.frontend": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Web user interface: React or Next.js components, pages, styling, client state or forms",
+          "not_for": "React Native mobile screens"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.mobile": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "React Native mobile app work: screens, navigation, native modules, or mirroring a web feature to mobile",
+          "not_for": "Building, signing or publishing the app to an app store"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.ios-release": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Build, sign or publish the iOS app to TestFlight or the Apple App Store",
+          "not_for": "Android or Google Play releases"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.android-release": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Build, sign or publish the Android app to Google Play",
+          "not_for": "iOS or Apple App Store releases"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.llm": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Build or change an LLM-powered product feature: a chatbot, prompts, retrieval, embeddings, model tool schemas, evals or Mastra agents inside an application",
+          "not_for": "Designing how several product agents coordinate; Claude Code subagents, hooks, skills or mods that help the developer work; the EngineOS framework's own agents"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.agent-system": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Design the topology of a product system in which several AI agents cooperate: a supervisor, handoffs or orchestration between agents",
+          "not_for": "A single chatbot or agent; Claude Code development subagents"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.dba": {
+      "type": "noul",
+      "instructions": {
+        "work": "Database layer work: SQL, schema design, migrations, indexes or query performance",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.devops": {
+      "type": "noul",
+      "instructions": {
+        "work": "Infrastructure and delivery: CI/CD pipelines, GitHub workflows, Docker, Kubernetes, Helm, Terraform or cloud resources",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.security-files": {
+      "type": "noul",
+      "instructions": {
+        "work": "Change authentication, authorization, guards, middleware, secrets, credentials or environment-file handling",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.system-comprehension": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Write documentation that explains how an existing system works, for onboarding or architecture understanding",
+          "not_for": "Finding defects or health problems"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.interview-gaps": {
+      "type": "noul",
+      "instructions": {
+        "work": "Have the assistant interview the user with questions to fill gaps in system documentation",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.qa-endpoints": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Run end-to-end QA across all API endpoints of an integrated system, for example a Postman or Newman run",
+          "not_for": "Writing unit or integration tests for specific code"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.audit": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Run a read-only health check across a system or several domains to find what is broken or risky",
+          "not_for": "Reviewing one diff or pull request; writing onboarding documentation"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.refactor": {
+      "type": "noul",
+      "instructions": {
+        "work": "Restructure or clean up existing code without changing its behavior: simplify, remove technical debt or rename",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.adr": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Choose between technical options or decide how to structure something, and record the decision; includes planning or evaluating an architectural change before building it",
+          "not_for": "Business, career or market decisions"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.release-notes": {
+      "type": "noul",
+      "instructions": {
+        "work": "Write release notes or document what changed in a version",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.strategy": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Business, market, career, positioning or monetization strategy",
+          "not_for": "Choosing between technical options"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.review": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Review a diff, branch or pull request before merging, or judge whether a specific change is safe",
+          "not_for": "A system-wide audit"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.test-writing": {
+      "type": "noul",
+      "instructions": {
+        "work": "Write or add automated tests or test coverage for specific code",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.eval-setup": {
+      "type": "noul",
+      "instructions": {
+        "work": "Set up evaluations or a golden set for an LLM feature",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.critic-verification": {
+      "type": "noul",
+      "instructions": {
+        "work": "Independently challenge whether completed high-risk work is actually correct",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.handoff": {
+      "type": "noul",
+      "instructions": {
+        "work": "Hand work over to another agent, wave or session with a written account of progress",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.retro": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Run a retrospective over past work to propose improvements to rules, skills or registries",
+          "not_for": "Logging a single observation"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.task-observer": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Log one observation about friction with a rule or skill noticed during work",
+          "not_for": "Running a full retrospective"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.record-change": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Write or close the change record that describes work already done",
+          "not_for": "Confirming that the work is correct"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.route-planning": {
+      "type": "noul",
+      "instructions": {
+        "work": "Ask which agents should handle a request or how to split it into a dispatch plan",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "intent.verify-done": {
+      "type": "noul",
+      "instructions": {
+        "work": {
+          "what": "Confirm that work is done, shipped or ready to archive, with evidence",
+          "not_for": "Writing the change record"
+        },
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
+    "is_project_change": {
+      "type": "noul",
+      "instructions": "Does `request.text` ask the assistant to change files in a project, such as code, configuration, documentation or design files?",
+      "criteria": {
+        "true": "Asks for something to be built, edited, written or removed in the project",
+        "false": "Only asks for an explanation, an answer, an opinion or advice"
+      }
+    },
+    "design_work": {
+      "type": "noul",
+      "instructions": "Does `request.text` ask for design work, such as an architecture, an interface or contract, a data model or a plan, before implementation?"
+    },
+    "fact.large_change": {
+      "type": "noul",
+      "instructions": "Does `request.text` ask to rewrite, overhaul or re-architect a large part of a system?"
+    },
+    "fact.affects_public_contract": {
+      "type": "noul",
+      "instructions": "Would the work in `request.text` change a public or published API, a database schema, an event payload or another contract that external consumers depend on?"
+    },
+    "fact.handles_sensitive_data": {
+      "type": "noul",
+      "instructions": "Does the work in `request.text` involve personal data, payment data, health data, credentials, or data protected by privacy law such as LGPD or GDPR?"
+    },
+    "fact.production_write": {
+      "type": "noul",
+      "instructions": "Does `request.text` ask for an action that directly changes a production environment, such as deploying, releasing or writing to live systems?"
+    },
+    "fact.destructive_ddl_or_dml": {
+      "type": "noul",
+      "instructions": "Does the work in `request.text` involve deleting data or dropping or truncating database tables, columns, indexes or schemas?"
+    },
+    "fact.secret_reached_git_or_shared_file": {
+      "type": "noul",
+      "instructions": "Does `request.text` report that a secret, API key, token, password or credential was committed, pushed, leaked or exposed?"
+    },
+    "fact.knowledge_changes_frequently": {
+      "type": "noul",
+      "instructions": "Does the work in `request.text` involve retrieval-augmented generation, embeddings or fine-tuning?"
+    },
+    "fact.multi_agent_system": {
+      "type": "noul",
+      "instructions": "Does `request.text` ask to design or build a product system in which more than one AI agent cooperates?",
+      "criteria": {
+        "true": "A product with several cooperating agents, such as a supervisor with workers or agents handing off to each other",
+        "false": "A single agent or chatbot, or Claude Code subagents that the developer uses while working"
+      }
+    },
+    "fact.retrieval_over_shared_corpus": {
+      "type": "noul",
+      "instructions": "Does the work in `request.text` involve retrieving documents from a corpus shared by several users or tenants?"
+    },
+    "scale": {
+      "type": "score",
+      "instructions": "How widely does the work in `request.text` spread across the project?",
+      "criteria": [
+        "A single focused change or question in one place",
+        "Several related changes within one area or domain",
+        "Changes spanning several domains, or the same change repeated across many modules, services or files"
+      ]
+    },
+    "risk.reversibility": {
+      "type": "score",
+      "instructions": "If the work in `request.text` is carried out, how hard is it to undo?",
+      "criteria": [
+        "Trivially undone, for example by reverting a commit",
+        "Can be undone, but only with real effort",
+        "Irreversible, or reversible only with data loss"
+      ]
+    },
+    "risk.blast_radius": {
+      "type": "score",
+      "instructions": "If the work in `request.text` is carried out, how far do its effects reach?",
+      "criteria": [
+        "Confined to one module and the local machine",
+        "Affects a whole service or one team's surface",
+        "Reaches production, other teams or external consumers"
+      ]
+    },
+    "risk.data_sensitivity": {
+      "type": "score",
+      "instructions": "What kind of data does the work in `request.text` touch?",
+      "criteria": [
+        "No real data",
+        "Internal business data",
+        "Personal, credential, financial or clinical data"
+      ]
+    },
+    "risk.contract_surface": {
+      "type": "score",
+      "instructions": "Which interfaces does the work in `request.text` change?",
+      "criteria": [
+        "Only private internals",
+        "An internal module interface",
+        "A public or published API, a database schema or an event payload"
+      ]
+    },
+    "risk.spend": {
+      "type": "score",
+      "instructions": "What money does the work in `request.text` commit?",
+      "criteria": [
+        "A negligible cost",
+        "A bounded, known cost",
+        "An unbounded cost, or a commitment of real money"
+      ]
+    }
+  }
+}
