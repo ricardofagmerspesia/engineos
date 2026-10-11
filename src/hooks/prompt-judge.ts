@@ -1,13 +1,15 @@
-// The prompt advisor's judge half (contracts.md@rev2 §10.5): consult the opt-in
-// Jev judge for one user prompt and turn its outcome into the fact the kernel
-// folds, plus the span outcome and the judge event's data.
+// The prompt advisor's semantic half: consult the opt-in Jev judge for one user
+// prompt and turn its outcome into the fact the kernel folds, plus the span
+// outcome and the judge event's data (contracts.md@rev3 §10.5); and consult the
+// opt-in embedding tie-break for an ambiguous deterministic route (§10.6).
 //
 // Split out of ./prompt-advisor so each file stays one concern. The telemetry
 // CALLS stay in the advisor — contracts §6.4 names it as the judge event's
 // writer, and it owns the sink — so this module only answers what to record.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Registries } from '../kernel';
+import { resolve, type Registries } from '../kernel';
+import type { KernelContext } from '../kernel/context';
 import {
   buildQuestionSet,
   createFileBreakerStore,
@@ -19,6 +21,7 @@ import {
   type JudgeOutcome,
   type JudgePolicy,
 } from '../judge';
+import { nodeTiebreakDeps, tiebreak, tiebreakEnabled, type TiebreakCandidate } from '../judge/tiebreak';
 import { KernelError } from '../lib/json';
 import { loadProjectConfig } from '../registry/project-config';
 import { editContext } from './edit-context';
@@ -56,6 +59,51 @@ export interface Consultation {
 }
 
 const NOT_CONSULTED: Consultation = { fact: null, policy: null, latencyMs: null, span: null };
+
+// The kernel's `tiebreak` fact (contracts §3.1): intent id -> similarity.
+export type TiebreakScores = Record<string, number>;
+
+export interface Semantics {
+  consultation: Consultation;
+  tiebreak: TiebreakScores | null;   // null: no scores to pass, the deterministic answer stands
+}
+
+// Both opt-in consultations for one prompt. The deterministic route does not
+// depend on the judge, so the tie-break runs beside it inside the same budget
+// (its own 150 ms deadline under the judge's guard). The one exception is an
+// enabled authoritative judge: its `jev` fact folds, and the kernel ignores a
+// tie-break on the fold, so the client is consulted only after the judge
+// answered something else (§10.6 step 2).
+export async function consultSemantics(env: HookEnvelope, ctx: HookContext, kernel: KernelContext): Promise<Semantics> {
+  const regs = kernel.registries;
+  if (judgeMayFold(ctx, regs)) {
+    const consultation = await consultJudge(env, ctx, regs);
+    const scores = folds(consultation) ? null : await consultTiebreak(env.prompt, ctx, kernel);
+    return { consultation, tiebreak: scores };
+  }
+  const [consultation, scores] = await Promise.all([consultJudge(env, ctx, regs), consultTiebreak(env.prompt, ctx, kernel)]);
+  return { consultation, tiebreak: scores };
+}
+
+// §10.6 steps 2-4. Scores only for an ambiguous route with at least two
+// survivors, candidates drawn from route.ranked so every key is a ranked id the
+// kernel accepts; any other outcome, or any throw, passes no fact.
+export async function consultTiebreak(prompt: string, ctx: HookContext, kernel: KernelContext): Promise<TiebreakScores | null> {
+  if (!tiebreakEnabled(ctx.io.env)) return null;
+  try {
+    // The same pure ranking the task contract reports, without a span: the
+    // router span belongs to the one resolution the advisor publishes.
+    const { route } = resolve({ prompt, escalate: true }, kernel);
+    if (route === undefined || !('escalate' in route) || !route.ambiguous || route.intents.length < 2) return null;
+    const regs = kernel.registries;
+    const exemplars = new Map(regs.intents.intents.map((row): [string, readonly string[]] => [row.id, row.exemplars]));
+    const candidates: TiebreakCandidate[] = route.ranked.map((ranked) => ({ id: ranked.id, exemplars: exemplars.get(ranked.id) ?? [] }));
+    const outcome = await tiebreak({ text: prompt, ambiguous: true, candidates }, nodeTiebreakDeps(ctx.io.env, regs.policy.judge.redaction.patterns));
+    return outcome.kind === 'scores' ? outcome.scores : null;
+  } catch {
+    return null;
+  }
+}
 
 // Outcome -> fact (contracts §10.5). Any throw on the way (an unreadable judge
 // block, a question set the registries cannot build) declares no fact at all,
@@ -114,6 +162,21 @@ export function judgeEventData(consultation: Consultation): EventData | null {
 }
 
 // ------------------------------------------------------------------ internals
+
+// An unreadable judge block declares no `jev` fact, so nothing can fold.
+function judgeMayFold(ctx: HookContext, regs: Registries): boolean {
+  try {
+    const policy = regs.policy.judge;
+    return policy.mode === 'authoritative' && ctx.io.env[policy.enabled_env] === policy.enabled_value;
+  } catch {
+    return false;
+  }
+}
+
+function folds(consultation: Consultation): boolean {
+  const { fact, policy } = consultation;
+  return fact !== null && fact.source === 'jev' && policy !== null && policy.mode === 'authoritative';
+}
 
 function factOf(outcome: JudgeOutcome): JudgeFact | null {
   if (outcome.kind === 'facts') return outcome.facts;

@@ -10,13 +10,21 @@
 // otherwise. The presence record is what the shell hooks read to stay silent
 // while this host serves the session (contract in docs/OPT-IN-TIERS.md).
 //
-// The path rule is duplicated in src/judge/tiebreak.ts and in the shell-side
-// guard (T09 wiring request); a drift fails safe there: the guard finds no
-// record and the shell hooks run, so a hook may fire twice but never zero times.
-import { createHash } from 'node:crypto';
+// The path rule, the privacy rule and the record parser live once, in
+// src/lib/runtime-dir.ts, shared with src/judge/tiebreak.ts and the shell-side
+// guard in src/hooks/adapter.ts; this module adds what only the host does:
+// creating the directory, writing the record and claiming the paths.
 import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import {
+  GROUP_OTHER_BITS,
+  parsePresence,
+  PRESENCE_VERSION,
+  runtimeDir,
+  sessionPaths,
+  type PresenceRecord,
+} from '../../../src/lib/runtime-dir';
+
+export type { PresenceRecord } from '../../../src/lib/runtime-dir';
 
 // Unix socket paths are cut near 104 bytes on macOS and 108 on Linux; the
 // mod's own transport documents "near 100 B at most".
@@ -24,20 +32,9 @@ export const MAX_SOCKET_PATH_BYTES = 100;
 
 const PRIVATE_DIR_MODE = 0o700;
 const PRIVATE_FILE_MODE = 0o600;
-const GROUP_OTHER_BITS = 0o077;
-const SESSION_KEY_HEX = 16;
-const PRESENCE_VERSION = 1;
 
 export class HostSetupError extends Error {
   override readonly name = 'HostSetupError';
-}
-
-export interface PresenceRecord {
-  v: typeof PRESENCE_VERSION;
-  pid: number;
-  socket: string;
-  session: string;
-  started_at: number;
 }
 
 export interface HostPaths {
@@ -52,15 +49,11 @@ export function currentUid(): number {
 }
 
 export function privateDir(env: NodeJS.ProcessEnv, uid: number): string {
-  const base = nonEmpty(env['XDG_RUNTIME_DIR']) ?? nonEmpty(env['TMPDIR']) ?? tmpdir();
-  return join(base, `engineos-${uid}`);
+  return runtimeDir(env, uid);
 }
 
-// The session id is the transcript's name; hashing it keeps the path short and
-// keeps the id itself out of a directory listing.
 export function hostPaths(dir: string, sessionId: string): HostPaths {
-  const key = createHash('sha256').update(sessionId).digest('hex').slice(0, SESSION_KEY_HEX);
-  const paths = { dir, socket: join(dir, `h-${key}.sock`), presence: join(dir, `h-${key}.json`) };
+  const paths: HostPaths = { dir, ...sessionPaths(dir, sessionId) };
   if (Buffer.byteLength(paths.socket) > MAX_SOCKET_PATH_BYTES) {
     throw new HostSetupError(`socket path is ${Buffer.byteLength(paths.socket)} bytes, over ${MAX_SOCKET_PATH_BYTES}; set XDG_RUNTIME_DIR to a shorter private directory`);
   }
@@ -91,18 +84,13 @@ export function presenceRecord(pid: number, socket: string, session: string, now
 }
 
 export function readPresence(path: string): PresenceRecord | null {
-  let parsed: unknown;
+  let text: string;
   try {
-    parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+    text = readFileSync(path, 'utf8');
   } catch {
     return null;
   }
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const record: Record<string, unknown> = { ...parsed };
-  const { pid, socket, session, started_at: startedAt } = record;
-  if (record['v'] !== PRESENCE_VERSION || typeof pid !== 'number' || typeof socket !== 'string') return null;
-  if (typeof session !== 'string' || typeof startedAt !== 'number') return null;
-  return { v: PRESENCE_VERSION, pid, socket, session, started_at: startedAt };
+  return parsePresence(text);
 }
 
 // Signal 0 probes without delivering anything. EPERM means a process of that
@@ -133,10 +121,6 @@ export function releasePaths(paths: HostPaths, pid: number): void {
   if (existing !== null && existing.pid !== pid) return;
   rmSync(paths.presence, { force: true });
   rmSync(paths.socket, { force: true });
-}
-
-function nonEmpty(value: string | undefined): string | null {
-  return value === undefined || value === '' ? null : value;
 }
 
 function isCode(e: unknown, code: string): boolean {

@@ -138,10 +138,16 @@ function routeNote(task: TaskAnswer, lookups: GuidanceLookups): string[] {
   }
   if (contract.substantive) {
     return [
-      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)} — load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed.`,
+      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)}${tiebreakField(contract.tiebreak)} — load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed.`,
     ];
   }
   return [];
+}
+
+// Present only when the embedding tie-break narrowed the survivors (contracts
+// rev3 §16.6), so every line without a winner renders byte for byte as before.
+function tiebreakField(winner: string | null): string {
+  return winner === null ? '' : ` tiebreak=${winner}`;
 }
 
 function hitlNote(hitl: HitlSection | null): string[] {

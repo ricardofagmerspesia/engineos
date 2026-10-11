@@ -1,7 +1,7 @@
 // Family `router-v2`: the routing replacement's registry surface (#127).
 // C38 holds the intents.json v2 scoring fields to their shape, C38b the
-// exemplar count, C38c the policy.json router/judge blocks plus the judge's two
-// isolation boundaries, and C38d the generated router table against CLAUDE.md
+// exemplar count, C38c the policy.json router/judge blocks plus three isolation
+// boundaries (the judge's two and the root bundle's), and C38d the generated router table against CLAUDE.md
 // and AGENTS.md.
 //
 // Every registry is read raw and then through its strict loader inside
@@ -29,6 +29,7 @@ export const C38C_FINDINGS = [
   'key-material',
   'judge-calls-fetch',
   'kernel-imports-judge',
+  'bundle-imports-adapter',
 ] as const;
 export const C38D_FINDINGS = ['intents-unloadable', 'markers-missing', 'markers-malformed', 'region-drift'] as const;
 
@@ -65,6 +66,16 @@ const METASYNTAX = /\b[XYN]\b|>|≥/;
 const FOLDED: readonly string[] = ['android-release'];
 const FETCH_CALL = /\bfetch\s*\(/;
 const IMPORT_SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)['"]([^'"]+)['"]/;
+// The root runtime: the loader scripts/build.mjs writes, and the bundle it
+// requires. Absent files are skipped (a checkout that has not been built).
+const ROOT_LOADER = 'dist/engineos.cjs';
+const ROOT_BUNDLE = 'dist/runtime/engineos.cjs';
+// esbuild heads every bundled module with a `// <path>` line, and a module left
+// external is a require of its path. Neither pattern's source spells a path
+// with a bare slash after the directory name, so this file, bundled into the
+// root runtime itself, cannot match its own regex literals.
+const BUNDLED_FOREIGN_MODULE = /^\/\/ (?:adapters|tools\/embedding-daemon)\//;
+const REQUIRED_FOREIGN_MODULE = /\brequire\(\s*["'][^"']*\b(?:adapters|tools\/embedding-daemon)\//;
 
 export function checkC38(ctx: CheckContext): CheckResult[] {
   const raw = rawJson(ctx, INTENTS_JSON);
@@ -110,7 +121,7 @@ export function checkC38c(ctx: CheckContext): CheckResult[] {
   if (router === undefined) findings.push(finding('C38c', 'router-block-malformed', '.router'));
   else findings.push(...fixtureFindings(router, loadIntentsOr(ctx)));
   if (loadedOr(() => parseJudge(policy['judge'], scopes)) === undefined) findings.push(finding('C38c', 'judge-block-malformed', '.judge'));
-  findings.push(...judgeFactFindings(ctx), ...keyMaterialFindings(ctx, policy), ...isolationFindings(ctx));
+  findings.push(...judgeFactFindings(ctx), ...keyMaterialFindings(ctx, policy), ...isolationFindings(ctx), ...bundleFindings(ctx));
   return [result('C38c', C38C_TITLE, findings)];
 }
 
@@ -220,6 +231,22 @@ function isolationFindings(ctx: CheckContext): Finding[] {
       if (specifier === undefined || !specifier.startsWith('.')) return;
       const target = posix.normalize(posix.join(posix.dirname(file), specifier));
       if (target === 'src/judge' || target.startsWith('src/judge/')) findings.push(finding('C38c', 'kernel-imports-judge', `${file}:${index + 1}`));
+    });
+  }
+  return findings;
+}
+
+// The opt-in in-process host and the embedding daemon ship as their own entry
+// and package (T12); every user who never opts in loads dist/engineos.cjs, so
+// neither may reach it. Skipped when the root loader is absent.
+function bundleFindings(ctx: CheckContext): Finding[] {
+  if (ctx.readText(ROOT_LOADER) === undefined) return [];
+  const findings: Finding[] = [];
+  for (const file of [ROOT_LOADER, ROOT_BUNDLE]) {
+    (ctx.readText(file) ?? '').split('\n').forEach((line, index) => {
+      if (BUNDLED_FOREIGN_MODULE.test(line) || REQUIRED_FOREIGN_MODULE.test(line)) {
+        findings.push(finding('C38c', 'bundle-imports-adapter', `${file}:${index + 1}`));
+      }
     });
   }
   return findings;

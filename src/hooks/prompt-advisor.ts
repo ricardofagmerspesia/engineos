@@ -8,9 +8,11 @@
 // replacement (contracts.md@rev2 §5, §10.5) put two steps in front of it: S0
 // refuses text the user did not type, and the opt-in Jev judge turns the prompt
 // into facts the kernel folds — replayably, because the kernel reads the fact,
-// never the network. The judge half lives in ./prompt-judge, the guidance
-// strings in ./prompt-advisor-guidance.
-import { resolve, type Answer, type Registries } from '../kernel';
+// never the network. Rev 3 (§10.6) adds the opt-in embedding tie-break for an
+// ambiguous deterministic route, passed the same way as a fact. Both semantic
+// consultations live in ./prompt-judge, the guidance strings in
+// ./prompt-advisor-guidance.
+import { resolve, type Answer, type DeclaredFacts, type Registries } from '../kernel';
 import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from '../kernel/context';
 import type { JudgeFact } from '../judge';
 import { KernelError } from '../lib/json';
@@ -19,7 +21,7 @@ import { bypassActive } from './bypass';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceLookups, guidanceNotes, judgeNote, type TaskAnswer } from './prompt-advisor-guidance';
-import { consultJudge, judgeEventData, NOT_USER_INPUT, type Consultation } from './prompt-judge';
+import { consultSemantics, judgeEventData, NOT_USER_INPUT, type Consultation, type TiebreakScores } from './prompt-judge';
 import { classifyPromptSource } from './prompt-source';
 import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
 import { event, recordSpan, telemetrySink, withSpan, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
@@ -42,11 +44,16 @@ const JUDGE_SPAN: SpanFacts = { kind: 'model', capability: 'route', modelTier: '
 // journal would reject empty, and `none` is what bash wrote.
 const NO_ROUTE = 'none';
 
+// What a judge fact the kernel refused is replaced by.
+const REFUSED_JUDGE_FACT: JudgeFact = { source: 'fallback', reason: 'invalid-response' };
+
 // The task and the judge fact the kernel actually folded into it.
 interface ResolvedTask {
   task: TaskAnswer;
   fact: JudgeFact | null;
 }
+
+type Attempt = readonly [JudgeFact | null, TiebreakScores | null];
 
 export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDecision> {
   if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return context('UserPromptSubmit', BYPASS_NOTICE);
@@ -63,12 +70,12 @@ export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDeci
     event(sink, 'route', { skipped: NOT_USER_INPUT });
     return silent;
   }
-  const consultation = await consultJudge(env, ctx, kernel.registries);
+  const { consultation, tiebreak } = await consultSemantics(env, ctx, kernel);
   // The judge's span, before the router span, exactly when a call was attempted.
   if (consultation.span !== null && consultation.latencyMs !== null) {
     recordSpan(sink, { ...JUDGE_SPAN, ...consultation.span }, consultation.latencyMs);
   }
-  const resolved = resolveTask(env.prompt, consultation.fact, kernel, sink);
+  const resolved = resolveTask(env.prompt, [consultation.fact, tiebreak], kernel, sink);
   if (resolved === null) return silent;
   const { task } = resolved;
   const judged: Consultation = { ...consultation, fact: resolved.fact };
@@ -101,28 +108,35 @@ function typedByUser(env: HookEnvelope, regs: Registries): boolean {
 // together, with the same refusal the `resolve-task` projection makes when the
 // kernel answers no contract (src/kernel/cli.ts).
 //
-// A judge fact the kernel refuses (a vocabulary drift between the judge's
-// answer and the registries) must not cost the user their routing: the call is
-// repeated with the fallback that names the failure. Null on any other failure,
-// which is bash's `|| exit 0`. The failure path writes NO span: withSpan records
-// an outcome, and a kernel that did not answer has none.
-function resolveTask(prompt: string, judgeFact: JudgeFact | null, kernel: KernelContext, sink: Sink | null): ResolvedTask | null {
-  const attempt = (fact: JudgeFact | null): ResolvedTask =>
-    withSpan(sink, ROUTER_SPAN, () => {
-      const facts = fact === null ? { prompt, taskContract: true } : { prompt, taskContract: true, judge: fact };
-      const task = narrow(resolve(facts, kernel));
-      return { result: { task, fact }, status: 'OK', fields: spanFields(task) };
-    });
-  try {
-    return attempt(judgeFact);
-  } catch {
-    if (judgeFact === null || judgeFact.source === 'fallback') return null;
+// A fact the kernel refuses (a vocabulary drift between the judge's answer and
+// the registries, a tie-break score it will not read) must not cost the user
+// their routing: the call is repeated without the tie-break, then with the
+// fallback that names the judge failure. Null when every attempt fails, which
+// is bash's `|| exit 0`. A failed attempt writes NO span: withSpan records an
+// outcome, and a kernel that did not answer has none.
+function resolveTask(prompt: string, declared: Attempt, kernel: KernelContext, sink: Sink | null): ResolvedTask | null {
+  for (const [fact, scores] of attemptsFor(declared)) {
+    try {
+      return withSpan(sink, ROUTER_SPAN, () => {
+        const facts: DeclaredFacts = { prompt, taskContract: true };
+        if (fact !== null) facts.judge = fact;
+        if (scores !== null) facts.tiebreak = scores;
+        const task = narrow(resolve(facts, kernel));
+        return { result: { task, fact }, status: 'OK', fields: spanFields(task) };
+      });
+    } catch {
+      continue;
+    }
   }
-  try {
-    return attempt({ source: 'fallback', reason: 'invalid-response' });
-  } catch {
-    return null;
-  }
+  return null;
+}
+
+// Most evidence first: both facts, then without the tie-break, then each again
+// with the judge fact replaced by its fallback when it was a `jev` fact.
+function attemptsFor([fact, scores]: Attempt): Attempt[] {
+  const judgeFacts: (JudgeFact | null)[] = fact === null || fact.source === 'fallback' ? [fact] : [fact, REFUSED_JUDGE_FACT];
+  const tiebreaks: (TiebreakScores | null)[] = scores === null ? [null] : [scores, null];
+  return judgeFacts.flatMap((judgeFact) => tiebreaks.map((tiebreak): Attempt => [judgeFact, tiebreak]));
 }
 
 function narrow(answer: Answer): TaskAnswer {

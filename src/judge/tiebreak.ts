@@ -11,10 +11,10 @@
 //
 // The returned `scores` has the shape kernel/combine.ts reserves as
 // `tiebreak?: Record<string, number>`; reading it is the kernel owner's change.
-import { lstatSync } from 'node:fs';
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isPrivateDir, lstatFacts, runtimeDir, type FileFacts } from '../lib/runtime-dir';
 import { redactText } from './redact';
 import type { RedactionPattern } from './types';
 
@@ -25,7 +25,6 @@ const PROTOCOL_VERSION = 1;
 // A warm MiniLM pass over a prompt is single-digit milliseconds; the deadline
 // leaves room for exemplar vectors the daemon has not cached yet.
 const DEFAULT_DEADLINE_MS = 150;
-const GROUP_OTHER_BITS = 0o077;
 // Mirrors tools/embedding-daemon/src/protocol.ts LIMITS: the daemon refuses
 // oversize input, so the client trims to these before sending.
 const LIMITS = { maxLineBytes: 65_536, maxTextChars: 2_000, maxCandidates: 10, maxExemplars: 10, maxExemplarChars: 300 } as const;
@@ -45,13 +44,7 @@ export interface TiebreakInput {
   candidates: readonly TiebreakCandidate[];
 }
 
-export type FileKind = 'socket' | 'directory' | 'symlink' | 'other';
-
-export interface FileFacts {
-  kind: FileKind;
-  uid: number;
-  mode: number;
-}
+export type { FileFacts, FileKind } from '../lib/runtime-dir';
 
 export interface TiebreakDeps {
   env: Record<string, string | undefined>;
@@ -82,14 +75,20 @@ export function nodeTiebreakDeps(env: Record<string, string | undefined>, redact
     now: Date.now,
     uid: typeof process.getuid === 'function' ? process.getuid() : null,
     tmpdir,
-    lstat: fileFacts,
+    lstat: lstatFacts,
     connect: (path) => connect(path),
     redaction,
   };
 }
 
+// The client's first check, exported so a caller can skip the work of
+// building its input (a kernel call, the exemplar table) when it is off.
+export function tiebreakEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
+  return env[ENABLE_ENV] === ENABLE_VALUE;
+}
+
 export async function tiebreak(input: TiebreakInput, deps: TiebreakDeps): Promise<TiebreakOutcome> {
-  if (deps.env[ENABLE_ENV] !== ENABLE_VALUE) return skipped('disabled');
+  if (!tiebreakEnabled(deps.env)) return skipped('disabled');
   if (!input.ambiguous) return skipped('not-ambiguous');
   const candidates = boundedCandidates(input.candidates);
   if (candidates.length === 0) return skipped('no-candidates');
@@ -108,16 +107,16 @@ export async function tiebreak(input: TiebreakInput, deps: TiebreakDeps): Promis
 }
 
 // Same placement and privacy rule as the daemon (tools/embedding-daemon/src/
-// socket.ts): a directory that is a symlink, foreign-owned or open to group or
-// other could hold a socket someone else planted to read prompts.
+// socket.ts, which keeps its own copy of src/lib/runtime-dir.ts): a directory
+// that is a symlink, foreign-owned or open to group or other could hold a
+// socket someone else planted to read prompts.
 function privateSocket(deps: TiebreakDeps): { kind: 'present'; path: string } | Skipped {
   if (deps.uid === null) return skipped('no-socket');
-  const base = nonEmpty(deps.env['XDG_RUNTIME_DIR']) ?? nonEmpty(deps.env['TMPDIR']) ?? deps.tmpdir();
-  const dir = join(base, `engineos-${deps.uid}`);
+  const dir = runtimeDir(deps.env, deps.uid, deps.tmpdir);
   const path = join(dir, SOCKET_NAME);
   const dirFacts = deps.lstat(dir);
   if (dirFacts === null) return skipped('no-socket');
-  if (dirFacts.kind !== 'directory' || dirFacts.uid !== deps.uid || (dirFacts.mode & GROUP_OTHER_BITS) !== 0) return skipped('unsafe-socket');
+  if (!isPrivateDir(dirFacts, deps.uid)) return skipped('unsafe-socket');
   const socketFacts = deps.lstat(path);
   if (socketFacts === null) return skipped('no-socket');
   if (socketFacts.kind !== 'socket' || socketFacts.uid !== deps.uid) return skipped('unsafe-socket');
@@ -191,23 +190,12 @@ function parseReply(body: string, offered: ReadonlySet<string>, latency: number)
   return { kind: 'scores', scores: accepted, model, latency_ms: latency };
 }
 
-function fileFacts(path: string): FileFacts | null {
-  const stat = lstatSync(path, { throwIfNoEntry: false });
-  if (stat === undefined) return null;
-  const kind: FileKind = stat.isSymbolicLink() ? 'symlink' : stat.isSocket() ? 'socket' : stat.isDirectory() ? 'directory' : 'other';
-  return { kind, uid: stat.uid, mode: stat.mode };
-}
-
 function skipped(reason: TiebreakSkippedReason): Skipped {
   return { kind: 'skipped', reason };
 }
 
 function failed(reason: TiebreakFailedReason): TiebreakOutcome {
   return { kind: 'failed', reason };
-}
-
-function nonEmpty(value: string | undefined): string | null {
-  return value === undefined || value === '' ? null : value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -2,9 +2,15 @@
 // in each entry can run on an old node and re-exec a newer one; APIs used
 // elsewhere still require node 18 (package.json engines).
 //
-// Two entries (S3 of the routing-replacement speed plan):
-//   src/cli.ts     -> dist/engineos.cjs      every subcommand (unchanged surface)
-//   src/hot-cli.ts -> dist/engineos-hot.cjs  the per-call hooks only
+// Three entries (S3 of the routing-replacement speed plan, plus the opt-in
+// in-process adapter of #127 T12):
+//   src/cli.ts                               -> dist/engineos.cjs            every subcommand (unchanged surface)
+//   src/hot-cli.ts                           -> dist/engineos-hot.cjs        the per-call hooks only
+//   adapters/claude-code-mod/host/server.ts  -> dist/engineos-inprocess.cjs  the per-session host (ENGINEOS_INPROCESS=1)
+//
+// The host imports src/; nothing in src/ imports the host. Each entry is its
+// own esbuild graph, so the root bundle never carries adapters/ code — C38c
+// (src/checks/router-v2.ts, finding bundle-imports-adapter) fails if it ever does.
 //
 // Each entry is a small loader in front of the bundle it requires from
 // dist/runtime/ (S2). V8's compile cache only covers code compiled AFTER
@@ -26,6 +32,7 @@ const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.u
 const ENTRIES = [
   { source: 'src/cli.ts', loader: 'dist/engineos.cjs', bundle: 'runtime/engineos.cjs' },
   { source: 'src/hot-cli.ts', loader: 'dist/engineos-hot.cjs', bundle: 'runtime/engineos-hot.cjs' },
+  { source: 'adapters/claude-code-mod/host/server.ts', loader: 'dist/engineos-inprocess.cjs', bundle: 'runtime/engineos-inprocess.cjs' },
 ];
 
 function loaderText(bundle) {
