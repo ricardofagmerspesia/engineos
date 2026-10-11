@@ -7,7 +7,16 @@ import assert from 'node:assert/strict';
 import type { CheckId } from './ids';
 import type { Finding } from './findings';
 import { checkoutCopy, contextFor, editFile, findingsOf, hasFinding } from './testing';
-import { POLICY, editJson, editPolicyBlock, recordAt, replaceOnce, stringsAt } from './runtime-governance-fixtures';
+import {
+  POLICY,
+  arrayAt,
+  editJson,
+  editPolicyBlock,
+  recordAt,
+  replaceOnce,
+  rowWhere,
+  stringsAt,
+} from './runtime-governance-fixtures';
 import { C26_FINDINGS, C26C_FINDINGS, C26D_FINDINGS } from './runtime-governance-hitl';
 import { RUNTIME_GOVERNANCE_CHECKS } from './runtime-governance';
 
@@ -78,6 +87,61 @@ test('an emptied situations array is caught', (t) => {
     });
   });
   assert.ok(hasFinding(findings, 'situations-missing-or-empty'));
+});
+
+// The reason_table rows src/kernel/hitl.ts collects over.
+
+test('an emptied hitl reason_table is caught', (t) => {
+  const findings = run(t, 'C26', (root) => {
+    editHitl(root, (hitl) => {
+      hitl['reason_table'] = [];
+    });
+  });
+  assert.ok(hasFinding(findings, 'reason-table-malformed', 'reason_table'));
+});
+
+test('a reason_table row testing a fact the hitl arm does not know is caught', (t) => {
+  const findings = run(t, 'C26', (root) => {
+    editHitl(root, (hitl) => {
+      const first = arrayAt(hitl, 'reason_table')[0];
+      if (typeof first !== 'object' || first === null || Array.isArray(first)) throw new Error('reason_table[0] is not a row');
+      Object.assign(first, { when: { moon_phase: 'full' } });
+    });
+  });
+  assert.ok(hasFinding(findings, 'reason-table-malformed', 'reason_table[0].when.moon_phase'));
+});
+
+test('a reason_table row with an empty reason is caught', (t) => {
+  const findings = run(t, 'C26', (root) => {
+    editHitl(root, (hitl) => {
+      const first = arrayAt(hitl, 'reason_table')[0];
+      if (typeof first !== 'object' || first === null || Array.isArray(first)) throw new Error('reason_table[0] is not a row');
+      Object.assign(first, { reason: '' });
+    });
+  });
+  assert.ok(hasFinding(findings, 'reason-table-malformed', 'reason_table[0].reason'));
+});
+
+test('a reason_table row citing a reason the vocabulary never declares is caught', (t) => {
+  const findings = run(t, 'C26', (root) => {
+    editHitl(root, (hitl) => {
+      const row = rowWhere(arrayAt(hitl, 'reason_table'), 'reason', 'destructive-action');
+      row['reason'] = 'mood-swing';
+    });
+  });
+  assert.ok(hasFinding(findings, 'reason-table-undeclared-reason'));
+  assert.ok(findings.some((entry) => entry.code === 'reason-table-undeclared-reason' && entry.subject?.endsWith(':mood-swing') === true));
+});
+
+test('a declared reason no reason_table row can raise is caught', (t) => {
+  const findings = run(t, 'C26', (root) => {
+    editHitl(root, (hitl) => {
+      hitl['reason_table'] = arrayAt(hitl, 'reason_table').filter(
+        (row) => !(typeof row === 'object' && row !== null && !Array.isArray(row) && 'reason' in row && row.reason === 'destructive-action'),
+      );
+    });
+  });
+  assert.ok(hasFinding(findings, 'reason-without-row', 'destructive-action'));
 });
 
 // ------------------------------------------------------------------ C26c
@@ -164,13 +228,24 @@ test('the reason id renamed in the registry without kernel.sh is caught', (t) =>
   );
 });
 
+// The reject message now lives in the reject row of policy.json
+// .parallelism.backpressure.rows (the PR moved it out of src/kernel/admit.ts),
+// so the mutation targets that row and the finding names the registry.
 test("admit's reject message losing the hitl reason id is caught", (t) => {
   const findings = run(t, 'C26d', (root) => {
-    editFile(root, 'src/kernel/admit.ts', (text) =>
-      replaceOnce(text, '(hitl: budget-exhausted)', '(ask a human)'),
-    );
+    editPolicyBlock(root, 'parallelism', (parallelism) => {
+      const reject = rowWhere(arrayAt(recordAt(parallelism, 'backpressure'), 'rows'), 'action', 'reject');
+      reject['reason'] = replaceOnce(String(reject['reason']), '(hitl: budget-exhausted)', '(ask a human)');
+    });
   });
-  assert.ok(hasFinding(findings, 'admit-reject-message-does-not-cite', 'src/kernel/admit.ts'));
+  assert.ok(hasFinding(findings, 'admit-reject-message-does-not-cite', POLICY));
+});
+
+test('an edit to src/kernel/admit.ts alone no longer moves the C26d citation check', (t) => {
+  const findings = run(t, 'C26d', (root) => {
+    editFile(root, 'src/kernel/admit.ts', (text) => `${text}\n// (ask a human)\n`);
+  });
+  assert.deepEqual(findings, []);
 });
 
 // The third assertion of the coupling: the kernel's own answer to

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
@@ -88,6 +88,11 @@ const FULL_REPORT = [
   '      2 frontend',
   '      2 backend',
   '      1 llm',
+  '',
+  // The PR added the Misroutes section right after Router intents; neither
+  // transcript carries a corrected_from token.
+  '## Misroutes ([router] corrected_from tokens)',
+  '(none recorded)',
   '',
   '## EngineOS skill invocations',
   '     0  nestjs-patterns',
@@ -213,6 +218,75 @@ test('renderReport says so when no router line was announced at all', (t) => {
     section(result.stdout, '## Router intents'),
     '## Router intents ([router] announce lines)\n(none found — router not announcing?)',
   );
+});
+
+// ------------------------------------------------------------------ Misroutes
+
+const MISROUTES_HEADER = '## Misroutes ([router] corrected_from tokens)';
+
+function misroutesOf(transcripts: readonly string[], t: TestContext): string {
+  const home = tempRoot(t);
+  const dir = projectsDir(home);
+  transcripts.forEach((text, index) => writeAged(join(dir, `t${index}.jsonl`), text));
+  return section(run(30, home, home).stdout, '## Misroutes');
+}
+
+test('a corrected announce line is reported as kernel intent -> corrected intent', (t) => {
+  const misroutes = misroutesOf(['[router] intent=backend risk=medium autonomy=A2 corrected_from=frontend\n'], t);
+  assert.equal(misroutes, [MISROUTES_HEADER, 'frontend -> backend  1'].join('\n'));
+});
+
+test('a corrected line still counts its announced intent in the Router intents section', (t) => {
+  const home = tempRoot(t);
+  writeAged(join(projectsDir(home), 'a.jsonl'), '[router] intent=backend risk=low corrected_from=frontend\n');
+  assert.equal(
+    section(run(30, home, home).stdout, '## Router intents'),
+    ['## Router intents ([router] announce lines)', '      1 backend'].join('\n'),
+  );
+});
+
+test('comma lists pair every overridden id with every announced id, skipping an id on both sides', (t) => {
+  const misroutes = misroutesOf(['[router] intent=backend,frontend risk=low corrected_from=frontend,llm\n'], t);
+  assert.equal(
+    misroutes,
+    [MISROUTES_HEADER, 'frontend -> backend  1', 'llm -> backend  1', 'llm -> frontend  1'].join('\n'),
+  );
+});
+
+test('a pair repeated inside one announce line counts once for that line', (t) => {
+  const misroutes = misroutesOf(['[router] intent=backend corrected_from=frontend,frontend\n'], t);
+  assert.equal(misroutes, [MISROUTES_HEADER, 'frontend -> backend  1'].join('\n'));
+});
+
+test('misroutes sum across lines and files, ordered by count then by pair', (t) => {
+  const misroutes = misroutesOf(
+    [
+      '[router] intent=dba corrected_from=backend\n[router] intent=backend corrected_from=frontend\n',
+      '[router] intent=backend corrected_from=frontend\n[router] intent=adr corrected_from=backend\n',
+    ],
+    t,
+  );
+  assert.equal(
+    misroutes,
+    [MISROUTES_HEADER, 'frontend -> backend  2', 'backend -> adr  1', 'backend -> dba  1'].join('\n'),
+  );
+});
+
+test('a template or spec excerpt with placeholder ids is not a misroute', (t) => {
+  const misroutes = misroutesOf(['[router] intent=<intent> risk=<low|medium|high> corrected_from=<id>\n'], t);
+  assert.equal(misroutes, [MISROUTES_HEADER, '(none recorded)'].join('\n'));
+});
+
+test('a corrected_from token after an escaped JSONL line break does not pair with the earlier line', (t) => {
+  // The two characters backslash and n, as a JSONL transcript stores a newline.
+  const jsonl = `${JSON.stringify({ text: '[router] intent=backend risk=low\nlater the doc says corrected_from=frontend' })}\n`;
+  const misroutes = misroutesOf([jsonl], t);
+  assert.equal(misroutes, [MISROUTES_HEADER, '(none recorded)'].join('\n'));
+});
+
+test('a corrected_from token on a line of its own pairs with nothing', (t) => {
+  const misroutes = misroutesOf(['[router] intent=backend risk=low\ncorrected_from=frontend\n'], t);
+  assert.equal(misroutes, [MISROUTES_HEADER, '(none recorded)'].join('\n'));
 });
 
 test('renderReport counts a skill once per file, not once per occurrence', (t) => {

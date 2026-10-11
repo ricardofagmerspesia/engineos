@@ -292,6 +292,22 @@ test('a Bash command with no git in it is silent', () => {
   }
 });
 
+// The fast path skips the tokenizer only for commands that cannot name the
+// tool once quotes and backslashes are taken out; these spellings all can.
+test('a quoted or backslashed tool name still reaches the tokenizer and asks', () => {
+  asks(decide('"git" push'), 'git push');
+  asks(decide("'git' push origin main"), 'git push');
+  asks(decide('g\\it push'), 'git push');
+  asks(decide("gi''t push"), 'git push');
+  asks(decide('g"h" pr create'), 'gh pr create');
+});
+
+test('the fast path stays silent on commands that cannot spell either tool', () => {
+  for (const command of ['ls -la', 'npm run build', 'cat "notes.txt"', "printf '%s' x"]) {
+    assert.deepEqual(decide(command), silent, command);
+  }
+});
+
 test('a non-Bash tool is silent even when its input carries a git write', () => {
   const envelopeOf = (tool: string): HookEnvelope => bash('git push --force', { tool });
   assert.deepEqual(gitWriteGuard(envelopeOf('Edit'), ctxWith()), silent);

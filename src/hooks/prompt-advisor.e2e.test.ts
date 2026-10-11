@@ -158,16 +158,18 @@ test('unified telemetry stream is valid', (t) => {
   runAdvisor({ prompt: 'deploy the billing service to production', cwd: repo, session_id: 'unified1' });
   const file = join(telemetryDir(repo), 'unified1.jsonl');
   const rows = jsonLines(file);
-  assert.equal(rows.length, 3);
+  // `judge` closes every user prompt's events since the routing replacement
+  // (contracts §6.4), a disabled judge included.
+  assert.equal(rows.length, 4);
   assert.deepEqual(
     rows.map((row) => row['event']),
-    ['route', 'decision-rules', 'hitl'],
+    ['route', 'decision-rules', 'hitl', 'judge'],
   );
   // `bash scripts/telemetry.sh validate` — the schema check, not a re-parse.
   assert.equal(runCli(['telemetry', 'validate', file]).status, 0);
 });
 
-test('zero-match prompt writes only the route denominator', (t) => {
+test('zero-match prompt writes only the route denominator and the judge event', (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
@@ -175,8 +177,11 @@ test('zero-match prompt writes only the route denominator', (t) => {
   const repo = adoptedRepo(t);
   runAdvisor({ prompt: 'what does this function return?', cwd: repo, session_id: 'unified2' });
   const rows = jsonLines(join(telemetryDir(repo), 'unified2.jsonl'));
-  assert.equal(rows.length, 1);
-  assert.equal(first(rows)['event'], 'route');
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((row) => row['event']),
+    ['route', 'judge'],
+  );
 });
 
 // ----------------------------------------------------------------- scale

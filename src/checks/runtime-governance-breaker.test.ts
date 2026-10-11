@@ -67,6 +67,60 @@ test('an emptied scopes array is caught', (t) => {
   assert.ok(hasFinding(findings, 'scopes-missing-or-empty'));
 });
 
+// The transitions table src/kernel/breaker.ts steps through.
+
+test('an emptied breaker transitions table is caught', (t) => {
+  const findings = run(t, 'C25', (root) => {
+    editBreaker(root, (breaker) => {
+      breaker['transitions'] = [];
+    });
+  });
+  assert.ok(hasFinding(findings, 'transitions-malformed', 'transitions'));
+});
+
+test('a transition whose allow is not a boolean is caught', (t) => {
+  const findings = run(t, 'C25', (root) => {
+    editBreaker(root, (breaker) => {
+      transitionAt(breaker, 0)['allow'] = 'yes';
+    });
+  });
+  assert.ok(hasFinding(findings, 'transitions-malformed', 'transitions[0].allow'));
+});
+
+test('a transition guard testing a fact its from-state cannot read is caught', (t) => {
+  const findings = run(t, 'C25', (root) => {
+    editBreaker(root, (breaker) => {
+      // closed reads threshold_reached; cooldown_elapsed is an open-state fact.
+      transitionAt(breaker, 0)['guard'] = { cooldown_elapsed: true };
+    });
+  });
+  assert.ok(hasFinding(findings, 'transitions-malformed', 'transitions[0].guard.cooldown_elapsed'));
+});
+
+test('a transition to a state the breaker never declares is caught', (t) => {
+  const findings = run(t, 'C25', (root) => {
+    editBreaker(root, (breaker) => {
+      transitionAt(breaker, 0)['to'] = 'melted';
+    });
+  });
+  assert.ok(hasFinding(findings, 'transition-state-undeclared', 'transitions[0].to:melted'));
+});
+
+test('a state with no edge leading back out is caught as unreachable', (t) => {
+  const findings = run(t, 'C25', (root) => {
+    editBreaker(root, (breaker) => {
+      // Both half-open edges now stay in half-open: closed and open can still
+      // reach it, but nothing leaves it.
+      transitionAt(breaker, 4)['to'] = 'half-open';
+      transitionAt(breaker, 5)['to'] = 'half-open';
+    });
+  });
+  assert.ok(hasFinding(findings, 'state-unreachable', 'half-open->closed'));
+  assert.ok(hasFinding(findings, 'state-unreachable', 'half-open->open'));
+  // The healthy starts still reach everything, so they are not reported.
+  assert.ok(!hasFinding(findings, 'state-unreachable', 'closed->half-open'));
+});
+
 // ------------------------------------------------------------------ C25b
 
 test('C25b passes on an unmutated checkout', (t) => {
@@ -155,6 +209,19 @@ test('the kernel.sh breaker call dropped from rules/parallelism.md is caught', (
   });
   assert.ok(hasFinding(findings, 'does-not-name-kernel-sh-breaker', PARALLELISM_MD));
 });
+
+
+// ------------------------------------------------------------------ internals
+
+function transitionAt(breaker: Record<string, unknown>, index: number): Record<string, unknown> {
+  const rows = breaker['transitions'];
+  if (!Array.isArray(rows)) throw new Error('breaker.transitions is not an array');
+  const row: unknown = rows[index];
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) throw new Error(`transitions[${index}] is not a row`);
+  const record: Record<string, unknown> = { ...row };
+  rows[index] = record;
+  return record;
+}
 
 // ------------------------------------------------------------------- coverage
 
