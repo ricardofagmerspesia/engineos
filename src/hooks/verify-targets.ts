@@ -10,6 +10,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { runnerEnv, type RunResult, type RunnerSelection, type SpawnSyncLike } from './runner';
 import { PROBE_TIMEOUT_SECONDS } from './runner-python';
+import { PYTHON_MARKERS } from '../kernel/stack';
 import { isRecord } from '../lib/json';
 import { loadProjectConfig, type ProjectConfig } from '../registry/project-config';
 
@@ -25,11 +26,11 @@ export const PYTHON_EXTENSIONS: readonly string[] = ['py', 'pyi'];
 export const VERIFY_EXTENSIONS: readonly string[] = [...NODE_EXTENSIONS, ...PYTHON_EXTENSIONS];
 
 // bash find_up's marker list for "the package this file belongs to", one list
-// per arm. requirements.txt is the weaker Python marker: packageOwner promotes
+// per arm. The Python arm is the stack detector's own list, imported so the two
+// cannot drift; requirements.txt is the weaker marker and packageOwner promotes
 // a hit on it to the pyproject.toml above when there is one (design §A1.1).
 export const NODE_PACKAGE_MARKERS: readonly string[] = ['package.json', 'project.json'];
-export const PYTHON_PACKAGE_MARKERS: readonly string[] = ['pyproject.toml', 'requirements.txt'];
-export const PACKAGE_MARKERS: readonly string[] = [...NODE_PACKAGE_MARKERS, ...PYTHON_PACKAGE_MARKERS];
+export const PACKAGE_MARKERS: readonly string[] = [...NODE_PACKAGE_MARKERS, ...PYTHON_MARKERS];
 
 // The directory names under a project whose package files are not the
 // project's: a dependency's package.json under node_modules, a wheel's
@@ -165,7 +166,7 @@ export function containedIn(root: string, candidate: string): boolean {
 export function packageOwner(start: string, stop: string): string | null {
   const nodeOwner = findUpAny(start, NODE_PACKAGE_MARKERS, stop);
   if (nodeOwner !== null) return nodeOwner;
-  const owner = findUpAny(start, PYTHON_PACKAGE_MARKERS, stop);
+  const owner = findUpAny(start, PYTHON_MARKERS, stop);
   if (owner === null || !requirementsOnly(owner)) return owner;
   // dirname(stop) lies outside the ceiling, and findUpAny refuses such a start
   // without probing — which is exactly the bound the promotion must keep.
