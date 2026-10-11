@@ -96,13 +96,22 @@ Option 1, with these bound sub-decisions:
   permanently: a judge fact can add a decision rule's requirements or raise
   the floor, never remove or lower one (contracts §4). The model is pinned to
   `jev-1.13.0`; a version bump is a prompt change and needs fresh eval
-  evidence. The prompt is redacted with the `install.sh` secret pattern set,
-  carried as data in `policy.judge.redaction.patterns`, before it enters the
-  request; the request body carries only `model`, `state` and `questions`.
+  evidence. The prompt is capped, redacted with the secret and personal-data
+  set carried as data in `policy.judge.redaction.patterns`, and then cut to
+  size before it enters the request. The request body carries only `model`,
+  `state` and `questions`, and the endpoint's origin is allowlisted in code
+  (`https://api.typesafe.ai`); "Threat model and redaction" below is the
+  binding description. An authoritative fold is add-only: it unions every
+  deterministic intent with a high risk floor into the judge-chosen set and
+  takes the higher of `route.model_tier` and the folded set's tier.
   Zero-data-retention terms from TypeSafe are a precondition for any team-wide
   default-on; until then the judge is a per-machine opt-in.
 - **Source check.** `classifyPromptSource` runs before anything else; a
   notification, tool result or hook echo gets no routing and no judge call.
+  For the judge only, the check fails closed toward no egress: a prompt whose
+  first non-space character opens an unlisted `<tag` frame is treated as
+  non-user, and so is a prompt whose classification throws. Kernel routing
+  keeps its own source behaviour unchanged.
 - **Embedding tie-break (P5, opt-in).** The warm MiniLM daemon from option 5
   is consulted only when the deterministic route is ambiguous and
   `ENGINEOS_EMBED_DAEMON=1`. Its scores reach the kernel as a journaled
@@ -146,10 +155,107 @@ Option 1, with these bound sub-decisions:
   router table, and the Warn step for the already-deprecated `.sh` shims.
   Nothing is removed or renamed; removal of `signals` and of the shims is 2.0.
 - **Deferred, recorded.** Moving `git-write-guard`'s verb and flag sets into a
-  registry (plan §6) is not part of this change; the in-process early exit is.
-  `install.sh` keeps its own bash copy of the secret patterns because the
-  installer runs without the bundle; the two lists are kept equal by review,
-  not by a check, until a validator row is added.
+  registry (plan §6) is not part of this change; the in-process early exit is,
+  for every hook except `git-write-guard`, which never takes it. `install.sh`
+  keeps its own bash copy of the secret patterns because the installer runs
+  without the bundle. The two lists are no longer the same set: the policy list
+  adds personal-data classes (email, phone, CPF, CNPJ) and token formats that
+  the installer's secret scan does not use. They are reviewed together, not
+  checked, until a validator row is added.
+
+## Threat model and redaction
+
+This section is the `threat-model` artifact that `rule-sensitive-data`
+(`registries/decision-rules.json`) requires. A prompt can carry secrets and
+personal data, and the judge sends prompt text to a third party. The rule's
+other two artifacts are covered at the end of this section.
+
+**What leaves the machine, and when.**
+- Prompt text leaves only through the judge, and only when two conditions hold:
+  `ENGINEOS_JUDGE=jev`, and a non-empty `TYPESAFE_API_KEY` in the environment.
+  With either one unset, nothing is sent.
+- The judge is consulted at most once per user prompt, from the prompt advisor
+  only. Notifications, tool results and hook echoes are never sent (see "Source
+  check" above).
+- One HTTPS `POST` carries the request. Its body is `{ model, state, questions }`.
+  `state` holds:
+  - the redacted, capped prompt text;
+  - the repository facts (declared stack, active spec, open change record);
+  - the session's last intent.
+
+  Nothing else from the environment enters the body.
+- The key travels only in the `Authorization` header. Any redirect fails the
+  call, so the bearer token cannot follow a redirect elsewhere.
+- The embedding tie-break daemon is local. Its socket is a private unix socket,
+  and it opens no TCP port. The prompt it receives is redacted with the same
+  set. The daemon's only network traffic is the model download from the Hugging
+  Face hub on first run, which carries no prompt text and is off under
+  `ENGINEOS_EMBED_OFFLINE=1`.
+
+**Endpoint allowlist.** The judge's policy loader refuses any `judge.endpoint`
+whose origin is not `https://api.typesafe.ai`. The allowlist lives in code, not
+in the registry, so editing `policy.json` cannot redirect prompts to another
+host.
+
+**Order of operations.**
+1. Cap the text before redaction, so no pattern runs over unbounded input. The
+   judge caps at twice `max_state_bytes` in characters; the tie-break caps at
+   twice its prompt-text limit.
+2. Redact the capped text.
+3. Cut the result to the final limit. Redaction has already run on the whole
+   capped text, so the cut cannot expose part of a secret that redaction would
+   have hidden.
+
+**Redaction classes** (`policy.judge.redaction.patterns`). Each match is
+replaced with `<redacted:<kind>>`. Every pattern is bounded, with no unbounded
+nested quantifier, so a crafted prompt cannot make redaction run away. The set
+covers:
+- a PEM private-key block, matched end to end (header, body and footer);
+- a JWT (`eyJ...` `.` `eyJ...` `.` signature);
+- underscore-prefixed and vendor-prefixed tokens: `sk_live_`, `sk_test_`,
+  `rk_live_`, `ghp_`, `gho_`, `ghs_`, `ghu_`, `ghr_`, `github_pat_`, `npm_`,
+  `hf_`, `xox[abpr]-`;
+- an AWS secret access key in an assignment context;
+- generic `password`, `secret`, `token` and `api_key` assignments;
+- email addresses;
+- phone numbers (E.164-like, bounded);
+- Brazilian CPF and CNPJ numbers;
+- URL credentials, bounded as
+  `[a-z][a-z+]{0,31}://[^/\s:@]{1,256}:[^@\s/]{1,256}@`.
+
+**Prompt-source check fails closed for the judge.** A prompt that opens with an
+unlisted `<tag` frame, or whose classification throws, is treated as non-user.
+A non-user prompt is never sent. Doubt therefore resolves toward no egress.
+Kernel routing is unaffected by this judge-only rule.
+
+**The authoritative fold is add-only.** Even a fully trusted judge answer
+cannot remove a deterministic high-floor intent or lower the model tier:
+- every deterministic intent with a high risk floor is unioned into the
+  judge-chosen set;
+- the tier is the higher of `route.model_tier` and the folded set's tier.
+
+A manipulated or wrong judge answer can add work or raise a tier. It cannot
+remove a gate.
+
+**Residual risks, accepted.**
+- Redaction is lexical. A novel secret format, an unusual phone or ID layout,
+  or personal data with no fixed shape (names, addresses, free-text health or
+  financial details) can pass through. Shadow mode records only, but the request
+  is still sent in shadow mode.
+- Processes running as the same user are trusted. The runtime directory, the
+  presence record, the sockets and the compile cache are protected against
+  other users, not against code already running under the developer's uid.
+- TypeSafe has not yet granted zero-data-retention terms. Until it does, the
+  judge stays a per-machine opt-in (see "Judge" above).
+
+**Security review and human approval.** A security review of the PR head
+`3b38ce4` returned BLOCK on 2026-10-11. The fixes recorded in this section
+(guard stand-down, presence handshake, endpoint allowlist, bounded redaction,
+fail-closed source check, add-only fold, private compile cache) answer that
+verdict. They go back to `security-reviewer` after integration. Accepting this
+ADR does not approve a live judge call. Before the first live call with a real
+key, the developer gives a separate approval, recorded under `## Human
+decisions` in the change record (`rules/risk-autonomy.md`).
 
 ## Consequences
 
@@ -175,7 +281,9 @@ Option 1, with these bound sub-decisions:
   a host feature to disable one plugin's command hooks, or an install variant
   without `hooks.json` when the adapter is on. Until then the adapter saves the
   hook *work*, not the spawns. It is reported as degraded, not as meeting the
-  original target.
+  original target. `git-write-guard` is outside this saving: its shell copy
+  never stands down, so with the adapter on it may answer from both the host
+  and the shell, and the two asks fold into one prompt.
 - The tie-break stays inert until T13 calibrates `router.scoring`. With the
   placeholder cuts (`threshold: 0`, `margin: 0`) a route is ambiguous only when
   nothing matched, and the tie-break never routes a prompt that has no

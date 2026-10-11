@@ -18,7 +18,7 @@ including mechanical edits and follow-ups, BEFORE dispatch or writes. Classify
 intent/paths, load matching rules/skills with Read/Skill and dispatch named agents.
 Announce:
 
-`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none>`
+`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none> [corrected_from=<id>[,<id>...]]`
 
 Use the prompt advisor's deterministic task contract (intents, policy loads, risk
 floor, autonomy ceiling, agents, skills, gates). Load its rules and classify final

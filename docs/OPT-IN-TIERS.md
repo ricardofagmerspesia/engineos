@@ -45,13 +45,18 @@ Claude Code ──classic.<Event>──▶ mod (hooks/register.ts)
 
 ### Enabling
 
-1. Build the host bundle. This needs the T09 build entry; see "Wiring" below.
-   The output is `dist/engineos-inprocess.cjs`.
+1. Have the host bundle `dist/engineos-inprocess.cjs` in the checkout. It is
+   committed together with `dist/engineos-hot.cjs` and `dist/runtime/*.cjs` by
+   the approved final build of this change, so a released tree carries it.
+   `engineos validate` reports any `hooks/hooks.json` command whose
+   `${CLAUDE_PLUGIN_ROOT}/<path>` script is missing from the tree (a finding of
+   the existing hooks.json check in `src/checks/kernel-router.ts`).
 2. Install the adapter as a plugin, for example
    `claude --plugin-dir adapters/claude-code-mod`.
 3. Export `ENGINEOS_INPROCESS=1` in the environment Claude Code starts from.
 
-Optional overrides:
+Optional overrides. Each one must be an **absolute path**; a relative or empty
+value is ignored and the default is used:
 - `ENGINEOS_ROOT` points at the EngineOS checkout. The default is two directories
   above the adapter.
 - `ENGINEOS_NODE` names the Node binary. The default is `node` on `PATH`.
@@ -71,15 +76,31 @@ How the mod combines its answer with the rest of the chain:
 - Answers are merged. On PreToolUse the most restrictive answer wins:
   `deny` > `ask` > `allow`.
 
-### No double-fire: the presence contract
+### Avoiding double-fire: the presence contract
 
-When the flag is set, the shell hooks must stay quiet only while a live host is
-actually serving. The host publishes its presence in a private runtime directory:
+With the flag set, a shell hook may stand down only for a hook that a live host
+is actually serving for that session. The contract has one exception, and it
+comes first.
+
+**`git-write-guard` never stands down.** The shell copy of the guard always
+runs, whatever the presence record says. With the adapter on, the guard can
+therefore fire twice on one Bash call: once from the host and once from the
+shell. That is harmless. Both answers are `ask`, and the asks fold into one
+permission prompt. The guard is the developer's safety net (`rules/git.md`), so
+no presence record, however valid, can silence it.
+
+**Every other hook** stands down only behind a live presence record. The host
+publishes the record in a private runtime directory:
 
 ```
 <XDG_RUNTIME_DIR | TMPDIR | os.tmpdir()>/engineos-<uid>/h-<sha256(session_id)[0:16]>.json
 <XDG_RUNTIME_DIR | TMPDIR | os.tmpdir()>/engineos-<uid>/h-<sha256(session_id)[0:16]>.sock
 ```
+
+These path and privacy rules have one home, `src/lib/runtime-dir.ts`. The host's
+presence writer, the shell-side guard (`src/hooks/adapter.ts`) and the tie-break
+client (`src/judge/tiebreak.ts`) all import it. The daemon package cannot import
+`src/`, so it keeps its own copy of the directory rule.
 
 The directory and its files are locked down:
 - The directory is created `0700`.
@@ -87,19 +108,59 @@ The directory and its files are locked down:
   any group or other bit set.
 - The socket is `0600`, and the presence file is written atomically with mode `0600`.
 
-A shell hook exits silently only when all three of these hold:
-1. `ENGINEOS_INPROCESS=1`.
-2. The presence record for the envelope's `session_id` exists and is valid.
-3. `process.kill(pid, 0)` succeeds for the recorded pid.
+The record is version 2:
 
-Every failure mode resolves toward running twice, never toward not running.
-`git-write-guard` therefore never silently disappears.
+```json
+{ "v": 2, "pid": 41237, "socket": "<path>", "session": "<id>", "started_at": 1760140800000,
+  "served": ["<hook name>", "..."], "root": "<checkout>", "version": "<engineos version>" }
+```
 
-Two more safeguards back this up:
-- If the host does not answer a Bash call that looks like `git` or `gh`, the mod
-  answers `ask` itself.
-- A host that misses its 5 s startup deadline is killed, so it can never publish
-  presence late with nobody serving.
+- `served` lists the hooks the host actually serves.
+- `root` and `version` record which checkout and EngineOS version the host loaded.
+- A version-1 record, or any record missing a field, is not a presence record.
+
+**When the record is written.** The host does not write it when the socket
+starts listening. It writes it only after the mod's first `GET /v1/routes`
+handshake. A host that is listening but has not yet been reached by its mod
+leaves no record, so the shell keeps running every hook.
+
+**When a shell hook stands down.** A shell hook exits silently only when every
+one of these holds:
+1. The hook is not `git-write-guard`.
+2. `ENGINEOS_INPROCESS=1`.
+3. The envelope carries a raw `session_id` matching `^[A-Za-z0-9._-]{1,128}$`.
+4. The platform has a POSIX uid.
+5. The runtime directory passes the privacy rule above.
+6. The presence file is a regular file, owned by this uid, with no group or
+   other bits. It is opened without following a symlink, and it is at most
+   4 KiB.
+7. The record parses as version 2 with every field present and typed, and its
+   pid is a positive integer.
+8. The record's `session` equals the envelope's `session_id`, and its `socket`
+   equals the expected socket path.
+9. A socket owned by this uid exists at that path.
+10. The recorded pid is not the hook's own pid.
+11. `process.kill(pid, 0)` succeeds for the recorded pid.
+12. The hook's name appears in the record's `served` list.
+
+Any failed condition, and any exception, runs the hook normally. Every failure
+mode therefore resolves toward running twice, never toward not running.
+
+**The mod's own git fallback.** The mod answers `ask` itself on a Bash call that
+may name `git` or `gh` whenever the host cannot answer for it:
+- the host is not ready (still starting, failed, timed out or exited);
+- the host returned no answer for the call;
+- no hook is routed to the call.
+
+The test strips quotes and backslashes (`'`, `"`, `\`) from the command and then
+looks for `git` or `gh` anywhere. That is the same over-inclusive test as
+`mayNameGitTool` in `src/hooks/git-write-guard.ts`. The mod cannot import `src/`,
+so it carries a commented copy. The test may ask on a command that is not a git
+write, but it never lets one through unseen.
+
+One more safeguard: a host that misses its 5 s startup deadline is killed. It
+never completes the handshake, so it never publishes presence with nobody
+serving.
 
 ### Known gaps (host API)
 
@@ -132,8 +193,11 @@ that case, and only then, the prompt advisor may call `tiebreak()` from
    runs two `lstat` checks on the private socket. If any check fails, it returns
    `skipped` with no further I/O, which keeps it well inside the 50 ms budget.
 2. If the socket is present and private, the client:
-   - redacts the prompt using the `policy.judge.redaction` patterns;
-   - trims the prompt and the candidates to the protocol limits;
+   - caps the prompt at twice the prompt-text limit (4,000 characters) before
+     redaction, so the redaction patterns never run over unbounded input;
+   - redacts it using the `policy.judge.redaction` patterns (the same set the
+     judge uses; see the ADR's "Threat model and redaction");
+   - trims the redacted prompt and the candidates to the protocol limits;
    - sends one NDJSON request with a 150 ms deadline.
 3. The daemon answers with `scores`, one value in `[0, 1]` per offered intent.
    Each value is the highest cosine similarity between the prompt and that
@@ -160,13 +224,20 @@ The daemon is a separate package. It is deliberately **not** a workspace of the
 root package, so the root lockfile never pulls `onnxruntime-node`:
 
 ```sh
-npm --prefix tools/embedding-daemon ci   # after its lockfile is created and reviewed
+npm --prefix tools/embedding-daemon ci --ignore-scripts
 ```
 
-`tools/embedding-daemon/.npmrc` sets `onnxruntime-node-install=skip`. This
-disables the `onnxruntime-node` postinstall script, which would otherwise
-download CUDA libraries from NuGet on linux/x64. The CPU binaries ship inside
-the package, so the daemon needs nothing from that download.
+- **The lockfile is pending.** `npm ci` needs
+  `tools/embedding-daemon/package-lock.json`. Generating it needs network access
+  and an install, so it is deferred to the approved final stage of this change
+  under explicit consent. Until that lockfile is committed and reviewed, the
+  daemon is not installable.
+- **Always pass `--ignore-scripts`.** It stops every dependency's lifecycle
+  scripts, including the `onnxruntime-node` postinstall, which would otherwise
+  download CUDA libraries from NuGet on linux/x64. The CPU binaries ship inside
+  the package, so the daemon needs nothing from that download.
+  `tools/embedding-daemon/.npmrc` also sets `onnxruntime-node-install=skip`, as
+  a second guard for an install run without the flag.
 
 ### Running
 
@@ -182,7 +253,7 @@ The daemon is controlled by these environment variables:
 | Variable | Default | Effect |
 |---|---|---|
 | `ENGINEOS_EMBED_DAEMON` | unset | Must be `1`, otherwise the daemon prints a notice and exits 0 |
-| `ENGINEOS_EMBED_CACHE` | `$XDG_CACHE_HOME/engineos/models` (or `~/.cache/...`) | Model cache directory |
+| `ENGINEOS_EMBED_CACHE` | `$XDG_CACHE_HOME/engineos/models` (or `~/.cache/...`) | Model cache root. The model is stored in a subdirectory per pinned revision, so a revision bump never reads weights cached for another revision |
 | `ENGINEOS_EMBED_OFFLINE` | unset | `1` never contacts the Hugging Face hub; the model must already be cached |
 | `ENGINEOS_EMBED_IDLE_MINUTES` | `120` | Exits after this long with no connection |
 
@@ -228,11 +299,27 @@ reach its logs.
 Only `scores` may influence routing. Every other outcome leaves the
 deterministic answer untouched.
 
+## Related: the V8 compile cache
+
+This is not an opt-in tier, but it is a local cache, so its privacy rule is
+recorded here. The committed loaders in front of `dist/runtime/` (generated by
+`scripts/build.mjs`) enable V8's compile cache on node 22.8 and later. They use
+it only in a private per-user directory:
+- The loader creates the directory `0700`.
+- It then verifies that the directory is owned by the current uid, has no group
+  or other bits, and is not a symlink.
+- When any check fails, the loader skips the cache and runs uncached. It never
+  falls back to a shared directory.
+
+`NODE_DISABLE_COMPILE_CACHE=1` still turns the cache off.
+
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Hooks fire twice with the adapter on | Expected while the host is starting or after it exits. Check the debug log for `host-exited`, and check that `dist/engineos-inprocess.cjs` exists |
+| `git-write-guard` asks twice, or fires from both host and shell | Expected: the guard never stands down. The two asks fold into one permission prompt |
+| Other hooks fire twice with the adapter on | Expected while the host is starting, before the mod's first `GET /v1/routes` handshake, or after the host exits. Expected too for a hook missing from the record's `served` list. Check the debug log for `host-exited`, and check that `dist/engineos-inprocess.cjs` exists |
+| `ENGINEOS_ROOT` or `ENGINEOS_NODE` seems ignored | Both must be absolute paths; a relative value falls back to the default |
 | Hooks never fire from the adapter | Check that `ENGINEOS_INPROCESS=1` is visible to Claude Code (`$.env`), and check the host's stderr in the debug log |
 | `socket path is over 100 bytes` | Set `XDG_RUNTIME_DIR` to a short private directory, for example `/run/user/<uid>` |
 | `... is reachable by other users` | Remove the stale `engineos-<uid>` directory. It was created by something else with loose permissions |

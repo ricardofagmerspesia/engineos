@@ -26,7 +26,7 @@ classify the intent and load the matching rules/skills below using the Read tool
 (rules) and Skill tool (skills), and dispatch the agents the matched rows name.
 Then announce in one line:
 
-`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none>`
+`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none> [corrected_from=<id>[,<id>...]]`
 
 The `risk` and `autonomy` fields come from always-on `rules/risk-autonomy.md` and
 are classified BEFORE the first write. They set which gates apply
