@@ -3,6 +3,9 @@
 // nothing here may reach a Node API or anything outside this plugin folder,
 // because the mod runtime loads only files of the plugin.
 //
+// The shared deadlines below are the one exception to "literal": plain
+// arithmetic over literals, still free of any API.
+//
 // WireDecision re-declares src/hooks/output.ts HookDecision field for field.
 // host/server.ts assigns a HookDecision to it, so a drift in the kernel's
 // union fails the host's typecheck rather than the mod at run time.
@@ -25,6 +28,25 @@ export const HOOK_PATH_PREFIX = '/v1/hook/';
 export type HostEvent = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Stop';
 
 export const HOST_EVENTS: readonly HostEvent[] = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'];
+
+// How long the mod waits for one hook request. Per-call hooks keep the shell
+// budget they replace; the session-boundary hooks touch the filesystem and may
+// take longer. The first request that misses its deadline makes the mod
+// abandon the host for the rest of the session (docs/OPT-IN-TIERS.md).
+export const HOOK_DEADLINE_MS: Readonly<Record<HostEvent, number>> = {
+  SessionStart: 10_000,
+  UserPromptSubmit: 2_000,
+  PreToolUse: 1_500,
+  PostToolUse: 1_500,
+  Stop: 10_000,
+};
+
+// A hook request the host has held this long was given up on by the mod, which
+// has abandoned the host: the host then removes its record and exits on its own,
+// so a host the mod could not kill cannot keep the shell hooks standing down.
+// Derived, so it always exceeds every deadline above.
+const STALL_MARGIN_MS = 5_000;
+export const HOST_STALL_MS = Math.max(...Object.values(HOOK_DEADLINE_MS)) + STALL_MARGIN_MS;
 
 // One matcher group of hooks/hooks.json: the hooks it runs, in file order.
 export interface HostRoute {

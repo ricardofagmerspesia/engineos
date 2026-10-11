@@ -14,11 +14,19 @@ import {
   type WireDecision,
 } from '../host/protocol';
 
+type HostChild = HookStream<ProcessSpawnChunk, ProcessSpawnResult>;
+
+// `failed` is final for the session: the mod never starts a second host, so
+// every event after it passes through and the shell hooks serve.
 export type HostState =
   | { kind: 'off' }
   | { kind: 'starting'; ready: Promise<HostState> }
-  | { kind: 'ready'; socket: string; routes: HostRoute[] }
+  | { kind: 'ready'; socket: string; routes: HostRoute[]; child: HostChild }
   | { kind: 'failed'; reason: string };
+
+// One hook request: answered in time, past its deadline, or anything else
+// (refused, not ok, not a HookResponse). Only a timeout abandons the host.
+export type HookCall = { kind: 'answered'; response: HookResponse } | { kind: 'timed-out' } | { kind: 'unusable' };
 
 const ENABLED_VALUE = '1';
 // The host bundle, relative to the EngineOS checkout (T09 wiring: build entry).
@@ -94,7 +102,22 @@ async function startHost($: EngineInterface): Promise<HostState> {
   const routes = await readRoutes($, socket);
   if (routes === null) return abandon(child, 'routes-unreadable');
   if (routes.unserved.length > 0) $.ui.log(`EngineOS hooks not served in-process: ${routes.unserved.join(', ')}`, { to: 'debug' });
-  return { kind: 'ready', socket, routes: routes.routes };
+  return { kind: 'ready', socket, routes: routes.routes, child };
+}
+
+// docs/OPT-IN-TIERS.md, abandon on timeout: a host that let one request miss
+// its deadline may be stalled while its heartbeat still runs, and its fresh
+// presence record would keep the shell hooks standing down while every request
+// here times out. So the mod stops routing to it for the rest of the session and
+// kills it; the host's signal handler removes the record and the socket, and the
+// shell hooks serve from the next event on. A host the kill does not reach ends
+// itself once it has held the request for HOST_STALL_MS (host/lifetime.ts).
+// Only the host it was handed is abandoned, once, so concurrent timeouts on the
+// same host do not kill twice.
+export function abandonHost($: EngineInterface, host: Extract<HostState, { kind: 'ready' }>, reason: string): void {
+  if (state !== host) return;
+  state = abandon(host.child, reason);
+  $.ui.log(`EngineOS in-process host abandoned (${reason}); shell hooks serve for the rest of this session.`, { to: 'debug' });
 }
 
 // A relative override resolves against whatever directory the session started
@@ -108,7 +131,7 @@ function absoluteOverride($: EngineInterface, name: string, value: string | unde
   return null;
 }
 
-function abandon(child: HookStream<ProcessSpawnChunk, ProcessSpawnResult>, reason: string): HostState {
+function abandon(child: HostChild, reason: string): HostState {
   void child.return({ code: null, signal: null }).catch(() => undefined);
   return { kind: 'failed', reason };
 }
@@ -124,10 +147,9 @@ async function readRoutes($: EngineInterface, socket: string): Promise<RoutesRes
   return { v: HOST_PROTOCOL_VERSION, routes, unserved };
 }
 
-// One hook, one request. null when the host did not answer in time or
-// answered something that is not a HookResponse: the caller decides what an
-// unanswered hook means for its event.
-export async function callHook($: EngineInterface, socket: string, name: string, envelope: unknown, deadlineMs: number): Promise<HookResponse | null> {
+// One hook, one request. The caller decides what an unanswered hook means for
+// its event, and abandons the host on a timeout.
+export async function callHook($: EngineInterface, socket: string, name: string, envelope: unknown, deadlineMs: number): Promise<HookCall> {
   const request = $.http.fetch(`${SOCKET_ORIGIN}${HOOK_PATH_PREFIX}${name}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -135,12 +157,14 @@ export async function callHook($: EngineInterface, socket: string, name: string,
     socketPath: socket,
   });
   const answer = await withDeadline($, request.catch(() => null), deadlineMs);
-  if (answer === TIMED_OUT || answer === null || !answer.ok) return null;
+  if (answer === TIMED_OUT) return { kind: 'timed-out' };
+  if (answer === null || !answer.ok) return { kind: 'unusable' };
   const parsed = parseJson(answer.text);
-  if (!isObject(parsed) || parsed['v'] !== HOST_PROTOCOL_VERSION) return null;
+  if (!isObject(parsed) || parsed['v'] !== HOST_PROTOCOL_VERSION) return { kind: 'unusable' };
   const decision = parsed['decision'];
-  if (!isDecision(decision)) return null;
-  return { v: HOST_PROTOCOL_VERSION, decision, stderr: typeof parsed['stderr'] === 'string' ? parsed['stderr'] : '' };
+  if (!isDecision(decision)) return { kind: 'unusable' };
+  const stderr = typeof parsed['stderr'] === 'string' ? parsed['stderr'] : '';
+  return { kind: 'answered', response: { v: HOST_PROTOCOL_VERSION, decision, stderr } };
 }
 
 // The mod has no setTimeout; the clock's sleep is cancelled once the race is

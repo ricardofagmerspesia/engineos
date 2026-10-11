@@ -10,7 +10,7 @@
 // Every hook calls `next(e)`: the user's own settings hooks and other plugins'
 // hooks still run, and EngineOS's answer joins theirs (classic-map.ts).
 import type { EngineInterface, Register } from 'claude-code';
-import type { HostEvent, WireDecision } from '../host/protocol';
+import { HOOK_DEADLINE_MS, type HostEvent, type WireDecision } from '../host/protocol';
 import {
   GIT_WRITE_GUARD,
   HOST_SILENT_GIT_REASON,
@@ -22,17 +22,7 @@ import {
   preToolEnvelope,
   type Outcome,
 } from './classic-map';
-import { callHook, ensureHost } from './host-client';
-
-// Per hook request. Per-call hooks keep the shell budget they replace; the
-// session-boundary hooks touch the filesystem and may take longer.
-const DEADLINE_MS: Readonly<Record<HostEvent, number>> = {
-  SessionStart: 10_000,
-  UserPromptSubmit: 2_000,
-  PreToolUse: 1_500,
-  PostToolUse: 1_500,
-  Stop: 10_000,
-};
+import { abandonHost, callHook, ensureHost } from './host-client';
 
 const BASH_TOOL = 'Bash';
 // rules/git.md: only this exact value turns the git-write guard off, and the
@@ -44,6 +34,9 @@ const GIT_WRITES_AUTO = 'auto';
 // unserved: the flag is set but the host is not ready, or has no route for this
 // event and tool; nothing EngineOS-side answered.
 // served: the host answered; `answered` names the hooks that replied in time.
+// A hook that timed out abandons the host (host-client.ts abandonHost): the
+// hooks after it in the group are not asked, and stay out of `answered`, so the
+// git fallback below still covers this call.
 type ServeResult =
   | { kind: 'off' }
   | { kind: 'unserved' }
@@ -64,14 +57,18 @@ async function serve(
   const decisions: WireDecision[] = [];
   const answered = new Set<string>();
   for (const name of names) {
-    const answer = await callHook($, host.socket, name, payload, DEADLINE_MS[event]);
-    if (answer === null) {
+    const call = await callHook($, host.socket, name, payload, HOOK_DEADLINE_MS[event]);
+    if (call.kind === 'timed-out') {
+      abandonHost($, host, `${name} timed out`);
+      break;
+    }
+    if (call.kind === 'unusable') {
       $.ui.log(`EngineOS ${name}: no answer from the in-process host`, { to: 'debug' });
       continue;
     }
     answered.add(name);
-    if (answer.stderr !== '') $.ui.log(answer.stderr, { to: 'debug' });
-    decisions.push(answer.decision);
+    if (call.response.stderr !== '') $.ui.log(call.response.stderr, { to: 'debug' });
+    decisions.push(call.response.decision);
   }
   const outcome = foldDecisions(decisions);
   // A shell hook's systemMessage: shown to the person, never read by the model.

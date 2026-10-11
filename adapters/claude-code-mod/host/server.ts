@@ -9,13 +9,14 @@
 // dist/engineos.cjs. Started by the mod with `serve --session <id>`; does
 // nothing unless ENGINEOS_INPROCESS=1.
 import { chmodSync, realpathSync } from 'node:fs';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { HOOKS } from '../../../src/hooks/cli';
 import { hookContext, readEnvelope } from '../../../src/hooks/envelope';
 import type { HookDecision } from '../../../src/hooks/output';
 import type { Io } from '../../../src/io';
-import { HOST_SESSION_ID, PRESENCE_HEARTBEAT_MS, type PresenceRecord } from '../../../src/lib/runtime-dir';
+import { HOST_SESSION_ID, type PresenceRecord } from '../../../src/lib/runtime-dir';
 import { resolveRoot } from '../../../src/registry/paths';
+import { requestClock, watchLifetime, type RequestClock } from './lifetime';
 import {
   claimPaths,
   currentUid,
@@ -24,7 +25,6 @@ import {
   presenceRecord,
   privateDir,
   releasePaths,
-  touchPresence,
   writePresence,
   type HostPaths,
 } from './presence';
@@ -68,6 +68,7 @@ interface HostState {
   served: ReadonlySet<string>;
   hookEnv: NodeJS.ProcessEnv;
   presence: Presence;
+  requests: RequestClock;
 }
 
 function main(argv: readonly string[]): Started {
@@ -97,7 +98,7 @@ function main(argv: readonly string[]): Started {
     version: typeof ENGINEOS_VERSION === 'string' && ENGINEOS_VERSION !== '' ? ENGINEOS_VERSION : UNBUILT_VERSION,
   });
   const presence: Presence = { paths, record, published: false };
-  const state: HostState = { table, served, hookEnv: hookEnvironment(process.env), presence };
+  const state: HostState = { table, served, hookEnv: hookEnvironment(process.env), presence, requests: requestClock() };
   const server = createServer((req, res) => {
     void handle(req, res, state);
   });
@@ -114,7 +115,7 @@ function main(argv: readonly string[]): Started {
     process.stdout.write(`${READY_PREFIX}${paths.socket}\n`);
     log('info', 'ready', { routes: table.routes.length, unserved: table.unserved.length });
   });
-  watchLifetime(server, presence);
+  watchLifetime({ server, presence, requests: state.requests, log });
   return { kind: 'serving' };
 }
 
@@ -145,9 +146,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, state: HostStat
   const body = await readBody(req);
   if (body === null) return reply(res, 413, { error: 'too-large' });
   const started = Date.now();
-  const answer = await runHook(name, body, state);
-  log('info', 'hook', { hook: name, kind: answer.decision.kind, durationMs: Date.now() - started });
-  return reply(res, 200, answer);
+  const done = state.requests.begin();
+  try {
+    const answer = await runHook(name, body, state);
+    log('info', 'hook', { hook: name, kind: answer.decision.kind, durationMs: Date.now() - started });
+    return reply(res, 200, answer);
+  } finally {
+    done();
+  }
 }
 
 function publishPresence(presence: Presence): boolean {
@@ -231,40 +237,6 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
   const text = JSON.stringify(body);
   res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) });
   res.end(text);
-}
-
-// The mod's module unloading kills this child; the poll covers the host itself
-// dying, which would otherwise leave an orphan holding the socket, and doubles
-// as the presence heartbeat the shell guard requires.
-function watchLifetime(server: Server, presence: Presence): void {
-  const { paths } = presence;
-  const parent = process.ppid;
-  const stop = (reason: string): void => {
-    log('info', 'stopping', { reason });
-    server.close();
-    releasePaths(paths, process.pid);
-    process.exit(0);
-  };
-  const poll = setInterval(() => {
-    if (process.ppid !== parent) {
-      stop('orphaned');
-      return;
-    }
-    if (presence.published) heartbeat(paths);
-  }, PRESENCE_HEARTBEAT_MS);
-  poll.unref();
-  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => stop(signal));
-  process.on('exit', () => releasePaths(paths, process.pid));
-}
-
-// A missed stamp only makes the record go stale, which runs the shell hooks
-// again: the failure direction is a double fire, so it is logged, not fatal.
-function heartbeat(paths: HostPaths): void {
-  try {
-    touchPresence(paths.presence, new Date());
-  } catch (e) {
-    log('error', 'heartbeat-failed', { reason: e instanceof Error ? e.message : String(e) });
-  }
 }
 
 // Structured lines on stderr (rules/observability.md); the mod forwards them to
