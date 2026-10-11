@@ -26,7 +26,7 @@ classify the intent and load the matching rules/skills below using the Read tool
 (rules) and Skill tool (skills), and dispatch the agents the matched rows name.
 Then announce in one line:
 
-`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none>`
+`[router] intent=<intent> risk=<low|medium|high> autonomy=<A0-A4> loaded=<rules/skills> agent=<agents dispatched|none> [corrected_from=<id>[,<id>...]]`
 
 The `risk` and `autonomy` fields come from always-on `rules/risk-autonomy.md` and
 are classified BEFORE the first write. They set which gates apply
@@ -77,39 +77,41 @@ Rules for routing:
   (`~/.Codex/engineos.bypass`) and `ENGINEOS_BYPASS=1` do not — they hold until
   toggled off.
 
+<!-- engineos:router-table:begin -->
 | Intent (signals) | Load |
 |---|---|
-| New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `/engineos:new-feature` — PRD + ADR + SPEC + TASKS before code: Matt Pocock skills `grill-with-docs` (ADRs → `docs/adr/`, glossary `CONTEXT.md`) → `to-spec` (PRD → `docs/prds/`) → skill `tlc-spec-lean` plan, then checks (SPEC → `.specs/features/<feature>/`, indexed from `docs/specs/`) → `to-tickets` (TASKS → `docs/specs/<feature>/tickets/`, each naming the check ids it closes) → build → the `tlc-spec-lean` Verifier; then stack rules below. Applies at non-negotiable #1's threshold — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
-| Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` (always-on); fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
+| New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `/engineos:new-feature` — PRD + ADR + SPEC + TASKS before code: Matt Pocock skills `grill-with-docs` (ADRs → `docs/adr/`, glossary `CONTEXT.md`) → `to-spec` (PRD → `docs/prds/`) → skill `tlc-spec-lean` plan and acceptance criteria, then implementation (SPEC → `.specs/features/<feature>/`, indexed from `docs/specs/`) → `to-tickets` (TASKS → `docs/specs/<feature>/tickets/`, each naming the acceptance criteria it closes) → parallel build and integration → final non-test validation → test authoring/execution only with explicit current-task user approval; then stack rules below. Applies at non-negotiable #1's threshold — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks dispatch concurrently within min(policy cap, available host slots), refilling completed slots as dependencies become ready |
+| Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` from the task contract; fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
-| Backend work (NestJS, API, service, controller, migration, queue) | `rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
-| Backend work (FastAPI, router, endpoint, Pydantic, SQLAlchemy, Alembic) | `rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
+| Backend work (NestJS, Express, Node backend, Node.js backend, plain Node, pure Node, API, service, controller, migration, queue, router, endpoint) | `rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
+| Deprecated inactive Python backend compatibility (no automatic matching or dispatch) | `rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
 | Frontend work (React, Next, component, page/app, UI, styling) | `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; agent `frontend-coordinator` |
 | Mobile work / mirror web to mobile (React Native, screen, navigation, native module, iOS/Android app; "mirror to mobile", "port to mobile", "mobile parity") | `rules/architecture.md` + `rules/frontend.md` + `rules/backend.md` (API-consumption parts) + `rules/observability.md` + `rules/testing.md`, adapted the mobile way; agent `mobile-coordinator` (elias) |
 | Mobile store release ("build ios", "publish to App Store", "TestFlight", "build android", "Play Store", "release the app", ipa/aab, store submission) | `rules/security.md` (signing keys/store credentials); agent `ios-builder` for Apple, `android-builder` for Google Play. Store review submission / production rollout only on explicit instruction |
-| LLM/agent work (prompt, agent, RAG, embedding, eval, tool schema, LangGraph, LangChain) | `rules/llm-apps.md`; skill `llm-engineering`; agent `llm-coordinator` |
-| Multi-agent system design (multi-agent, orchestration, supervisor agent, agent topology, LangGraph, A2A, handoff between agents) | `/engineos:design-agents` + `rules/llm-apps.md`; skill `agent-system-design`; agent `llm-coordinator` (hermsdorff) in INTERVIEW mode (`patterns/3-Agent-topology-interview.md`), interactive, one step at a time; developer approval (hitl reason `topology-approval`) recorded in the change record before any graph code |
+| LLM/agent/chatbot work (Mastra, chatbot, chat bot, conversational AI, prompt, agent, RAG, embedding, eval, tool schema; LangGraph/LangChain migration) | `rules/llm-apps.md`; skills `llm-engineering` + `mastra-patterns`; agent `llm-coordinator`; Mastra orchestration in NestJS providers |
+| Multi-agent system design (multi-agent, orchestration, supervisor agent, agent topology, legacy LangGraph migration, A2A, handoff between agents) | `/engineos:design-agents` + `rules/llm-apps.md`; skill `agent-system-design`; agent `llm-coordinator` (hermsdorff) in INTERVIEW mode (`patterns/3-Agent-topology-interview.md`), interactive, one step at a time; developer approval (hitl reason `topology-approval`) recorded before multi-agent Mastra workflow code; Mastra/chatbot alone does not require topology approval |
 | DBA / data layer (`*.sql`, migrations, schema, query perf, indexing) | `rules/architecture.md` + `rules/data.md`; agent `dba-coordinator` (writes migrations/queries, holds NO database MCP). Live schema/plan introspection is the read-only `postgres-specialist` / `oracle-specialist` leaves |
 | DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud) | `rules/architecture.md` + `rules/observability.md`; agent `devops-coordinator` (writes config, holds NO cloud MCP). Live cluster/cloud/CI introspection is the read-only `kubernetes-specialist` / `gcp-specialist` / `cicd-specialist` leaves |
 | Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials) | `rules/security.md`; dispatch `security-reviewer` |
 | System comprehension / onboarding docs ("document the system", "architecture docs", "docs for new devs", "understand the codebase") | `/analyze-architecture` + `rules/memory.md`; agent `architecture-analyst` (analyst) runs `patterns/1-Analysis.md` |
 | Fill doc gaps by interview ("interview me about the system", "ask me about how X works", resolve open hypotheses) | `/talk-about-the-system` + `rules/memory.md`; `architecture-analyst` in INTERVIEW mode (`patterns/2-Interview-brainstorm.md`), interactive, folds answers back into `docs/` |
-| End-to-end API QA ("test all endpoints", "run the API test suite", "QA the system", Postman/Newman run) | agent `qa-tester` (qa) — non-interactive, skips MFA/email steps |
+| End-to-end API QA after implementation/integration and explicit current-task approval ("test all endpoints", "run the API test suite", "QA the system", Postman/Newman run) | agent `qa-tester` (qa) — only after explicit approval for final test work; non-interactive execution skips MFA/email steps |
 | Multi-domain audit / system health check ("audit", "analyze the system", "what's broken across X") | `/engineos:audit <domain\|all>` — fans out to coordinators + MCP leaf specialists, consolidates into a status report |
 | Refactor / cleanup ("refactor", "clean up", "simplify", "tech debt") | `rules/architecture.md`; finish with a simplify pass |
 | Architecture decision ("should we use X or Y", "how should we structure") | skill `adr` + `rules/memory.md` — decision gets recorded, not just chatted |
 | Release notes ("write release notes", "document version X.Y.Z", "what changed in this release", version bump) | skill `release-notes` |
 | Business / career strategy — market opportunity ("where is this market going", "before competitors"), skill learning path ("what do I learn, in what order"), blocked non-technical decision ("X or Y and I can't decide"), positioning & perceived authority, monetizing existing assets | skill `strategy` — five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to `docs/strategy/`. Technical "X vs Y" stays with `adr`; `strategy` handles business/career/positioning decisions |
-| Review / pre-merge ("review", "is this safe", PR URL) | skill `code-review` (external — provided by the Codex environment, not this repo); if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
-| Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets. This row IS the opt-in path — tests get written/run here, on request, never implicitly by other rows |
-| Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | Read `rules/llm-apps.md`; skill `eval-harness` |
+| Review / pre-merge ("review", "is this safe", PR URL) | skill `code-review` (external — provided by the Claude Code environment, not this repo); if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
+| Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets. This row identifies test ownership; write/run only at the end, after implementation/integration and explicit current-task user approval. TDD sequencing does not override the final-phase policy |
+| Eval setup in the explicitly approved final test phase ("set up evals", "golden set", new LLM feature lacking evals) | Read `rules/llm-apps.md`; skill `eval-harness` |
 | Independent verification of high-risk work ("is this actually right", pre-release check on risk=high, release gate needs an independent pass) | `critic` agent (alias `vera`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens |
 | Handoff between agents, waves or sessions ("hand this off", wave barrier reached, session ending mid-task) | `templates/handoff.md` — objective, state (gate, risk), done, decisions, files, evidence, known failures and open risks, not done, next step, resume. Never hand off with "continue where you left off" |
 | Continuous improvement ("run a retro", "what should we improve", same correction recurring, monthly cadence) | skill `retro` — mines `.engineos/archived/`, `.engineos/skill-observations/log.md`, eval failures and integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR. Proposes only; a human merges |
 | Skill/rule friction observed mid-task ("log an observation", "watch for skill opportunities", "observation log", a loaded rule got violated, a correction reveals a missing rule, a skill section proves dead weight) | skill `task-observer` — appends to `.engineos/skill-observations/log.md`; capture only, `retro` consumes OPEN entries. Log at the moment of friction, don't wait for the retro |
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
-| Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no agent is dispatched at all |
-| Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
+| Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no router planner agent is needed; the supervisor still dispatches workers for implementation. An explicit route-only request returns the plan without dispatching implementation |
+| Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck and an unrecorded change record; separately approved final tests run after integration |
+<!-- engineos:router-table:end -->
 
 ## Output artifact — offer after every request
 
@@ -177,12 +179,23 @@ read it there, not here.
 
 EngineOS is a prose constitution (`rules/`, `agents/`, `skills/`, `commands/`) projected
 into `registries/*.json`, executed by a deterministic TypeScript kernel and the Claude
-Code hooks registered in `hooks/hooks.json`, bundled into `dist/engineos.cjs`, and kept
-coherent by a 68-check validator.
+Code hooks registered in `hooks/hooks.json`, and kept coherent by a 72-check validator.
+Prompts route through three tiers: deterministic gates, a scored TypeScript classifier
+(`src/kernel/score.ts`) and `router` agent escalation on low confidence.
+`src/kernel/combine.ts` folds two opt-in facts into that answer: the add-only Jev judge
+(`src/judge/`, consulted by `src/hooks/prompt-judge.ts`; the kernel never imports it)
+and an embedding tie-break that picks among already-ranked intents only when the route
+is ambiguous. Policy answers are registry decision tables and state machines
+(`src/kernel/{table,transitions}.ts`). The router table above is generated from
+`registries/intents.json` by `engineos gen router-table`.
 
-**Stack**: TypeScript (esbuild to one committed CJS bundle, node >= 18), JSON registries,
-bash shims, Node built-in test runner; `console/` is a separate Next.js admin app.
-**Structure**: prose layer -> `registries/` -> `src/{kernel,hooks,journal,checks,gen}` ->
-`dist/engineos.cjs`; per-project state in `.engineos/` and `.git/engineos-telemetry/`.
+**Stack**: TypeScript (esbuild, node >= 18), JSON registries, bash shims, Node built-in
+test runner; `console/` is a separate Next.js admin app.
+**Structure**: prose layer -> `registries/` -> `src/{kernel,judge,hooks,journal,checks,gen}`
+-> two committed entry points sharing `src/hooks/adapter.ts`: `dist/engineos.cjs`
+(`src/cli.ts`, every subcommand) and `dist/engineos-hot.cjs` (`src/hot-cli.ts`, the five
+per-call hooks), each a loader over `dist/runtime/`. Opt-in, outside the root bundle:
+`adapters/claude-code-mod/` (in-process host, `dist/engineos-inprocess.cjs`) and
+`tools/embedding-daemon/`. Per-project state in `.engineos/` and `.git/engineos-telemetry/`.
 
 For detailed architecture, see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
