@@ -1,23 +1,101 @@
-// Bundles src/cli.ts into the single committed runtime file. Syntax is lowered to
-// node16 so the version guard in cli.ts can run on an old node and re-exec a newer
-// one; APIs used elsewhere still require node 18 (package.json engines).
+// Bundles the committed runtime. Syntax is lowered to node16 so the version guard
+// in each entry can run on an old node and re-exec a newer one; APIs used
+// elsewhere still require node 18 (package.json engines).
+//
+// Three entries (S3 of the routing-replacement speed plan, plus the opt-in
+// in-process adapter of #127 T12):
+//   src/cli.ts                               -> dist/engineos.cjs            every subcommand (unchanged surface)
+//   src/hot-cli.ts                           -> dist/engineos-hot.cjs        the per-call hooks only
+//   adapters/claude-code-mod/host/server.ts  -> dist/engineos-inprocess.cjs  the per-session host (ENGINEOS_INPROCESS=1)
+//
+// The host imports src/; nothing in src/ imports the host. Each entry is its
+// own esbuild graph, so the root bundle never carries adapters/ code — C38c
+// (src/checks/router-v2.ts, finding bundle-imports-adapter) fails if it ever does.
+//
+// Each entry is a small loader in front of the bundle it requires from
+// dist/runtime/ (S2). V8's compile cache only covers code compiled AFTER
+// `module.enableCompileCache()` runs, and a process's main script is compiled
+// before any of its own code executes — so the cache call has to live in a file
+// that is not the bundle. The loader feature-detects it: where node has
+// `module.enableCompileCache` (22.8+) the bundle's compiled code is cached on
+// disk (NODE_DISABLE_COMPILE_CACHE=1 turns it off); older nodes have no such
+// function and the loader goes straight to the bundle. The loader is plain
+// text, not bundled, and parses on node 16 like the guard. Its file mode is
+// left to the umask, as the single bundle's was: hooks.json and the shims run
+// it through `node`, and a 0755 here would be mode churn in git.
+//
+// Where the cache lives: node's default is <os.tmpdir()>/node-compile-cache,
+// which on a shared /tmp is created 0755 and can be pre-created by another
+// user, who would then supply the compiled code of every hook (git-write-guard
+// included). The loader instead uses `<base>/engineos-<uid>/compile-cache`,
+// base being XDG_RUNTIME_DIR, else TMPDIR, else the OS temp dir — the private
+// runtime directory rule of src/lib/runtime-dir.ts, copied here because a
+// loader cannot import src/. Both directories are created 0700 and used only
+// when each is a real directory (lstat: not a symlink), owned by this uid, with
+// no group or other bits; otherwise, or where there is no POSIX uid, the cache
+// is skipped and the bundle runs uncached.
 import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 
 // import attributes (`with { type: 'json' }`) need Node >= 20.10; the spec floor is 18.
 const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-await build({
-  entryPoints: ['src/cli.ts'],
-  bundle: true,
-  platform: 'node',
-  target: 'node16',
-  format: 'cjs',
-  outfile: 'dist/engineos.cjs',
-  banner: { js: '#!/usr/bin/env node' },
-  define: { ENGINEOS_VERSION: JSON.stringify(version) },
-  legalComments: 'none',
-  minify: false,
-  sourcemap: false,
-  logLevel: 'error',
-});
+const ENTRIES = [
+  { source: 'src/cli.ts', loader: 'dist/engineos.cjs', bundle: 'runtime/engineos.cjs' },
+  { source: 'src/hot-cli.ts', loader: 'dist/engineos-hot.cjs', bundle: 'runtime/engineos-hot.cjs' },
+  { source: 'adapters/claude-code-mod/host/server.ts', loader: 'dist/engineos-inprocess.cjs', bundle: 'runtime/engineos-inprocess.cjs' },
+];
+
+// Plain var/function syntax on purpose: it must parse on node 16 before the
+// version guard runs.
+// Any failure in the cache block leaves the cache off; it never stops the bundle.
+const COMPILE_CACHE_BLOCK = [
+  'try {',
+  '  (function () {',
+  "    var mod = require('node:module');",
+  "    if (typeof mod.enableCompileCache !== 'function' || typeof process.getuid !== 'function') return;",
+  "    var fs = require('node:fs');",
+  "    var path = require('node:path');",
+  '    var uid = process.getuid();',
+  "    var base = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || require('node:os').tmpdir();",
+  "    var own = path.join(base, 'engineos-' + uid);",
+  "    var cache = path.join(own, 'compile-cache');",
+  '    function privateDir(dir) {',
+  "      try { fs.mkdirSync(dir, { mode: 0o700 }); } catch (e) { if (!e || e.code !== 'EEXIST') return false; }",
+  '      var stat = fs.lstatSync(dir);',
+  '      return stat.isDirectory() && stat.uid === uid && (stat.mode & 0o077) === 0;',
+  '    }',
+  '    if (privateDir(own) && privateDir(cache)) mod.enableCompileCache(cache);',
+  '  })();',
+  '} catch (e) {}',
+];
+
+function loaderText(bundle) {
+  return [
+    '#!/usr/bin/env node',
+    `// Generated by scripts/build.mjs — loader for dist/${bundle}; see that script for why it exists.`,
+    "'use strict';",
+    ...COMPILE_CACHE_BLOCK,
+    `require('./${bundle}');`,
+    '',
+  ].join('\n');
+}
+
+mkdirSync('dist/runtime', { recursive: true });
+
+for (const entry of ENTRIES) {
+  await build({
+    entryPoints: [entry.source],
+    bundle: true,
+    platform: 'node',
+    target: 'node16',
+    format: 'cjs',
+    outfile: `dist/${entry.bundle}`,
+    define: { ENGINEOS_VERSION: JSON.stringify(version) },
+    legalComments: 'none',
+    minify: false,
+    sourcemap: false,
+    logLevel: 'error',
+  });
+  writeFileSync(entry.loader, loaderText(entry.bundle));
+}

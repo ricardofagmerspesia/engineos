@@ -45,6 +45,7 @@ export const C18F_FINDINGS = [
   'adapter-not-executable',
   'registration-not-single-adapter',
   'resolve-task-call-missing',
+  'hook-target-missing',
 ] as const;
 export const C18G_FINDINGS = ['policy-closure-drift', 'pure-question-not-lean'] as const;
 
@@ -69,7 +70,7 @@ const C18B_TITLE = 'agents/router.md resolves the plan through one kernel call d
 const C18C_TITLE = 'router must not hold Edit/Write/Task';
 const C18E_TITLE = 'every policy.json router fixture matches the kernel route-escalate answer';
 const C18F_TITLE =
-  'hooks/prompt-advisor.sh is the single registered prompt adapter and src/hooks/prompt-advisor.ts calls resolve-task';
+  'hooks/prompt-advisor.sh is the single registered prompt adapter, src/hooks/prompt-advisor.ts calls resolve-task, and every hooks.json script exists';
 const C18G_TITLE = 'resolve-task supplies the closed substantive policy bundle and keeps pure questions lean';
 
 // The registry-to-registry half of this binding (the capability resolves, the
@@ -205,7 +206,53 @@ function checkC18f(ctx: CheckContext): CheckResult[] {
   if (!(ctx.readText(PROMPT_ADVISOR_TS) ?? '').includes('resolve-task')) {
     findings.push(finding('C18f', 'resolve-task-call-missing', PROMPT_ADVISOR_TS));
   }
+  findings.push(...hookTargetFindings(ctx));
   return [result('C18f', C18F_TITLE, findings)];
+}
+
+// `"${CLAUDE_PLUGIN_ROOT}/<path>"` in a hooks.json command: the script the
+// harness runs, relative to the plugin root.
+const PLUGIN_SCRIPT = /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"'\s]+)/g;
+// The bundle a generated dist/ loader requires (scripts/build.mjs loaderText).
+const LOADER_REQUIRE = /require\('\.\/(runtime\/[^'\s]+)'\)/g;
+const DIST_PREFIX = 'dist/';
+
+// A hooks.json row whose script is not in the tree fails every event it is
+// registered on, git-write-guard included: node exits non-zero, the harness
+// logs it, and the hook never ran. A committed loader is followed one step to
+// the dist/runtime bundle it requires, since a loader without its bundle fails
+// the same way.
+function hookTargetFindings(ctx: CheckContext): Finding[] {
+  const events = subRecord(rawJson(ctx, HOOKS_JSON), 'hooks');
+  const commands = Object.keys(events ?? {})
+    .flatMap((event) => rows(events, event))
+    .flatMap((group) => rows(group, 'hooks'))
+    .map((hook) => hook['command'])
+    .filter((command): command is string => typeof command === 'string');
+  const targets = uniqueSorted(commands.flatMap((command) => captures(command, PLUGIN_SCRIPT)));
+  const missing: string[] = [];
+  for (const target of targets) {
+    if (!inTree(target) || !ctx.exists(target)) {
+      missing.push(target);
+      continue;
+    }
+    if (!target.startsWith(DIST_PREFIX)) continue;
+    const required = captures(ctx.readText(target) ?? '', LOADER_REQUIRE).map((bundle) => `${DIST_PREFIX}${bundle}`);
+    missing.push(...required.filter((bundle) => !inTree(bundle) || !ctx.exists(bundle)));
+  }
+  return uniqueSorted(missing).map((path) => finding('C18f', 'hook-target-missing', path));
+}
+
+function captures(text: string, pattern: RegExp): string[] {
+  return [...text.matchAll(pattern)]
+    .map((match) => match[1])
+    .filter((value): value is string => value !== undefined && value !== '');
+}
+
+// Relative, forward-slash, no `..` segment: a path that leaves the plugin root
+// cannot be "in the tree", whatever happens to exist there.
+function inTree(path: string): boolean {
+  return !path.startsWith('/') && !path.includes('\\') && !path.split('/').includes('..');
 }
 
 // Substantive routes receive the complete transitive policy closure; pure
