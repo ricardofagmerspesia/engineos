@@ -1,0 +1,15 @@
+{
+  "name": "@engineos/embedding-daemon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Opt-in warm embedding tie-break daemon for the EngineOS router (ENGINEOS_EMBED_DAEMON=1). Separate from the root package: the root bundle never loads it and the root package.json gains no dependency.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "start": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/daemon.ts"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.0"
+  }
+}
