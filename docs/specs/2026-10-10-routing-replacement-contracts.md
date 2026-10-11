@@ -36,6 +36,13 @@ that code disagree, the code wins and the line is corrected here. Full text:
    before; §16.7 described it informally).
 7. §17.7–§17.9 — mod git fallback, C18f `hook-target-missing`, compile cache,
    daemon install and model cache, and the known residuals.
+8. §6.2, §17.11 — re-review fixes at PR head `9f17b55` (same revision, no
+   rev 5): the loader refuses `{m,}` of any width and quantified groups holding
+   alternation or nested quantifiers; `key_env`, `enabled_env`,
+   `enabled_value` and the redaction list's SHA-256 are pinned in code and
+   `max_state_bytes` is capped at 16384; redaction grows to 27 kinds; the mod
+   abandons a host on its first hook timeout and the host stops itself on a
+   stalled request.
 
 **rev 3 (2026-10-11)** — five T06 questions, the T12 tie-break fact, and T12's
 accepted spawn-count deviation. Full text and consumer deltas: **§16 Revision 3**.
