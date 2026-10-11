@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { KernelError, isRecord } from '../lib/json';
 import type { IntentRow } from '../registry/intents';
 import { loadRegistry } from '../registry/load';
+import type { ScoringPolicy } from '../registry/policy-router';
 import { resolveRoot } from '../registry/paths';
 import { lazyRegistries, type Registries } from './context';
 import { floorOf, renderGuidance, routeEscalate, type EscalateRouteSection } from './route';
@@ -72,6 +73,9 @@ test('the answer carries cmd_route_escalate key order', () => {
     'risk_floor',
     'scale',
     'ambiguous',
+    // contracts.md@rev1 §2.3: the ranking siblings trail the legacy keys (MINOR).
+    'ranked',
+    'margin',
   ]);
 });
 
@@ -308,19 +312,42 @@ function byOf(section: EscalateRouteSection, id: string): string | null {
   return section.suppressed.find((s) => s.id === id)?.by ?? null;
 }
 
-// Fixture intents replace ONLY the intents registry: the escalation order, the
-// reason vocabulary and the threshold stay the shipped ones, so a synthetic case
-// still proves something about the policy the kernel actually runs on.
+// Fixture intents replace the intents registry: the escalation order, the
+// reason vocabulary and the multi-agent threshold stay the shipped ones, so a
+// synthetic case still proves something about the policy the kernel actually
+// runs on. router.scoring is pinned to the v1-equivalence values of
+// contracts.md@rev1 §1.5 (every weight-1 phrase matches, nothing is ambiguous
+// among real matches) because the shipped scoring block is a calibration knob:
+// these cases are about suppression and aggregation, not about where T13 puts
+// the cuts.
+const V1_EQUIVALENT_SCORING: ScoringPolicy = {
+  min_score: 1,
+  threshold: 0,
+  margin: 0,
+  top_k: 5,
+  max_intents: 8,
+  bm25_weight: 0.9,
+  path_weight: 1,
+};
+
 function escalate(prompt: string, rows: IntentRow[]): EscalateRouteSection {
-  const fixture: Registries = { ...regs, intents: { version: regs.intents.version, intents: rows } };
+  const fixture: Registries = {
+    ...regs,
+    intents: { version: regs.intents.version, intents: rows },
+    policy: { ...regs.policy, router: { ...regs.policy.router, scoring: V1_EQUIVALENT_SCORING } },
+  };
   return routeEscalate(prompt, fixture);
 }
 
+// A v1-shaped row as the intents loader answers it: `phrases` derived from
+// `signals` at weight 1 (contracts.md@rev2 §1.2), so the scorer matches the
+// row on exactly the prompts its signals fire on.
 function row(id: string, over: Partial<IntentRow> = {}): IntentRow {
+  const signals = over.signals ?? [id];
   return {
     id,
     title: id,
-    signals: [id],
+    signals,
     rules: [],
     skills: [],
     agents: [],
@@ -333,6 +360,14 @@ function row(id: string, over: Partial<IntentRow> = {}): IntentRow {
     suppressible: false,
     suppressed_by: [],
     requires_dispatch_plan: false,
+    active: true,
+    phrases: signals.map((text) => ({ text, weight: 1 })),
+    phrases_declared: false,
+    verb_object: null,
+    negative: [],
+    exemplars: [],
+    threshold: null,
+    router_row: null,
     ...over,
   };
 }

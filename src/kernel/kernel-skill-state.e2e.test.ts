@@ -260,6 +260,8 @@ test('the task contract carries skills_suppressed in the legacy key position', (
     'substantive', 'intents', 'escalates', 'escalation_reasons', 'suppressed', 'agents', 'rules',
     'policy_rules', 'skills', 'skills_suppressed', 'commands', 'mcp', 'model_tier', 'risk_floor',
     'autonomy_ceiling_at_floor', 'scale', 'decision_rules', 'required', 'gates', 'preferences',
+    // contracts.md@rev3 §2.4 keys 21-23, appended after the legacy twenty.
+    'judge', 'risk_proposal', 'tiebreak',
   ]);
 });
 

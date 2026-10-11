@@ -90,7 +90,7 @@ test('route-intent requires exactly one argument', () => {
 test('route-intent answers a zero-match prompt as ambiguous with exit 0', () => {
   const io = memoryIo({ env });
   assert.equal(runKernel(['route-intent', 'zzz qqq'], io), 0);
-  assert.deepEqual(JSON.parse(io.stdout.join('')), { matches: [], ambiguous: true });
+  assert.deepEqual(JSON.parse(io.stdout.join('')), { matches: [], ambiguous: true, ranked: [], margin: null });
 });
 
 test('route-intent emits the section and its matches in the legacy key order', () => {
@@ -98,7 +98,8 @@ test('route-intent emits the section and its matches in the legacy key order', (
   assert.equal(runKernel(['route-intent', 'run a retro'], io), 0);
   const answer: unknown = JSON.parse(io.stdout.join(''));
   if (!isRecord(answer)) throw new Error('route-intent did not answer an object');
-  assert.deepEqual(Object.keys(answer), ['matches', 'ambiguous']);
+  // contracts.md@rev1 §2.2: the ranking siblings trail the two legacy keys.
+  assert.deepEqual(Object.keys(answer), ['matches', 'ambiguous', 'ranked', 'margin']);
   const matches = answer['matches'];
   if (!Array.isArray(matches)) throw new Error('route-intent did not answer a matches array');
   const first: unknown = matches[0];
@@ -491,6 +492,7 @@ test('route-escalate answers the escalate composite in the legacy key order', ()
   const argv = ['route-escalate', '--prompt', 'add a paginated orders endpoint to the API and mirror the screen to mobile'];
   assert.deepEqual(keysOf(argv), [
     'escalate', 'reasons', 'intents', 'suppressed', 'agents', 'model_tier', 'risk_floor', 'scale', 'ambiguous',
+    'ranked', 'margin', 'judge',
   ]);
   const answer = answerOf(argv, 0);
   if (!isRecord(answer)) throw new Error('route-escalate did not answer an object');

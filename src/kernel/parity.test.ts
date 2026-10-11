@@ -420,9 +420,21 @@ test('resolve answers each section identically to the legacy projection that own
     const composite = portedFacts(root, { prompt, taskContract: true });
     const task = legacyAnswer(root, ['resolve-task', '--prompt', prompt]);
 
-    assertSame(field(composite, 'route', label), legacyAnswer(root, ['route-escalate', '--prompt', prompt]), `${label}: route`);
-    assertSame(field(composite, 'decision_rules', label), legacyAnswer(root, ['decision-rules', '--prompt', prompt]), `${label}: decision_rules`);
-    assertSame(field(composite, 'task_contract', label), field(task, 'task_contract', label), `${label}: task_contract`);
+    assertSame(
+      withoutTrailing(field(composite, 'route', label), ESCALATE_ADDITIVE, `${label}: route`),
+      legacyAnswer(root, ['route-escalate', '--prompt', prompt]),
+      `${label}: route`,
+    );
+    assertSame(
+      withoutTrailing(field(composite, 'decision_rules', label), COMPOSED_DECISIONS_ADDITIVE, `${label}: decision_rules`),
+      legacyAnswer(root, ['decision-rules', '--prompt', prompt]),
+      `${label}: decision_rules`,
+    );
+    assertSame(
+      withoutTrailing(field(composite, 'task_contract', label), TASK_CONTRACT_ADDITIVE, `${label}: task_contract`),
+      field(task, 'task_contract', label),
+      `${label}: task_contract`,
+    );
     // A null hitl in the legacy composite is an ABSENT hitl in the sparse
     // Answer, and the composite publishes two of the section's four fields. The
     // projection performs both conversions, so the comparison is on the
@@ -430,12 +442,54 @@ test('resolve answers each section identically to the legacy projection that own
     assertSame(narrowedHitl(field(composite, 'hitl', label)), field(task, 'hitl', label), `${label}: hitl`);
 
     // The two sections a prompt answers on its own, against their own arms.
-    assertSame(field(portedFacts(root, { prompt }), 'route', label), legacyAnswer(root, ['route-intent', prompt]), `${label}: route (intent form)`);
+    assertSame(
+      withoutTrailing(field(portedFacts(root, { prompt }), 'route', label), INTENT_ADDITIVE, `${label}: route (intent form)`),
+      legacyAnswer(root, ['route-intent', prompt]),
+      `${label}: route (intent form)`,
+    );
     assertSame(field(portedFacts(root, { scale: { prompt } }), 'scale', label), legacyAnswer(root, ['scale', '--prompt', prompt]), `${label}: scale`);
   }
 });
 
 // ------------------------------------------------------------------ internals
+
+// The routing replacement added trailing keys to four answers (contracts.md
+// §2.2-§2.4, MINOR, additive). The pinned bash kernel predates them, so parity
+// holds on the legacy keys: each additive list must trail the section exactly,
+// in this order, and is removed before the comparison. Anything else that
+// differs, including a legacy key moved behind an additive one, stays red.
+const INTENT_ADDITIVE: readonly string[] = ['ranked', 'margin'];
+const ESCALATE_ADDITIVE: readonly string[] = ['ranked', 'margin', 'judge'];
+const TASK_CONTRACT_ADDITIVE: readonly string[] = ['judge', 'risk_proposal', 'tiebreak'];
+const COMPOSED_DECISIONS_ADDITIVE: readonly string[] = ['judge_added'];
+
+// An error body ({error}) carries none of the sections, so it is compared as is.
+function legacyKeysOf(arm: string, answer: unknown, label: string): unknown {
+  if (!isRecord(answer) || 'error' in answer) return answer;
+  if (arm === 'route-intent') return withoutTrailing(answer, INTENT_ADDITIVE, label);
+  if (arm === 'route-escalate') return withoutTrailing(answer, ESCALATE_ADDITIVE, label);
+  if (arm !== 'resolve-task') return answer;
+  // Every top-level key is kept in place, so an extra or reordered section
+  // still fails the comparison; only the three sections' additive keys go.
+  const additiveBySection: Record<string, readonly string[]> = {
+    task_contract: TASK_CONTRACT_ADDITIVE,
+    route: ESCALATE_ADDITIVE,
+    decision_rules: COMPOSED_DECISIONS_ADDITIVE,
+  };
+  return Object.fromEntries(
+    Object.entries(answer).map(([key, value]): [string, unknown] => {
+      const additive = additiveBySection[key];
+      return [key, additive === undefined ? value : withoutTrailing(value, additive, `${label}: ${key}`)];
+    }),
+  );
+}
+
+function withoutTrailing(section: unknown, additive: readonly string[], label: string): Record<string, unknown> {
+  if (!isRecord(section)) assert.fail(`${label}: expected an object, got ${JSON.stringify(section)}`);
+  const keys = Object.keys(section);
+  assert.deepEqual(keys.slice(keys.length - additive.length), [...additive], `${label}: additive keys must trail the legacy keys`);
+  return Object.fromEntries(Object.entries(section).filter(([key]) => !additive.includes(key)));
+}
 
 // Parity evidence must be impossible to lose silently where it is CLAIMED. The
 // two conditions this guards are honest skips on a developer machine — no jq on
@@ -486,7 +540,7 @@ function parityCase(root: string, arm: string, args: string[]): void {
   const legacy = runLegacy(root, argv);
   const ported = runPorted(root, argv);
   const legacyAnswer = parseAnswer(legacy, `${label} (pinned bash kernel)`);
-  const portedAnswer = parseAnswer(ported, `${label} (typescript projection)`);
+  const portedAnswer = legacyKeysOf(arm, parseAnswer(ported, `${label} (typescript projection)`), label);
 
   assert.deepEqual(portedAnswer, legacyAnswer, `${label}: answers differ`);
   // Key order is part of the answer's contract, not a formatting detail: callers
