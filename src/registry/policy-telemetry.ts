@@ -13,7 +13,9 @@ import { strictReader } from './strict';
 // append.
 //
 // policy-telemetry.test.ts pins the list to .telemetry.events[].id, order included.
-export const TELEMETRY_EVENT_IDS = ['route', 'decision-rules', 'verify', 'hitl'] as const;
+// `judge` (contracts.md@rev2 §6.4) is written by src/hooks/prompt-advisor.ts once
+// per user prompt: where the routing answer's judge fact came from, ids only.
+export const TELEMETRY_EVENT_IDS = ['route', 'decision-rules', 'verify', 'hitl', 'judge'] as const;
 
 export type TelemetryEventId = (typeof TELEMETRY_EVENT_IDS)[number];
 
