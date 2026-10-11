@@ -5,10 +5,12 @@
 // order, so an earlier, more specific kind (sk-ant-) wins over a later, broader
 // one (sk-).
 //
-// Cost is bounded twice: every registry pattern is linear-time by construction
-// (bounded quantifiers, no nested unbounded repetition), and callers redact
-// only a pre-capped prefix (redactBounded), never the whole prompt, so a long
-// paste cannot turn the hook's budget into a regular-expression pass.
+// Cost is bounded twice. The shipped set is linear; the loader
+// (src/registry/policy-judge.ts) refuses unbounded quantifiers and quantified
+// groups holding alternation or nested quantifiers, and pins the shipped list
+// by hash, so a registry edit cannot bring a slower or weaker one. And callers
+// redact only a pre-capped prefix (redactBounded), never the whole prompt, so a
+// long paste cannot turn the hook's budget into a regular-expression pass.
 import type { RedactionPattern } from './types';
 
 export class RedactionPatternError extends Error {

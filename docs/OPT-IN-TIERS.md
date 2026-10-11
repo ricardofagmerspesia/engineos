@@ -163,6 +163,31 @@ stale record, and a new host for the same session (`claimPaths`) removes a
 stale record and socket instead of refusing to start. A missed stamp is logged,
 not fatal; its failure direction is a double fire.
 
+**An unresponsive host is abandoned.** A host can be alive, and keep stamping
+its record, while a hook inside it stalls. The mod therefore gives up on the
+host at the first `callHook` timeout:
+- It marks the host failed for the rest of the session, ends it
+  (`child.return()`; the host's exit handler removes the presence record and
+  the socket) and stops routing to it. The shell hooks serve every later call.
+  The debug log says that the host was abandoned and which hook timed out.
+- Only a timeout abandons the host. A refused, non-ok or malformed answer is
+  logged and skipped as before, and a dead host is caught by the existing
+  spawn-loop exit.
+- On the call that timed out, the remaining hooks of that matcher group are
+  not called for that event. The mod's git fallback ask (below) still applies
+  to that call.
+- The host has its own watchdog (`adapters/claude-code-mod/host/lifetime.ts`).
+  When it holds one hook request longer than `HOST_STALL_MS`, the largest
+  `HOOK_DEADLINE_MS` value plus 5 s (15 s today), it removes its record and
+  socket and exits, logging `stopping reason=stalled-hook`. The stall check
+  runs before the heartbeat stamp, so an abandoned host never re-stamps its
+  record. The worst case is a record that stays fresh about 20 s after a
+  stalled request arrives.
+- The per-hook deadlines live in `adapters/claude-code-mod/host/protocol.ts`
+  as `HOOK_DEADLINE_MS`; their values did not change. The judge's
+  `timeout_ms` (400) is below the prompt hook's deadline, so an enabled judge
+  does not trip the abandonment by itself.
+
 **When a shell hook stands down.** A shell hook exits silently only when every
 one of these holds, checked in this order (`servedInProcess` in
 `src/hooks/adapter.ts`):
@@ -214,6 +239,14 @@ looks for `git` or `gh` anywhere. That is the same over-inclusive test as
 so it carries a commented copy. The test may ask on a command that is not a git
 write, but it never lets one through unseen.
 
+While the host is down, failed or abandoned, this fallback is over-inclusive in
+practice: any Bash command containing the letters `gh` (`high`, `light`,
+`night`) or `git` gets an ask, for the rest of the session after an
+abandonment. The shell guard already runs on every call, so this is redundant
+cover. It is an accepted fail-safe and stays as decided in D2 of the security
+fix pass: an extra prompt is the safe direction, and narrowing the test would
+re-open the gap it closes.
+
 **Fail-closed error path.** If the mod's own PreToolUse handler throws before it
 has called `next`, its `.catch` handler answers `ask` for a Bash call that may
 name `git` or `gh`, with no `ENGINEOS_GIT_WRITES` check, because nothing
@@ -240,8 +273,11 @@ EngineOS-side judged the call. Any other call passes to `next`.
 
 ### Known residuals (security)
 
-Both resolve toward a hook running twice or the adapter not starting, never
-toward a silenced `git-write-guard`, which never stands down.
+The security re-review of 2026-10-11 accepted these. Each resolves toward a
+hook running twice, a hook going unanswered for a bounded window, or the
+adapter not starting, never toward a silenced `git-write-guard`, which never
+stands down. The owner-field change and the unresponsive-host family are a
+tracked follow-up.
 - **A second process on the same session.** The presence record names a
   session, not an owner. If a second Claude Code process runs on the same
   session id with the adapter flag on, its advisory shell hooks (every hook
@@ -252,6 +288,12 @@ toward a silenced `git-write-guard`, which never stands down.
   binding its socket and the mod's first `GET /v1/routes`. The worst case is a
   hook that fires twice or an adapter that fails to start; the shell hooks then
   stay in charge.
+- **A synchronously blocked host.** A host whose event loop is blocked runs
+  neither its heartbeat nor its watchdog nor its SIGTERM handler. Its record
+  can stay fresh for up to 30 s (`PRESENCE_STALE_MS`) after its last stamp,
+  unless the engine escalates to SIGKILL, after which the pid probe fails. In
+  that window the advisory shell hooks may stand down while the mod has
+  already abandoned the host.
 
 ## Embedding tie-break daemon (`tools/embedding-daemon/`)
 
@@ -403,6 +445,7 @@ uses only a private per-user directory:
 |---|---|
 | `git-write-guard` asks twice, or fires from both host and shell | Expected: the guard never stands down. The two asks fold into one permission prompt |
 | Other hooks fire twice with the adapter on | Expected while the host is starting, before the mod's first `GET /v1/routes` handshake, or after the host exits. Expected too for a hook missing from the record's `served` list, when the host's `version` differs from the shell bundle's (an unbundled host records `unbuilt`), when the host routes from another checkout (`root` differs), and when the record has not been re-stamped within 30 s. Check the debug log for `host-exited`, `routes-unreadable`, `presence-failed` and `heartbeat-failed`, and check that `dist/engineos-inprocess.cjs` exists |
+| The adapter stops serving partway through a session | Expected after the first hook timeout: the mod abandons the host for the rest of the session and the shell hooks serve. Look for the abandonment line in the debug log, or `stopping reason=stalled-hook` in the host's stderr. Restart the session to bring the adapter back |
 | A Bash call that names `git` or `gh` asks even though `git-write-guard` stays silent from the shell | The mod's fallback: the host did not answer for `git-write-guard` on that call. Set `ENGINEOS_GIT_WRITES=auto` only if you want unprompted git writes everywhere (`rules/git.md`) |
 | `engineos validate` reports C18f `hook-target-missing` | A `hooks/hooks.json` script, or the `dist/runtime/` bundle a loader requires, is missing from the tree. At the PR head this is expected until the approved final build commits the bundles |
 | `ENGINEOS_ROOT` or `ENGINEOS_NODE` seems ignored | Both must be absolute paths; a relative value falls back to the default |

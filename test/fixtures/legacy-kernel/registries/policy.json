@@ -351,10 +351,10 @@
       "rule_default": 0.5
     },
     "redaction": {
-      "note": "Applied, in list order, to the prompt text before it enters the judge state and before it reaches the tie-break daemon; each match becomes <redacted:kind>, so an earlier, more specific kind (private-key-block, sk-ant-) wins over a later, broader one (private-key, sk-). Classes: private keys (PEM/PGP block end to end, and an unterminated header with its body), Google private_key_id, JWTs, prefixed provider tokens (Anthropic, OpenAI, sk-, Stripe sk_/rk_, AWS access key id, GitHub gho_/ghp_/ghr_/ghs_/ghu_/github_pat_, GitLab, npm, Hugging Face, Google, Atlassian, Slack), URL credentials, bearer tokens, an AWS secret access key in an assignment, generic password/secret/token/api key/credential assignments, and personal data (email, E.164 phone, Brazilian CNPJ and CPF). A superset of install.sh SECRET_PATTERNS, which keeps its own bash copy (no node at install time) and stays a secrets-only gate. Every quantifier is bounded and no repetition nests an unbounded one, so each pattern is linear-time by construction; the caller also caps the text before redacting (judge: 2 x max_state_bytes chars, tie-break: 2 x its text limit) and cuts to the final limit afterwards. Each pattern is a JavaScript RegExp source, compiled with flag g by the loader only to refuse one that does not compile.",
+      "note": "Applied, in list order, to the prompt text before it enters the judge state and before it reaches the tie-break daemon; each match becomes <redacted:kind>, so an earlier, more specific kind (private-key-block, sk-ant-) wins over a later, broader one (private-key, sk-). Classes: private keys (PEM/PGP block end to end, and an unterminated header with its body), Google private_key_id, JWTs, prefixed provider tokens (Anthropic, OpenAI, sk-, Stripe sk_/rk_, AWS access key id, GitHub gho_/ghp_/ghr_/ghs_/ghu_/github_pat_, GitLab, npm, Hugging Face, Google, Atlassian, Slack), URL credentials (the password part may hold an at sign), HTTP basic-scheme and bearer credentials, an AWS secret access key in an assignment, generic password/secret/token/api key/credential assignments (bare or quoted values), and personal data (email, E.164 phone, Brazilian national phone, CNPJ and CPF). A superset of install.sh SECRET_PATTERNS, which keeps its own bash copy (no node at install time) and stays a secrets-only gate. The shipped set is linear; the loader refuses unbounded quantifiers (*, +, {m,}) and quantified groups holding alternation or nested quantifiers, and pins this exact list by SHA-256 in src/registry/policy-judge.ts, so changing, adding, removing or reordering a pattern is a reviewed code change. The caller also caps the text before redacting (judge: 2 x max_state_bytes chars, tie-break: 2 x its text limit) and cuts to the final limit afterwards. Each pattern is a JavaScript RegExp source, compiled with flag g by the loader only to refuse one that does not compile.",
       "patterns": [
-        { "kind": "private-key-block", "pattern": "-----BEGIN (?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\\s\\\\:,.]{0,8192}-----END (?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?-----" },
-        { "kind": "private-key", "pattern": "-----BEGIN (?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\\s\\\\:,.-]{0,8192}" },
+        { "kind": "private-key-block", "pattern": "-----BEGIN [A-Z0-9 ]{0,51}PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\\s\\\\:,.]{0,8192}-----END [A-Z0-9 ]{0,51}PRIVATE KEY(?: BLOCK)?-----" },
+        { "kind": "private-key", "pattern": "-----BEGIN [A-Z0-9 ]{0,51}PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\\s\\\\:,.-]{0,8192}" },
         { "kind": "private-key-id", "pattern": "\"private_key_id\"\\s{0,16}:\\s{0,16}\"?[A-Za-z0-9]{0,128}\"?" },
         { "kind": "jwt", "pattern": "(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{4,2048}\\.eyJ[A-Za-z0-9_-]{4,8192}\\.[A-Za-z0-9_-]{0,2048}" },
         { "kind": "anthropic-key", "pattern": "sk-ant-[A-Za-z0-9_-]{10,512}" },
@@ -370,14 +370,16 @@
         { "kind": "google-key", "pattern": "AIza[0-9A-Za-z_-]{35}" },
         { "kind": "atlassian-token", "pattern": "ATATT[A-Za-z0-9_=.-]{20,512}" },
         { "kind": "slack-token", "pattern": "xox[abprs]-[A-Za-z0-9-]{10,255}" },
-        { "kind": "url-credentials", "pattern": "(?<![A-Za-z0-9+.-])[a-z][a-z+]{0,31}://[^/\\s:@]{1,256}:[^@\\s/]{1,256}@" },
+        { "kind": "url-credentials", "pattern": "(?<![A-Za-z0-9+.-])[a-z][a-z+]{0,31}://[^/\\s:@]{1,256}:[^\\s/]{1,256}@" },
+        { "kind": "basic-auth", "pattern": "[Bb]asic\\s{1,4}[A-Za-z0-9+/]{8,4096}={0,2}" },
         { "kind": "bearer-token", "pattern": "[Bb][Ee][Aa][Rr][Ee][Rr]\\s{1,4}[A-Za-z0-9._~+/-]{16,4096}={0,2}" },
-        { "kind": "aws-secret", "pattern": "(?<![A-Za-z0-9])(?:[Aa][Ww][Ss][_-]?)?[Ss][Ee][Cc][Rr][Ee][Tt][_-]?(?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?)?[Kk][Ee][Yy][\"']?\\s{0,8}[:=]\\s{0,8}[\"']?[A-Za-z0-9/+=]{40}" },
-        { "kind": "secret-assignment", "pattern": "(?<![A-Za-z0-9])(?:[A-Za-z0-9]{1,32}[_-]?)?(?:[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Ww][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Kk][Ee][Yy]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]?)[\"']?\\s{0,8}[:=]\\s{0,8}[\"']?[^\\s\"'<>]{4,256}" },
-        { "kind": "email", "pattern": "(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\\.[A-Za-z0-9-]{1,63}){1,8}" },
-        { "kind": "phone", "pattern": "(?<![A-Za-z0-9+])\\+[1-9](?:[ .()-]{0,2}[0-9]){7,14}(?![0-9])" },
+        { "kind": "aws-secret", "pattern": "(?<![A-Za-z0-9])(?:[Aa][Ww][Ss])?[_-]?[Ss][Ee][Cc][Rr][Ee][Tt][_-]?(?:[Aa][Cc][Cc][Ee][Ss][Ss])?[_-]?[Kk][Ee][Yy][\"']?\\s{0,8}[:=]\\s{0,8}[\"']?[A-Za-z0-9/+=]{40}" },
+        { "kind": "secret-assignment", "pattern": "(?<![A-Za-z0-9])[A-Za-z0-9_-]{0,33}(?:[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Ww][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Kk][Ee][Yy]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]?)[\"']?\\s{0,8}[:=]\\s{0,8}(?:\"[^\"\\n]{4,256}\"|'[^'\\n]{4,256}'|[\"']?[^\\s\"'<>]{4,256})" },
+        { "kind": "email", "pattern": "(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}\\.[A-Za-z0-9.-]{0,251}[A-Za-z0-9-]" },
+        { "kind": "phone", "pattern": "(?<![A-Za-z0-9+])\\+[1-9][ .()-]{0,2}[0-9][ .()-]{0,2}[0-9][ .()-]{0,2}[0-9][ .()-]{0,2}[0-9][ .()-]{0,2}[0-9][ .()-]{0,2}[0-9][0-9 .()-]{0,20}[0-9](?![0-9])" },
         { "kind": "cnpj", "pattern": "(?<![0-9])[0-9]{2}\\.?[0-9]{3}\\.?[0-9]{3}/?[0-9]{4}-?[0-9]{2}(?![0-9])" },
-        { "kind": "cpf", "pattern": "(?<![0-9])[0-9]{3}\\.?[0-9]{3}\\.?[0-9]{3}-?[0-9]{2}(?![0-9])" }
+        { "kind": "cpf", "pattern": "(?<![0-9])[0-9]{3}\\.?[0-9]{3}\\.?[0-9]{3}-?[0-9]{2}(?![0-9])" },
+        { "kind": "phone-br", "pattern": "(?<![0-9A-Za-z])(?:\\([1-9]{2}\\) {0,2}9?[0-9]{4}[ -]?[0-9]{4}|[1-9]{2}[ -]9?[0-9]{4}[ -]?[0-9]{4}|[1-9]{2}9[0-9]{8})(?![0-9A-Za-z])" }
       ]
     },
     "breaker": {

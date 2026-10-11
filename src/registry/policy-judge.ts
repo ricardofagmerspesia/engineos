@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { patternShape } from './policy-judge-pattern';
 import { strictReader } from './strict';
 
 // The `.judge` block of registries/policy.json (contracts.md@rev2 §6.2). The
@@ -6,8 +8,10 @@ import { strictReader } from './strict';
 // a structural match keeps JudgePolicy assignable both ways.
 //
 // No key material is ever read here: key_env is the NAME of the environment
-// variable that holds it, and the loader refuses anything that is not shaped
-// like such a name.
+// variable that holds it. That name, the opt-in switch and the redaction list
+// are pinned in code below (E2): registries are data that ENGINEOS_ROOT can
+// point anywhere, so a registry must not choose which secret is sent, what
+// turns the judge on, or how little of the prompt is redacted.
 
 export type JudgeMode = 'shadow' | 'advisory' | 'authoritative';
 
@@ -46,7 +50,6 @@ export interface JudgePolicy {
 }
 
 const JUDGE_MODES: readonly JudgeMode[] = ['shadow', 'advisory', 'authoritative'];
-const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
 const KIND = /^[a-z][a-z0-9-]*$/;
 // A bare file name: the breaker state lives in the telemetry directory, and a
 // separator or a dot-dot segment would let the registry aim the write elsewhere.
@@ -56,8 +59,20 @@ const STATE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 // registry imports; a provider change is a code change in both, never a
 // registry edit.
 const JUDGE_ENDPOINT_ORIGIN = 'https://api.typesafe.ai';
-// `{m,}` at the start of the remaining source: a quantifier with no upper bound.
-const OPEN_RANGE = /^\{[0-9]{1,6},\}/;
+// E2 pins. jev.ts reads the variable names from the loaded policy, so these
+// values are the only ones it can ever see.
+const JUDGE_KEY_ENV = 'TYPESAFE_API_KEY';
+const JUDGE_ENABLED_ENV = 'ENGINEOS_JUDGE';
+const JUDGE_ENABLED_VALUE = 'jev';
+// The judge state cap. The pre-cap before redaction is twice this, so a larger
+// registry value would widen both what leaves the machine and what redaction
+// scans inside the hook budget; it may be lowered, never raised, by data.
+const MAX_STATE_BYTES_CAP = 16384;
+// SHA-256 hex of JSON.stringify(judge.redaction.patterns) as parsed from
+// registries/policy.json (rows and key order as in the file). Changing, adding,
+// removing or reordering a pattern changes this value, so a weaker list cannot
+// arrive as a registry edit; update it only with a reviewed pattern change.
+const REDACTION_PATTERNS_SHA256 = 'dffb903c4b0f554d494e3cf78981703f3c85f42c97240de5be2e844d82d86058';
 
 const { malformed, requireRecord, requireString, requireNumber, requireRows } = strictReader('policy.json');
 
@@ -69,16 +84,16 @@ export function parseJudge(value: unknown, breakerScopes: readonly string[]): Ju
   // case and the deterministic tier already answers when the judge does not.
   if (retries !== 0) malformed(`${at}.retries must be 0`);
   return {
-    enabled_env: envName(judge['enabled_env'], `${at}.enabled_env`),
-    enabled_value: nonBlank(judge['enabled_value'], `${at}.enabled_value`),
+    enabled_env: pinned(judge['enabled_env'], `${at}.enabled_env`, JUDGE_ENABLED_ENV),
+    enabled_value: pinned(judge['enabled_value'], `${at}.enabled_value`, JUDGE_ENABLED_VALUE),
     provider: nonBlank(judge['provider'], `${at}.provider`),
     endpoint: httpsEndpoint(judge['endpoint'], `${at}.endpoint`),
     model: nonBlank(judge['model'], `${at}.model`),
     timeout_ms: positiveInteger(judge['timeout_ms'], `${at}.timeout_ms`),
     retries,
-    key_env: envName(judge['key_env'], `${at}.key_env`),
+    key_env: pinned(judge['key_env'], `${at}.key_env`, JUDGE_KEY_ENV),
     mode: judgeMode(judge['mode'], `${at}.mode`),
-    max_state_bytes: positiveInteger(judge['max_state_bytes'], `${at}.max_state_bytes`),
+    max_state_bytes: stateCap(judge['max_state_bytes'], `${at}.max_state_bytes`),
     thresholds: parseThresholds(judge['thresholds'], `${at}.thresholds`),
     redaction: { patterns: parsePatterns(judge['redaction'], `${at}.redaction`) },
     breaker: parseBreaker(judge['breaker'], `${at}.breaker`, breakerScopes),
@@ -102,43 +117,25 @@ function parseThresholds(value: unknown, at: string): JudgeThresholds {
 // Patterns stay strings (src/judge/redact.ts compiles them); each is compiled
 // here once, with the flag redact.ts uses, only so a broken one is refused at
 // load rather than skipped at redaction time, where a skip would send the secret.
+// Each row is checked first so a malformed edit names its row; the hash pin then
+// refuses any list but the reviewed one.
 function parsePatterns(value: unknown, at: string): JudgeRedactionPattern[] {
   const redaction = requireRecord(value, at);
-  const rows = requireRows(redaction['patterns'], `${at}.patterns`);
+  const raw = redaction['patterns'];
+  const rows = requireRows(raw, `${at}.patterns`);
   if (rows.length === 0) malformed(`${at}.patterns must not be empty`);
-  return rows.map((row, i) => {
+  const patterns = rows.map((row, i) => {
     const kind = requireString(row['kind'], `${at}.patterns[${i}].kind`);
     if (!KIND.test(kind)) malformed(`${at}.patterns[${i}].kind must be a lower-case slug`);
     const pattern = nonBlank(row['pattern'], `${at}.patterns[${i}].pattern`);
     if (!compiles(pattern)) malformed(`${at}.patterns[${i}].pattern does not compile as a regular expression`);
-    if (hasUnboundedQuantifier(pattern)) malformed(`${at}.patterns[${i}].pattern must bound every quantifier ({m,n}, ?)`);
+    const shape = patternShape(pattern);
+    if (shape !== 'linear') malformed(`${at}.patterns[${i}].pattern is not linear-time (${shape})`);
     return { kind, pattern };
   });
-}
-
-// Redaction runs on every judged prompt inside the hook budget, so a pattern
-// must be linear-time by construction: `*`, `+` and `{m,}` are refused outside
-// a character class, which also rules out nested unbounded repetition. Bounded
-// forms ({m,n}, {m}, ?) remain, so the worst case per start position is a
-// constant the pattern itself states; keeping a bounded nested group
-// unambiguous (as the shipped set does) keeps that constant small.
-function hasUnboundedQuantifier(source: string): boolean {
-  let inClass = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === '\\') {
-      index += 1;
-      continue;
-    }
-    if (inClass) {
-      if (char === ']') inClass = false;
-      continue;
-    }
-    if (char === '[') inClass = true;
-    else if (char === '*' || char === '+') return true;
-    else if (char === '{' && OPEN_RANGE.test(source.slice(index))) return true;
-  }
-  return false;
+  const digest = createHash('sha256').update(JSON.stringify(raw)).digest('hex');
+  if (digest !== REDACTION_PATTERNS_SHA256) malformed(`${at}.patterns differ from the list pinned in code`);
+  return patterns;
 }
 
 function compiles(pattern: string): boolean {
@@ -165,10 +162,16 @@ function judgeMode(value: unknown, path: string): JudgeMode {
   return known ?? malformed(`${path} must be shadow, advisory or authoritative`);
 }
 
-function envName(value: unknown, path: string): string {
-  const name = requireString(value, path);
-  if (!ENV_NAME.test(name)) malformed(`${path} must be an environment variable name`);
-  return name;
+function pinned(value: unknown, path: string, expected: string): string {
+  const text = requireString(value, path);
+  if (text !== expected) malformed(`${path} must be ${expected}`);
+  return text;
+}
+
+function stateCap(value: unknown, path: string): number {
+  const bytes = positiveInteger(value, path);
+  if (bytes > MAX_STATE_BYTES_CAP) malformed(`${path} must be at most ${MAX_STATE_BYTES_CAP}`);
+  return bytes;
 }
 
 function httpsEndpoint(value: unknown, path: string): string {

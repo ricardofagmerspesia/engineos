@@ -717,7 +717,7 @@ margin would let an exact tie decide (refusal text as T09a's other cuts:
 
 ```json
 "judge": {
-  "note": "TypeSafe Jev as the opt-in semantic judge (ADR docs/adr/2026-10-10-three-tier-router-and-jev-judge.md). Off unless the enabled_env equals enabled_value AND key_env is non-empty; key_env is the NAME of the environment variable holding the key, and no key material ever lives in this registry. Prompts leave the machine: redaction runs before the request, only text the judge-only source test proves the user typed is sent, and the endpoint origin is fixed in code to https://api.typesafe.ai (the loader refuses any other); mode shadow records only. Every threshold is a placeholder until T13; intent_default and rule_default must be above 0, because a zero cut would make an intent or rule the judge never scored qualify.",
+  "note": "TypeSafe Jev as the opt-in semantic judge (ADR docs/adr/2026-10-10-three-tier-router-and-jev-judge.md). Off unless the enabled_env equals enabled_value AND key_env is non-empty; key_env is the NAME of the environment variable holding the key, and no key material ever lives in this registry. enabled_env, enabled_value and key_env are pinned in code (src/registry/policy-judge.ts) to exactly these values, max_state_bytes is capped there at 16384, and the redaction list is pinned there by hash; the loader refuses any other value, so the registry cannot choose the key, the switch or a weaker redaction. Prompts leave the machine: redaction runs before the request, only text the judge-only source test proves the user typed is sent, and the endpoint origin is fixed in code to https://api.typesafe.ai (the loader refuses any other); mode shadow records only. Every threshold is a placeholder until T13; intent_default and rule_default must be above 0, because a zero cut would make an intent or rule the judge never scored qualify.",
   "enabled_env": "ENGINEOS_JUDGE",
   "enabled_value": "jev",
   "provider": "typesafe",
@@ -737,11 +737,11 @@ margin would let an exact tie decide (refusal text as T09a's other cuts:
   "redaction": {
     "note": "(rev 4) Applied in list order before the judge state and the tie-break daemon; see registries/policy.json for the authoritative note.",
     "patterns": [
-      "... 25 { kind, pattern } entries, authoritative in registries/policy.json (rev 4, §17.4):",
+      "... 27 { kind, pattern } entries, authoritative in registries/policy.json and pinned by hash in code (rev 4, §17.4, §17.11):",
       "private-key-block, private-key, private-key-id, jwt, anthropic-key, openai-key,",
       "sk-key, stripe-key, aws-key, github-token, github-pat, gitlab-token, npm-token,",
       "huggingface-token, google-key, atlassian-token, slack-token, url-credentials,",
-      "bearer-token, aws-secret, secret-assignment, email, phone, cnpj, cpf"
+      "basic-auth, bearer-token, aws-secret, secret-assignment, email, phone, cnpj, cpf, phone-br"
     ]
   },
   "breaker": {
@@ -763,15 +763,20 @@ is a meaningful (if aggressive) calibration that disables that doubt test;
 `patterns[].pattern` a JavaScript
 `RegExp` source compiled with flag `g` at load (a non-compiling pattern is a
 refusal; rev 4: so is a pattern that uses `*`, `+` or an open range `{m,}`
-outside a character class, so every pattern is linear-time); `breaker.scope`
-must be a member of `policy.breaker.scopes`. rev 4: `endpoint` must parse as a
+with any digit count outside a character class, or a quantified group whose
+body holds `|` or another quantifier (§17.11), and so is any `patterns` array
+whose SHA-256 differs from the one pinned in code); `breaker.scope`
+must be a member of `policy.breaker.scopes`. rev 4 (§17.11): `key_env` must be
+exactly `TYPESAFE_API_KEY`, `enabled_env` exactly `ENGINEOS_JUDGE`,
+`enabled_value` exactly `jev`, and `max_state_bytes` at most 16384. rev 4: `endpoint` must parse as a
 URL whose origin is exactly `https://api.typesafe.ai` (default port, no URL
 credentials); the allowlist lives in code. Because `parseJudge` runs inside the
 strict `policy.json` loader, an off-origin endpoint, like any other refusal in
 this block, refuses the **whole** `policy.json` load (every kernel answer that
 reads the policy exits 1; `validate` reports C38c `judge-block-malformed`).
-The `patterns` array shown above is abbreviated; the 25 entries in
-`registries/policy.json` are the contract (§17.4).
+The `patterns` array shown above is abbreviated; the 27 entries in
+`registries/policy.json`, pinned by hash in `src/registry/policy-judge.ts`, are
+the contract (§17.4, §17.11).
 `failure_threshold` is read from the existing `policy.breaker.failure_threshold` (3).
 
 ### 6.3 `registries/decision-rules.json` per-rule additions
@@ -1535,3 +1540,89 @@ start, never a silenced guard):
 
 Tests: no new list. The existing T13 list (§16 and the plan) covers these
 surfaces at the approved final stage.
+
+### 17.11 Re-review fixes (E1–E4)
+
+Inputs: the security re-review of PR #132 at `4ba0cd4` (2026-10-11, APPROVE
+WITH CONDITIONS, new low findings N1–N4) and the second fix pass. Still rev 4:
+these lines tighten §6.2, §17.4 and §17.7 without a new revision. Where §17.4
+lists 25 kinds or the bounded-quantifier rule alone, this section supersedes it.
+
+- **E1 — loader linearity** (`src/registry/policy-judge-pattern.ts`
+  `patternShape`, called from `src/registry/policy-judge.ts`). Outside a
+  character class the loader refuses `*`, `+`, and `{m,}` with any digit count
+  (the old check allowed only 1–6 digits), and refuses any group followed by
+  a quantifier (`?` or `{...}`) whose body holds `|` or another quantifier at
+  any nesting depth. Character classes are exempt, as are alternations and
+  quantifiers inside a group that is not itself quantified. A refusal names
+  the pattern's JSON path and the shape (`unbounded-quantifier`,
+  `quantified-ambiguous-group`, `unbalanced-group`). The shipped set is
+  linear; the loader refuses unbounded quantifiers and quantified groups
+  holding alternation or nested quantifiers, and pins the shipped list by hash
+  (E2). The shape test is a floor, not a proof.
+- **E2 — registry pins** (`src/registry/policy-judge.ts`, beside
+  `JUDGE_ENDPOINT_ORIGIN`). `key_env` must equal `TYPESAFE_API_KEY`,
+  `enabled_env` `ENGINEOS_JUDGE` and `enabled_value` `jev`; `max_state_bytes`
+  must be at most `16384` (the shipped value); and
+  `sha256(JSON.stringify(judge.redaction.patterns))`, over the array as parsed
+  (rows and key order as in the file), must equal
+  `dffb903c4b0f554d494e3cf78981703f3c85f42c97240de5be2e844d82d86058`. Row
+  checks run first, then the hash. Any mismatch is a malformed `judge` block,
+  so the whole `policy.json` load is refused (C38c `judge-block-malformed`).
+  `src/judge/jev.ts` is unchanged: it reads the env names from the loaded,
+  now pinned, policy. `test/fixtures/legacy-kernel/registries/policy.json`
+  carries the identical `judge.redaction` block (same hash).
+- **E3 — redaction classes.** 27 kinds, in order: `private-key-block`,
+  `private-key`, `private-key-id`, `jwt`, `anthropic-key`, `openai-key`,
+  `sk-key`, `stripe-key`, `aws-key`, `github-token`, `github-pat`,
+  `gitlab-token`, `npm-token`, `huggingface-token`, `google-key`,
+  `atlassian-token`, `slack-token`, `url-credentials`, `basic-auth`,
+  `bearer-token`, `aws-secret`, `secret-assignment`, `email`, `phone`, `cnpj`,
+  `cpf`, `phone-br`. New: `basic-auth` (`[Bb]asic\s{1,4}[A-Za-z0-9+/]{8,4096}={0,2}`)
+  and `phone-br` (word-bounded Brazilian national number: `(DD)`, `DD ` or
+  `DD-` then an 8- or 9-digit subscriber number with an optional separator,
+  or the bare 11-digit mobile form `DD9` plus 8 digits). Changed:
+  `url-credentials` password part `[^\s/]{1,256}` (may hold `@`; backtracks to
+  the last `@` before `/` or whitespace); `secret-assignment` gains quoted
+  value branches `"[^"\n]{4,256}"` and `'[^'\n]{4,256}'`. Rewritten without
+  quantified groups to pass E1, matching the same or more text:
+  `private-key-block` and `private-key` (`[A-Z0-9 ]{0,51}` for the key-type
+  words), `aws-secret` (`(?:AWS)?[_-]?` and `(?:ACCESS)?[_-]?` forms),
+  `secret-assignment` (prefix `[A-Za-z0-9_-]{0,33}`), `email` (domain
+  `[A-Za-z0-9-]{1,63}\.[A-Za-z0-9.-]{0,251}[A-Za-z0-9-]`) and `phone` (seven
+  unrolled separator-digit steps, then a bounded tail ending in a digit; still
+  at least 8 digits after `+`). Each pattern's worst time over adversarial
+  inputs of 32,768 characters (`2 × max_state_bytes`) stayed under 2 ms.
+  Intentionally unmasked classes: none (ADR "Classes intentionally unmasked").
+- **E4 — unresponsive host** (`adapters/claude-code-mod/hooks/register.ts`,
+  `host/lifetime.ts`, `host/protocol.ts`). Only a `callHook` timeout abandons
+  the host: its state is `failed` for the rest of the session, the mod calls
+  `child.return()` (the host's exit handler removes the presence record and
+  socket) and stops routing to it, logging at debug, so the shell hooks serve.
+  A refused, non-ok or malformed answer is logged and skipped as before; a
+  dead host is caught by the existing spawn-loop exit. After a timeout the
+  remaining hooks of that matcher group are not called for that event; the
+  §17.7 git fallback ask still applies to that call. Host watchdog: the host
+  stops itself (removes record and socket, exits, `stopping
+  reason=stalled-hook`) when it holds a hook request longer than
+  `HOST_STALL_MS = max(HOOK_DEADLINE_MS) + 5 s` (15 s today); the stall check
+  runs before the heartbeat stamp, so an abandoned host never re-stamps, and
+  the record stays fresh at most about 20 s after a stalled request arrives.
+  The deadline table moved to `host/protocol.ts` as `HOOK_DEADLINE_MS`, values
+  unchanged. While the host is down the §17.7 fallback is over-inclusive (it
+  asks on any `gh` or `git` substring, `high` included); accepted as fail-safe
+  and kept as decided in D2.
+- **Residual rulings.** The re-review accepted (a) the same-session second
+  process, (b) the listen-to-handshake race, (c) the fallback skipped under
+  `ENGINEOS_GIT_WRITES=auto`, and (d) lexical redaction and same-uid trust,
+  with the E3 shapes masked. New residual: a synchronously blocked host can
+  leave its record fresh up to `PRESENCE_STALE_MS` (30 s) after its last stamp
+  unless the engine escalates to SIGKILL (the pid probe then fails); it never
+  affects `git-write-guard`. The owner-field change and the unresponsive-host
+  family are a tracked follow-up.
+- **Tests.** Added to the T13 list at the approved final stage: loader
+  refusals for each E1 shape and each E2 pin (including a one-character
+  pattern edit and a reordered list), acceptance of the shipped block and of
+  the fixture block, an E3 coverage corpus with negatives, the adversarial
+  timing test at `2 × max_state_bytes`, and the E4 abandon, no-double-kill,
+  fallback-after-timeout and host-watchdog cases.

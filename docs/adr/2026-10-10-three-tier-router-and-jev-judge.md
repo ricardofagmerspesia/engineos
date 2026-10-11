@@ -7,8 +7,8 @@ Source: `docs/specs/2026-10-10-routing-replacement-plan.md` §1–§4a, §8;
 contracts `docs/specs/2026-10-10-routing-replacement-contracts.md` (rev 4;
 rev 3 adds the embedding tie-break semantics and records the in-process spawn
 deviation; rev 4, the security fix pass on PR #132, records the presence v2
-contract, the judge egress rules and the add-only fold; all are reflected
-below);
+contract, the judge egress rules and the add-only fold, and its §17.11 the
+re-review fixes E1-E4; all are reflected below);
 GitHub issue #118 (plan), #119 (this ticket).
 
 ## Context
@@ -103,10 +103,13 @@ Option 1, with these bound sub-decisions:
   size before it enters the request. The request body carries only `model`,
   `state` and `questions`, and the endpoint's origin is allowlisted in code
   (`https://api.typesafe.ai`); "Threat model and redaction" below is the
-  binding description. An authoritative fold is add-only: every deterministic
-  survivor with a high risk floor is appended after the judge-chosen set and is
-  never suppressed by it, and the model tier is the higher of
-  `route.model_tier` and the folded set's tier.
+  binding description. An authoritative fold keeps every deterministic
+  survivor with a high risk floor (appended after the judge-chosen set and
+  never suppressed by it), and the model tier is the higher of
+  `route.model_tier` and the folded set's tier. It may drop a medium or
+  null-floor intent and that intent's agent; "The authoritative fold" below
+  states exactly what it can and cannot remove. Authoritative mode ships
+  disabled (`mode: shadow`).
   Zero-data-retention terms from TypeSafe are a precondition for any team-wide
   default-on; until then the judge is a per-machine opt-in.
 - **Source check.** `classifyPromptSource` runs before anything else; a
@@ -167,7 +170,8 @@ Option 1, with these bound sub-decisions:
   without the bundle. The two lists are no longer the same set: the policy list
   adds personal-data classes (email, phone, CPF, CNPJ) and token formats that
   the installer's secret scan does not use. They are reviewed together, not
-  checked, until a validator row is added.
+  checked, until a validator row is added. The policy list itself is pinned by
+  hash in `src/registry/policy-judge.ts` (E2), so changing it is a code change.
 
 ## Threat model and redaction
 
@@ -210,6 +214,27 @@ kernel answer that reads the policy exits 1, and `validate` reports C38c
 policy built any other way, and answers `skipped: disabled` before the breaker
 file is read and before any byte is sent.
 
+**Registry pins (E2).** The same argument applies to the rest of the judge
+block, so the loader pins it in code next to the origin and refuses any other
+value as a malformed `judge` block (the whole `policy.json` load, C38c
+`judge-block-malformed`):
+- `key_env` must be exactly `TYPESAFE_API_KEY`, so a registry cannot choose
+  which environment secret is sent as the bearer key;
+- `enabled_env` must be exactly `ENGINEOS_JUDGE` and `enabled_value` exactly
+  `jev`, so a registry cannot turn the judge on through a variable that is
+  always set;
+- `max_state_bytes` is capped at 16,384 (the shipped value), so a registry
+  can lower the state size and the redaction pre-cap but never raise them;
+- `judge.redaction.patterns` must hash to the SHA-256 held in
+  `src/registry/policy-judge.ts`, computed over `JSON.stringify` of the array
+  as parsed (rows and key order as in the file). Changing, adding, removing or
+  reordering a pattern is therefore a reviewed code change, and a registry
+  cannot ship a weaker list. The legacy-kernel fixture carries the identical
+  block.
+
+`src/judge/jev.ts` still reads the variable names from the loaded policy;
+after the pins those are the only names it can see.
+
 **Order of operations.**
 1. Cap the text before redaction, so no pattern runs over unbounded input. The
    judge caps at twice `max_state_bytes` in characters; the tie-break caps at
@@ -240,17 +265,45 @@ order:
 9. `gitlab-token`, `npm-token`, `huggingface-token`, `google-key`,
    `atlassian-token`, `slack-token`: `glpat-`, `npm_`, `hf_`, `AIza`, `ATATT`,
    `xox[abprs]-`;
-10. `url-credentials`: `[a-z][a-z+]{0,31}://[^/\s:@]{1,256}:[^@\s/]{1,256}@`;
-11. `bearer-token`: a bearer authorization value;
-12. `aws-secret`: an AWS secret access key in an assignment;
-13. `secret-assignment`: a password, passwd, pwd, secret, token, API key, access
-    key, private key or credential(s) name assigned a value with `=` or `:`;
-14. `email`, `phone` (E.164-like, bounded), `cnpj`, `cpf`.
+10. `url-credentials`: `[a-z][a-z+]{0,31}://[^/\s:@]{1,256}:[^\s/]{1,256}@`.
+    The password part may itself hold `@`: the bounded run backtracks to the
+    last `@` before a `/` or whitespace, so the whole password is masked;
+11. `basic-auth`: an HTTP basic-scheme value, `[Bb]asic\s{1,4}` followed by
+    8 to 4,096 base64 characters and optional padding;
+12. `bearer-token`: a bearer authorization value;
+13. `aws-secret`: an AWS secret access key in an assignment;
+14. `secret-assignment`: a password, passwd, pwd, secret, token, API key, access
+    key, private key or credential(s) name assigned a value with `=` or `:`.
+    A double- or single-quoted value is masked whole (4 to 256 characters, no
+    line break), so a multi-word quoted password does not leak its later words;
+15. `email`, `phone` (E.164-like: `+`, then at least 8 digits with bounded
+    separators), `cnpj`, `cpf`;
+16. `phone-br`: a Brazilian national number with no country code, word-bounded:
+    two-digit area code in parentheses or followed by a space or hyphen, then
+    an 8- or 9-digit subscriber number with an optional separator, or the bare
+    11-digit mobile form (area code, then `9`, then 8 digits).
 
-Every pattern is linear-time by construction. The loader refuses a pattern that
-uses `*`, `+` or an open range `{m,}` outside a character class, which also
-rules out nested unbounded repetition, so a crafted prompt cannot make
-redaction run away. Only bounded forms (`{m,n}`, `{m}`, `?`) remain.
+**Linear-time patterns (E1).** The shipped set is linear; the loader refuses
+unbounded quantifiers and quantified groups holding alternation or nested
+quantifiers, and pins the shipped list by hash (E2). In detail, outside a
+character class the loader (`src/registry/policy-judge-pattern.ts`) refuses
+`*`, `+` and `{m,}` with any digit count, and refuses any group followed by a
+quantifier (`?` or `{...}`) whose body, at any depth, holds `|` or another
+quantifier: `(?:a|a){1,28}b` is bounded and still exponential. Character
+classes are exempt, as is an alternation inside a group that is not itself
+quantified. This is a syntactic floor, not a proof (adjacent overlapping
+bounded runs are polynomial in their bounds), which is why the hash pin, not
+the shape test, is what holds the shipped list in place. Every shipped pattern
+was timed against adversarial inputs of 32,768 characters (twice
+`max_state_bytes`): the slowest single pattern took under 2 ms.
+
+**Classes intentionally unmasked** (the `## Redaction` statement
+`rule-sensitive-data` requires). None. No class is left unmasked on purpose.
+What is not masked is the residual in (d) below: novel secret formats and
+personal data with no fixed shape. Masking errs toward over-redaction:
+`basic-auth` also masks the word "basic" followed by a long word in ordinary
+prose, and `phone-br` masks any word-bounded number of that shape. Both only
+remove text from the judge's view.
 
 **Prompt-source check fails closed for the judge.** The judge receives a prompt
 only when all three hold:
@@ -265,34 +318,72 @@ non-user prompt is never sent, and no judge fact is declared for it. Doubt
 therefore resolves toward no egress. Kernel routing and the tie-break are
 unaffected by this judge-only rule.
 
-**The authoritative fold is add-only.** Even a fully trusted judge answer
-cannot remove a deterministic high-floor intent or lower the model tier:
-- every deterministic survivor with a high risk floor is appended after the
-  judge's choice and is protected from suppression by it;
-- the tier is the higher of `route.model_tier` and the folded set's tier;
-- `rule-spec-threshold` reads the folded set (the judge's choice plus those
-  kept survivors) before suppression.
+**What the authoritative fold can and cannot remove.** In authoritative mode
+the judge chooses the intent set, so it can drop a deterministic survivor whose
+risk floor is medium or null, and that intent's agent with it (for example
+`review` and its `security-reviewer`, or `backend` and its
+`backend-coordinator`). It cannot:
+- drop a deterministic survivor with a high risk floor: those are appended
+  after the judge's choice and protected from suppression by it;
+- lower the model tier: the tier is the higher of `route.model_tier` and the
+  folded set's tier;
+- lower the risk floor or remove a decision-rule match: both stay raise-only
+  and add-only, and `rule-spec-threshold` reads the folded set (the judge's
+  choice plus those kept survivors) before suppression.
 
-A manipulated or wrong judge answer can add work or raise a tier. It cannot
-remove a gate.
+Authoritative mode ships disabled: the registry says `mode: shadow`, and the
+move to `authoritative` waits for the golden-set evidence named under "Judge"
+above. In shadow and advisory mode the judge changes no routing answer.
 
-**Residual risks, accepted.**
-- Redaction is lexical. A novel secret format, an unusual phone or ID layout,
-  or personal data with no fixed shape (names, addresses, free-text health or
-  financial details) can pass through. Shadow mode records only, but the request
-  is still sent in shadow mode.
-- Processes running as the same user are trusted. The runtime directory, the
-  presence record, the sockets, the compile cache and the daemon's model cache
-  are protected against other users, not against code already running under
-  the developer's uid.
-- The presence record names a session, not an owner. A second Claude Code
+**Unresponsive host (E4).** The adapter's host can be alive and still stall a
+hook. On the first `callHook` timeout the mod abandons the host for the rest of
+the session: it marks the host failed, ends it (`child.return()`; the host's
+exit handler removes the presence record and the socket) and stops routing to
+it, so the shell hooks serve again. The abandon is logged at debug. Only a
+timeout abandons the host; a refused, non-ok or malformed answer is logged and
+skipped as before, and a dead host is caught by the existing spawn-loop exit.
+On the call that timed out, the remaining hooks of that matcher group are not
+called, and the mod's git fallback ask still applies to that call. The host
+also has its own watchdog (`adapters/claude-code-mod/host/lifetime.ts`): when
+it holds one hook request longer than `HOST_STALL_MS` (the largest
+`HOOK_DEADLINE_MS` value plus 5 s, 15 s today) it removes its record and
+socket and exits with `stopping reason=stalled-hook`. The stall check runs
+before the heartbeat stamp, so an abandoned host never re-stamps its record;
+the worst case is a record that stays fresh about 20 s after a stalled request
+arrives. The deadline table lives in `adapters/claude-code-mod/host/protocol.ts`
+as `HOOK_DEADLINE_MS`, with unchanged values.
+
+**Residual risks, accepted.** The re-review of 2026-10-11 at `4ba0cd4`
+(security-reviewer) accepted residuals (a) to (d) below.
+- (a) The presence record names a session, not an owner. A second Claude Code
   process on the same session id, with the adapter flag on, could have its
   advisory shell hooks stand down on the first process's live record. Closing
-  this needs an owner field in the record, out of scope for PR #132.
-  `git-write-guard` is unaffected: it never stands down.
-- A narrow race remains between the host binding its socket and the mod's
+  this needs an owner field in the record, out of scope for PR #132; the
+  owner-field change and the unresponsive-host family (E4 and the window
+  below) are a tracked follow-up. `git-write-guard` is unaffected: it never
+  stands down.
+- (b) A narrow race remains between the host binding its socket and the mod's
   first route handshake. Its worst case is a hook that fires twice or an
   adapter that fails to start; it never silences the guard.
+- (c) The mod's git fallback ask is skipped when `ENGINEOS_GIT_WRITES` is
+  exactly `auto`, the same switch the guard itself honours (`rules/git.md`).
+  The hook-error path asks with no environment check, and the shell guard runs
+  regardless.
+- (d) Redaction is lexical, and processes running as the same user are
+  trusted. A novel secret format, an unusual ID layout, or personal data with
+  no fixed shape (names, addresses, free-text health or financial details) can
+  pass through; shadow mode records only, but the request is still sent in
+  shadow mode. The runtime directory, the presence record, the sockets, the
+  compile cache and the daemon's model cache are protected against other
+  users, not against code already running under the developer's uid. The
+  common fixed shapes the re-review named (HTTP basic-scheme values, quoted
+  multi-word passwords, URL passwords holding `@`, Brazilian national phones)
+  are masked since E3 and are not part of this residual.
+- A host whose event loop is blocked synchronously runs neither its heartbeat
+  nor its watchdog nor its SIGTERM handler. Its record can stay fresh for up
+  to the 30 s stale window (`PRESENCE_STALE_MS`) after its last stamp, unless
+  the engine escalates to SIGKILL, after which the pid probe fails. This
+  window existed before E4, is bounded, and never affects `git-write-guard`.
 - The daemon installs a large third-party tree. Lifecycle scripts are off
   (`npm ci --ignore-scripts`, and `ignore-scripts=true` in the package's
   `.npmrc`), and the model is cached per pinned revision in an owner-only
@@ -310,7 +401,14 @@ the registering checkout; the mod asks on a possible git command the guard did
 not answer for; `validate` reports a missing hook target; the endpoint is
 allowlisted; redaction is bounded and pre-capped; the source check fails closed
 for the judge; the fold is add-only; the compile cache is private; and the
-daemon installs without lifecycle scripts. They go back to `security-reviewer` after integration. Accepting this
+daemon installs without lifecycle scripts. The re-review at `4ba0cd4` on
+2026-10-11 returned APPROVE WITH CONDITIONS, with four new low findings that
+the second fix pass answers: the loader refuses non-linear pattern shapes
+(E1); the key variable, the enable switch, the state cap and the redaction
+list are pinned in code (E2); basic-scheme values, quoted values, URL
+passwords holding `@` and Brazilian national phones are masked (E3); and the
+mod abandons a host after its first hook timeout (E4). They go back to
+`security-reviewer` after integration. Accepting this
 ADR does not approve a live judge call. Before the first live call with a real
 key, the developer gives a separate approval, recorded under `## Human
 decisions` in the change record (`rules/risk-autonomy.md`).
@@ -351,7 +449,8 @@ decisions` in the change record (`rules/risk-autonomy.md`).
 - We commit to maintaining: the golden set (120+ cases, 3+ per active intent,
   exemplars mirrored into the registry), `evals/BASELINE.md`, the question
   generator and the committed shadow request file in lockstep, the redaction
-  pattern list in two places, the breaker state file under the consumer's git
+  pattern list in two places (plus its hash pin in code and the identical copy
+  in the legacy-kernel fixture), the breaker state file under the consumer's git
   dir, and a security review of `src/judge/**` before the judge leaves
   individual opt-in.
 - Compatibility: `docs/COMPATIBILITY.md` "Unreleased" gains one row per
