@@ -3,7 +3,8 @@
 // presence record (adapters/claude-code-mod/host/presence.ts), the tie-break
 // client's daemon socket (src/judge/tiebreak.ts) and the shell-side presence
 // guard (src/hooks/adapter.ts). The daemon package (tools/embedding-daemon)
-// cannot import src/ and keeps its own copy of the directory rule.
+// and the generated bundle loaders (scripts/build.mjs, compile cache) cannot
+// import src/ and keep their own copies of the directory rule.
 //
 // `<base>/engineos-<uid>/`, base being XDG_RUNTIME_DIR (per-user, 0700 on
 // systemd hosts), else TMPDIR (per-user on macOS), else the OS temp dir. On a
@@ -18,11 +19,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 export const GROUP_OTHER_BITS = 0o077;
-export const PRESENCE_VERSION = 1;
+// v2 names the hooks the host serves, the checkout it read hooks/hooks.json
+// from and its build version; a v1 record is not a presence record any more.
+export const PRESENCE_VERSION = 2;
 // The session ids the in-process host accepts on `serve --session`; no other
 // id can have a presence record.
 export const HOST_SESSION_ID = /^[A-Za-z0-9._-]{1,128}$/;
+// The host re-stamps its record's mtime this often while it serves, and a
+// reader treats a record not stamped within the stale window as a dead host's:
+// a SIGKILLed host leaves its record behind, and its pid may be reused.
+export const PRESENCE_HEARTBEAT_MS = 5_000;
+export const PRESENCE_STALE_MS = 30_000;
 const SESSION_KEY_HEX = 16;
+// The hook names hooks/hooks.json can carry (adapters/claude-code-mod/host/routes.ts).
+const HOOK_NAME = /^[a-z][a-z0-9-]{0,63}$/;
+const MAX_SERVED_HOOKS = 64;
+const MAX_ROOT_CHARS = 4_096;
+const MAX_VERSION_CHARS = 64;
 
 export type FileKind = 'file' | 'socket' | 'directory' | 'symlink' | 'other';
 
@@ -35,6 +48,8 @@ export interface FileFacts {
 export interface PrivateFile {
   facts: FileFacts;
   text: string;
+  // Of the open descriptor, like `facts`.
+  mtimeMs: number;
 }
 
 export interface SessionPaths {
@@ -48,6 +63,13 @@ export interface PresenceRecord {
   socket: string;
   session: string;
   started_at: number;
+  // The hooks the host serves for this session; a shell hook stands down only
+  // for a name listed here.
+  served: string[];
+  // Real path of the checkout whose hooks/hooks.json the route table came from.
+  root: string;
+  // The host bundle's build version.
+  version: string;
 }
 
 export function runtimeDir(env: Readonly<Record<string, string | undefined>>, uid: number, fallback: () => string = tmpdir): string {
@@ -94,7 +116,7 @@ export function readPrivateFile(path: string, maxBytes: number): PrivateFile | n
     const buffer = Buffer.alloc(maxBytes + 1);
     const read = readSync(fd, buffer, 0, maxBytes + 1, 0);
     if (read > maxBytes) return null;
-    return { facts: statFacts(stat), text: buffer.toString('utf8', 0, read) };
+    return { facts: statFacts(stat), text: buffer.toString('utf8', 0, read), mtimeMs: stat.mtimeMs };
   } catch {
     return null;
   } finally {
@@ -114,10 +136,27 @@ export function parsePresence(text: string): PresenceRecord | null {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
   const record: Record<string, unknown> = { ...parsed };
-  const { pid, socket, session, started_at: startedAt } = record;
+  const { pid, socket, session, started_at: startedAt, root, version } = record;
   if (record['v'] !== PRESENCE_VERSION || typeof pid !== 'number' || !Number.isSafeInteger(pid) || pid <= 0) return null;
   if (typeof socket !== 'string' || typeof session !== 'string' || session === '' || typeof startedAt !== 'number') return null;
-  return { v: PRESENCE_VERSION, pid, socket, session, started_at: startedAt };
+  if (!boundedString(root, MAX_ROOT_CHARS) || !root.startsWith('/') || !boundedString(version, MAX_VERSION_CHARS)) return null;
+  const served = servedHooks(record['served']);
+  if (served === null) return null;
+  return { v: PRESENCE_VERSION, pid, socket, session, started_at: startedAt, served, root, version };
+}
+
+function servedHooks(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > MAX_SERVED_HOOKS) return null;
+  const names: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string' || !HOOK_NAME.test(item)) return null;
+    names.push(item);
+  }
+  return names;
+}
+
+function boundedString(value: unknown, maxChars: number): value is string {
+  return typeof value === 'string' && value !== '' && value.length <= maxChars;
 }
 
 function statFacts(stat: Stats): FileFacts {

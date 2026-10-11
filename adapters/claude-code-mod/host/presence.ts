@@ -14,10 +14,11 @@
 // src/lib/runtime-dir.ts, shared with src/judge/tiebreak.ts and the shell-side
 // guard in src/hooks/adapter.ts; this module adds what only the host does:
 // creating the directory, writing the record and claiming the paths.
-import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import {
   GROUP_OTHER_BITS,
   parsePresence,
+  PRESENCE_STALE_MS,
   PRESENCE_VERSION,
   runtimeDir,
   sessionPaths,
@@ -73,14 +74,23 @@ export function ensurePrivateDir(dir: string, uid: number): void {
 }
 
 // Written to a temp name and renamed, so a reader never sees half a record.
+// Called once, after the mod's first route handshake, never at listen: a host
+// nobody talks to must not silence the shell hooks.
 export function writePresence(path: string, record: PresenceRecord): void {
   const temp = `${path}.${record.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify(record)}\n`, { mode: PRIVATE_FILE_MODE, flag: 'w' });
   renameSync(temp, path);
 }
 
-export function presenceRecord(pid: number, socket: string, session: string, now: number): PresenceRecord {
-  return { v: PRESENCE_VERSION, pid, socket, session, started_at: now };
+// The heartbeat: a reader trusts a record only while its mtime is recent
+// (PRESENCE_STALE_MS), so a host killed without cleanup stops counting soon
+// even when its pid is reused.
+export function touchPresence(path: string, now: Date): void {
+  utimesSync(path, now, now);
+}
+
+export function presenceRecord(fields: Omit<PresenceRecord, 'v'>): PresenceRecord {
+  return { v: PRESENCE_VERSION, ...fields };
 }
 
 export function readPresence(path: string): PresenceRecord | null {
@@ -105,11 +115,11 @@ export function isAlive(pid: number): boolean {
   }
 }
 
-// A leftover socket from a host that died without cleanup is removed; a live
-// host for the same session is a second spawn and is refused.
+// A leftover socket from a host that died without cleanup is removed; a live,
+// still heartbeating host for the same session is a second spawn and is refused.
 export function claimPaths(paths: HostPaths): void {
   const existing = readPresence(paths.presence);
-  if (existing !== null && existing.pid !== process.pid && isAlive(existing.pid)) {
+  if (existing !== null && existing.pid !== process.pid && isAlive(existing.pid) && isFresh(paths.presence, Date.now())) {
     throw new HostSetupError(`a host (pid ${existing.pid}) already serves this session`);
   }
   rmSync(paths.socket, { force: true });
@@ -121,6 +131,11 @@ export function releasePaths(paths: HostPaths, pid: number): void {
   if (existing !== null && existing.pid !== pid) return;
   rmSync(paths.presence, { force: true });
   rmSync(paths.socket, { force: true });
+}
+
+function isFresh(path: string, now: number): boolean {
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  return stat !== undefined && Math.abs(now - stat.mtimeMs) <= PRESENCE_STALE_MS;
 }
 
 function isCode(e: unknown, code: string): boolean {

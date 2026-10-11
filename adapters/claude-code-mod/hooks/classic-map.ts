@@ -18,13 +18,21 @@ export interface SessionFacts {
   cwd: string;
 }
 
-// A git or gh invocation anywhere in a shell line. Used only when the host did
-// not answer for Bash: the git-write guard is the developer's safety net and
-// must not vanish because a socket timed out (rules/git.md).
-const GIT_INVOCATION = /(^|[\s;&|(`])(git|gh)(\s|$)/;
+// A command that may name git or gh, used only when the host did not run the
+// git-write guard for a Bash call: that guard is the developer's safety net and
+// must not vanish because a host is down or a socket timed out (rules/git.md).
+// Deliberately the same superset as src/hooks/git-write-guard.ts mayNameGitTool
+// (strip word quoting, then any `git`/`gh` substring), so `g'it' push`, `\git`
+// and `/usr/bin/git` are all caught. The mod cannot import src/; keep the two
+// copies identical.
+const WORD_QUOTING = /['"\\]/g;
+const MAY_NAME_GIT_TOOL = /g(?:it|h)/;
+
+// The hook the fallback stands in for.
+export const GIT_WRITE_GUARD = 'git-write-guard';
 
 export const HOST_SILENT_GIT_REASON =
-  '[engineos] in-process host did not answer for this git/gh command; confirm it yourself (the git-write guard could not run).';
+  '[engineos] in-process host did not run the git-write guard for this command; confirm it yourself if it writes to git or a forge.';
 
 export function hooksFor(routes: readonly HostRoute[], event: HostEvent, toolName: string | null): string[] {
   return routes
@@ -45,7 +53,7 @@ export function matcherAccepts(matcher: string, toolName: string): boolean {
 }
 
 export function looksLikeGitCommand(command: unknown): boolean {
-  return typeof command === 'string' && GIT_INVOCATION.test(command);
+  return typeof command === 'string' && MAY_NAME_GIT_TOOL.test(command.replace(WORD_QUOTING, ''));
 }
 
 // The order is hooks.json's; the first block or ask stands, as the first

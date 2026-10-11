@@ -26,6 +26,7 @@ const HOST_BUNDLE = 'dist/engineos-inprocess.cjs';
 // The mod folder is adapters/claude-code-mod inside the checkout; an installed
 // copy elsewhere names the checkout with ENGINEOS_ROOT.
 const ROOT_FROM_PLUGIN = '/../..';
+const DEFAULT_NODE = 'node';
 // Node's first start with a cold compile cache, plus the route read.
 const READY_DEADLINE_MS = 5_000;
 const ROUTES_DEADLINE_MS = 1_000;
@@ -57,8 +58,8 @@ function starting($: EngineInterface): HostState {
 }
 
 async function startHost($: EngineInterface): Promise<HostState> {
-  const root = (await $.env.get('ENGINEOS_ROOT')) || `${$.plugin.root}${ROOT_FROM_PLUGIN}`;
-  const node = (await $.env.get('ENGINEOS_NODE')) || 'node';
+  const root = absoluteOverride($, 'ENGINEOS_ROOT', await $.env.get('ENGINEOS_ROOT')) ?? `${$.plugin.root}${ROOT_FROM_PLUGIN}`;
+  const node = absoluteOverride($, 'ENGINEOS_NODE', await $.env.get('ENGINEOS_NODE')) ?? DEFAULT_NODE;
   const sessionId = await $.session.id();
   let announce: (socket: string | null) => void = () => undefined;
   const announced = new Promise<string | null>((settle) => {
@@ -84,13 +85,27 @@ async function startHost($: EngineInterface): Promise<HostState> {
   })();
   const socket = await withDeadline($, announced, READY_DEADLINE_MS);
   if (socket === null || socket === '') return { kind: 'failed', reason: 'host-exited' };
-  // A host that comes up after the mod gave up would write its presence record
-  // and silence the shell hooks with nobody serving; it is ended instead.
+  // A host that comes up after the mod gave up is ended rather than left
+  // holding the socket with nobody talking to it.
   if (socket === TIMED_OUT) return abandon(child, 'ready-timeout');
+  // This GET is the handshake: the host publishes its presence record (which
+  // lets the shell hooks it serves stand down) only while answering it. A host
+  // whose answer the mod cannot use is ended, and its exit removes the record.
   const routes = await readRoutes($, socket);
   if (routes === null) return abandon(child, 'routes-unreadable');
   if (routes.unserved.length > 0) $.ui.log(`EngineOS hooks not served in-process: ${routes.unserved.join(', ')}`, { to: 'debug' });
   return { kind: 'ready', socket, routes: routes.routes };
+}
+
+// A relative override resolves against whatever directory the session started
+// in, so a repository under review could plant the host bundle or a `node`
+// that the mod then runs. Only an absolute path is honoured; anything else is
+// ignored, said once in the debug log, and the default is used.
+function absoluteOverride($: EngineInterface, name: string, value: string | undefined): string | null {
+  if (value === undefined || value === '') return null;
+  if (value.startsWith('/') && !value.includes('\0')) return value;
+  $.ui.log(`EngineOS ${name} ignored: not an absolute path`, { to: 'debug' });
+  return null;
 }
 
 function abandon(child: HookStream<ProcessSpawnChunk, ProcessSpawnResult>, reason: string): HostState {

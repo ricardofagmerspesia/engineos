@@ -8,12 +8,13 @@
 // Bundled as its own entry (T09 wiring request: scripts/build.mjs), never into
 // dist/engineos.cjs. Started by the mod with `serve --session <id>`; does
 // nothing unless ENGINEOS_INPROCESS=1.
-import { chmodSync } from 'node:fs';
+import { chmodSync, realpathSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { HOOKS } from '../../../src/hooks/cli';
 import { hookContext, readEnvelope } from '../../../src/hooks/envelope';
 import type { HookDecision } from '../../../src/hooks/output';
 import type { Io } from '../../../src/io';
+import { HOST_SESSION_ID, PRESENCE_HEARTBEAT_MS, type PresenceRecord } from '../../../src/lib/runtime-dir';
 import { resolveRoot } from '../../../src/registry/paths';
 import {
   claimPaths,
@@ -23,6 +24,7 @@ import {
   presenceRecord,
   privateDir,
   releasePaths,
+  touchPresence,
   writePresence,
   type HostPaths,
 } from './presence';
@@ -40,31 +42,44 @@ import { readRouteTable, type RouteTable } from './routes';
 
 const ENABLE_ENV = 'ENGINEOS_INPROCESS';
 const ENABLE_VALUE = '1';
-const SESSION_ID = /^[A-Za-z0-9._-]{1,128}$/;
 const SOCKET_MODE = 0o600;
 // A request is one local hook; anything slower is a stuck client.
 const REQUEST_TIMEOUT_MS = 30_000;
-// The mod's module unloading kills this child; the poll covers the host itself
-// dying, which would otherwise leave an orphan holding the socket.
-const ORPHAN_POLL_MS = 5_000;
 const SERVICE = 'engineos-inprocess';
+// What an unbundled host records as its version; no bundled shell entry
+// carries it, so such a host never silences a shell hook.
+const UNBUILT_VERSION = 'unbuilt';
+
+// Inlined by scripts/build.mjs; undefined in an unbundled run.
+declare const ENGINEOS_VERSION: string | undefined;
 
 type Started = { kind: 'exit'; code: number } | { kind: 'serving' };
+
+// The presence record is prepared at start and published on the mod's first
+// route handshake (docs/OPT-IN-TIERS.md); `published` flips once.
+interface Presence {
+  paths: HostPaths;
+  record: PresenceRecord;
+  published: boolean;
+}
 
 interface HostState {
   table: RouteTable;
   served: ReadonlySet<string>;
   hookEnv: NodeJS.ProcessEnv;
+  presence: Presence;
 }
 
 function main(argv: readonly string[]): Started {
   if (process.env[ENABLE_ENV] !== ENABLE_VALUE) return { kind: 'exit', code: 0 };
   const sessionId = argv[0] === 'serve' && argv[1] === '--session' ? argv[2] ?? '' : '';
-  if (!SESSION_ID.test(sessionId)) {
+  if (!HOST_SESSION_ID.test(sessionId)) {
     log('error', 'bad-arguments', {});
     return { kind: 'exit', code: 2 };
   }
-  const root = resolveRoot(process.env);
+  // The real path, as the shell guard compares it against the checkout that
+  // registered it; `..` segments or a symlinked install would differ textually.
+  const root = realpathSync(resolveRoot(process.env));
   const table = readRouteTable(root, new Set(Object.keys(HOOKS)));
   const served = new Set(table.routes.flatMap((route) => route.hooks));
   const uid = currentUid();
@@ -72,7 +87,17 @@ function main(argv: readonly string[]): Started {
   ensurePrivateDir(dir, uid);
   const paths = hostPaths(dir, sessionId);
   claimPaths(paths);
-  const state: HostState = { table, served, hookEnv: hookEnvironment(process.env) };
+  const record = presenceRecord({
+    pid: process.pid,
+    socket: paths.socket,
+    session: sessionId,
+    started_at: Date.now(),
+    served: [...served],
+    root,
+    version: typeof ENGINEOS_VERSION === 'string' && ENGINEOS_VERSION !== '' ? ENGINEOS_VERSION : UNBUILT_VERSION,
+  });
+  const presence: Presence = { paths, record, published: false };
+  const state: HostState = { table, served, hookEnv: hookEnvironment(process.env), presence };
   const server = createServer((req, res) => {
     void handle(req, res, state);
   });
@@ -82,13 +107,14 @@ function main(argv: readonly string[]): Started {
     releasePaths(paths, process.pid);
     process.exit(1);
   });
+  // No presence record here: it is published on the mod's first GET /v1/routes,
+  // so a host the mod never handshook with (timed out, abandoned) silences nothing.
   server.listen(paths.socket, () => {
     chmodSync(paths.socket, SOCKET_MODE);
-    writePresence(paths.presence, presenceRecord(process.pid, paths.socket, sessionId, Date.now()));
     process.stdout.write(`${READY_PREFIX}${paths.socket}\n`);
     log('info', 'ready', { routes: table.routes.length, unserved: table.unserved.length });
   });
-  watchLifetime(server, paths);
+  watchLifetime(server, presence);
   return { kind: 'serving' };
 }
 
@@ -104,6 +130,10 @@ function hookEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 async function handle(req: IncomingMessage, res: ServerResponse, state: HostState): Promise<void> {
   const url = req.url ?? '';
   if (req.method === 'GET' && url === ROUTES_PATH) {
+    // A host that cannot publish its record answers an error, the mod abandons
+    // it, and the shell hooks keep serving: never a mod that thinks it is
+    // served beside a record nobody can read.
+    if (!publishPresence(state.presence)) return reply(res, 500, { error: 'presence-unwritable' });
     const body: RoutesResponse = { v: HOST_PROTOCOL_VERSION, routes: state.table.routes, unserved: state.table.unserved };
     return reply(res, 200, body);
   }
@@ -118,6 +148,18 @@ async function handle(req: IncomingMessage, res: ServerResponse, state: HostStat
   const answer = await runHook(name, body, state);
   log('info', 'hook', { hook: name, kind: answer.decision.kind, durationMs: Date.now() - started });
   return reply(res, 200, answer);
+}
+
+function publishPresence(presence: Presence): boolean {
+  if (presence.published) return true;
+  try {
+    writePresence(presence.paths.presence, presence.record);
+    presence.published = true;
+    return true;
+  } catch (e) {
+    log('error', 'presence-failed', { reason: e instanceof Error ? e.message : String(e) });
+    return false;
+  }
 }
 
 // The contract of src/hooks/cli.ts runHook, minus stdout: an unreadable
@@ -191,7 +233,11 @@ function reply(res: ServerResponse, status: number, body: unknown): void {
   res.end(text);
 }
 
-function watchLifetime(server: Server, paths: HostPaths): void {
+// The mod's module unloading kills this child; the poll covers the host itself
+// dying, which would otherwise leave an orphan holding the socket, and doubles
+// as the presence heartbeat the shell guard requires.
+function watchLifetime(server: Server, presence: Presence): void {
+  const { paths } = presence;
   const parent = process.ppid;
   const stop = (reason: string): void => {
     log('info', 'stopping', { reason });
@@ -200,11 +246,25 @@ function watchLifetime(server: Server, paths: HostPaths): void {
     process.exit(0);
   };
   const poll = setInterval(() => {
-    if (process.ppid !== parent) stop('orphaned');
-  }, ORPHAN_POLL_MS);
+    if (process.ppid !== parent) {
+      stop('orphaned');
+      return;
+    }
+    if (presence.published) heartbeat(paths);
+  }, PRESENCE_HEARTBEAT_MS);
   poll.unref();
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.on(signal, () => stop(signal));
   process.on('exit', () => releasePaths(paths, process.pid));
+}
+
+// A missed stamp only makes the record go stale, which runs the shell hooks
+// again: the failure direction is a double fire, so it is logged, not fatal.
+function heartbeat(paths: HostPaths): void {
+  try {
+    touchPresence(paths.presence, new Date());
+  } catch (e) {
+    log('error', 'heartbeat-failed', { reason: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 // Structured lines on stderr (rules/observability.md); the mod forwards them to
