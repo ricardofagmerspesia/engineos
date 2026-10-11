@@ -1,4 +1,4 @@
-// Contract types for the Jev judge client (contracts.md@rev1 §3, §6.2, §10).
+// Contract types for the Jev judge client (contracts.md@rev2 §3, §6.2, §10).
 //
 // The kernel never imports src/judge/** (decision D5), and src/judge/** never
 // imports the kernel's mirror either: the fact shapes below are re-declared
@@ -132,6 +132,6 @@ export type FailedReason =
   | 'timeout' | 'http-429' | 'http-4xx' | 'http-5xx' | 'network' | 'invalid-response' | 'oversize-state';
 
 export type JudgeOutcome =
-  | { kind: 'facts'; facts: JevFact }
+  | { kind: 'facts'; facts: JevFact; tokens_in: number | null }
   | { kind: 'skipped'; reason: SkippedReason }
   | { kind: 'failed'; reason: FailedReason };
