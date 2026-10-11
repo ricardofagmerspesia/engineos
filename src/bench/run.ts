@@ -256,7 +256,7 @@ function routeBeforeChangeMedian(root: string, env: NodeJS.ProcessEnv, deps: Ben
 
 // The hooks are timed with their own switches pinned: an operator's real bypass
 // flag would measure a no-op, and telemetry would measure a disk write nobody
-// budgeted for.
+// budgeted for. A deprecated shim's stderr warning would measure a write too.
 function hookEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return { ...env, ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_TELEMETRY: '0' };
+  return { ...env, ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_TELEMETRY: '0', ENGINEOS_QUIET_SHIMS: '1' };
 }

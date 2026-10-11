@@ -30,7 +30,7 @@ import { event, telemetrySink, withSpan, type EventData, type SpanFacts } from '
 import type { SpanStatus } from '../registry/policy-exec-journal';
 import type { ProjectConfig } from '../registry/project-config';
 import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasPythonExtension, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
-import { lazyRegistries } from '../kernel/context';
+import { lazyRegistries, type Registries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
 import { isRecord } from '../lib/json';
 import { repoRoot } from '../lib/git';
@@ -144,7 +144,7 @@ export function verify(
   // The span measures the CHECKS, not the transcript parsing that decided which
   // packages to check, which is why it opens here and not at the top.
   const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
-    const result = runLadder(plan.runs, targets, environment.env, spawn, root);
+    const result = runLadder(plan.runs, targets, environment.env, spawn, root, lazyRegistries(ctx.root));
     return { result, status: ladderStatus(result) };
   });
   // Written red or green: a green run is half the base rate usage-report.sh has
@@ -335,6 +335,10 @@ function runLadder(
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
   root: string,
+  // The EngineOS checkout's registries (ctx.root), not the project's: the
+  // "target was never there" patterns are policy, read from the same root as
+  // every other policy answer this hook gives.
+  registries: Registries,
 ): Ladder {
   const failures: Failure[] = [];
   const infra: Infra[] = [];
@@ -351,7 +355,10 @@ function runLadder(
       if (!runnerHasTarget(selection, handle, target, undefined, spawn, root)) continue;
       const seconds = budgetFor(target, env);
       const result = runnerRun(selection, handle, target, seconds, env, spawn, root);
-      const verdict = classify({ kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+      const verdict = classify(
+        { kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut },
+        registries.policy.repair.infra_patterns,
+      );
       if (verdict === null) continue;
       if (verdict.situation === 'red') {
         failures.push({ target, handle, output: result.output });

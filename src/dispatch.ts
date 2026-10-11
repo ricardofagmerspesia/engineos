@@ -3,12 +3,21 @@ import { join } from 'node:path';
 import { writeJson, type Io } from './io';
 
 export type Command = (argv: string[], io: Io) => number;
-export interface CommandTable { [name: string]: Command }
+// A command that may await before answering its exit code. Only the hook
+// adapter is one today (the prompt advisor awaits the judge); every other
+// command stays synchronous, and a Command is assignable to this type.
+export type MaybeAsyncCommand = (argv: string[], io: Io) => number | Promise<number>;
+export interface SyncCommandTable { [name: string]: Command }
+export interface CommandTable { [name: string]: MaybeAsyncCommand }
 
 // Injected by scripts/build.mjs via `define`; falls back for tsc test builds.
 declare const ENGINEOS_VERSION: string | undefined;
 
-export function dispatch(table: CommandTable, argv: string[], io: Io): number {
+// A table of synchronous commands answers synchronously, so callers that need a
+// plain exit code (in-process drives, tests) keep one.
+export function dispatch(table: SyncCommandTable, argv: string[], io: Io): number;
+export function dispatch(table: CommandTable, argv: string[], io: Io): number | Promise<number>;
+export function dispatch(table: CommandTable, argv: string[], io: Io): number | Promise<number> {
   const [name, ...rest] = argv;
   if (name === '--version' || name === '-v') {
     const v = typeof ENGINEOS_VERSION === 'string' ? ENGINEOS_VERSION : readPackageVersion();
@@ -21,6 +30,21 @@ export function dispatch(table: CommandTable, argv: string[], io: Io): number {
     return 1;
   }
   return command(rest, io);
+}
+
+// The entry points' exit: a synchronous answer exits in the same tick, exactly
+// as before async commands existed; a pending one exits when it settles. The
+// only asynchronous command is the hook adapter, whose contract is a silent
+// exit 0 on any failure, so a rejection exits 0 too.
+export function exitWith(result: number | Promise<number>, exit: (code: number) => void): void {
+  if (typeof result === 'number') {
+    exit(result);
+    return;
+  }
+  void result.then(
+    (code) => exit(code),
+    () => exit(0),
+  );
 }
 
 function readPackageVersion(): string {

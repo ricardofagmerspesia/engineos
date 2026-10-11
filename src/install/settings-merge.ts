@@ -7,10 +7,11 @@
 // Pure by design — no file I/O, no process access. Reading, the atomic write and
 // the warnings live in ./cli, so a test can drive every merge rule in memory.
 //
-// Two command forms are accepted, because a consumer's settings.json can still
-// carry the pre-1.7.0 one: the bash shim path and the node runtime call. The
-// scrub predicate matches BOTH; keying on the hooks dir alone would leave a node
-// entry in place and duplicate every hook on the second install.
+// Three command forms are accepted, because a consumer's settings.json can still
+// carry the pre-1.7.0 one: the bash shim path, the node runtime call, and the
+// node call to the per-call bundle. The scrub predicate matches ALL of them;
+// keying on the hooks dir alone would leave a node entry in place and duplicate
+// every hook on the second install.
 import { isRecord } from '../lib/json';
 
 export interface MergeResult { added: number; removed: number; changed: boolean }
@@ -23,11 +24,16 @@ const PLACEHOLDER = '${CLAUDE_PLUGIN_ROOT}';
 const QUOTED_PLACEHOLDER = '"${CLAUDE_PLUGIN_ROOT}"';
 const OLD_PREFIX = '"${CLAUDE_PLUGIN_ROOT}"/hooks/';
 const NEW_PREFIX = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook ';
-const EXPECTED_FORMS = 'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh or node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>';
+// The per-call hooks run from their own bundle (src/hot-cli.ts).
+const HOT_PREFIX = 'node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook ';
+const EXPECTED_FORMS =
+  'Expected "${CLAUDE_PLUGIN_ROOT}"/hooks/<script>.sh, node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name> or node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook <name>';
 
 // Root-independent half of the scrub predicate: a node entry pointing at another
 // checkout is still an EngineOS entry, and leaving it fires two runtimes at once.
-const RUNTIME_BUNDLE = 'dist/engineos.cjs';
+// Both bundles count: an entry moved from one to the other between installs must
+// be scrubbed, not duplicated.
+const RUNTIME_BUNDLES: readonly string[] = ['dist/engineos.cjs', 'dist/engineos-hot.cjs'];
 
 // A derived name is a bare hook identifier. Anything else means the command form
 // was not the one this installer knows how to place.
@@ -56,7 +62,7 @@ export function pluginFile(pluginRoot: string, relativePath: string): string {
 
 export function isEngineosCommand(command: string, pluginRoot: string): boolean {
   const normalized = toSlashes(command);
-  if (normalized.includes(RUNTIME_BUNDLE)) return true;
+  if (RUNTIME_BUNDLES.some((bundle) => normalized.includes(bundle))) return true;
   return normalized.includes(`${toSlashes(trimTrailingSeparators(pluginRoot))}/hooks/`);
 }
 
@@ -132,6 +138,7 @@ function resolveCommand(raw: string, root: string, source: string): string {
 function hookNameOf(raw: string): string | null {
   if (raw.startsWith(OLD_PREFIX)) return raw.slice(OLD_PREFIX.length);
   if (raw.startsWith(NEW_PREFIX)) return raw.slice(NEW_PREFIX.length);
+  if (raw.startsWith(HOT_PREFIX)) return raw.slice(HOT_PREFIX.length);
   return null;
 }
 

@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook route-before-change"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs\" hook route-before-change"
           }
         ]
       },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook announce-agent-dispatch"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs\" hook announce-agent-dispatch"
           }
         ]
       },
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook git-write-guard"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs\" hook git-write-guard"
           }
         ]
       }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook mark-unrecorded"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs\" hook mark-unrecorded"
           }
         ]
       },
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs\" hook announce-agent-return"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs\" hook announce-agent-return"
           }
         ]
       }

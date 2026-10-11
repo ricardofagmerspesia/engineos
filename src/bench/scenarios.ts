@@ -167,6 +167,7 @@ export function runScenario(
 // would measure a no-op, and telemetry would measure a disk write nobody
 // budgeted for. An operator's ENGINEOS_GIT_WRITES=auto would likewise turn
 // bash-noop into a measurement of the guard's off switch, not its fast path.
+// A deprecated shim's stderr warning would measure a write too.
 function hookEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return { ...env, ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_TELEMETRY: '0', ENGINEOS_GIT_WRITES: 'ask' };
+  return { ...env, ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_TELEMETRY: '0', ENGINEOS_GIT_WRITES: 'ask', ENGINEOS_QUIET_SHIMS: '1' };
 }

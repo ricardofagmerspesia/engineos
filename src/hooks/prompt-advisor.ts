@@ -8,30 +8,18 @@
 // replacement (contracts.md@rev2 §5, §10.5) put two steps in front of it: S0
 // refuses text the user did not type, and the opt-in Jev judge turns the prompt
 // into facts the kernel folds — replayably, because the kernel reads the fact,
-// never the network. The guidance strings live in ./prompt-advisor-guidance.
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+// never the network. The judge half lives in ./prompt-judge, the guidance
+// strings in ./prompt-advisor-guidance.
 import { resolve, type Answer, type Registries } from '../kernel';
 import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from '../kernel/context';
-import {
-  buildQuestionSet,
-  createFileBreakerStore,
-  judge,
-  type BreakerState,
-  type BreakerStore,
-  type JudgeFact,
-  type JudgeInput,
-  type JudgeOutcome,
-  type JudgePolicy,
-} from '../judge';
+import type { JudgeFact } from '../judge';
 import { KernelError } from '../lib/json';
 import { hookSlug } from '../lib/slug';
-import { loadProjectConfig } from '../registry/project-config';
 import { bypassActive } from './bypass';
-import { editContext } from './edit-context';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceLookups, guidanceNotes, judgeNote, type TaskAnswer } from './prompt-advisor-guidance';
+import { consultJudge, judgeEventData, NOT_USER_INPUT, type Consultation } from './prompt-judge';
 import { classifyPromptSource } from './prompt-source';
 import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
 import { event, recordSpan, telemetrySink, withSpan, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
@@ -54,30 +42,6 @@ const JUDGE_SPAN: SpanFacts = { kind: 'model', capability: 'route', modelTier: '
 // journal would reject empty, and `none` is what bash wrote.
 const NO_ROUTE = 'none';
 
-const NOT_USER_INPUT = 'not-user-input';
-
-// The hook's own deadline sits just past the judge's: the judge's abort must
-// win so it can count the timeout against its breaker before process exit
-// discards the pending timer. Judge 400 ms + slack + kernel stays inside the
-// 600 ms prompt-advisor budget.
-const JUDGE_GUARD_SLACK_MS = 50;
-const GUARD_TIMEOUT: JudgeOutcome = { kind: 'failed', reason: 'timeout' };
-
-// contracts §6.4 `latency_bucket`, upper bounds exclusive; anything slower is `over`.
-const LATENCY_BUCKETS: readonly [number, string][] = [[100, 'lt100'], [200, 'lt200'], [300, 'lt300'], [400, 'lt400']];
-
-// A change record links its spec when one was required (CLAUDE.md #5).
-const ACTIVE_RECORD = /^status:[ \t\f\v\r]*active/m;
-const SPEC_LINK = /docs\/specs\//;
-
-interface Consultation {
-  fact: JudgeFact | null;     // what reaches the kernel; null: the judge could not be consulted
-  policy: JudgePolicy | null; // null: the registry declares no readable judge block
-  latencyMs: number | null;   // attempted calls only
-}
-
-const NOT_CONSULTED: Consultation = { fact: null, policy: null, latencyMs: null };
-
 // The task and the judge fact the kernel actually folded into it.
 interface ResolvedTask {
   task: TaskAnswer;
@@ -99,13 +63,18 @@ export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDeci
     event(sink, 'route', { skipped: NOT_USER_INPUT });
     return silent;
   }
-  const consultation = await consultJudge(env, ctx, kernel.registries, sink);
+  const consultation = await consultJudge(env, ctx, kernel.registries);
+  // The judge's span, before the router span, exactly when a call was attempted.
+  if (consultation.span !== null && consultation.latencyMs !== null) {
+    recordSpan(sink, { ...JUDGE_SPAN, ...consultation.span }, consultation.latencyMs);
+  }
   const resolved = resolveTask(env.prompt, consultation.fact, kernel, sink);
   if (resolved === null) return silent;
   const { task } = resolved;
   const judged: Consultation = { ...consultation, fact: resolved.fact };
   writeEvents(sink, task);
-  writeJudgeEvent(sink, judged);
+  const judgeData = judgeEventData(judged);
+  if (judgeData !== null) event(sink, 'judge', judgeData);
   const notes = notesFor(task, judged, kernel.registries);
   if (notes === null) return silent;
   // The fallback for a session whose SessionStart note scrolled away: repeated
@@ -125,138 +94,6 @@ function typedByUser(env: HookEnvelope, regs: Registries): boolean {
   } catch {
     return true;
   }
-}
-
-// Outcome -> fact (contracts §10.5). Any throw on the way (an unreadable judge
-// block, a question set the registries cannot build) declares no fact at all,
-// which the kernel reports as `fallback: no-judge-fact` — never a guess.
-async function consultJudge(env: HookEnvelope, ctx: HookContext, regs: Registries, sink: Sink | null): Promise<Consultation> {
-  let policy: JudgePolicy;
-  try {
-    policy = regs.policy.judge;
-    // The judge answers `disabled` first itself (§10.1); repeating that one
-    // check here spares the hot path the git process, config read and question
-    // set a disabled judge would discard.
-    if (ctx.io.env[policy.enabled_env] !== policy.enabled_value) {
-      return { fact: { source: 'fallback', reason: 'disabled' }, policy, latencyMs: null };
-    }
-  } catch {
-    return NOT_CONSULTED;
-  }
-  try {
-    // One git process answers both the breaker's home and the repository facts.
-    const where = env.cwd === '' ? null : editContext(env.cwd, ctx);
-    if (where === null || where.status !== 'active' || where.gitDir === null) {
-      throw new KernelError('judge: no git dir to keep the breaker state in');
-    }
-    const breaker = firstReadRecorder(
-      createFileBreakerStore({ gitDir: where.gitDir, stateFile: policy.breaker.state_file, failureThreshold: regs.policy.breaker.failure_threshold }),
-    );
-    const questions = buildQuestionSet({
-      intents: regs.intents.intents.map((row) => ({ id: row.id, active: row.active })),
-      rules: regs.decisionRules.rules.map((rule) => ({ id: rule.id, judge_fact: rule.judge_fact })),
-    });
-    const input: JudgeInput = { text: env.prompt, source: 'user', repository: repositoryFacts(where.worktree.repo), session: { last_intent: null } };
-    const transport = typeof globalThis.fetch === 'function' ? globalThis.fetch : undefined;
-    const started = ctx.now();
-    const pending = judge(input, { fetch: transport, now: ctx.now, env: ctx.io.env, breaker: breaker.store, policy, questions });
-    const outcome = await withinDeadline(pending, policy.timeout_ms + JUDGE_GUARD_SLACK_MS);
-    const latencyMs = Math.max(0, ctx.now() - started);
-    if (outcome.kind === 'skipped') return { fact: factOf(outcome), policy, latencyMs: null };
-    recordSpan(sink, { ...JUDGE_SPAN, ...judgeSpanOutcome(outcome, policy, breaker.probe()) }, latencyMs);
-    return { fact: factOf(outcome), policy, latencyMs };
-  } catch {
-    return { fact: null, policy, latencyMs: null };
-  }
-}
-
-function factOf(outcome: JudgeOutcome): JudgeFact | null {
-  if (outcome.kind === 'facts') return outcome.facts;
-  if (outcome.reason === NOT_USER_INPUT) return null;
-  return { source: 'fallback', reason: outcome.reason };
-}
-
-function judgeSpanOutcome(outcome: JudgeOutcome, policy: JudgePolicy, probe: boolean): Pick<SpanFacts, 'status' | 'fields'> {
-  const base: SpanFields = { provider: policy.provider, model: policy.model };
-  if (outcome.kind !== 'facts') return { status: 'FAILED', fields: { ...base, note: `judge=${outcome.reason}` } };
-  const { facts } = outcome;
-  const fields: SpanFields = { ...base, model: facts.model, route: facts.primary.id };
-  if (outcome.tokens_in !== null) fields.tokens_in = outcome.tokens_in;
-  const late = facts.latency_ms > policy.timeout_ms;
-  return { status: probe || late ? 'DEGRADED' : 'OK', fields };
-}
-
-// The judge races its own abort; this second race is the hook's guarantee for
-// everything before the request (state build, breaker read) and for a judge
-// that rejects late. Whatever the judge does afterwards no longer matters.
-function withinDeadline(pending: Promise<JudgeOutcome>, ms: number): Promise<JudgeOutcome> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const guard = new Promise<JudgeOutcome>((settle) => {
-    timer = setTimeout(() => settle(GUARD_TIMEOUT), ms);
-  });
-  return Promise.race([pending, guard]).finally(() => clearTimeout(timer));
-}
-
-// The judge reads its breaker once, at admission. A state that was open there
-// and still let the call through was the half-open probe (§10.1), which the span
-// reports as DEGRADED (§7).
-function firstReadRecorder(inner: BreakerStore): { store: BreakerStore; probe: () => boolean } {
-  let first: BreakerState | null = null;
-  const store: BreakerStore = {
-    read: (): BreakerState => {
-      const state = inner.read();
-      if (first === null) first = state;
-      return state;
-    },
-    recordFailure: (now: number): void => inner.recordFailure(now),
-    recordSuccess: (): void => inner.recordSuccess(),
-  };
-  return { store, probe: (): boolean => first !== null && first.opened_at !== null };
-}
-
-// Repository facts only (contracts §10.2): the declared stack's ids and two
-// booleans. Nothing else from the project reaches the request.
-function repositoryFacts(repo: string): JudgeInput['repository'] {
-  if (repo === '') return { declared_stack: [], active_spec: false, open_change_record: false };
-  const records = activeChangeRecords(join(repo, '.engineos', 'changes'));
-  return {
-    declared_stack: declaredStack(repo),
-    active_spec: records.some((text) => SPEC_LINK.test(text)),
-    open_change_record: records.length > 0,
-  };
-}
-
-function declaredStack(repo: string): string[] {
-  try {
-    const config = loadProjectConfig(repo);
-    if (config === null) return [];
-    const ids = config.stack.packages.flatMap((pkg) => (pkg.framework === null ? [pkg.language] : [pkg.language, pkg.framework]));
-    return [...new Set(ids)];
-  } catch {
-    return [];
-  }
-}
-
-// `<dir>/*.md`, dotfiles excluded, as route-before-change reads them; an
-// unreadable directory or record counts as no active record.
-function activeChangeRecords(dir: string): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return [];
-  }
-  const active: string[] = [];
-  for (const entry of entries) {
-    if (!entry.endsWith('.md') || entry.startsWith('.')) continue;
-    try {
-      const text = readFileSync(join(dir, entry), 'utf8');
-      if (ACTIVE_RECORD.test(text)) active.push(text);
-    } catch {
-      continue;
-    }
-  }
-  return active;
 }
 
 // The in-process equivalent of `scripts/kernel.sh resolve-task --prompt <text>`:
@@ -359,21 +196,4 @@ function writeEvents(sink: Sink | null, task: TaskAnswer): void {
   if (hitl !== null && hitl.required) {
     event(sink, 'hitl', { required: hitl.required, reasons: hitl.reasons });
   }
-}
-
-// One judge event per user prompt (contracts §6.4), ids and a latency bucket
-// only. A key with no value is left out: the append boundary refuses empties.
-function writeJudgeEvent(sink: Sink | null, consultation: Consultation): void {
-  const { fact, policy, latencyMs } = consultation;
-  if (policy === null) return;
-  const data: EventData = { source: fact === null ? 'fallback' : fact.source, mode: policy.mode };
-  data.model = fact !== null && fact.source === 'jev' ? fact.model : policy.model;
-  if (fact === null) data.skipped_reason = 'no-judge-fact';
-  else if (fact.source === 'fallback') data.skipped_reason = fact.reason;
-  if (latencyMs !== null) data.latency_bucket = latencyBucket(latencyMs);
-  event(sink, 'judge', data);
-}
-
-function latencyBucket(ms: number): string {
-  return LATENCY_BUCKETS.find(([bound]) => ms < bound)?.[1] ?? 'over';
 }

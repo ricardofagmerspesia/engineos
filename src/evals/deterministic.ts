@@ -7,8 +7,9 @@
 //
 // Case schema v2 (docs/specs/2026-10-10-routing-replacement-contracts.md §8)
 // adds optional expect_primary, expect_not_intents, exemplar, source and judge.
-// Their shape is graded by one extra assertion that prints ONLY when some case
-// carries a v2 field, so a v1 set keeps its exact output and pass count.
+// Their shape is graded (./case-schema-v2) by one extra assertion that prints
+// ONLY when some case carries a v2 field, so a v1 set keeps its exact output
+// and pass count.
 //
 // Every printed line is byte-identical to the bash it replaces. The ok/FAIL lines
 // and the exit code are public surface (docs/COMPATIBILITY.md) and CI's "Evals
@@ -21,6 +22,7 @@ import { join } from 'node:path';
 import type { Io } from '../io';
 import { isRecord, readJsonFile } from '../lib/json';
 import { alwaysOnRules, deferralsOf } from '../lib/deferrals';
+import { carriesV2Field, registryIntentIds, v2Problems } from './case-schema-v2';
 
 export const INTENTS = 'evals/intent-routing-cases.jsonl';
 export const AGENTS = 'evals/agent-cases.jsonl';
@@ -30,15 +32,6 @@ export const AGENTS = 'evals/agent-cases.jsonl';
 const COVERAGE_FLOOR = 25;
 
 const RISK_RANKS: Record<string, number> = { low: 1, medium: 2, high: 3 };
-
-// The Choice catch-all of the judge question set: a prompt that is a project
-// change but fits no active intent (contracts §8, plan §4a).
-const OTHER_INTENT = 'other';
-const V2_FIELDS = ['expect_primary', 'expect_not_intents', 'exemplar', 'source', 'judge'] as const;
-const SOURCES: readonly string[] = ['user', 'notification'];
-const JUDGE_LISTS = ['intent_above', 'intent_below', 'fact_above', 'fact_below'] as const;
-
-interface IntentIds { active: ReadonlySet<string>; known: ReadonlySet<string> }
 
 export interface TierCounts { pass: number; fail: number }
 export interface DeterministicResult extends TierCounts { intentCount: number }
@@ -119,7 +112,7 @@ function gradeIntentCases(root: string, alwaysOn: readonly string[], g: Grader):
   for (const line of nonEmptyLines(root, INTENTS)) {
     const parsed = parseCase(line);
     const id = jqStringOr(parsed, 'id', '');
-    if (V2_FIELDS.some((key) => present(parsed, key))) {
+    if (carriesV2Field(parsed)) {
       carriesV2 = true;
       badV2.push(...v2Problems(parsed, id, intentIds));
     }
@@ -167,133 +160,6 @@ function gradeIntentCases(root: string, alwaysOn: readonly string[], g: Grader):
   report(g, badAlwaysOn, 'no case asserts on an always-on rule (they are implicit)', 'always-on rules asserted');
   report(g, badClosed, 'every must_load set is closed under rule deferrals', 'unclosed must_load sets');
   if (carriesV2) report(g, badV2, 'v2 case fields are well-formed and name active intents', 'v2 field problems');
-}
-
-// ------------------------------------------------------------ case schema v2
-
-// Shape and reference checks for the contracts §8 fields. expect_intents itself
-// stays unchecked against the registry: v1 cases name router-table rows by
-// labels (sweep, critic, api-qa) that are not intent ids, and rewriting them is
-// the golden-set author's call, not the grader's.
-function v2Problems(parsed: unknown, id: string, ids: IntentIds): string[] {
-  const problems: string[] = [];
-  const expectIntents = fieldOf(parsed, 'expect_intents');
-  const primary = fieldOf(parsed, 'expect_primary');
-  const notIntents = fieldOf(parsed, 'expect_not_intents');
-  const exemplar = fieldOf(parsed, 'exemplar');
-  const source = fieldOf(parsed, 'source');
-  const judge = fieldOf(parsed, 'judge');
-  const notification = source === 'notification';
-
-  if (present(parsed, 'expect_primary')) {
-    if (!namesPrimary(primary, ids)) problems.push(`${id}(expect_primary='${jqText(primary)}' is not an active intent or '${OTHER_INTENT}')`);
-    if (notification) problems.push(`${id}(notification case expects no route but sets expect_primary)`);
-  }
-
-  if (present(parsed, 'expect_not_intents')) {
-    const listed = strictStrings(notIntents);
-    if (listed === undefined) problems.push(`${id}(expect_not_intents must be an array of strings)`);
-    for (const intent of listed ?? []) {
-      if (!ids.known.has(intent)) problems.push(`${id}(expect_not_intents names unknown intent '${intent}')`);
-      if (intent === primary) problems.push(`${id}(expect_primary '${intent}' is also in expect_not_intents)`);
-      if (Array.isArray(expectIntents) && expectIntents.includes(intent)) problems.push(`${id}('${intent}' is both expected and forbidden)`);
-    }
-  }
-
-  if (present(parsed, 'exemplar')) {
-    const seeded = strictStrings(expectIntents);
-    if (exemplar !== true) problems.push(`${id}(exemplar must be true when present)`);
-    else if (seeded === undefined || seeded.length !== 1) problems.push(`${id}(exemplar case needs exactly one expect_intents entry)`);
-    else {
-      const [intent = ''] = seeded;
-      if (!ids.active.has(intent)) problems.push(`${id}(exemplar seeds '${intent}', which is not an active intent)`);
-      if (typeof primary === 'string' && primary !== intent) problems.push(`${id}(exemplar seeds '${intent}' but expect_primary is '${primary}')`);
-    }
-    if (notification) problems.push(`${id}(a notification case cannot seed exemplars)`);
-  }
-
-  if (present(parsed, 'source')) {
-    if (typeof source !== 'string' || !SOURCES.includes(source)) problems.push(`${id}(source='${jqText(source)}' is not user or notification)`);
-    if (notification && Array.isArray(expectIntents) && expectIntents.length > 0) problems.push(`${id}(notification case expects no route but lists expect_intents)`);
-  }
-
-  if (present(parsed, 'judge')) {
-    problems.push(...judgeProblems(judge, id, ids));
-    if (notification) problems.push(`${id}(notification case sends no judge request but sets judge)`);
-  }
-  return problems;
-}
-
-// judge is graded by the shadow tier (T13); here only its shape is checked, plus
-// the one contradiction a shape can carry: the same key both above and below.
-function judgeProblems(judge: unknown, id: string, ids: IntentIds): string[] {
-  if (!isRecord(judge)) return [`${id}(judge must be an object)`];
-  const problems: string[] = [];
-  if (present(judge, 'primary') && !namesPrimary(judge['primary'], ids)) {
-    problems.push(`${id}(judge.primary='${jqText(judge['primary'])}' is not an active intent or '${OTHER_INTENT}')`);
-  }
-  const lists = new Map<string, readonly string[]>();
-  for (const key of JUDGE_LISTS) {
-    if (!present(judge, key)) continue;
-    const listed = strictStrings(judge[key]);
-    if (listed === undefined || listed.some((entry) => entry === '')) problems.push(`${id}(judge.${key} must be an array of non-empty strings)`);
-    else lists.set(key, listed);
-  }
-  for (const [above, below] of [['intent_above', 'intent_below'], ['fact_above', 'fact_below']] as const) {
-    const lower = lists.get(below) ?? [];
-    for (const entry of lists.get(above) ?? []) {
-      if (lower.includes(entry)) problems.push(`${id}(judge lists '${entry}' in both ${above} and ${below})`);
-    }
-  }
-  if (present(judge, 'design_work_above')) {
-    const cut = judge['design_work_above'];
-    if (typeof cut !== 'number' || !Number.isFinite(cut) || cut < 0 || cut > 1) {
-      problems.push(`${id}(judge.design_work_above must be a number in [0, 1])`);
-    }
-  }
-  return problems;
-}
-
-function namesPrimary(value: unknown, ids: IntentIds): boolean {
-  return typeof value === 'string' && (value === OTHER_INTENT || ids.active.has(value));
-}
-
-// null reads as absent, matching the `// ""` fallback every v1 field uses.
-function present(value: unknown, key: string): boolean {
-  const field = fieldOf(value, key);
-  return field !== undefined && field !== null;
-}
-
-// The array itself when every element is a string; undefined otherwise. No word
-// splitting: v2 fields have no bash ancestor whose jq semantics need preserving.
-function strictStrings(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const elements: unknown[] = value;
-  const strings = elements.filter((element): element is string => typeof element === 'string');
-  return strings.length === elements.length ? strings : undefined;
-}
-
-// Read RAW, like riskFloors: the grader judges the registry as written, and an
-// unreadable registry leaves every intent reference unresolved (and failing)
-// instead of aborting the tier. Active means not `enabled: false`, the flag that
-// takes the deprecated backend-python row out of the judge's Choice.
-function registryIntentIds(root: string): IntentIds {
-  const active = new Set<string>();
-  const known = new Set<string>();
-  let raw: unknown;
-  try {
-    raw = readJsonFile(join(root, 'registries', 'intents.json'));
-  } catch {
-    return { active, known };
-  }
-  const rows = isRecord(raw) && Array.isArray(raw['intents']) ? raw['intents'] : [];
-  for (const row of rows.filter(isRecord)) {
-    const id = row['id'];
-    if (typeof id !== 'string' || id === '') continue;
-    known.add(id);
-    if (row['enabled'] !== false) active.add(id);
-  }
-  return { active, known };
 }
 
 function gradeAgentCases(root: string, g: Grader): void {
