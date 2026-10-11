@@ -303,7 +303,7 @@
       "unrouted_scale_signals": ["big_task", "design_work"]
     },
     "scoring": {
-      "note": "Tier 1 fallback classifier (src/kernel/score.ts). Placeholders: v1 registries route exactly as the any-match router did; T13 calibrates from the golden set. bm25_weight < min_score so exemplar similarity alone never routes until calibrated.",
+      "note": "Tier 1 fallback classifier (src/kernel/score.ts). Calibrated by T13d (2026-10-11) against evals/intent-routing-cases.jsonl with the numbers kept: sweeps of bm25_weight 0.5-0.95, path_weight 0.5-1.5, min_score 0.8-1.2, threshold and margin moved no golden-set metric enough to pay for a broken pinned behavior (evidence in evals/BASELINE.md). min_score 1.0 keeps every weight-1 signal routing alone; bm25_weight 0.9 < min_score keeps exemplar similarity alone from routing. threshold and margin stay 0: margin 0.1 adds low-confidence to two policy fixtures and threshold 0.2 marks a pinned single-intent prompt ambiguous, while neither predicted misroutes on the golden set.",
       "min_score": 1.0,
       "threshold": 0.0,
       "margin": 0.0,
@@ -326,7 +326,7 @@
       "hook_echo": ["[engineos]"]
     },
     "tiebreak": {
-      "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Placeholders until T13 calibrates against the golden set with the pinned MiniLM revision.",
+      "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Not calibrated by T13d: min_similarity needs the pinned MiniLM daemon, whose model download is outside the offline calibration run, so both values stay placeholders. margin is compared as a literal float (best - second < margin), so a two-decimal gap of exactly 0.1 can fall below it; that is the fail-closed side, because not narrowing keeps the full deterministic answer (evals/BASELINE.md).",
       "min_similarity": 0.6,
       "margin": 0.1
     },

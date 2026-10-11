@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally. v2 (2.0.0, contracts.md@rev2 §1.2) adds the scoring fields of the Tier 1 classifier (src/kernel/score.ts) beside every kept signals array: phrases (weighted, here the signals at weight 1 so phrase scoring is the v1 any-match), verb_object (a verb + object pair; placeholder weight 0.05 so pair + exemplar similarity stays below policy.json router.scoring.min_score), negative (subtracted phrases), exemplars (3-10 BM25 documents per active intent, C38b), threshold (the judge cut for intent.<id>, greater than 0 and at most 1; placeholders until T13) and router_row, the CLAUDE.md table cells that src/gen/router-table.ts renders between the engineos:router-table markers (C38d). Rows are in table order; android-release carries no router_row because the generator folds it into ios-release's store-release row. C38 checks the v2 shape.",
+  "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally. v2 (2.0.0, contracts.md@rev2 §1.2) adds the scoring fields of the Tier 1 classifier (src/kernel/score.ts) beside every kept signals array: phrases (weighted; every signal stays a phrase at weight 1 or more (agent-system multi-agent and orchestration signals at 1.5), except migration at 0.3 in big-sweep and backend because dba owns it, plus phrases calibrated by T13d at 0.3-1.5, evidence in evals/BASELINE.md), verb_object (a verb + object pair counted once; calibrated weight 0.4-0.5 so a pair alone stays below policy.json router.scoring.min_score while a pair plus the top exemplar similarity can route), negative (subtracted phrases), exemplars (3-10 BM25 documents per active intent, C38b), threshold (the judge cut for intent.<id>, greater than 0 and at most 1; placeholders until the judge shadow calibration recorded in evals/BASELINE.md) and router_row, the CLAUDE.md table cells that src/gen/router-table.ts renders between the engineos:router-table markers (C38d). Rows are in table order; android-release carries no router_row because the generator folds it into ios-release's store-release row. C38 checks the v2 shape.",
   "multi_match": true,
   "intents": [
     {
@@ -21,7 +21,22 @@
         { "text": "add", "weight": 1 },
         { "text": "build", "weight": 1 },
         { "text": "create", "weight": 1 },
-        { "text": "implement", "weight": 1 }
+        { "text": "implement", "weight": 1 },
+        { "text": "new feature", "weight": 1 },
+        { "text": "let users", "weight": 0.5 },
+        { "text": "let admins", "weight": 0.5 }
+      ],
+      "negative": [
+        { "text": "what does", "weight": 1 },
+        { "text": "where is", "weight": 1 },
+        { "text": "how does", "weight": 1 },
+        { "text": "create a plan", "weight": 1 },
+        { "text": "make a plan", "weight": 1 },
+        { "text": "sub-agent", "weight": 1 },
+        { "text": "subagent", "weight": 1 },
+        { "text": "claude code", "weight": 1 },
+        { "text": "status line", "weight": 1 },
+        { "text": "mod", "weight": 1 }
       ],
       "exemplars": [
         "add a csv export button to the invoices page",
@@ -53,8 +68,16 @@
       "phrases": [
         { "text": "across all", "weight": 1 },
         { "text": "across every", "weight": 1 },
-        { "text": "migration", "weight": 1 },
-        { "text": "backfill", "weight": 1 }
+        { "text": "migration", "weight": 0.3 },
+        { "text": "backfill", "weight": 1 },
+        { "text": "across the repo", "weight": 1 },
+        { "text": "across the codebase", "weight": 1 },
+        { "text": "every package", "weight": 1 },
+        { "text": "to every", "weight": 0.6 },
+        { "text": "in every", "weight": 0.6 },
+        { "text": "every module", "weight": 0.6 },
+        { "text": "all existing", "weight": 0.5 },
+        { "text": "monorepo", "weight": 0.3 }
       ],
       "exemplars": [
         "update every service to the new logging format across all packages",
@@ -87,7 +110,25 @@
         { "text": "fails", "weight": 1 },
         { "text": "failing", "weight": 1 },
         { "text": "why does", "weight": 1 },
-        { "text": "does nothing", "weight": 1 }
+        { "text": "does nothing", "weight": 1 },
+        { "text": "not working", "weight": 1 },
+        { "text": "doesn't work", "weight": 1 },
+        { "text": "does not work", "weight": 1 },
+        { "text": "stack trace", "weight": 1 },
+        { "text": "crash", "weight": 0.6 },
+        { "text": "crashes", "weight": 0.6 },
+        { "text": "throws", "weight": 0.6 },
+        { "text": "fail", "weight": 0.6 },
+        { "text": "error", "weight": 0.5 },
+        { "text": "exception", "weight": 0.5 },
+        { "text": "bug", "weight": 0.5 },
+        { "text": "wrong", "weight": 0.5 },
+        { "text": "timeout", "weight": 0.4 }
+      ],
+      "negative": [
+        { "text": "what is broken", "weight": 1 },
+        { "text": "what's broken", "weight": 1 },
+        { "text": "pass and fail", "weight": 1 }
       ],
       "exemplars": [
         "the save button does nothing after the form is edited",
@@ -126,12 +167,29 @@
         { "text": "API", "weight": 1 },
         { "text": "service", "weight": 1 },
         { "text": "controller", "weight": 1 },
-        { "text": "migration", "weight": 1 },
+        { "text": "migration", "weight": 0.3 },
         { "text": "queue", "weight": 1 },
         { "text": "router", "weight": 1 },
-        { "text": "endpoint", "weight": 1 }
+        { "text": "endpoint", "weight": 1 },
+        { "text": "bullmq", "weight": 1 },
+        { "text": "dto", "weight": 1 },
+        { "text": "webhook", "weight": 0.5 },
+        { "text": "graphql", "weight": 0.5 },
+        { "text": "worker", "weight": 0.4 },
+        { "text": "consumer", "weight": 0.4 },
+        { "text": "rest", "weight": 0.3 },
+        { "text": "repository", "weight": 0.3 },
+        { "text": "fastapi", "weight": 1 },
+        { "text": "django", "weight": 1 }
       ],
-      "verb_object": { "verbs": ["add", "create", "write", "expose"], "objects": ["endpoint", "controller", "service", "api", "worker", "queue"], "weight": 0.05 },
+      "verb_object": { "verbs": ["add", "create", "write", "expose", "implement"], "objects": ["endpoint", "controller", "service", "api", "worker", "queue", "consumer", "webhook", "resolver"], "weight": 0.5 },
+      "negative": [
+        { "text": "customer service", "weight": 1 },
+        { "text": "test suite", "weight": 1 },
+        { "text": "test all endpoints", "weight": 1 },
+        { "text": "deploy", "weight": 0.5 },
+        { "text": "dockerfile", "weight": 1 }
+      ],
       "exemplars": [
         "add a paginated get endpoint for invoices in the nestjs api",
         "create a service that publishes order events to the queue",
@@ -186,9 +244,28 @@
         { "text": "component", "weight": 1 },
         { "text": "page/app", "weight": 1 },
         { "text": "UI", "weight": 1 },
-        { "text": "styling", "weight": 1 }
+        { "text": "styling", "weight": 1 },
+        { "text": "next.js", "weight": 1 },
+        { "text": "tailwind", "weight": 1 },
+        { "text": "css", "weight": 0.6 },
+        { "text": "modal", "weight": 0.6 },
+        { "text": "dark mode", "weight": 0.6 },
+        { "text": "responsive", "weight": 0.6 },
+        { "text": "sidebar", "weight": 0.5 },
+        { "text": "button", "weight": 0.4 },
+        { "text": "layout", "weight": 0.4 },
+        { "text": "hero", "weight": 0.4 },
+        { "text": "page", "weight": 0.3 },
+        { "text": "form", "weight": 0.3 },
+        { "text": "header", "weight": 0.3 }
       ],
-      "verb_object": { "verbs": ["build", "add", "style"], "objects": ["component", "page", "button", "layout"], "weight": 0.05 },
+      "verb_object": { "verbs": ["build", "add", "style", "make"], "objects": ["component", "page", "button", "layout", "modal", "form", "sidebar"], "weight": 0.5 },
+      "negative": [
+        { "text": "react native", "weight": 1 },
+        { "text": "what does", "weight": 1 },
+        { "text": "where is", "weight": 1 },
+        { "text": "how does", "weight": 1 }
+      ],
       "exemplars": [
         "build a responsive pricing table component in react",
         "add a dark mode toggle to the next.js settings page",
@@ -226,9 +303,17 @@
         { "text": "mirror to mobile", "weight": 1 },
         { "text": "port to mobile", "weight": 1 },
         { "text": "same feature on mobile", "weight": 1 },
-        { "text": "mobile parity", "weight": 1 }
+        { "text": "mobile parity", "weight": 1 },
+        { "text": "to mobile", "weight": 1 },
+        { "text": "mobile app", "weight": 1 },
+        { "text": "expo", "weight": 1 },
+        { "text": "phone", "weight": 0.4 }
       ],
-      "verb_object": { "verbs": ["build", "add", "port", "mirror"], "objects": ["screen", "app", "navigation"], "weight": 0.05 },
+      "verb_object": { "verbs": ["build", "add", "port", "mirror"], "objects": ["screen", "app", "navigation"], "weight": 0.5 },
+      "negative": [
+        { "text": "mobile safari", "weight": 1 },
+        { "text": "mobile web", "weight": 1 }
+      ],
       "exemplars": [
         "build a profile screen in the react native app",
         "add tab navigation between home and settings on mobile",
@@ -262,7 +347,13 @@
         { "text": "TestFlight", "weight": 1 },
         { "text": "ipa", "weight": 1 },
         { "text": "release the app", "weight": 1 },
-        { "text": "store submission", "weight": 1 }
+        { "text": "store submission", "weight": 1 },
+        { "text": "app store", "weight": 1 },
+        { "text": "ios release", "weight": 1 },
+        { "text": "ios build", "weight": 1 },
+        { "text": "iphone", "weight": 0.4 },
+        { "text": "apple", "weight": 0.4 },
+        { "text": "build number", "weight": 0.5 }
       ],
       "exemplars": [
         "build the ios app and upload it to testflight",
@@ -295,7 +386,14 @@
         { "text": "Play Store", "weight": 1 },
         { "text": "aab", "weight": 1 },
         { "text": "release the app", "weight": 1 },
-        { "text": "store submission", "weight": 1 }
+        { "text": "store submission", "weight": 1 },
+        { "text": "google play", "weight": 1 },
+        { "text": "play console", "weight": 1 },
+        { "text": "android release", "weight": 1 },
+        { "text": "android app", "weight": 0.5 },
+        { "text": "signed bundle", "weight": 0.6 },
+        { "text": "version code", "weight": 0.6 },
+        { "text": "rollout", "weight": 0.3 }
       ],
       "exemplars": [
         "build an aab and upload it to the play store internal track",
@@ -340,15 +438,32 @@
         { "text": "multi agent", "weight": 1 },
         { "text": "multiagent", "weight": 1 },
         { "text": "agent-to-agent", "weight": 1 },
-        { "text": "A2A", "weight": 1 }
+        { "text": "A2A", "weight": 1 },
+        { "text": "system prompt", "weight": 1 },
+        { "text": "llm", "weight": 1 },
+        { "text": "embeddings", "weight": 1 },
+        { "text": "retrieval", "weight": 0.6 },
+        { "text": "vector", "weight": 0.5 },
+        { "text": "chunk", "weight": 0.5 },
+        { "text": "assistant", "weight": 0.4 }
       ],
-      "verb_object": { "verbs": ["write", "build", "add", "tune"], "objects": ["prompt", "chatbot", "agent", "embedding", "eval"], "weight": 0.05 },
+      "verb_object": { "verbs": ["write", "build", "add", "tune"], "objects": ["prompt", "chatbot", "agent", "embedding", "eval"], "weight": 0.4 },
       "negative": [
         { "text": "sub-agent", "weight": 1 },
         { "text": "subagent", "weight": 1 },
         { "text": "claude code", "weight": 1 },
         { "text": "status line", "weight": 1 },
-        { "text": "mod", "weight": 1 }
+        { "text": "mod", "weight": 1 },
+        { "text": "user agent", "weight": 1 },
+        { "text": "user-agent", "weight": 1 },
+        { "text": "travel agent", "weight": 1 },
+        { "text": "estate agent", "weight": 1 },
+        { "text": "set up evals", "weight": 1 },
+        { "text": "golden set", "weight": 1 },
+        { "text": "judge rubric", "weight": 1 },
+        { "text": "what does", "weight": 1 },
+        { "text": "where is", "weight": 1 },
+        { "text": "how does", "weight": 1 }
       ],
       "exemplars": [
         "add retrieval over the help center articles to the mastra chatbot",
@@ -378,27 +493,38 @@
       "domain": null,
       "note": "Interactive: llm-coordinator (hermsdorff) designs multi-agent Mastra workflows hosted in NestJS via patterns/3-Agent-topology-interview.md; developer approval recorded before workflow code. LangGraph signals retain legacy migration detection. Mastra/chatbot alone does not trigger this intent. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems.",
       "phrases": [
-        { "text": "multi-agent", "weight": 1 },
-        { "text": "multi agent", "weight": 1 },
-        { "text": "multiagent", "weight": 1 },
+        { "text": "multi-agent", "weight": 1.5 },
+        { "text": "multi agent", "weight": 1.5 },
+        { "text": "multiagent", "weight": 1.5 },
         { "text": "agents that", "weight": 1 },
         { "text": "agents which", "weight": 1 },
-        { "text": "orchestrate", "weight": 1 },
-        { "text": "orchestration", "weight": 1 },
-        { "text": "orchestrator", "weight": 1 },
+        { "text": "orchestrate", "weight": 1.5 },
+        { "text": "orchestration", "weight": 1.5 },
+        { "text": "orchestrator", "weight": 1.5 },
         { "text": "supervisor agent", "weight": 1 },
         { "text": "agent topology", "weight": 1 },
         { "text": "LangGraph", "weight": 1 },
         { "text": "A2A", "weight": 1 },
         { "text": "agent-to-agent", "weight": 1 },
-        { "text": "handoff between agents", "weight": 1 }
+        { "text": "handoff between agents", "weight": 1 },
+        { "text": "specialist agents", "weight": 1 },
+        { "text": "topology", "weight": 1 },
+        { "text": "handoff protocol", "weight": 1 },
+        { "text": "supervisor", "weight": 0.5 },
+        { "text": "hands off", "weight": 0.5 },
+        { "text": "delegates", "weight": 0.4 },
+        { "text": "agents", "weight": 0.3 }
       ],
       "negative": [
         { "text": "sub-agent", "weight": 1 },
         { "text": "subagent", "weight": 1 },
         { "text": "claude code", "weight": 1 },
         { "text": "status line", "weight": 1 },
-        { "text": "mod", "weight": 1 }
+        { "text": "mod", "weight": 1 },
+        { "text": "user agent", "weight": 1 },
+        { "text": "user-agent", "weight": 1 },
+        { "text": "travel agent", "weight": 1 },
+        { "text": "estate agent", "weight": 1 }
       ],
       "exemplars": [
         "design a supervisor that routes customer questions to a billing specialist and a shipping specialist",
@@ -431,9 +557,21 @@
         { "text": "migrations", "weight": 1 },
         { "text": "schema", "weight": 1 },
         { "text": "query perf", "weight": 1 },
-        { "text": "indexing", "weight": 1 }
+        { "text": "indexing", "weight": 1 },
+        { "text": "migration", "weight": 1 },
+        { "text": "slow query", "weight": 1 },
+        { "text": "query plan", "weight": 1 },
+        { "text": "foreign key", "weight": 1 },
+        { "text": "index", "weight": 0.5 },
+        { "text": "constraint", "weight": 0.5 },
+        { "text": "nullable", "weight": 0.5 },
+        { "text": "sql", "weight": 0.6 },
+        { "text": "postgres", "weight": 0.6 },
+        { "text": "query", "weight": 0.4 },
+        { "text": "table", "weight": 0.3 },
+        { "text": "column", "weight": 0.3 }
       ],
-      "verb_object": { "verbs": ["add", "create", "write", "optimize"], "objects": ["index", "migration", "table", "query", "schema"], "weight": 0.05 },
+      "verb_object": { "verbs": ["add", "create", "write", "optimize", "drop", "design"], "objects": ["index", "migration", "table", "query", "schema", "column"], "weight": 0.5 },
       "exemplars": [
         "this orders query takes eight seconds, add the right index",
         "write a migration that splits users into users and profiles",
@@ -467,9 +605,22 @@
         { "text": "k8s/Helm", "weight": 1 },
         { "text": "Terraform", "weight": 1 },
         { "text": ".github/workflows/", "weight": 1 },
-        { "text": "cloud", "weight": 1 }
+        { "text": "cloud", "weight": 1 },
+        { "text": "github actions", "weight": 1 },
+        { "text": "dockerfile", "weight": 1 },
+        { "text": "kubernetes", "weight": 1 },
+        { "text": "k8s", "weight": 1 },
+        { "text": "helm chart", "weight": 1 },
+        { "text": "ci pipeline", "weight": 1 },
+        { "text": "readiness probe", "weight": 1 },
+        { "text": "deploy to", "weight": 1 },
+        { "text": "deploy the", "weight": 1 },
+        { "text": "helm", "weight": 0.6 },
+        { "text": "resource limits", "weight": 0.5 },
+        { "text": "pipeline", "weight": 0.4 },
+        { "text": "rollout", "weight": 0.3 }
       ],
-      "verb_object": { "verbs": ["add", "set up", "configure", "write"], "objects": ["pipeline", "workflow", "dockerfile", "helm chart", "terraform"], "weight": 0.05 },
+      "verb_object": { "verbs": ["add", "set up", "configure", "write", "provision"], "objects": ["pipeline", "workflow", "dockerfile", "helm chart", "terraform", "deployment", "probe"], "weight": 0.5 },
       "exemplars": [
         "add resource limits to the helm chart for the api deployment",
         "set up a github actions workflow that builds the docker image",
@@ -503,7 +654,17 @@
         { "text": "middleware", "weight": 1 },
         { "text": "secret", "weight": 1 },
         { "text": ".env", "weight": 1 },
-        { "text": "credentials", "weight": 1 }
+        { "text": "credentials", "weight": 1 },
+        { "text": "csrf", "weight": 1 },
+        { "text": "object-level", "weight": 1 },
+        { "text": "access control", "weight": 1 },
+        { "text": "idor", "weight": 1 },
+        { "text": "secrets", "weight": 1 },
+        { "text": "jwt", "weight": 0.6 },
+        { "text": "rotate", "weight": 0.5 },
+        { "text": "leaked", "weight": 0.5 },
+        { "text": "permission", "weight": 0.4 },
+        { "text": "tokens", "weight": 0.4 }
       ],
       "exemplars": [
         "add a guard so only admins can call the billing routes",
@@ -535,7 +696,14 @@
         { "text": "document the system", "weight": 1 },
         { "text": "architecture docs", "weight": 1 },
         { "text": "docs for new devs", "weight": 1 },
-        { "text": "understand the codebase", "weight": 1 }
+        { "text": "understand the codebase", "weight": 1 },
+        { "text": "codebase map", "weight": 1 },
+        { "text": "onboarding", "weight": 0.3 },
+        { "text": "new developers", "weight": 0.6 },
+        { "text": "new hire", "weight": 0.6 },
+        { "text": "explain how", "weight": 0.4 },
+        { "text": "data flows", "weight": 0.4 },
+        { "text": "document the", "weight": 0.4 }
       ],
       "exemplars": [
         "document the system architecture for new developers",
@@ -565,7 +733,12 @@
       "phrases": [
         { "text": "interview me about the system", "weight": 1 },
         { "text": "ask me about", "weight": 1 },
-        { "text": "resolve open hypotheses", "weight": 1 }
+        { "text": "resolve open hypotheses", "weight": 1 },
+        { "text": "interview me", "weight": 1 },
+        { "text": "quiz me", "weight": 1 },
+        { "text": "question me", "weight": 1 },
+        { "text": "fill the gaps", "weight": 0.5 },
+        { "text": "missing sections", "weight": 0.4 }
       ],
       "exemplars": [
         "interview me about the system to fill the gaps in the docs",
@@ -596,7 +769,15 @@
         { "text": "test all endpoints", "weight": 1 },
         { "text": "run the API test suite", "weight": 1 },
         { "text": "QA the system", "weight": 1 },
-        { "text": "Postman/Newman run", "weight": 1 }
+        { "text": "Postman/Newman run", "weight": 1 },
+        { "text": "every endpoint", "weight": 1 },
+        { "text": "each endpoint", "weight": 1 },
+        { "text": "api test suite", "weight": 1 },
+        { "text": "postman", "weight": 1 },
+        { "text": "newman", "weight": 1 },
+        { "text": "smoke test", "weight": 0.6 },
+        { "text": "pass and fail", "weight": 0.5 },
+        { "text": "end to end", "weight": 0.4 }
       ],
       "exemplars": [
         "test all endpoints of the api against a clean stack",
@@ -627,7 +808,12 @@
         { "text": "audit", "weight": 1 },
         { "text": "analyze the system", "weight": 1 },
         { "text": "what's broken", "weight": 1 },
-        { "text": "what is broken", "weight": 1 }
+        { "text": "what is broken", "weight": 1 },
+        { "text": "health check", "weight": 1 },
+        { "text": "status report", "weight": 0.6 },
+        { "text": "analyze the", "weight": 0.4 },
+        { "text": "risks", "weight": 0.4 },
+        { "text": "rank the", "weight": 0.3 }
       ],
       "exemplars": [
         "audit the whole system and tell me what is broken",
@@ -658,9 +844,17 @@
         { "text": "refactor", "weight": 1 },
         { "text": "clean up", "weight": 1 },
         { "text": "simplify", "weight": 1 },
-        { "text": "tech debt", "weight": 1 }
+        { "text": "tech debt", "weight": 1 },
+        { "text": "dead code", "weight": 1 },
+        { "text": "without changing behavior", "weight": 1 },
+        { "text": "rename", "weight": 1 },
+        { "text": "duplicated", "weight": 0.5 },
+        { "text": "too many things", "weight": 0.5 }
       ],
-      "verb_object": { "verbs": ["refactor", "clean up", "simplify"], "objects": ["module", "service", "code", "function"], "weight": 0.05 },
+      "verb_object": { "verbs": ["refactor", "clean up", "simplify"], "objects": ["module", "service", "code", "function"], "weight": 0.5 },
+      "negative": [
+        { "text": "local", "weight": 0.5 }
+      ],
       "exemplars": [
         "refactor the order service to remove the duplicated pricing logic",
         "clean up the dead code in the reports module",
@@ -688,9 +882,26 @@
       "note": "The decision gets recorded, not just chatted. Tier is most-capable per registries/models.json work type adr — an ADR is a recorded decision with a long half-life, the same class as a spec. Business, career and positioning decisions go to the strategy row instead; this row owns technical X-vs-Y choices.",
       "phrases": [
         { "text": "should we use", "weight": 1 },
-        { "text": "how should we structure", "weight": 1 }
+        { "text": "how should we structure", "weight": 1 },
+        { "text": "adr", "weight": 1 },
+        { "text": "trade-off", "weight": 1.5 },
+        { "text": "trade off", "weight": 1.5 },
+        { "text": "tradeoff", "weight": 1.5 },
+        { "text": "record the decision", "weight": 1 },
+        { "text": "create a plan", "weight": 1 },
+        { "text": "decision", "weight": 0.6 },
+        { "text": "plan", "weight": 0.6 },
+        { "text": "alternatives", "weight": 0.6 },
+        { "text": "evaluate", "weight": 0.5 },
+        { "text": "compare", "weight": 0.5 },
+        { "text": "framework", "weight": 0.5 },
+        { "text": "replace", "weight": 0.4 },
+        { "text": "options", "weight": 0.3 }
       ],
-      "verb_object": { "verbs": ["choose", "decide", "compare"], "objects": ["database", "framework", "architecture", "library"], "weight": 0.05 },
+      "verb_object": { "verbs": ["plan", "evaluate", "compare", "decide", "choose"], "objects": ["framework", "library", "architecture", "approach", "structure", "database", "broker"], "weight": 0.5 },
+      "negative": [
+        { "text": "implement", "weight": 1 }
+      ],
       "exemplars": [
         "should we use postgres or mongo for the event store",
         "write up a plan for replacing our auth library and compare the options",
@@ -721,9 +932,12 @@
         { "text": "write release notes", "weight": 1 },
         { "text": "document version", "weight": 1 },
         { "text": "what changed in this release", "weight": 1 },
-        { "text": "version bump", "weight": 1 }
+        { "text": "version bump", "weight": 1 },
+        { "text": "release notes", "weight": 1 },
+        { "text": "changelog", "weight": 1 },
+        { "text": "release body", "weight": 0.6 }
       ],
-      "verb_object": { "verbs": ["write", "draft"], "objects": ["release notes", "changelog"], "weight": 0.05 },
+      "verb_object": { "verbs": ["write", "draft"], "objects": ["release notes", "changelog"], "weight": 0.5 },
       "exemplars": [
         "write release notes for version 2.4.0",
         "summarize what changed in this release for the changelog",
@@ -756,7 +970,14 @@
         { "text": "and I can't decide", "weight": 1 },
         { "text": "and I cannot decide", "weight": 1 },
         { "text": "positioning", "weight": 1 },
-        { "text": "monetizing existing assets", "weight": 1 }
+        { "text": "monetizing existing assets", "weight": 1 },
+        { "text": "monetize", "weight": 1 },
+        { "text": "market", "weight": 0.6 },
+        { "text": "position", "weight": 0.6 },
+        { "text": "career", "weight": 0.6 },
+        { "text": "competitors", "weight": 0.6 },
+        { "text": "consulting", "weight": 0.5 },
+        { "text": "learn", "weight": 0.3 }
       ],
       "exemplars": [
         "where is the developer tooling market going over the next two years",
@@ -787,7 +1008,19 @@
       "phrases": [
         { "text": "review", "weight": 1 },
         { "text": "is this safe", "weight": 1 },
-        { "text": "PR URL", "weight": 1 }
+        { "text": "PR URL", "weight": 1 },
+        { "text": "safe to merge", "weight": 1 },
+        { "text": "before I merge", "weight": 0.6 },
+        { "text": "pull request", "weight": 0.3 },
+        { "text": "look over", "weight": 0.5 },
+        { "text": "diff", "weight": 0.4 }
+      ],
+      "negative": [
+        { "text": "performance review", "weight": 1 },
+        { "text": "customer review", "weight": 1 },
+        { "text": "product review", "weight": 1 },
+        { "text": "app store review", "weight": 1 },
+        { "text": "store review", "weight": 1 }
       ],
       "exemplars": [
         "review this pull request before I merge it",
@@ -818,9 +1051,16 @@
       "phrases": [
         { "text": "write tests", "weight": 1 },
         { "text": "add coverage", "weight": 1 },
-        { "text": "regression test for a fix", "weight": 1 }
+        { "text": "regression test for a fix", "weight": 1 },
+        { "text": "regression test", "weight": 1 },
+        { "text": "write a test", "weight": 1 },
+        { "text": "unit tests", "weight": 0.8 },
+        { "text": "integration tests", "weight": 0.8 },
+        { "text": "tests for", "weight": 0.8 },
+        { "text": "coverage", "weight": 0.6 },
+        { "text": "test cases", "weight": 0.6 }
       ],
-      "verb_object": { "verbs": ["write", "add"], "objects": ["test", "coverage"], "weight": 0.05 },
+      "verb_object": { "verbs": ["write", "add"], "objects": ["test", "coverage"], "weight": 0.5 },
       "exemplars": [
         "write tests for the discount calculator",
         "add coverage for the invoice mapper edge cases",
@@ -849,7 +1089,11 @@
       "phrases": [
         { "text": "set up evals", "weight": 1 },
         { "text": "golden set", "weight": 1 },
-        { "text": "new LLM feature lacking evals", "weight": 1 }
+        { "text": "new LLM feature lacking evals", "weight": 1 },
+        { "text": "evals", "weight": 1 },
+        { "text": "judge rubric", "weight": 1 },
+        { "text": "eval harness", "weight": 1 },
+        { "text": "groundedness", "weight": 0.6 }
       ],
       "exemplars": [
         "set up evals for the summarization feature",
@@ -879,7 +1123,14 @@
       "phrases": [
         { "text": "is this actually right", "weight": 1 },
         { "text": "pre-release check on risk=high", "weight": 1 },
-        { "text": "release gate needs an independent pass", "weight": 1 }
+        { "text": "release gate needs an independent pass", "weight": 1 },
+        { "text": "adversarial", "weight": 1 },
+        { "text": "refute", "weight": 1 },
+        { "text": "try to break", "weight": 1 },
+        { "text": "actually correct", "weight": 1 },
+        { "text": "independent", "weight": 0.4 },
+        { "text": "challenge", "weight": 0.4 },
+        { "text": "before we ship", "weight": 0.3 }
       ],
       "exemplars": [
         "is this actually right before we ship it",
@@ -922,7 +1173,17 @@
       "phrases": [
         { "text": "hand this off", "weight": 1 },
         { "text": "wave barrier reached", "weight": 1 },
-        { "text": "session ending mid-task", "weight": 1 }
+        { "text": "session ending mid-task", "weight": 1 },
+        { "text": "handoff", "weight": 1 },
+        { "text": "hand off", "weight": 1 },
+        { "text": "out of time", "weight": 0.6 },
+        { "text": "next session", "weight": 0.5 },
+        { "text": "pick this up", "weight": 0.5 }
+      ],
+      "negative": [
+        { "text": "handoff protocol", "weight": 1 },
+        { "text": "between agents", "weight": 1 },
+        { "text": "hand off to each other", "weight": 1 }
       ],
       "exemplars": [
         "hand this off to the next session",
@@ -953,7 +1214,13 @@
         { "text": "run a retro", "weight": 1 },
         { "text": "what should we improve", "weight": 1 },
         { "text": "same correction recurring", "weight": 1 },
-        { "text": "monthly cadence", "weight": 1 }
+        { "text": "monthly cadence", "weight": 1 },
+        { "text": "retro", "weight": 1 },
+        { "text": "retrospective", "weight": 1 },
+        { "text": "keeps coming up", "weight": 0.6 },
+        { "text": "propose rule", "weight": 0.6 },
+        { "text": "archived changes", "weight": 0.6 },
+        { "text": "recurring", "weight": 0.5 }
       ],
       "exemplars": [
         "run a retro on the last month of changes",
@@ -984,7 +1251,12 @@
         { "text": "log an observation", "weight": 1 },
         { "text": "watch for skill opportunities", "weight": 1 },
         { "text": "observation log", "weight": 1 },
-        { "text": "a loaded rule got violated", "weight": 1 }
+        { "text": "a loaded rule got violated", "weight": 1 },
+        { "text": "skill observations", "weight": 1 },
+        { "text": "rule was violated", "weight": 1 },
+        { "text": "observations", "weight": 0.6 },
+        { "text": "dead weight", "weight": 0.6 },
+        { "text": "was unclear", "weight": 0.4 }
       ],
       "exemplars": [
         "log an observation that the testing rule was unclear here",
@@ -1037,7 +1309,13 @@
       "phrases": [
         { "text": "record the change", "weight": 1 },
         { "text": "log this change", "weight": 1 },
-        { "text": "Stop gate reports unrecorded changes", "weight": 1 }
+        { "text": "Stop gate reports unrecorded changes", "weight": 1 },
+        { "text": "change record", "weight": 1 },
+        { "text": "unrecorded", "weight": 1 },
+        { "text": "close it out", "weight": 0.6 },
+        { "text": "close out", "weight": 0.6 },
+        { "text": "what was made", "weight": 0.6 },
+        { "text": "record", "weight": 0.3 }
       ],
       "exemplars": [
         "record the change we just made",
@@ -1076,7 +1354,11 @@
         { "text": "who should do this", "weight": 1 },
         { "text": "which agents", "weight": 1 },
         { "text": "dispatch plan", "weight": 1 },
-        { "text": "how should we split this", "weight": 1 }
+        { "text": "how should we split this", "weight": 1 },
+        { "text": "which workers", "weight": 1 },
+        { "text": "waves", "weight": 0.6 },
+        { "text": "split this", "weight": 0.6 },
+        { "text": "dispatch", "weight": 0.5 }
       ],
       "exemplars": [
         "route this request and tell me which agents should do it",
@@ -1108,7 +1390,14 @@
         { "text": "spec done", "weight": 1 },
         { "text": "moving to archive", "weight": 1 },
         { "text": "claiming done / complete / fixed", "weight": 1 },
-        { "text": "spec moved to .engineos/archived/", "weight": 1 }
+        { "text": "spec moved to .engineos/archived/", "weight": 1 },
+        { "text": "spec is done", "weight": 1 },
+        { "text": "to archive", "weight": 0.6 },
+        { "text": "final gate", "weight": 0.6 },
+        { "text": "evidence", "weight": 0.5 },
+        { "text": "actually works", "weight": 0.5 },
+        { "text": "it is fixed", "weight": 0.5 },
+        { "text": "is done", "weight": 0.3 }
       ],
       "exemplars": [
         "the spec is done, move it to the archive",

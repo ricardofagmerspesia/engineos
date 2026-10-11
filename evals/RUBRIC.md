@@ -132,10 +132,27 @@ twice: over every case, and over the held-out set (cases without
   cases passing, and every intent whose judge recall falls below the fallback's
   listed with a reason. Gates and risk stay add-only regardless of the result.
 
-Every threshold the shadow tier reads (`router.scoring.*`,
-`policy.judge.thresholds.*`, per-intent `threshold`) is a placeholder until
-T13 calibrates it from this set at the approved final stage.
-`evals/BASELINE.md` holds the recorded numbers.
+T13d (2026-10-11) calibrated the fallback tier from this set: the
+`intents.json` phrases, negatives and `verb_object` weights, with every
+`router.scoring.*` number swept and kept. `policy.judge.thresholds.*`, the
+per-intent `threshold` values and `router.tiebreak.*` stay placeholders until
+a judge shadow run under the D5 decision (and, for the tie-break, the pinned
+MiniLM daemon). `evals/BASELINE.md` holds the recorded numbers.
+
+### Calibration discipline
+
+- Fallback calibration reads the kernel answer (`engineos kernel resolve
+  --facts '{"prompt": ..., "escalate": true}'`), which makes no network call
+  and writes no telemetry, against a scratch copy of the registries. Each
+  candidate also replays the shipped-registry assertions of the kernel tests
+  and the `router.fixtures` (C18e), so a weight that breaks a pinned behavior
+  is rejected even when it lifts a metric.
+- The `para-<intent>-3` cases are the untuned subset: their failures are not
+  read while weights change, and they are graded once, before and after. A gap
+  between the tuned held-out numbers and this subset measures overfitting.
+- `evals/BASELINE.md` records before and after for every set: all cases,
+  held-out, held-out without the untuned subset, the untuned subset, and the
+  exemplar cases.
 
 ## Live tier (opt-in)
 
@@ -179,7 +196,10 @@ Agent cases are graded by an independent judge session against the `must` /
   above ~60 the live tier gets slow enough that people stop running it. The
   routing-replacement golden set (T13) grows past 120 cases for the shadow
   tier's per-intent metrics; the printed `RUBRIC target 30-60` size line is
-  frozen output and changes only through `docs/COMPATIBILITY.md`.
+  frozen output and changes only through `docs/COMPATIBILITY.md`. Decision
+  (T13d, 2026-10-11): the line stays as printed beside a 284-case set. The
+  30-60 target describes a live run's cost, the live tier stays opt-in, and
+  the shadow tier needs the larger set; the floor of 25 is the only gate.
 - Every active intent carries at least three expected cases and at least three
   `exemplar: true` cases (validator C38b bounds exemplars at 3–10 per active row).
 - Every case carries a `notes` field saying which router row or rule it pins.
