@@ -1,13 +1,29 @@
 import { KernelError } from '../lib/json';
 import { admitSection, type AdmitFacts, type AdmitSection } from './admit';
 import { breakerSection, type BreakerFacts, type BreakerSection } from './breaker';
+import { combine, type CombineOutput } from './combine';
 import type { KernelContext, Registries, RiskTier } from './context';
-import { decisionsSection, type DecisionsFacts, type DecisionsSection } from './decisions';
+import {
+  decisionsSection,
+  type ComposedDecisionsSection,
+  type DecisionMatch,
+  type DecisionsFacts,
+  type DecisionsSection,
+} from './decisions';
 import { hitlSection, type HitlFacts, type HitlSection } from './hitl';
+import { judgeFact, judgeSummary, type JudgeFact, type JudgeMode, type JudgeSummary } from './judge-facts';
 import { modelSection, type ModelSection } from './model';
 import { repairSection, type RepairFacts, type RepairSection } from './repair';
 import { riskSection, type RiskSection } from './risk';
-import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type SuppressedIntent } from './route';
+import {
+  routeByIntent,
+  routeByPath,
+  routeEscalate,
+  type EscalateRouteSection,
+  type IntentRouteSection,
+  type PathRouteSection,
+  type SuppressedIntent,
+} from './route';
 import { asciiDowncase, compilePromptRegex, scaleSection, type ScaleFacts, type ScaleSection } from './scale';
 import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
 import { wavesSection, type WavesFacts, type WavesSection } from './waves';
@@ -50,7 +66,17 @@ export interface DeclaredFacts {
   breaker?: BreakerFacts;
   hitl?: HitlFacts;
   waves?: WavesFacts;
+  // Passed through unread, like `signals`: judge-facts.ts owns what a
+  // well-formed fact is, and checks its vocabulary against the registries.
+  judge?: unknown;
 }
+
+// The escalate form carries the judge summary as its trailing key
+// (contracts.md@rev1 §2.3) in every answer: the declared fact's summary, or the
+// no-judge-fact fallback when none was declared.
+export type JudgedEscalateRouteSection = EscalateRouteSection & { judge: JudgeSummary };
+
+export type AnswerRouteSection = PathRouteSection | IntentRouteSection | JudgedEscalateRouteSection;
 
 // Keys appear in the order resolve fills them, which is the order below for
 // every fact but the task contract: that block is composed last and fills
@@ -59,11 +85,11 @@ export interface DeclaredFacts {
 // resolve-task projection re-orders into the legacy composite; the `resolve` arm
 // emits this order verbatim.
 export interface Answer {
-  route?: RouteSection;
+  route?: AnswerRouteSection;
   model?: ModelSection;
   risk?: RiskSection;
   scale?: ScaleSection;
-  decision_rules?: DecisionsSection;
+  decision_rules?: DecisionsSection | ComposedDecisionsSection;
   repair?: RepairSection;
   admit?: AdmitSection;
   breaker?: BreakerSection;
@@ -72,7 +98,8 @@ export interface Answer {
   task_contract?: TaskContractSection;
 }
 
-// cmd_resolve_task's task_contract key order, which is the answer's contract.
+// cmd_resolve_task's task_contract key order, which is the answer's contract:
+// the twenty legacy keys, then the two judge keys of contracts.md@rev1 §2.4.
 export interface TaskContractSection {
   substantive: boolean;
   intents: string[];
@@ -94,6 +121,8 @@ export interface TaskContractSection {
   required: string[];
   gates: string[];
   preferences: string[];
+  judge: JudgeSummary;
+  risk_proposal: RiskTier | null;
 }
 
 export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
@@ -118,6 +147,12 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   if (facts.taskContract === true && facts.hitl !== undefined) {
     throw new KernelError('a task-contract fact and a hitl fact cannot be declared together');
   }
+  // Only the task contract folds a judge fact (decision D7); accepted anywhere
+  // else it would be a fact silently answered by nothing.
+  if (facts.judge !== undefined && facts.taskContract !== true) {
+    throw new KernelError('a judge fact cannot be declared without a task-contract fact');
+  }
+  const judge = facts.judge === undefined ? null : judgeFact(facts.judge, ctx.registries);
   if (facts.path !== undefined) {
     // Refuse rather than fabricate: an empty path would route as the repo root
     // and answer a domain nobody asked about.
@@ -131,7 +166,7 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     if (prompt === '') throw new KernelError('a declared prompt fact must not be empty');
     answer.route =
       facts.escalate === true || facts.taskContract === true
-        ? routeEscalate(prompt, ctx.registries)
+        ? { ...routeEscalate(prompt, ctx.registries), judge: judgeSummary(judge) }
         : routeByIntent(prompt, ctx.registries);
   }
   if (facts.workType !== undefined) {
@@ -180,14 +215,28 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     if (route === undefined || !('escalate' in route)) {
       throw new KernelError('a task-contract fact answered no escalate route section');
     }
-    const decisions = decisionsSection({ prompt }, ctx.registries);
-    answer.decision_rules = decisions;
-    const floor = decisions.any_high ? 'high' : route.risk_floor;
+    const combined = combine({
+      route,
+      decisions: decisionsSection({ prompt }, ctx.registries),
+      scale: route.scale,
+      judge,
+      mode: judgeMode(judge, ctx.registries),
+      regs: ctx.registries,
+    });
+    answer.decision_rules = {
+      matches: combined.decisionMatches,
+      any_high: combined.anyHigh,
+      judge_added: combined.judgeAdded,
+    };
+    // The deterministic floor raised by any matched high rule, and in
+    // authoritative mode by the folded intents and the judge's proposal; never
+    // lowered (contracts.md@rev1 §4.4).
+    const floor = combined.riskFloor;
     // The ceiling lookup runs for any floor, classified or not: a floor with no
     // entry in autonomy.ceiling_by_risk is a broken registry, and the contract
     // object below publishes the same value.
     const ceiling = floor === null ? null : ceilingAt(floor, ctx.registries);
-    // HITL is folded ONLY from decisions.any_high: a matched rule declaring
+    // HITL is folded ONLY from any_high: a matched rule declaring
     // risk=high is a CLASSIFICATION of this prompt's own text, while
     // route.risk_floor is an input to classification, inherited from whichever
     // domain a keyword landed in. Folding the floor in would announce a human
@@ -206,14 +255,19 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     // own below high, so a floor alone still never triggers hitl. It needs a
     // ceiling to ask about, and every rule signal is also an intent signal, so
     // a matched rule always arrives with a floor (resolve.test.ts holds this).
-    const topology = topologyRequired(decisions, ctx.registries);
-    if ((decisions.any_high || topology) && floor !== null && ceiling !== null) {
+    //
+    // A judge fold changes neither condition's meaning: any_high and the
+    // topology fact read the union of regex and judge-added matches, and a
+    // judge-raised floor alone folds nothing (a proposal is not a
+    // classification).
+    const topology = topologyRequired(combined.decisionMatches, ctx.registries);
+    if ((combined.anyHigh || topology) && floor !== null && ceiling !== null) {
       // No conflict fact here: a matched high rule on a task nobody has
       // classified is not an observed disagreement between rule and tier, and
       // asserting one would be the same unearned claim one level down.
       answer.hitl = hitlSection({ riskTier: floor, autonomy: ceiling, topology }, ctx.registries);
     }
-    answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
+    answer.task_contract = taskContract({ prompt, route, combined, floor, ceiling }, ctx.registries);
   }
   return answer;
 }
@@ -231,24 +285,32 @@ const AGENT_POLICY_RULE = 'subagents';
 interface ContractInputs {
   prompt: string;
   route: EscalateRouteSection;
-  decisions: DecisionsSection;
+  combined: CombineOutput;
   floor: RiskTier | null;
   ceiling: string | null;
 }
 
+// Without a jev fact every mode answers the same (contracts.md@rev1 §4), so the
+// policy block is read only when there is something to fold: a registry
+// without it still answers the pre-judge contract.
+function judgeMode(judge: JudgeFact | null, regs: Registries): JudgeMode {
+  return judge !== null && judge.source === 'jev' ? regs.policy.judge.mode : 'shadow';
+}
+
 function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSection {
-  const { prompt, route, decisions } = inputs;
+  const { prompt, route, combined } = inputs;
+  const matches = combined.decisionMatches;
   // Registry order, not match order: the bash arm selects the matched rows out
   // of intents.json, so the unions below follow the registry's own ordering.
-  const matched = regs.intents.intents.filter((intent) => route.intents.includes(intent.id));
+  const matched = regs.intents.intents.filter((intent) => combined.intents.includes(intent.id));
   // The union is read from intents.json directly here, not through
   // routeByIntent, so the enablement filter has to be applied again at this
   // site. Two answer shapes, one rule: a disabled skill is never recommended,
   // and never disappears without saying why.
   const declaredSkills = unique(matched.flatMap((intent) => intent.skills));
   const substantive =
-    route.intents.length > 0 ||
-    decisions.matches.length > 0 ||
+    combined.intents.length > 0 ||
+    matches.length > 0 ||
     route.scale.big_task ||
     route.scale.spec_authoring ||
     route.scale.design_work ||
@@ -258,34 +320,36 @@ function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSec
     substantiveAction(prompt, regs);
   return {
     substantive,
-    intents: [...route.intents],
-    escalates: route.escalate,
-    escalation_reasons: [...route.reasons],
-    suppressed: route.suppressed.map((entry) => ({ ...entry })),
-    agents: [...route.agents],
+    intents: [...combined.intents],
+    escalates: combined.escalateReasons.length > 0,
+    escalation_reasons: [...combined.escalateReasons],
+    suppressed: combined.suppressed.map((entry) => ({ ...entry })),
+    agents: [...combined.agents],
     rules: unique(matched.flatMap((intent) => intent.rules)),
     // jq's `unique` sorts as well as de-duplicates, and the answer callers
     // already parse carries that ordering.
     policy_rules: [
       ...new Set([
         ...(substantive ? POLICY_BUNDLE : []),
-        ...(route.agents.length > 0 ? [AGENT_POLICY_RULE] : []),
+        ...(combined.agents.length > 0 ? [AGENT_POLICY_RULE] : []),
       ]),
     ].sort(),
     skills: enabledSkills(declaredSkills, regs.skillState),
     skills_suppressed: suppressedSkills(declaredSkills, regs.skillState),
     commands: unique(matched.flatMap((intent) => intent.commands)),
     mcp: unique(matched.flatMap((intent) => intent.mcp)),
-    model_tier: route.model_tier,
+    model_tier: combined.modelTier,
     risk_floor: inputs.floor,
     autonomy_ceiling_at_floor: inputs.ceiling,
     scale: { ...route.scale },
-    decision_rules: decisions.matches.map((match) => match.id),
-    required: unique(decisions.matches.flatMap((match) => match.require)),
+    decision_rules: matches.map((match) => match.id),
+    required: unique(matches.flatMap((match) => match.require)),
     // jq's `map(.gate // empty)` drops a null value rather than emitting it, so
     // a rule that names no gate and no preference contributes to neither list.
-    gates: unique(declared(decisions.matches.map((match) => match.gate))),
-    preferences: unique(declared(decisions.matches.map((match) => match.prefer))),
+    gates: unique(declared(matches.map((match) => match.gate))),
+    preferences: unique(declared(matches.map((match) => match.prefer))),
+    judge: { ...combined.judgeSummary },
+    risk_proposal: combined.riskProposal,
   };
 }
 
@@ -294,8 +358,8 @@ function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSec
 // second rule with the same condition folds the same way without a code change.
 const TOPOLOGY_WHEN_KEY = 'multi_agent_system';
 
-function topologyRequired(decisions: DecisionsSection, regs: Registries): boolean {
-  const matched = new Set(decisions.matches.map((match) => match.id));
+function topologyRequired(matches: readonly DecisionMatch[], regs: Registries): boolean {
+  const matched = new Set(matches.map((match) => match.id));
   return regs.decisionRules.rules.some(
     (rule) => matched.has(rule.id) && rule.when[TOPOLOGY_WHEN_KEY] === true,
   );
