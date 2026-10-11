@@ -137,7 +137,12 @@
       "note": "Admission control for the orchestrator's dispatch loop. Capacity is wave_concurrency_cap above (never a second copy). Answered by scripts/kernel.sh admit; mirrored in rules/parallelism.md 'Backpressure'. defer = hold the unit for the next wave; reject = stop planning, report BLOCKED, re-plan with a human (a hitl reason).",
       "max_queued_units": 12,
       "overload_action": "defer",
-      "actions": ["dispatch", "defer", "reject"]
+      "actions": ["dispatch", "defer", "reject"],
+      "rows": [
+        {"when": {"capacity_available": true}, "action": "dispatch",          "capacity": "remaining", "reason": "inflight {inflight} below cap {cap}"},
+        {"when": {"queue_has_room": true},     "action": "{overload_action}", "capacity": "none",      "reason": "cap {cap} reached; {queued} of {max_queued_units} queued — hold the unit for the next wave"},
+        {"when": {},                           "action": "reject",            "capacity": "none",      "reason": "cap {cap} reached and queue full ({queued}/{max_queued_units}) — stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)"}
+      ]
     },
     "prompt_signals": {
       "note": "Prompt-classification EREs for kernel.sh scale (were hardcoded in the UserPromptSubmit advisor before the kernel owned them). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
@@ -188,12 +193,23 @@
     "escalations": 1,
     "by_situation": [
       { "situation": "red", "response": "fix-attempt-ladder" },
-      { "situation": "infra", "response": "report-tooling-gap-no-attempt-consumed" },
-      { "situation": "flaky", "response": "fix-or-delete-never-rerun-until-green" }
+      { "situation": "infra", "response": "report-tooling-gap-no-attempt-consumed", "action": "report-tooling-gap", "reason": "the check could not run — that is a tooling gap, not a code defect; report it, consume no fix attempt (hooks/stop-verify.sh: never block on infra quirks)" },
+      { "situation": "flaky", "response": "fix-or-delete-never-rerun-until-green", "action": "fix-or-delete", "reason": "green on re-run with no diff is a broken test, not a pass — fix or delete within the week, never retry-until-green (rules/testing.md)" }
     ],
     "never_repair": [
       "weaken-the-check",
       "behavior-change-required"
+    ],
+    "never_repair_answer": { "action": "never-repair", "reason": "situation {situation} is on the never-repair list — a fix that weakens the check or changes behavior is not a fix; escalate to a human on the first occurrence" },
+    "ladder": [
+      { "when": { "within_fix_attempts": true }, "action": "fix-same-tier", "reason": "first red — fix and re-run the check at the same tier" },
+      { "when": { "within_escalations": true }, "action": "escalate-one-tier", "reason": "the same check failed twice — escalate one model tier for the fix and re-run once; that is the last attempt (rules/models.md)" },
+      { "when": {}, "action": "stop-report-red", "reason": "the bound is exhausted — stop, report the check red with what was tried; a loop continued past this point is sampling until it looks right, not fixing (rules/parallelism.md)" }
+    ],
+    "infra_patterns": [
+      { "runner": "nx", "pattern": "cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task", "reason": "target-absent" },
+      { "runner": "npm-family", "pattern": "missing script:|command \"<t>\" not found|find a script named \"<t>\"", "reason": "target-absent" },
+      { "runner": "python", "pattern": "No module named (ruff|pyright|pytest)|command not found|No such file or directory: .*(ruff|pyright|pytest)", "reason": "runner-missing" }
     ]
   },
   "breaker": {
@@ -202,13 +218,32 @@
     "cooldown_waves": 1,
     "half_open_probes": 1,
     "states": ["closed", "half-open", "open"],
-    "scopes": ["provider", "mcp", "tool", "agent"]
+    "scopes": ["provider", "mcp", "tool", "agent"],
+    "transitions": [
+      { "from": "closed",    "guard": { "threshold_reached": true },  "to": "open",      "allow": false, "reason": "{failures} consecutive failures reached threshold {failure_threshold} — stop calling this resource for {cooldown_waves} wave(s); route around or report DEGRADED" },
+      { "from": "closed",    "guard": { "threshold_reached": false }, "to": "closed",    "allow": true,  "reason": "{failures} of {failure_threshold} failures — resource healthy" },
+      { "from": "open",      "guard": { "cooldown_elapsed": true },   "to": "half-open", "allow": true,  "reason": "cooldown elapsed — allow {half_open_probes} probe call(s); no fan-out through this resource until it closes" },
+      { "from": "open",      "guard": { "cooldown_elapsed": false },  "to": "open",      "allow": false, "reason": "cooldown not elapsed — do not call; route around or report DEGRADED" },
+      { "from": "half-open", "guard": { "probe_result": "ok" },       "to": "closed",    "allow": true,  "reason": "probe succeeded — resource recovered; reset the failure count to 0" },
+      { "from": "half-open", "guard": { "probe_result": "failed" },   "to": "open",      "allow": false, "reason": "probe failed — reopen for another cooldown" }
+    ]
   },
   "hitl": {
     "note": "Human-in-the-loop as a queryable entity rather than a tier's implication. autonomy.ceiling_by_risk says how far a unit may go alone; this block says when a HUMAN must decide and names WHY, so the decision is auditable instead of inferred. Answered by scripts/kernel.sh hitl, folded into resolve-task as .hitl from a CLASSIFIED tier only (decision_rules.any_high) and never from a risk floor, because a floor is an input to classification and a gate announced off one is gate theatre (rules/gates.md); on a floor-only prompt .hitl is null and hooks/prompt-advisor.sh turns task_contract.risk_floor into an instruction to classify rather than a gate, announced by hooks/prompt-advisor.sh, mirrored in rules/risk-autonomy.md 'Human-in-the-loop'; C26 checks the block, the kernel's answers and the prose together. reasons is the CLOSED vocabulary a gate may cite — a gate citing anything else produces a record no one can argue with, which is the hole this block exists to close; the list order is the kernel's emission order. situations is what --situation accepts ON TOP OF retry.never_retry (whose ids all collapse to the single reason never-retry-situation), and the two lists are disjoint so the union lookup stays unambiguous. budget-exhausted is deliberately in BOTH reasons and situations: it is a reason a human is needed AND a situation a caller reports, and kernel.sh admit's reject message embeds the literal 'hitl: budget-exhausted' — C26d couples that literal to this list and to the kernel's own --situation reject answer so the three cannot drift apart. autonomy_after is a DROP and never a raise: one level below the ceiling passed in, no lower than A1, capped at risk high by autonomy.high_with_thin_evidence, and never above the level given -- so A0 stays A0. record_home is where the decision gets written down; a tier that required a human and carries no such record has not passed its gate. ADR: docs/adr/2026-09-03-hitl-as-kernel-entity.md.",
     "reasons": ["high-risk", "evidence-insufficient", "external-effect", "policy-conflict", "never-retry-situation", "destructive-action", "budget-exhausted", "breaker-open"],
     "situations": ["destructive", "budget-exhausted", "reject", "breaker-open"],
-    "record_home": ".engineos/changes/<record>.md#human-decisions"
+    "record_home": ".engineos/changes/<record>.md#human-decisions",
+    "reason_table": [
+      { "reason": "high-risk",             "when": { "risk": "high" } },
+      { "reason": "evidence-insufficient", "when": { "evidence": "thin" } },
+      { "reason": "external-effect",       "when": { "external_effect": true, "autonomy": { "at_least": "A3" } } },
+      { "reason": "policy-conflict",       "when": { "conflict": true } },
+      { "reason": "never-retry-situation", "when": { "situation": { "in": "retry.never_retry" } } },
+      { "reason": "destructive-action",    "when": { "situation": "destructive" } },
+      { "reason": "budget-exhausted",      "when": { "situation": ["budget-exhausted", "reject"] } },
+      { "reason": "breaker-open",          "when": { "situation": "breaker-open" } },
+      { "reason": "topology-approval",     "when": { "topology": true } }
+    ]
   },
   "telemetry": {
     "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/prompt-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. written_by is an array because one event can have several writers, which supersedes the one-writer-per-event shape recorded in docs/specs/2026-08-06-decision-kernel-p7-telemetry.md. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",
@@ -260,6 +295,34 @@
       "multi_agent_intents_min": 2,
       "unrouted_scale_signals": ["big_task", "design_work"]
     },
+    "scoring": {
+      "note": "Tier 1 fallback classifier (src/kernel/score.ts). Placeholders: v1 registries route exactly as the any-match router did; T13 calibrates from the golden set. bm25_weight < min_score so exemplar similarity alone never routes until calibrated.",
+      "min_score": 1.0,
+      "threshold": 0.0,
+      "margin": 0.0,
+      "top_k": 5,
+      "max_intents": 8,
+      "bm25_weight": 0.9,
+      "path_weight": 1.0
+    },
+    "combination": {
+      "note": "Declared invariants of src/kernel/combine.ts, checked by C38c; the loader refuses any other value (fail closed).",
+      "gates": "deterministic-wins",
+      "judge": "add-only",
+      "intents": "noul-then-primary",
+      "escalate_on_doubt": true
+    },
+    "source_markers": {
+      "note": "Literal prefixes (after leading whitespace) that mark text the user did not type, matched by src/hooks/prompt-source.ts as literals, never as regular expressions. Verified by T05 against captured payloads; T13 captures a real UserPromptSubmit payload to confirm no host prefixes a SYSTEM NOTIFICATION frame to text the user typed.",
+      "notification": ["<task-notification>", "<agent-message from=", "<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]", "[SYSTEM NOTIFICATION - NOT USER INPUT]"],
+      "tool_result": ["<function_results>", "<tool_result>", "<tool-result>"],
+      "hook_echo": ["[engineos]"]
+    },
+    "tiebreak": {
+      "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Placeholders until T13 calibrates against the golden set with the pinned MiniLM revision.",
+      "min_similarity": 0.6,
+      "margin": 0.1
+    },
     "fixtures": [
       {"prompt": "add a paginated orders endpoint to the API and mirror the screen to mobile", "escalate": true,  "reasons": ["multi-agent-dispatch"],    "intents": ["backend", "mobile"]},
       {"prompt": "migrate all services to the new logging format across all packages",         "escalate": true,  "reasons": ["requires-dispatch-plan"], "intents": ["big-sweep"]},
@@ -268,5 +331,59 @@
       {"prompt": "build the ios release and upload to TestFlight",                             "escalate": false, "reasons": [],                          "intents": ["ios-release"]},
       {"prompt": "why does the login handler fail with a 500",                                 "escalate": false, "reasons": [],                          "intents": ["bug"]}
     ]
+  },
+  "judge": {
+    "note": "TypeSafe Jev as the opt-in semantic judge (ADR docs/adr/2026-10-10-three-tier-router-and-jev-judge.md). Off unless the enabled_env equals enabled_value AND key_env is non-empty; key_env is the NAME of the environment variable holding the key, and no key material ever lives in this registry. Prompts leave the machine: redaction runs before the request; mode shadow records only. Every threshold is a placeholder until T13; intent_default and rule_default must be above 0, because a zero cut would make an intent or rule the judge never scored qualify.",
+    "enabled_env": "ENGINEOS_JUDGE",
+    "enabled_value": "jev",
+    "provider": "typesafe",
+    "endpoint": "https://api.typesafe.ai/v1/systemone",
+    "model": "jev-1.13.0",
+    "timeout_ms": 400,
+    "retries": 0,
+    "key_env": "TYPESAFE_API_KEY",
+    "mode": "shadow",
+    "max_state_bytes": 16384,
+    "thresholds": {
+      "intent_default": 0.5,
+      "primary_confidence": 0.5,
+      "margin": 0.2,
+      "rule_default": 0.5
+    },
+    "redaction": {
+      "note": "Applied, in list order, to the prompt text before it enters the judge state and before it reaches the tie-break daemon; each match becomes <redacted:kind>, so an earlier, more specific kind (private-key-block, sk-ant-) wins over a later, broader one (private-key, sk-). Classes: private keys (PEM/PGP block end to end, and an unterminated header with its body), Google private_key_id, JWTs, prefixed provider tokens (Anthropic, OpenAI, sk-, Stripe sk_/rk_, AWS access key id, GitHub gho_/ghp_/ghr_/ghs_/ghu_/github_pat_, GitLab, npm, Hugging Face, Google, Atlassian, Slack), URL credentials, bearer tokens, an AWS secret access key in an assignment, generic password/secret/token/api key/credential assignments, and personal data (email, E.164 phone, Brazilian CNPJ and CPF). A superset of install.sh SECRET_PATTERNS, which keeps its own bash copy (no node at install time) and stays a secrets-only gate. Every quantifier is bounded and no repetition nests an unbounded one, so each pattern is linear-time by construction; the caller also caps the text before redacting (judge: 2 x max_state_bytes chars, tie-break: 2 x its text limit) and cuts to the final limit afterwards. Each pattern is a JavaScript RegExp source, compiled with flag g by the loader only to refuse one that does not compile.",
+      "patterns": [
+        { "kind": "private-key-block", "pattern": "-----BEGIN (?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\\s\\\\:,.]{0,8192}-----END (?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?-----" },
+        { "kind": "private-key", "pattern": "-----BEGIN (?:[A-Z0-9]{1,16} ){0,3}PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\\s\\\\:,.-]{0,8192}" },
+        { "kind": "private-key-id", "pattern": "\"private_key_id\"\\s{0,16}:\\s{0,16}\"?[A-Za-z0-9]{0,128}\"?" },
+        { "kind": "jwt", "pattern": "(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{4,2048}\\.eyJ[A-Za-z0-9_-]{4,8192}\\.[A-Za-z0-9_-]{0,2048}" },
+        { "kind": "anthropic-key", "pattern": "sk-ant-[A-Za-z0-9_-]{10,512}" },
+        { "kind": "openai-key", "pattern": "sk-proj-[A-Za-z0-9_-]{10,512}" },
+        { "kind": "sk-key", "pattern": "sk-[A-Za-z0-9]{20,512}" },
+        { "kind": "stripe-key", "pattern": "(?<![A-Za-z0-9])[rs]k_(?:live|test)_[A-Za-z0-9]{10,255}" },
+        { "kind": "aws-key", "pattern": "(?:AKIA|ASIA)[0-9A-Z]{16}" },
+        { "kind": "github-token", "pattern": "gh[opsur]_[A-Za-z0-9]{20,255}" },
+        { "kind": "github-pat", "pattern": "github_pat_[A-Za-z0-9_]{20,255}" },
+        { "kind": "gitlab-token", "pattern": "glpat-[A-Za-z0-9_-]{20,255}" },
+        { "kind": "npm-token", "pattern": "(?<![A-Za-z0-9])npm_[A-Za-z0-9]{20,255}" },
+        { "kind": "huggingface-token", "pattern": "(?<![A-Za-z0-9])hf_[A-Za-z0-9]{20,255}" },
+        { "kind": "google-key", "pattern": "AIza[0-9A-Za-z_-]{35}" },
+        { "kind": "atlassian-token", "pattern": "ATATT[A-Za-z0-9_=.-]{20,512}" },
+        { "kind": "slack-token", "pattern": "xox[abprs]-[A-Za-z0-9-]{10,255}" },
+        { "kind": "url-credentials", "pattern": "(?<![A-Za-z0-9+.-])[a-z][a-z+]{0,31}://[^/\\s:@]{1,256}:[^@\\s/]{1,256}@" },
+        { "kind": "bearer-token", "pattern": "[Bb][Ee][Aa][Rr][Ee][Rr]\\s{1,4}[A-Za-z0-9._~+/-]{16,4096}={0,2}" },
+        { "kind": "aws-secret", "pattern": "(?<![A-Za-z0-9])(?:[Aa][Ww][Ss][_-]?)?[Ss][Ee][Cc][Rr][Ee][Tt][_-]?(?:[Aa][Cc][Cc][Ee][Ss][Ss][_-]?)?[Kk][Ee][Yy][\"']?\\s{0,8}[:=]\\s{0,8}[\"']?[A-Za-z0-9/+=]{40}" },
+        { "kind": "secret-assignment", "pattern": "(?<![A-Za-z0-9])(?:[A-Za-z0-9]{1,32}[_-]?)?(?:[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Pp][Aa][Ss][Ss][Ww][Dd]|[Pp][Ww][Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Aa][Cc][Cc][Ee][Ss][Ss][_-]?[Kk][Ee][Yy]|[Pp][Rr][Ii][Vv][Aa][Tt][Ee][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][Ss]?)[\"']?\\s{0,8}[:=]\\s{0,8}[\"']?[^\\s\"'<>]{4,256}" },
+        { "kind": "email", "pattern": "(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\\.[A-Za-z0-9-]{1,63}){1,8}" },
+        { "kind": "phone", "pattern": "(?<![A-Za-z0-9+])\\+[1-9](?:[ .()-]{0,2}[0-9]){7,14}(?![0-9])" },
+        { "kind": "cnpj", "pattern": "(?<![0-9])[0-9]{2}\\.?[0-9]{3}\\.?[0-9]{3}/?[0-9]{4}-?[0-9]{2}(?![0-9])" },
+        { "kind": "cpf", "pattern": "(?<![0-9])[0-9]{3}\\.?[0-9]{3}\\.?[0-9]{3}-?[0-9]{2}(?![0-9])" }
+      ]
+    },
+    "breaker": {
+      "scope": "provider",
+      "state_file": "engineos-judge-breaker.json",
+      "cooldown_ms": 60000
+    }
   }
 }
