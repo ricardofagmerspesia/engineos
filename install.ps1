@@ -338,8 +338,10 @@ foreach ($dir in @($skillsDest, $agentsDest, $commandsDest)) {
 
 # ---------- 5. Merge hooks into settings.json ----------
 # The hooks are node now. hooks/hooks.json registers
-# `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>`, so Claude Code
-# spawns node directly and no shell sits between it and the hook. That is why
+# `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>` for the session
+# hooks and `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook <name>` for
+# the five per-call hooks, so Claude Code spawns node directly and no shell sits
+# between it and the hook. That is why
 # this section no longer resolves bash.exe: the old form was a bare `...\foo.sh`
 # command, resolved by the .sh file association, which Git for Windows points at
 # git-bash.exe -- a mintty *terminal launcher* that popped a visible console

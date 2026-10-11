@@ -57,6 +57,7 @@ Rules for routing:
   SessionStart; `~/.claude/engineos.bypass` and `ENGINEOS_BYPASS=1` persist until off.
   The personal git guard still applies.
 
+<!-- engineos:router-table:begin -->
 | Intent (signals) | Load |
 |---|---|
 | New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `/engineos:new-feature` — PRD + ADR + SPEC + TASKS before code: Matt Pocock skills `grill-with-docs` (ADRs → `docs/adr/`, glossary `CONTEXT.md`) → `to-spec` (PRD → `docs/prds/`) → skill `tlc-spec-lean` plan and acceptance criteria, then implementation (SPEC → `.specs/features/<feature>/`, indexed from `docs/specs/`) → `to-tickets` (TASKS → `docs/specs/<feature>/tickets/`, each naming the acceptance criteria it closes) → parallel build and integration → final non-test validation → test authoring/execution only with explicit current-task user approval; then stack rules below. Applies at non-negotiable #1's threshold — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks dispatch concurrently within min(policy cap, available host slots), refilling completed slots as dependencies become ready |
@@ -90,6 +91,7 @@ Rules for routing:
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
 | Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no router planner agent is needed; the supervisor still dispatches workers for implementation. An explicit route-only request returns the plan without dispatching implementation |
 | Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck and an unrecorded change record; separately approved final tests run after integration |
+<!-- engineos:router-table:end -->
 
 ## Output artifact — offer after every request
 
@@ -151,12 +153,23 @@ read it there, not here.
 
 EngineOS is a prose constitution (`rules/`, `agents/`, `skills/`, `commands/`) projected
 into `registries/*.json`, executed by a deterministic TypeScript kernel and the Claude
-Code hooks registered in `hooks/hooks.json`, bundled into `dist/engineos.cjs`, and kept
-coherent by a 68-check validator.
+Code hooks registered in `hooks/hooks.json`, and kept coherent by a 72-check validator.
+Prompts route through three tiers: deterministic gates, a scored TypeScript classifier
+(`src/kernel/score.ts`) and `router` agent escalation on low confidence.
+`src/kernel/combine.ts` folds two opt-in facts into that answer: the add-only Jev judge
+(`src/judge/`, consulted by `src/hooks/prompt-judge.ts`; the kernel never imports it)
+and an embedding tie-break that picks among already-ranked intents only when the route
+is ambiguous. Policy answers are registry decision tables and state machines
+(`src/kernel/{table,transitions}.ts`). The router table above is generated from
+`registries/intents.json` by `engineos gen router-table`.
 
-**Stack**: TypeScript (esbuild to one committed CJS bundle, node >= 18), JSON registries,
-bash shims, Node built-in test runner; `console/` is a separate Next.js admin app.
-**Structure**: prose layer -> `registries/` -> `src/{kernel,hooks,journal,checks,gen}` ->
-`dist/engineos.cjs`; per-project state in `.engineos/` and `.git/engineos-telemetry/`.
+**Stack**: TypeScript (esbuild, node >= 18), JSON registries, bash shims, Node built-in
+test runner; `console/` is a separate Next.js admin app.
+**Structure**: prose layer -> `registries/` -> `src/{kernel,judge,hooks,journal,checks,gen}`
+-> two committed entry points sharing `src/hooks/adapter.ts`: `dist/engineos.cjs`
+(`src/cli.ts`, every subcommand) and `dist/engineos-hot.cjs` (`src/hot-cli.ts`, the five
+per-call hooks), each a loader over `dist/runtime/`. Opt-in, outside the root bundle:
+`adapters/claude-code-mod/` (in-process host, `dist/engineos-inprocess.cjs`) and
+`tools/embedding-daemon/`. Per-project state in `.engineos/` and `.git/engineos-telemetry/`.
 
 For detailed architecture, see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
