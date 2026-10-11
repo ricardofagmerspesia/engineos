@@ -43,6 +43,25 @@ that code disagree, the code wins and the line is corrected here. Full text:
    `max_state_bytes` is capped at 16384; redaction grows to 27 kinds; the mod
    abandons a host on its first hook timeout and the host stops itself on a
    stalled request.
+9. §0 D6, §1.5, §11, §14 — critic fix pass on PR #132 (2026-10-11, same
+   revision, no rev 5); each line now states what the code does:
+   (a) §11 names the region markers the generator and the committed
+   `CLAUDE.md`/`AGENTS.md` actually use, `<!-- engineos:router-table:begin -->`
+   and `<!-- engineos:router-table:end -->` (`src/gen/router-table.ts`
+   `ROUTER_TABLE_BEGIN`/`ROUTER_TABLE_END`). The `@generated:router-table
+   start … / end` lines were never implemented.
+   (b) §1.5 — `router.scoring.max_intents` trims only exemplar-assisted
+   admissions (`b3c041d`, `src/kernel/route.ts keptIntentIds`). A high-floor
+   intent and an intent whose declared evidence alone clears `min_score` are
+   always kept. With v1 data, which has no exemplars, the cap can never bind,
+   so the any-match set is kept whole, high-floor rows included.
+   (c) D6 and §14 — the three intent parity arms are kept, not retired. They
+   compare the legacy keys after stripping the trailing additive keys
+   (§2.2–§2.4) over the pinned v1 fixture registries, and skip where bash or
+   jq is missing or `bash -n` cannot parse the pinned kernel (the skip
+   message names bash >= 4; the macOS `/bin/bash` 3.2 fails it). CI's
+   `ENGINEOS_REQUIRE_PARITY=1` turns that skip into a failure and is the
+   enforcing control.
 
 **rev 3 (2026-10-11)** — five T06 questions, the T12 tie-break fact, and T12's
 accepted spawn-count deviation. Full text and consumer deltas: **§16 Revision 3**.
@@ -137,7 +156,7 @@ document is MAJOR; one window (`signals`) is opened, none is closed.
 | D3 | Shim warnings go to stderr and are silenced by `ENGINEOS_QUIET_SHIMS=1` only. `ENGINEOS_TELEMETRY=0` keeps its single meaning. | T11, T08 (bench sets the env) |
 | D4 | Check-count literals: T09 owns `CLAUDE.md`, `AGENTS.md`, `docs/CODEBASE_MAP.md` **and `README.md`** (C37 reads all four). Supervisor: add `README.md` to T09's exclusive paths. | T09 |
 | D5 | No live call to TypeSafe before T13's recorded human decision. `src/judge/**` takes `fetch` by injection; the kernel never imports `src/judge/**`. | T04, T05, T06, T13 |
-| D6 | Intent-routing byte parity is retired (ADR §Decision): the `route-intent`, `route-escalate` and `resolve-task` arms of `src/kernel/parity.test.ts` are skipped with a comment citing the ADR in T13. Path parity (`route-path`) and every policy arm stay. | T13 |
+| D6 | (rev 4 item 9, corrected to the code) Intent-routing byte parity is **kept on the legacy keys**: the `route-intent`, `route-escalate` and `resolve-task` arms of `src/kernel/parity.test.ts` still run against the pinned bash kernel over the pinned v1 fixture registries (`test/fixtures/legacy-kernel/`), stripping the trailing additive keys (§2.2–§2.4) before the byte comparison; any other difference, including a legacy key moved behind an additive one, fails. Like every arm, they skip when bash or jq is missing or `bash -n` cannot parse the pinned kernel (the skip message names bash >= 4; macOS `/bin/bash` 3.2 fails it); `ENGINEOS_REQUIRE_PARITY=1`, set on CI's `verify` job, turns the skip into a failure and is the enforcing control. Path parity (`route-path`) and every policy arm stay unchanged. Scored answers on the shipped v2 registries are pinned by the golden set (§8), not by parity. | T13 |
 | D7 | The kernel answer carries the judge summary on `route` (escalate form) and `task_contract` only. There is **no** top-level `Answer.judge` key (refines T06's draft wording). A `judge` fact without a `taskContract` fact is refused. | T06 |
 | D8 | The rendered CLAUDE.md/AGENTS.md router table is generated from `intents.json`; each row's prose comes from the optional v2 field `router_row` (§11), which lets T09's first generation be byte-identical to today's table. | T09 |
 
@@ -251,6 +270,27 @@ intent `0`; with the §6.1 placeholders (`min_score: 1.0`, `threshold: 0`,
 any-match set in registry order and `ambiguous` equals `matches.length === 0`.
 The path feature (§9.1) cannot break this: it fires only on rows with
 `phrases_declared`, and a v1 row has none (rev 2).
+
+**Cap exemption (rev 4 item 9; `src/kernel/route.ts keptIntentIds`).** Let
+*admitted* be the candidates scoring at or above `min_score`. When there are
+at most `max_intents` of them, all are kept. Otherwise two kinds are exempt
+from the cap and always kept, mirroring the fold's `keptHigh` (§4.1):
+
+- every admitted intent whose row's `risk_floor` is `high`;
+- every admitted intent whose **declared evidence alone** clears `min_score`:
+  phrases (or a v1 row's `signals`), verb-object pair and path, minus
+  negatives, scored with `bm25_weight` 0. This is the any-match set of this section.
+
+The cap fills the remaining `max(0, max_intents - exempt)` slots, score
+descending then registry order, from the intents that needed exemplar
+similarity to reach `min_score`. A route may therefore carry more than
+`max_intents` intents. A cap can drop an exemplar-assisted admission but
+never lowers the route's risk floor and never removes a high-floor gate or
+its reviewer. For v1 data (no exemplars anywhere) every admitted intent is
+declared, so the cap can never bind and `matches` equals the any-match set
+however many rows fire, high-floor rows included. The parity arms rely on
+this. With the placeholder cap of 8 the cap does not bind on the golden set:
+the largest routed set is 7 intents (`evals/BASELINE.md`).
 
 ---
 
@@ -1097,12 +1137,17 @@ Hook integration (T09d, `src/hooks/prompt-advisor.ts` / `prompt-judge.ts`):
 Region markers, each on its own line, in `CLAUDE.md` and `AGENTS.md`:
 
 ```
-<!-- @generated:router-table start — from registries/intents.json by `engineos gen router-table`; edit the registry, not the table -->
+<!-- engineos:router-table:begin -->
 | Intent (signals) | Load |
 |---|---|
 | ...one row per registry row... |
-<!-- @generated:router-table end -->
+<!-- engineos:router-table:end -->
 ```
+
+(rev 4 item 9) These are the exact strings of `ROUTER_TABLE_BEGIN` and
+`ROUTER_TABLE_END` in `src/gen/router-table.ts`, matched as whole lines; the
+generator writes nothing else on the marker lines. Edit
+`registries/intents.json`, never the region.
 
 - Rows: one per `intents.json` row in registry order, **including** the
   inactive `backend-python` row (it is in today's table), except
@@ -1166,7 +1211,7 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | `engineos gen router-table` | new gen arm; CLAUDE.md/AGENTS.md generated region | MINOR |
 | `validate` | C38, C38b, C38c, C38d | MINOR (new failing checks) |
 | `hooks/*.sh`, `scripts/*.sh` shims | Warn step (stderr line; `ENGINEOS_QUIET_SHIMS`) | deprecated → warn |
-| `src/kernel/parity.test.ts` intent arms | retired per ADR (`route-intent`, `route-escalate`, `resolve-task`) | test surface, recorded |
+| `src/kernel/parity.test.ts` intent arms | kept (rev 4 item 9): `route-intent`, `route-escalate`, `resolve-task` compare the legacy keys after stripping the trailing additive keys, over the pinned v1 fixture registries; skip when bash/jq is missing or `bash -n` cannot parse the pinned kernel (macOS `/bin/bash` 3.2) unless `ENGINEOS_REQUIRE_PARITY=1` (set in CI) | test surface, recorded |
 | Environment | `ENGINEOS_JUDGE`, `TYPESAFE_API_KEY`, `ENGINEOS_QUIET_SHIMS` (new; opt-in); rev 3 (T12): `ENGINEOS_INPROCESS`, `ENGINEOS_ROOT`, `ENGINEOS_NODE`, `ENGINEOS_EMBED_DAEMON`, `ENGINEOS_EMBED_CACHE`, `ENGINEOS_EMBED_OFFLINE`, `ENGINEOS_EMBED_IDLE_MINUTES` | added |
 | In-process presence record v2 and shell stand-down (rev 4, §17.1–§17.3) | record `{ v: 2, pid, socket, session, started_at, served, root, version }`; written at the handshake; 5 s heartbeat, 30 s staleness; full condition list; `git-write-guard` never stands down | MINOR (tightening) |
 | Mod git fallback (rev 4, §17.7) | asks on a git-like Bash call `git-write-guard` did not answer, unless `ENGINEOS_GIT_WRITES=auto`; `.catch` asks with no env check | MINOR (tightening) |

@@ -1,15 +1,22 @@
 # Opt-in tiers
 
-EngineOS ships two optional tiers. Both are **off by default**, live outside the
-root bundle, and do nothing unless their flag is set:
+EngineOS ships two optional tiers. Both are **off by default** and do nothing
+unless their flag is set. Each tier is split by design. Its heavy part (the mod
+and its host, or the embedding daemon) lives outside the root bundle. A small
+client half is compiled into the shell runtime bundles so that the shell hooks
+can find and use that heavy part:
 
-| Tier | Flag | Lives in | What it buys |
-|---|---|---|---|
-| In-process Claude Code adapter | `ENGINEOS_INPROCESS=1` | `adapters/claude-code-mod/` | Hook decisions served by one warm Node host per session, with no per-call `node` spawn from EngineOS |
-| Embedding tie-break daemon | `ENGINEOS_EMBED_DAEMON=1` | `tools/embedding-daemon/` (daemon), `src/judge/tiebreak.ts` (client) | A semantic score per candidate intent when the deterministic route is ambiguous |
+| Tier | Flag | Outside the root bundle | Inside the shell runtime bundles | What it buys |
+|---|---|---|---|---|
+| In-process Claude Code adapter | `ENGINEOS_INPROCESS=1` | the mod, `adapters/claude-code-mod/`, and its host bundle `dist/engineos-inprocess.cjs` (loader for `dist/runtime/engineos-inprocess.cjs`) | the shell half of the presence guard: `servedInProcess` (`src/hooks/adapter.ts`) with the runtime-directory and presence-record rules of `src/lib/runtime-dir.ts`, in `dist/runtime/engineos.cjs` and `dist/runtime/engineos-hot.cjs` | Hook decisions served by one warm Node host per session, with no per-call `node` spawn from EngineOS |
+| Embedding tie-break | `ENGINEOS_EMBED_DAEMON=1` | the daemon package, `tools/embedding-daemon/` | the tie-break client, `src/judge/tiebreak.ts`, in `dist/runtime/engineos.cjs` | A semantic score per candidate intent when the deterministic route is ambiguous |
 
 With both flags unset:
-- `dist/engineos.cjs` loads no file under either directory.
+- `dist/engineos.cjs` loads no file under `adapters/claude-code-mod/` or
+  `tools/embedding-daemon/`.
+- The in-bundle halves return before any filesystem or socket access: `servedInProcess` answers
+  `false` unless `ENGINEOS_INPROCESS` is exactly `1`, and the tie-break
+  client returns no scores unless `ENGINEOS_EMBED_DAEMON` is exactly `1`.
 - The root `package.json` carries no dependency for either tier.
 - The shell hooks in `hooks/hooks.json` behave exactly as before.
 
@@ -416,6 +423,32 @@ reach its logs.
 
 Only `scores` may influence routing. Every other outcome leaves the
 deterministic answer untouched.
+
+### Known limitation: authoritative-mode latency
+
+The judge ships in `shadow` mode (`registries/policy.json` `judge.mode`), and
+this limitation applies only after `judge.mode` is changed to `authoritative`
+**and** the judge is enabled. In `shadow` and `advisory` mode the prompt
+advisor starts the judge and the tie-break together (`Promise.all` in
+`consultSemantics`, `src/hooks/prompt-judge.ts`), so the wait is the slower of
+the two.
+
+In authoritative mode the order is sequential (`src/hooks/prompt-judge.ts`
+`consultSemantics`). The judge's fact can fold, and the kernel ignores a
+tie-break on a folded answer, so the client is consulted only after the
+judge has answered:
+
+1. The judge call is bounded by `judge.timeout_ms` (400 ms) plus the hook's
+   50 ms guard slack, up to about 450 ms.
+2. When the judge did not fold, the tie-break client runs next, with its own
+   150 ms deadline (`src/judge/tiebreak.ts`).
+3. Only then does the advisor make the kernel call.
+
+The two waits alone can reach about 600 ms. With the kernel call and process
+start added, a prompt in authoritative mode with both tiers enabled can
+exceed the 600 ms prompt-advisor budget. Until that is addressed, keep the
+judge in `shadow` or `advisory` mode when the tie-break daemon is on, or
+lower `judge.timeout_ms`.
 
 ## Related: the V8 compile cache
 

@@ -48,8 +48,9 @@ p50), so the decision logic itself has microseconds, not seconds, to spend.
      decision; the TypeSafe API is early access and `jev-1.13` has a
      first-option bias and reads state literally, so the question set is
      prompt engineering with its own eval obligations; intent-routing byte
-     parity with the retired bash kernel cannot survive a router that changes
-     answers on purpose.
+     parity with the retired bash kernel cannot pin the scored answers on the
+     shipped registries, which change on purpose (parity survives only on the
+     legacy keys over the pinned v1 fixture data; see "Parity scope" below).
 2. **Port the kernel to Julia** (rejected). A standard Julia runtime starts in
    seconds; `juliac --trim` binaries start fast but trimming is experimental
    and ships about 90 MB of runtime libraries per platform. It adds no
@@ -129,17 +130,31 @@ Option 1, with these bound sub-decisions:
   lower the risk floor or model tier, never remove an escalation reason and
   never edit `route.*`. The judge's authoritative fold takes precedence over
   them (contracts rev 3 §4.7).
-- **Parity retirement.** Intent-routing byte parity with the pinned bash kernel
-  is retired: the arms `route-intent answers identically to the pinned bash
+- **Parity scope (corrected 2026-10-11 to match the code).** Intent-routing
+  byte parity with the pinned bash kernel is **kept on the legacy keys**, not
+  retired. The arms `route-intent answers identically to the pinned bash
   kernel`, `route-escalate answers identically to the pinned bash kernel` and
   `resolve-task answers identically to the pinned bash kernel` in
-  `src/kernel/parity.test.ts` are skipped in T13 with a comment citing this
-  ADR. Path parity (`route-path ...`) and every policy arm (`model`, `risk`,
-  `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`, `decision-rules`,
-  `scale`, `skill-state`, and the `resolve` section test for those sections)
-  stay. The reason is the decision itself: a scored router changes intent
-  answers on purpose, and a fixture that pins the old answers would pin the
-  misroutes.
+  `src/kernel/parity.test.ts` still run. Each compares the pinned bash kernel
+  with the TypeScript projection over the pinned v1 fixture registries
+  (`test/fixtures/legacy-kernel/`). Before the byte comparison it strips the
+  trailing additive keys of contracts §2.2–§2.4 (`ranked`, `margin`, `judge`,
+  `risk_proposal`, `tiebreak`, `judge_added`). Any other difference fails,
+  including a legacy key moved behind an additive one. On v1 data the scored
+  router reproduces the any-match set (contracts §1.5), which is why these
+  arms can stay. Path parity (`route-path ...`) and every policy arm
+  (`model`, `risk`, `gates`, `repair`, `admit`, `breaker`, `hitl`, `waves`,
+  `decision-rules`, `scale`, `skill-state`, and the `resolve` section test)
+  stay as before. Like every arm, the three skip when bash or jq is missing
+  or when `bash -n` cannot parse the pinned kernel; the macOS `/bin/bash` 3.2
+  fails that probe, so local macOS runs skip. CI's `verify` job sets
+  `ENGINEOS_REQUIRE_PARITY=1`, which turns those skips into failures. That CI
+  setting is the control that enforces parity. Scored answers on the shipped
+  v2 registries are not pinned by parity: the golden set
+  (`evals/intent-routing-cases.jsonl`) and `evals/BASELINE.md` pin them. An
+  earlier draft of this ADR said the three arms would be skipped in T13; that
+  skip was never implemented, and contracts rev 4 item 9 records the
+  correction.
 - **Mastra does not apply.** `rules/llm-apps.md` requires Mastra inside NestJS
   for LLM applications. The judge is a single typed classifier call (one HTTPS
   request, typed Choice/Score/yes-no answers, no generation, no tools, no
@@ -454,8 +469,8 @@ decisions` in the change record (`rules/risk-autonomy.md`).
   dir, and a security review of `src/judge/**` before the judge leaves
   individual opt-in.
 - Compatibility: `docs/COMPATIBILITY.md` "Unreleased" gains one row per
-  surface change (contracts §14); release notes name the parity retirement
-  and the shim warning.
+  surface change (contracts §14); release notes name the parity scope (intent
+  arms kept on the legacy keys, enforced in CI) and the shim warning.
 
 Revisit triggers: shadow-tier precision or recall of Jev below the fallback on
 the golden set after calibration (drop the judge, keep Tier 1); TypeSafe
