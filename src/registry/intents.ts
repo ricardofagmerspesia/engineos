@@ -21,9 +21,10 @@ export function isRiskTier(value: unknown): value is RiskTier {
 // them from the registry, exactly as cmd_route_escalate does.
 //
 // The registry's remaining bookkeeping fields — hook_mirrored,
-// required_sections — have no kernel reader yet and are left unparsed.
+// required_sections, deprecated — have no kernel reader yet and are left
+// unparsed. `enabled` is read only to answer `active`.
 //
-// The v2 scoring fields (contracts.md@rev1 §1.2) follow. `phrases` is always
+// The v2 scoring fields (contracts.md@rev2 §1.2) follow. `phrases` is always
 // populated: declared, or derived from `signals` at weight 1 so a v1 row scores
 // on exactly the prompts its signals fire on.
 export interface IntentRow {
@@ -48,6 +49,10 @@ export interface IntentRow {
   suppressible: boolean;
   suppressed_by: string[];
   requires_dispatch_plan: boolean;
+  // `enabled !== false`: an absent flag is active, as every v1 row is. The
+  // judge is asked only about active rows (src/judge/questions.ts) and only an
+  // active row may qualify from a judge fact (src/kernel/combine.ts).
+  active: boolean;
   phrases: Phrase[];
   // Kernel-internal: whether the row declared `phrases` itself. Only such rows
   // take the path feature (src/kernel/score.ts), which keeps a v1 registry
@@ -134,12 +139,13 @@ function parseRow(row: Record<string, unknown>, path: string): IntentRow {
     suppressible: flag(row['suppressible'], `${path}.suppressible`),
     suppressed_by: reader.optionalStrings(row['suppressed_by'], `${path}.suppressed_by`),
     requires_dispatch_plan: flag(row['requires_dispatch_plan'], `${path}.requires_dispatch_plan`),
+    active: row['enabled'] === undefined || row['enabled'] === null || reader.requireBoolean(row['enabled'], `${path}.enabled`),
     phrases: hasPhrases ? declared : signals.map((text) => ({ text, weight: 1 })),
     phrases_declared: hasPhrases,
     verb_object: verbObject(row['verb_object'], `${path}.verb_object`),
     negative: phraseList(row['negative'], `${path}.negative`),
     exemplars: nonBlankStrings(row['exemplars'], `${path}.exemplars`, false),
-    threshold: unitInterval(row['threshold'], `${path}.threshold`),
+    threshold: judgeCut(row['threshold'], `${path}.threshold`),
     router_row: routerRow(row['router_row'], `${path}.router_row`),
   };
 }
@@ -193,10 +199,13 @@ function positiveWeight(value: unknown, path: string): number {
   return weight;
 }
 
-function unitInterval(value: unknown, path: string): number | null {
+// The Jev noul cut for `intent.<id>`. Zero is refused with the rest of
+// [0,1]'s outside: an intent the judge never scored reads as probability 0, so a
+// zero cut would qualify it on every prompt (T06; contracts rev3 queue).
+function judgeCut(value: unknown, path: string): number | null {
   if (value === undefined || value === null) return null;
   const number = reader.requireNumber(value, path);
-  if (number < 0 || number > 1) reader.malformed(`${path} must be between 0 and 1`);
+  if (number <= 0 || number > 1) reader.malformed(`${path} must be greater than 0 and at most 1`);
   return number;
 }
 

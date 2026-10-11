@@ -376,6 +376,9 @@ function parseFacts(raw: string): DeclaredFacts {
       // `units` travels unread for the same reason `signals` does; an absent one
       // reaches the waves section, which owns the message for it.
       case 'waves': facts.waves = { units: factRecord(key, value)['units'] }; break;
+      // Unread here too: judge-facts.ts validates the fact against the loaded
+      // registries, and resolve refuses it without a taskContract fact (D7).
+      case 'judge': facts.judge = value; break;
       default: throw new KernelError(`resolve --facts: unknown fact ${key}`);
     }
   }

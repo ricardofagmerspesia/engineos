@@ -295,6 +295,29 @@
       "multi_agent_intents_min": 2,
       "unrouted_scale_signals": ["big_task", "design_work"]
     },
+    "scoring": {
+      "note": "Tier 1 fallback classifier (src/kernel/score.ts). Placeholders: v1 registries route exactly as the any-match router did; T13 calibrates from the golden set. bm25_weight < min_score so exemplar similarity alone never routes until calibrated.",
+      "min_score": 1.0,
+      "threshold": 0.0,
+      "margin": 0.0,
+      "top_k": 5,
+      "max_intents": 8,
+      "bm25_weight": 0.9,
+      "path_weight": 1.0
+    },
+    "combination": {
+      "note": "Declared invariants of src/kernel/combine.ts, checked by C38c; the loader refuses any other value (fail closed).",
+      "gates": "deterministic-wins",
+      "judge": "add-only",
+      "intents": "noul-then-primary",
+      "escalate_on_doubt": true
+    },
+    "source_markers": {
+      "note": "Literal prefixes (after leading whitespace) that mark text the user did not type, matched by src/hooks/prompt-source.ts as literals, never as regular expressions. Verified by T05 against captured payloads; T13 captures a real UserPromptSubmit payload to confirm no host prefixes a SYSTEM NOTIFICATION frame to text the user typed.",
+      "notification": ["<task-notification>", "<agent-message from=", "<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]", "[SYSTEM NOTIFICATION - NOT USER INPUT]"],
+      "tool_result": ["<function_results>", "<tool_result>", "<tool-result>"],
+      "hook_echo": ["[engineos]"]
+    },
     "fixtures": [
       {"prompt": "add a paginated orders endpoint to the API and mirror the screen to mobile", "escalate": true,  "reasons": ["multi-agent-dispatch"],    "intents": ["backend", "mobile"]},
       {"prompt": "migrate all services to the new logging format across all packages",         "escalate": true,  "reasons": ["requires-dispatch-plan"], "intents": ["big-sweep"]},
@@ -303,5 +326,47 @@
       {"prompt": "build the ios release and upload to TestFlight",                             "escalate": false, "reasons": [],                          "intents": ["ios-release"]},
       {"prompt": "why does the login handler fail with a 500",                                 "escalate": false, "reasons": [],                          "intents": ["bug"]}
     ]
+  },
+  "judge": {
+    "note": "TypeSafe Jev as the opt-in semantic judge (ADR docs/adr/2026-10-10-three-tier-router-and-jev-judge.md). Off unless the enabled_env equals enabled_value AND key_env is non-empty; key_env is the NAME of the environment variable holding the key, and no key material ever lives in this registry. Prompts leave the machine: redaction runs before the request; mode shadow records only. Every threshold is a placeholder until T13; intent_default and rule_default must be above 0, because a zero cut would make an intent or rule the judge never scored qualify.",
+    "enabled_env": "ENGINEOS_JUDGE",
+    "enabled_value": "jev",
+    "provider": "typesafe",
+    "endpoint": "https://api.typesafe.ai/v1/systemone",
+    "model": "jev-1.13.0",
+    "timeout_ms": 400,
+    "retries": 0,
+    "key_env": "TYPESAFE_API_KEY",
+    "mode": "shadow",
+    "max_state_bytes": 16384,
+    "thresholds": {
+      "intent_default": 0.5,
+      "primary_confidence": 0.5,
+      "margin": 0.2,
+      "rule_default": 0.5
+    },
+    "redaction": {
+      "note": "Applied to request.text before it enters state; each match becomes <redacted:kind>. Same set as install.sh SECRET_PATTERNS, kept as data here; install.sh keeps its bash copy (no node at install time). Each pattern is a JavaScript RegExp source, compiled with flag g by the loader only to refuse one that does not compile.",
+      "patterns": [
+        { "kind": "anthropic-key", "pattern": "sk-ant-[A-Za-z0-9_-]{10,}" },
+        { "kind": "openai-key", "pattern": "sk-proj-[A-Za-z0-9_-]{10,}" },
+        { "kind": "sk-key", "pattern": "sk-[A-Za-z0-9]{20,}" },
+        { "kind": "aws-key", "pattern": "AKIA[0-9A-Z]{16}" },
+        { "kind": "github-token", "pattern": "gh[opsu]_[A-Za-z0-9]{20,}" },
+        { "kind": "github-pat", "pattern": "github_pat_[A-Za-z0-9_]{20,}" },
+        { "kind": "gitlab-token", "pattern": "glpat-[A-Za-z0-9_-]{20,}" },
+        { "kind": "google-key", "pattern": "AIza[0-9A-Za-z_-]{35}" },
+        { "kind": "atlassian-token", "pattern": "ATATT[A-Za-z0-9_=.-]{20,}" },
+        { "kind": "slack-token", "pattern": "xox[baprs]-[A-Za-z0-9-]{10,}" },
+        { "kind": "private-key", "pattern": "-----BEGIN ([A-Z]+ )?PRIVATE KEY-----" },
+        { "kind": "private-key-id", "pattern": "\"private_key_id\"\\s*:" },
+        { "kind": "url-credentials", "pattern": "[a-z][a-z+]+://[^/\\s]+:[^@\\s]+@" }
+      ]
+    },
+    "breaker": {
+      "scope": "provider",
+      "state_file": "engineos-judge-breaker.json",
+      "cooldown_ms": 60000
+    }
   }
 }
