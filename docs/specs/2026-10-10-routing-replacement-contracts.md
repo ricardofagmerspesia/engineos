@@ -1,12 +1,44 @@
-# Routing replacement — frozen contracts (rev 1)
+# Routing replacement — frozen contracts (rev 2)
 
 *Companion to `2026-10-10-routing-replacement-plan.md` (the plan) and
 `docs/adr/2026-10-10-three-tier-router-and-jev-judge.md` (the decision). Every
 ticket T02–T13 of the plan's task graph builds against the shapes below and
-changes none of them. A change to a contract comes back here first (rev 2, ...),
-then to the units that consume it. Consumers cite `contracts.md@rev1`.*
+changes none of them. A change to a contract comes back here first (rev 3, ...),
+then to the units that consume it. Consumers cite `contracts.md@rev2`; a rev1
+citation stays valid for every section the changelog below does not name.*
 
-- **Revision:** rev 1 (2026-10-10). **Owner:** T01 (contract owner).
+## Changelog
+
+**rev 2 (2026-10-11)** — four consumer-raised deltas; every other line is
+byte-identical to rev 1.
+
+1. §1.2, §1.5, §9.1 — **path feature gated on declared `phrases`** (ratifies
+   T03's integrated reading). A row scores the path feature only when the
+   registry row declares a non-empty `phrases` array; the kernel-internal flag
+   `IntentRow.phrases_declared` carries that fact (not a registry key). This
+   keeps §1.5 exact for v1 rows (`path_weight 1.0 >= min_score 1.0` would
+   otherwise let a path token alone route a v1 row) without zeroing the feature
+   for v2 rows, which `path_weight: 0` would have done. Affects T03 (already
+   conforms), T13 (calibration reads the gate).
+2. §10, §10.3, §7 — `JudgeOutcome` `facts` variant gains
+   `tokens_in: number | null` from the response's `usage.input_tokens`, so the
+   hook fills the §7 span's `tokens_in`. Additive. `JevFact` (the kernel fact)
+   is unchanged. Affects T04 (producer), T05 (span writer).
+3. §10.3 — `oversize-state` is decided before any request is sent and is a
+   property of the prompt, not the provider: it **does not** increment the
+   breaker (ratifies T04's reading). It is still a `failed` outcome, still a
+   `fallback` reason in the fact, and still gets one `FAILED` span (§7) so the
+   retro sees it. Affects T04, T05.
+4. §10.3 — TypeSafe wire names confirmed by T04 (read 2026-10-11:
+   `https://docs.typesafe.ai/api.md`, `/primitives/{choice,noul,score}.md`);
+   the "to be confirmed" marker is replaced by the confirmed shapes and the
+   four documented error codes (401, 422, 429, 529). The `JevFact` mapping is
+   unchanged. Affects T04 only.
+5. §15 — ownership notes: T03's wiring request W3 (`export type RankedIntent`
+   from `src/kernel/index.ts`) is owned by T06; `README.md` is in T09's
+   exclusive paths (D4).
+
+- **Revision:** rev 2 (2026-10-11); rev 1 (2026-10-10). **Owner:** T01 (contract owner).
 - **Base:** branch `feat/routing-replacement` at `0b2e442`, HEAD-only (decision D1).
 - **Evidence read:** `src/registry/intents.ts`, `src/registry/policy.ts`,
   `src/kernel/{route,resolve,decisions,scale,breaker,cli}.ts`,
@@ -71,7 +103,11 @@ Existing refusals stay verbatim (empty `.intents`, empty `id`, malformed
 
 `IntentRow` gains the parsed fields: `phrases: Phrase[]` (always populated —
 derived or declared), `verb_object: VerbObject | null`, `negative: Phrase[]`,
-`exemplars: string[]`, `threshold: number | null`, `router_row: RouterRow | null`.
+`exemplars: string[]`, `threshold: number | null`, `router_row: RouterRow | null`,
+and the **kernel-internal** flag `phrases_declared: boolean` (rev 2) — true
+when the registry row carries a non-empty `phrases` array, false when
+`phrases` was derived from `signals`. It is not a registry key, is never
+projected into an answer, and gates the §9.1 path feature.
 `signals` keeps its slot and type.
 
 Metasyntax ban (C16 today on `signals`) extends to `phrases[].text` and
@@ -142,6 +178,8 @@ assigns every intent whose `signals` entry fires a score `>= 1` and every other
 intent `0`; with the §6.1 placeholders (`min_score: 1.0`, `threshold: 0`,
 `margin: 0`, `max_intents: 8`, no exemplars anywhere) `matches` equals today's
 any-match set in registry order and `ambiguous` equals `matches.length === 0`.
+The path feature (§9.1) cannot break this: it fires only on rows with
+`phrases_declared`, and a v1 row has none (rev 2).
 
 ---
 
@@ -560,9 +598,9 @@ One span per **attempted** call (not for `skipped`), written by
 | `capability_id` | `route` |
 | `model_tier` | `cheap` (the router span's tier; the schema requires a tier id) |
 | `provider` | `typesafe` |
-| `model` | the response-reported version, else `policy.judge.model` |
-| `status` | `OK` (facts) · `FAILED` (timeout, http, network, invalid-response) · `DEGRADED` (facts received but `latency_ms > timeout_ms` slack, or breaker half-open probe) |
-| `tokens_in` | the response's reported input tokens when present, else `null` |
+| `model` | the response-reported version (top-level `model`), else `policy.judge.model` |
+| `status` | `OK` (facts) · `FAILED` (timeout, http, network, invalid-response, oversize-state) · `DEGRADED` (facts received but `latency_ms > timeout_ms` slack, or breaker half-open probe) |
+| `tokens_in` | `JudgeOutcome.tokens_in` (`usage.input_tokens`, rev 2) when present, else `null` |
 | `tokens_out` | `null` |
 | `duration_ms` | wall time of the call |
 | `route` | `primary.id` when facts, else absent |
@@ -621,7 +659,7 @@ export function tokenize(text: string): string[];
 | phrase | `boundedContains(asciiDowncase(text), asciiDowncase(p.text))` | `+p.weight` | `+<w> "<text>"` |
 | verb-object | some `verbs[]` stem and some `objects[]` stem both in `tokenize(text)` | `+verb_object.weight` (once) | `+<w> pair <verb>+<object>` |
 | negative | phrase test on `n.text` | `-n.weight` | `-<w> "<text>"` |
-| path | a whitespace-delimited raw token of `text` containing `/` or matching `*.<ext>` / `.<ext>` routes through `routeByPath` semantics to a non-excluded routing domain whose id equals this row's `domain` | `+scoring.path_weight` (once) | `+<w> path <token>` |
+| path | **only when the row has `phrases_declared` (rev 2)**, a whitespace-delimited raw token of `text` containing `/` or matching `*.<ext>` / `.<ext>` routes through `routeByPath` semantics to a non-excluded routing domain whose id equals this row's `domain` | `+scoring.path_weight` (once) | `+<w> path <token>` |
 | exemplar | BM25 (k1 1.2, b 0.75; documents = `tokenize(exemplars.join(' '))` of every row that has exemplars; `idf = ln(1 + (N - df + 0.5) / (df + 0.5))`) normalised by the maximum over rows; rows without exemplars score 0 | `+scoring.bm25_weight * lex_i / max_lex` when `lex_i > 0` | `+<x.xx> exemplar` |
 
 `score = max(0, round2(sum))`. Stopword list and stemming rules are
@@ -670,7 +708,7 @@ export interface JudgeDeps {
 }
 
 export type JudgeOutcome =
-  | { kind: 'facts'; facts: JevFact }
+  | { kind: 'facts'; facts: JevFact; tokens_in: number | null }   // tokens_in: usage.input_tokens, null when absent (rev 2)
   | { kind: 'skipped'; reason: 'disabled' | 'no-key' | 'no-fetch' | 'breaker-open' | 'not-user-input' }
   | { kind: 'failed'; reason: 'timeout' | 'http-429' | 'http-4xx' | 'http-5xx' | 'network' | 'invalid-response' | 'oversize-state' };
 
@@ -708,25 +746,38 @@ boundary until it fits and `"truncated": true` is added to `request`; a state
 that cannot fit with an empty text → `failed: oversize-state`.
 `AbortController` deadline `timeout_ms`; `retries: 0`.
 
-### 10.3 Response → facts
-HTTP 429 → `http-429`; other 4xx → `http-4xx`; 5xx → `http-5xx`; abort →
+### 10.3 Response → facts (rev 2: wire names confirmed)
+HTTP status → reason: `429` → `http-429`; `401` (bad key) and `422` (request
+rejected by the API's schema — our question set or state is malformed) →
+`http-4xx`; `529` (overloaded) and every other 5xx → `http-5xx`; abort →
 `timeout`; fetch rejection → `network`; non-JSON or schema failure →
-`invalid-response`. Each failure increments the breaker; a `facts` outcome
-resets it. Expected answer shapes per question type (field names to be
-confirmed by T04 against the TypeSafe API reference, 2026-10-10 — the
-`JevFact` mapping below is the frozen part; a wire-name delta is a rev 2 of
-this section, not a silent adaptation):
+`invalid-response`. Every one of those increments the breaker and a `facts`
+outcome resets it. **`oversize-state` does not touch the breaker** (rev 2): it
+is decided before any request is sent and describes the prompt, not the
+provider; it still returns `failed`, still becomes a `fallback` reason, and
+still writes one `FAILED` span (§7).
 
-| Question | Answer fields read | Mapping |
+Wire shape, confirmed by T04 on 2026-10-11 against
+`https://docs.typesafe.ai/api.md` and `/primitives/{choice,noul,score}.md`:
+response top level `{ model, answers, usage }` — `model` the concrete version
+served (slug, e.g. `jev-1.13.0`), `answers` an object keyed by question id,
+`usage.{input_tokens, output_tokens}` integers. Documented error statuses:
+`401`, `422`, `429`, `529`. Per answer type:
+
+| Question | Answer object | Mapping |
 |---|---|---|
-| `primary_intent` (choice) | chosen option, per-option probabilities, confidence | `primary.id`, `primary.confidence`, `primary.margin = p1 - p2` |
-| `intent.<id>` (noul) | probability of yes | `intents[id]` |
-| `fact.<name>` (noul) | probability of yes | `rules[name]` |
-| `is_project_change`, `design_work` (noul) | probability of yes | same-named fields |
-| `scale`, `risk.*` (score) | ordered level probabilities | `Math.round(Σ i·p_i)` → `0 \| 1 \| 2` |
-| top-level model / usage | reported model version, input tokens | `model`; span `tokens_in` |
+| `primary_intent` (choice) | `{ type: "choice", choice, probabilities: { <option>: p }, confidence }` (`confidence` is spread-derived by the API) | `primary.id = choice`; `primary.confidence = confidence`; `primary.margin = probabilities[choice] - max(probabilities[other options])` (`1` with one option) |
+| `intent.<id>` (noul) | `{ type: "noul", noul }` — `noul` is p(yes); no confidence field | `intents[id] = noul` |
+| `fact.<name>` (noul) | same | `rules[name] = noul` |
+| `is_project_change`, `design_work` (noul) | same | same-named fields |
+| `scale`, `risk.*` (score) | `{ type: "score", score, confidence, legend, probabilities: { "0": p0, ..., "<n-1>": p } }` | `Math.round(Σ i·probabilities[String(i)])` → `0 \| 1 \| 2`; `score` and `legend` are read for schema validation only |
+| top level | `model`, `usage.input_tokens` | `facts.model`; outcome `tokens_in` → span `tokens_in` (§7); `usage.output_tokens` is not billed and is left out of the span (`tokens_out: null`) |
 
-`latency_ms` = `now()` after minus before the request.
+Schema validation (`invalid-response`): every question id sent must be present
+in `answers` with the matching `type`; every probability finite in `[0,1]`;
+choice `choice` must be a sent option; score `probabilities` must carry exactly
+the keys `"0"`..`"<levels-1>"`. `latency_ms` = `now()` after minus before the
+request.
 
 ### 10.4 Question set (`src/judge/questions.ts`)
 Generated deterministically from `intents.json` (active rows, registry order,
@@ -833,13 +884,13 @@ it with a sibling of `ROUTER_INTENT` and prints a `Misroutes` section
 | Ticket | Sections consumed |
 |---|---|
 | T02 | §8 |
-| T03 | §1, §2.2–2.3, §6.1 (`scoring`, `reasons`), §9 |
-| T04 | §3 (fact shape), §6.2, §6.3, §7, §10 |
-| T05 | §2.1, §5, §6.1 (`source_markers`), §6.4, §7, §10.5 |
-| T06 | §2.3–2.5, §3, §4, §6.1 (`combination`), §6.2 (`thresholds`, `mode`) |
+| T03 | §1, §2.2–2.3, §6.1 (`scoring`, `reasons`), §9. Its wiring request W3 (`export type RankedIntent` from `src/kernel/index.ts`) is **owned by T06**, which owns that barrel (rev 2) |
+| T04 | §3 (fact shape), §6.2, §6.3, §7, §10 (rev 2: `tokens_in`, breaker exemption for `oversize-state`, confirmed wire names) |
+| T05 | §2.1, §5, §6.1 (`source_markers`), §6.4, §7, §10.5 (rev 2: span `tokens_in` from `JudgeOutcome.tokens_in`; `oversize-state` spans) |
+| T06 | §2.3–2.5, §3, §4, §6.1 (`combination`), §6.2 (`thresholds`, `mode`); owns `src/kernel/index.ts` exports incl. T03's W3 (rev 2) |
 | T07 | §2.1, §13 |
 | T08 | §14 (hot bundle rows), D3 |
-| T09 | every registry section (§1, §6), §11, §14, D1, D4, D8 |
+| T09 | every registry section (§1, §6), §11, §14, D1, D4 (`README.md` is in T09's exclusive paths, rev 2), D8 |
 | T10 | D1 |
 | T11 | §12, D1, D3 |
 | T12 | §4 (`tiebreak` slot: `CombineInput.tiebreak?: Record<string, number>`, consulted only when `ambiguous`; reserved here, unused until T12) |
