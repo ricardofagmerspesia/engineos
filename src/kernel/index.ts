@@ -28,3 +28,6 @@ export type {
   ScoreLevel,
 } from './judge-facts';
 export type { ScaleFacts, ScaleSection } from './scale';
+// The kernel-side tie-break fact (contracts.md@rev3 §3.1): the client's
+// `scores` outcome passed through unchanged, validated by tiebreak-facts.ts.
+export type { TiebreakFact } from './tiebreak-facts';

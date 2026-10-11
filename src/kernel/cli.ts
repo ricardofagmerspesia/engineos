@@ -379,6 +379,9 @@ function parseFacts(raw: string): DeclaredFacts {
       // Unread here too: judge-facts.ts validates the fact against the loaded
       // registries, and resolve refuses it without a taskContract fact (D7).
       case 'judge': facts.judge = value; break;
+      // Unread for the same reason: tiebreak-facts.ts validates it against the
+      // registries and the ranking, and resolve refuses it without taskContract.
+      case 'tiebreak': facts.tiebreak = value; break;
       default: throw new KernelError(`resolve --facts: unknown fact ${key}`);
     }
   }

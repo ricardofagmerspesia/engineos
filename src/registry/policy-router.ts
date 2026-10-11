@@ -2,8 +2,9 @@ import { strictReader } from './strict';
 
 // The `.router` block of registries/policy.json, split from policy.ts so each
 // sibling stays one concern. Scoring feeds src/kernel/score.ts and route.ts,
-// combination declares src/kernel/combine.ts's invariants, and source_markers
-// feed src/hooks/prompt-source.ts (contracts.md@rev2 §2, §5, §7).
+// combination declares src/kernel/combine.ts's invariants, source_markers feed
+// src/hooks/prompt-source.ts, and tiebreak bounds combine.ts's embedding
+// tie-break (contracts.md@rev3 §2, §4.7, §5, §6.1).
 
 export interface EscalateWhen {
   multi_agent_intents_min: number;
@@ -43,6 +44,13 @@ export interface SourceMarkers {
   hook_echo: string[];
 }
 
+// Both cuts compare a similarity score in [0,1]; zero is refused because a zero
+// floor would let any score win and a zero margin would let an exact tie decide.
+export interface TiebreakPolicy {
+  min_similarity: number;
+  margin: number;
+}
+
 export interface RouterPolicy {
   agent: string;
   capability: string;
@@ -51,6 +59,7 @@ export interface RouterPolicy {
   scoring: ScoringPolicy;
   combination: CombinationPolicy;
   source_markers: SourceMarkers;
+  tiebreak: TiebreakPolicy;
   fixtures: RouterFixture[];
 }
 
@@ -77,6 +86,7 @@ export function parseRouter(value: unknown): RouterPolicy {
     scoring: parseScoring(router['scoring']),
     combination: parseCombination(router['combination']),
     source_markers: parseSourceMarkers(router['source_markers']),
+    tiebreak: parseTiebreak(router['tiebreak']),
     fixtures: requireRows(router['fixtures'], '.router.fixtures').map((row, i) => ({
       prompt: requireString(row['prompt'], `.router.fixtures[${i}].prompt`),
       escalate: requireBoolean(row['escalate'], `.router.fixtures[${i}].escalate`),
@@ -137,6 +147,21 @@ function markerList(value: unknown, path: string): string[] {
     if (marker.trim() === '') malformed(`${path}[${i}] must not be blank`);
   });
   return list;
+}
+
+function parseTiebreak(value: unknown): TiebreakPolicy {
+  const at = '.router.tiebreak';
+  const tiebreak = requireRecord(value, at);
+  return {
+    min_similarity: aboveZeroAtMostOne(tiebreak['min_similarity'], `${at}.min_similarity`),
+    margin: aboveZeroAtMostOne(tiebreak['margin'], `${at}.margin`),
+  };
+}
+
+function aboveZeroAtMostOne(value: unknown, path: string): number {
+  const number = requireNumber(value, path);
+  if (number <= 0 || number > 1) malformed(`${path} must be greater than 0 and at most 1`);
+  return number;
 }
 
 function atLeastZero(value: unknown, path: string): number {

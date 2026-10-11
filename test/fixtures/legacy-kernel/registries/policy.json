@@ -318,6 +318,11 @@
       "tool_result": ["<function_results>", "<tool_result>", "<tool-result>"],
       "hook_echo": ["[engineos]"]
     },
+    "tiebreak": {
+      "note": "Embedding tie-break (rev 3, contracts §4.7). Read by src/kernel/combine.ts only on an ambiguous deterministic route with a tiebreak fact; the daemon is opt-in (ENGINEOS_EMBED_DAEMON=1). Placeholders until T13 calibrates against the golden set with the pinned MiniLM revision.",
+      "min_similarity": 0.6,
+      "margin": 0.1
+    },
     "fixtures": [
       {"prompt": "add a paginated orders endpoint to the API and mirror the screen to mobile", "escalate": true,  "reasons": ["multi-agent-dispatch"],    "intents": ["backend", "mobile"]},
       {"prompt": "migrate all services to the new logging format across all packages",         "escalate": true,  "reasons": ["requires-dispatch-plan"], "intents": ["big-sweep"]},

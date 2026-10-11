@@ -4,10 +4,13 @@ import { matchFromRule, rulesInPriorityOrder, type DecisionMatch, type Decisions
 import { judgeSummary, OTHER_PRIMARY, type JevFact, type JudgeFact, type JudgeMode, type JudgeSummary } from './judge-facts';
 import type { EscalateRouteSection, RankedIntent, SuppressedIntent } from './route';
 import type { ScaleSection } from './scale';
+import { tiebreakWinner, type TiebreakFact } from './tiebreak-facts';
 
-// The combination policy (contracts.md@rev1 §4): pure, no I/O. Deterministic
+// The combination policy (contracts.md@rev3 §4): pure, no I/O. Deterministic
 // gates win; a judge fact may only ADD decision matches and only RAISE risk, and
-// it replaces the lexical intent set only in authoritative mode. The declared
+// it replaces the lexical intent set only in authoritative mode. On the
+// deterministic branch an embedding tie-break fact may only NARROW an ambiguous
+// set of survivors to one of them (§4.7). The declared
 // invariants live in policy.router.combination, whose loader refuses any value
 // but the ones implemented here (fail closed), so this module does not branch
 // on them.
@@ -19,14 +22,16 @@ export interface CombineInput {
   judge: JudgeFact | null;
   mode: JudgeMode;
   regs: Registries;
-  // Reserved for T12 (embedding tiebreak); never read here.
-  tiebreak?: Record<string, number>;
+  // The validated tie-break fact (§3.1); absent means the client was not
+  // consulted. Read only on the deterministic branch of an ambiguous route.
+  tiebreak?: TiebreakFact;
 }
 
 // The first nine keys are the frozen §4 output. `intents` carries the survivors
-// of suppression, as route.intents does. The last four are the derived lists
+// of suppression, as route.intents does. The next four are the derived lists
 // §4.2 says are recomputed over the folded set; they are emitted here so the
 // task contract reads one answer instead of re-running suppression itself.
+// `tiebreakWinner` is the §4.7 selection, published as task_contract.tiebreak.
 export interface CombineOutput {
   intents: string[];
   ranked: RankedIntent[];
@@ -41,6 +46,7 @@ export interface CombineOutput {
   agents: string[];
   modelTier: string | null;
   riskFloor: RiskTier | null;
+  tiebreakWinner: string | null;
 }
 
 // The ordering of the tier vocabulary itself, as in route.ts.
@@ -53,6 +59,11 @@ const SPEC_THRESHOLD_RULE = 'rule-spec-threshold';
 const NEW_FEATURE_INTENT = 'new-feature';
 
 const LOW_CONFIDENCE_REASON = 'low-confidence';
+const MULTI_AGENT_REASON = 'multi-agent-dispatch';
+const DISPATCH_PLAN_REASON = 'requires-dispatch-plan';
+
+// A similarity score never drops a domain whose floor is this tier (§4.7).
+const KEPT_FLOOR: RiskTier = 'high';
 
 export function combine(input: CombineInput): CombineOutput {
   const { judge } = input;
@@ -65,10 +76,16 @@ export function combine(input: CombineInput): CombineOutput {
   return folded(input, jev, summary, riskProposal);
 }
 
-// The deterministic answer re-packaged: with no judge fact every task-contract
-// value is exactly what it was before the judge existed.
+// The deterministic answer re-packaged: with no judge fact and no tie-break
+// selection every task-contract value is exactly what it was before the judge
+// existed.
 function deterministic(input: CombineInput, summary: JudgeSummary, riskProposal: RiskTier | null): CombineOutput {
-  const { route, decisions } = input;
+  const { route, decisions, regs } = input;
+  // §4.7 is read only when the route itself is in doubt; route.* is never edited.
+  const winner = input.tiebreak !== undefined && route.ambiguous
+    ? tiebreakWinner(route.intents, route.ranked, input.tiebreak, regs.policy.router.tiebreak)
+    : null;
+  if (winner !== null) return narrowed(input, winner, summary, riskProposal);
   return {
     intents: route.intents,
     ranked: route.ranked,
@@ -83,6 +100,44 @@ function deterministic(input: CombineInput, summary: JudgeSummary, riskProposal:
     agents: route.agents,
     modelTier: route.model_tier,
     riskFloor: decisions.any_high ? 'high' : route.risk_floor,
+    tiebreakWinner: null,
+  };
+}
+
+// §4.7 on selection: keep the winner plus every high-floor survivor, re-aggregate
+// over that subset, and never lower the floor or the model tier. Decision
+// matches, anyHigh and the reasons are the deterministic ones: narrowing can
+// only remove agents, so no reason needs recomputing, and `low-confidence`
+// stays so the router agent still sees the doubt.
+function narrowed(
+  input: CombineInput,
+  winner: string,
+  summary: JudgeSummary,
+  riskProposal: RiskTier | null,
+): CombineOutput {
+  const { route, decisions, regs } = input;
+  const keptFloorIds = new Set(
+    regs.intents.intents.filter((row) => row.risk_floor === KEPT_FLOOR).map((row) => row.id),
+  );
+  // route.intents is in registry order, so both partitions are too.
+  const kept = route.intents.filter((id) => id === winner || keptFloorIds.has(id));
+  const dropped = route.intents.filter((id) => !kept.includes(id));
+  const aggregate = aggregateIntents(kept, regs);
+  return {
+    intents: aggregate.intents,
+    ranked: route.ranked,
+    ambiguous: false,
+    decisionMatches: decisions.matches,
+    judgeAdded: [],
+    anyHigh: decisions.any_high,
+    riskProposal,
+    judgeSummary: summary,
+    escalateReasons: route.reasons,
+    suppressed: [...route.suppressed, ...dropped.map((id) => ({ id, by: winner }))],
+    agents: aggregate.agents,
+    modelTier: highest([route.model_tier, aggregate.modelTier], regs.models.escalation_order),
+    riskFloor: decisions.any_high ? 'high' : highest([route.risk_floor, aggregate.riskFloor], RISK_ORDER),
+    tiebreakWinner: winner,
   };
 }
 
@@ -107,9 +162,16 @@ function folded(
     choice.ambiguous ||
     jev.primary.confidence < thresholds.primary_confidence ||
     jev.primary.margin < thresholds.margin;
-  // Rule 4, add-only: every deterministic reason stays, in policy order.
+  // Rule 4, add-only (§4.5 rev 3): every deterministic reason stays, in policy
+  // order; the two intent-derived reasons are re-evaluated over the folded
+  // survivors and only ever added. unrouted-scale is defined on zero RAW
+  // matches, so only the route.reasons term keeps it.
   const escalateReasons = regs.policy.router.reasons.filter(
-    (reason) => route.reasons.includes(reason) || (reason === LOW_CONFIDENCE_REASON && doubt),
+    (reason) =>
+      route.reasons.includes(reason) ||
+      (reason === MULTI_AGENT_REASON && aggregate.multiAgent) ||
+      (reason === DISPATCH_PLAN_REASON && aggregate.dispatchPlan) ||
+      (reason === LOW_CONFIDENCE_REASON && doubt),
   );
   return {
     intents: aggregate.intents,
@@ -125,6 +187,8 @@ function folded(
     agents: aggregate.agents,
     modelTier: aggregate.modelTier,
     riskFloor,
+    // The judge is the semantic tier above the tie-break, so the fold ignores it.
+    tiebreakWinner: null,
   };
 }
 
@@ -157,11 +221,15 @@ interface IntentAggregate {
   agents: string[];
   modelTier: string | null;
   riskFloor: RiskTier | null;
+  // The two intent-derived escalation conditions routeEscalate applies to the
+  // raw survivors, applied here to these survivors (§4.5 rev 3).
+  multiAgent: boolean;
+  dispatchPlan: boolean;
 }
 
-// Suppression and aggregation over the folded set, the same single,
-// non-transitive pass routeEscalate runs over the raw set; lists keep the
-// folded set's confidence order.
+// Suppression and aggregation over the folded (or narrowed) set, the same
+// single, non-transitive pass routeEscalate runs over the raw set; lists keep
+// the order of `ids`.
 function aggregateIntents(ids: readonly string[], regs: Registries): IntentAggregate {
   const chosen = new Set(ids);
   const rows = ids.flatMap((id) => regs.intents.intents.filter((row) => row.id === id));
@@ -181,6 +249,10 @@ function aggregateIntents(ids: readonly string[], regs: Registries): IntentAggre
     agents: [...new Set(surviving.flatMap((row) => row.agents))],
     modelTier: highest(surviving.map((row) => row.model_tier), regs.models.escalation_order),
     riskFloor: highest(surviving.map((row) => row.risk_floor), RISK_ORDER),
+    multiAgent:
+      surviving.filter((row) => row.agents.length > 0).length >=
+      regs.policy.router.escalate_when.multi_agent_intents_min,
+    dispatchPlan: surviving.some((row) => row.requires_dispatch_plan),
   };
 }
 
