@@ -439,10 +439,6 @@
       "type": "noul",
       "instructions": "Does the work in `request.text` involve retrieval-augmented generation, embeddings or fine-tuning?"
     },
-    "fact.retrieval_over_shared_corpus": {
-      "type": "noul",
-      "instructions": "Does the work in `request.text` involve retrieving documents from a corpus shared by several users or tenants?"
-    },
     "fact.multi_agent_system": {
       "type": "noul",
       "instructions": "Does `request.text` ask to design or build a product system in which more than one AI agent cooperates?",
@@ -450,6 +446,10 @@
         "true": "A product with several cooperating agents, such as a supervisor with workers or agents handing off to each other",
         "false": "A single agent or chatbot, or Claude Code subagents that the developer uses while working"
       }
+    },
+    "fact.retrieval_over_shared_corpus": {
+      "type": "noul",
+      "instructions": "Does the work in `request.text` involve retrieving documents from a corpus shared by several users or tenants?"
     },
     "scale": {
       "type": "score",
