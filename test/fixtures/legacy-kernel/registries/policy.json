@@ -137,7 +137,12 @@
       "note": "Admission control for the orchestrator's dispatch loop. Capacity is wave_concurrency_cap above (never a second copy). Answered by scripts/kernel.sh admit; mirrored in rules/parallelism.md 'Backpressure'. defer = hold the unit for the next wave; reject = stop planning, report BLOCKED, re-plan with a human (a hitl reason).",
       "max_queued_units": 12,
       "overload_action": "defer",
-      "actions": ["dispatch", "defer", "reject"]
+      "actions": ["dispatch", "defer", "reject"],
+      "rows": [
+        {"when": {"capacity_available": true}, "action": "dispatch",          "capacity": "remaining", "reason": "inflight {inflight} below cap {cap}"},
+        {"when": {"queue_has_room": true},     "action": "{overload_action}", "capacity": "none",      "reason": "cap {cap} reached; {queued} of {max_queued_units} queued — hold the unit for the next wave"},
+        {"when": {},                           "action": "reject",            "capacity": "none",      "reason": "cap {cap} reached and queue full ({queued}/{max_queued_units}) — stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)"}
+      ]
     },
     "prompt_signals": {
       "note": "Prompt-classification EREs for kernel.sh scale (were hardcoded in the UserPromptSubmit advisor before the kernel owned them). Countable nouns in scale are plural-only on purpose: 'add a component' is one unit and must not trip fan-out advice. design_weak only counts alongside an action verb.",
@@ -188,12 +193,23 @@
     "escalations": 1,
     "by_situation": [
       { "situation": "red", "response": "fix-attempt-ladder" },
-      { "situation": "infra", "response": "report-tooling-gap-no-attempt-consumed" },
-      { "situation": "flaky", "response": "fix-or-delete-never-rerun-until-green" }
+      { "situation": "infra", "response": "report-tooling-gap-no-attempt-consumed", "action": "report-tooling-gap", "reason": "the check could not run — that is a tooling gap, not a code defect; report it, consume no fix attempt (hooks/stop-verify.sh: never block on infra quirks)" },
+      { "situation": "flaky", "response": "fix-or-delete-never-rerun-until-green", "action": "fix-or-delete", "reason": "green on re-run with no diff is a broken test, not a pass — fix or delete within the week, never retry-until-green (rules/testing.md)" }
     ],
     "never_repair": [
       "weaken-the-check",
       "behavior-change-required"
+    ],
+    "never_repair_answer": { "action": "never-repair", "reason": "situation {situation} is on the never-repair list — a fix that weakens the check or changes behavior is not a fix; escalate to a human on the first occurrence" },
+    "ladder": [
+      { "when": { "within_fix_attempts": true }, "action": "fix-same-tier", "reason": "first red — fix and re-run the check at the same tier" },
+      { "when": { "within_escalations": true }, "action": "escalate-one-tier", "reason": "the same check failed twice — escalate one model tier for the fix and re-run once; that is the last attempt (rules/models.md)" },
+      { "when": {}, "action": "stop-report-red", "reason": "the bound is exhausted — stop, report the check red with what was tried; a loop continued past this point is sampling until it looks right, not fixing (rules/parallelism.md)" }
+    ],
+    "infra_patterns": [
+      { "runner": "nx", "pattern": "cannot find (project|target) |does not have (a|an) .* target|cannot find configuration for task", "reason": "target-absent" },
+      { "runner": "npm-family", "pattern": "missing script:|command \"<t>\" not found|find a script named \"<t>\"", "reason": "target-absent" },
+      { "runner": "python", "pattern": "No module named (ruff|pyright|pytest)|command not found|No such file or directory: .*(ruff|pyright|pytest)", "reason": "runner-missing" }
     ]
   },
   "breaker": {
@@ -202,13 +218,32 @@
     "cooldown_waves": 1,
     "half_open_probes": 1,
     "states": ["closed", "half-open", "open"],
-    "scopes": ["provider", "mcp", "tool", "agent"]
+    "scopes": ["provider", "mcp", "tool", "agent"],
+    "transitions": [
+      { "from": "closed",    "guard": { "threshold_reached": true },  "to": "open",      "allow": false, "reason": "{failures} consecutive failures reached threshold {failure_threshold} — stop calling this resource for {cooldown_waves} wave(s); route around or report DEGRADED" },
+      { "from": "closed",    "guard": { "threshold_reached": false }, "to": "closed",    "allow": true,  "reason": "{failures} of {failure_threshold} failures — resource healthy" },
+      { "from": "open",      "guard": { "cooldown_elapsed": true },   "to": "half-open", "allow": true,  "reason": "cooldown elapsed — allow {half_open_probes} probe call(s); no fan-out through this resource until it closes" },
+      { "from": "open",      "guard": { "cooldown_elapsed": false },  "to": "open",      "allow": false, "reason": "cooldown not elapsed — do not call; route around or report DEGRADED" },
+      { "from": "half-open", "guard": { "probe_result": "ok" },       "to": "closed",    "allow": true,  "reason": "probe succeeded — resource recovered; reset the failure count to 0" },
+      { "from": "half-open", "guard": { "probe_result": "failed" },   "to": "open",      "allow": false, "reason": "probe failed — reopen for another cooldown" }
+    ]
   },
   "hitl": {
     "note": "Human-in-the-loop as a queryable entity rather than a tier's implication. autonomy.ceiling_by_risk says how far a unit may go alone; this block says when a HUMAN must decide and names WHY, so the decision is auditable instead of inferred. Answered by scripts/kernel.sh hitl, folded into resolve-task as .hitl from a CLASSIFIED tier only (decision_rules.any_high) and never from a risk floor, because a floor is an input to classification and a gate announced off one is gate theatre (rules/gates.md); on a floor-only prompt .hitl is null and hooks/prompt-advisor.sh turns task_contract.risk_floor into an instruction to classify rather than a gate, announced by hooks/prompt-advisor.sh, mirrored in rules/risk-autonomy.md 'Human-in-the-loop'; C26 checks the block, the kernel's answers and the prose together. reasons is the CLOSED vocabulary a gate may cite — a gate citing anything else produces a record no one can argue with, which is the hole this block exists to close; the list order is the kernel's emission order. situations is what --situation accepts ON TOP OF retry.never_retry (whose ids all collapse to the single reason never-retry-situation), and the two lists are disjoint so the union lookup stays unambiguous. budget-exhausted is deliberately in BOTH reasons and situations: it is a reason a human is needed AND a situation a caller reports, and kernel.sh admit's reject message embeds the literal 'hitl: budget-exhausted' — C26d couples that literal to this list and to the kernel's own --situation reject answer so the three cannot drift apart. autonomy_after is a DROP and never a raise: one level below the ceiling passed in, no lower than A1, capped at risk high by autonomy.high_with_thin_evidence, and never above the level given -- so A0 stays A0. record_home is where the decision gets written down; a tier that required a human and carries no such record has not passed its gate. ADR: docs/adr/2026-09-03-hitl-as-kernel-entity.md.",
     "reasons": ["high-risk", "evidence-insufficient", "external-effect", "policy-conflict", "never-retry-situation", "destructive-action", "budget-exhausted", "breaker-open"],
     "situations": ["destructive", "budget-exhausted", "reject", "breaker-open"],
-    "record_home": ".engineos/changes/<record>.md#human-decisions"
+    "record_home": ".engineos/changes/<record>.md#human-decisions",
+    "reason_table": [
+      { "reason": "high-risk",             "when": { "risk": "high" } },
+      { "reason": "evidence-insufficient", "when": { "evidence": "thin" } },
+      { "reason": "external-effect",       "when": { "external_effect": true, "autonomy": { "at_least": "A3" } } },
+      { "reason": "policy-conflict",       "when": { "conflict": true } },
+      { "reason": "never-retry-situation", "when": { "situation": { "in": "retry.never_retry" } } },
+      { "reason": "destructive-action",    "when": { "situation": "destructive" } },
+      { "reason": "budget-exhausted",      "when": { "situation": ["budget-exhausted", "reject"] } },
+      { "reason": "breaker-open",          "when": { "situation": "breaker-open" } },
+      { "reason": "topology-approval",     "when": { "topology": true } }
+    ]
   },
   "telemetry": {
     "note": "Kernel-decision event capture: which routes, decision rules and verifications actually fired, as ids and outcomes only — never prompt text (value_pattern has no whitespace class; scripts/telemetry.sh rejects on append and validate). Written by hooks/prompt-advisor.sh and hooks/stop-verify.sh to $GITDIR/engineos-telemetry/<session_id>.jsonl in the consumer project, only where .engineos/ exists (the scaffolder's own opt-in gate) and ENGINEOS_TELEMETRY is not 0. Read by skills/retro (step 1) and scripts/usage-report.sh; reaped by hooks/ensure-project-layout.sh after retention_days. Events live in .git and never reach CI — validate-engineos.sh C22 checks this policy and the plumbing, never the data. written_by is an array because one event can have several writers, which supersedes the one-writer-per-event shape recorded in docs/specs/2026-08-06-decision-kernel-p7-telemetry.md. The samples are asserted by C22b against the running telemetry.sh, the self-validating-registry pattern of routing.json's sample_path and router.fixtures. Attempt-level repair/retry outcomes are deliberately absent: no hook mediates those model-invoked kernel calls, and their designed home is the exec-journal schema, written by the ai-se-os runner follow-on.",

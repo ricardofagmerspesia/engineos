@@ -9,12 +9,16 @@
 // any max_inflight* key instead of reading one.
 // Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 2
 // ADR: docs/adr/2026-09-03-backpressure-reuses-wave-cap.md
+import { isRecord } from '../lib/json';
+import { ADMIT_FACTS, ADMIT_PLACEHOLDERS } from '../kernel/admit';
 import { finding, result, type CheckResult, type Finding } from './findings';
 import type { CheckContext } from './lib';
 import { runMirrors } from './mirror';
 import { rowsOf } from './mirrors';
+import { endsInCatchAll, rowProblems, type RowShape } from './runtime-governance-tables';
 import {
   answerText,
+  arrayOf,
   child,
   fileHas,
   jqText,
@@ -31,6 +35,12 @@ export const C24_FINDINGS = [
   'below-1',
   'overload-action-not-in-actions',
   'max-inflight-copy-of-wave-cap',
+  // .rows, the FIRST table src/kernel/admit.ts evaluates: each row well-formed
+  // against the arm's vocabulary, each rendered action declared, and a final
+  // empty-when row so every load gets an answer.
+  'rows-malformed',
+  'row-action-undeclared',
+  'rows-no-catch-all',
 ] as const;
 
 export const C24B_FINDINGS = ['expected-reject-at-cap-with-full-queue', 'expected-dispatch-when-idle'] as const;
@@ -83,6 +93,7 @@ export function checkC24(ctx: CheckContext): CheckResult[] {
   for (const key of Object.keys(backpressure ?? {})) {
     if (key.includes('max_inflight')) findings.push(finding('C24', 'max-inflight-copy-of-wave-cap', key));
   }
+  findings.push(...rowFindings(backpressure, overload));
   return [result('C24', C24_TITLE, findings)];
 }
 
@@ -125,6 +136,33 @@ export function checkC24c(ctx: CheckContext): CheckResult[] {
 
 function backpressureBlock(ctx: CheckContext): Record<string, unknown> | undefined {
   return child(child(policyDocument(ctx), 'parallelism'), 'backpressure');
+}
+
+const ROW_SHAPE: RowShape = {
+  conditionKey: 'when',
+  vocabulary: { facts: ADMIT_FACTS },
+  strings: ['action', 'reason'],
+  placeholders: ADMIT_PLACEHOLDERS,
+};
+const ROW_CAPACITIES: readonly unknown[] = ['remaining', 'none'];
+
+function rowFindings(backpressure: Record<string, unknown> | undefined, overload: string): Finding[] {
+  const rows = arrayOf(backpressure, 'rows');
+  if (rows === undefined || rows.length === 0) return [finding('C24', 'rows-malformed', 'rows')];
+  const findings: Finding[] = [];
+  const actions = stringsOf(backpressure, 'actions');
+  rows.forEach((row, index) => {
+    const problems = rowProblems(row, ROW_SHAPE);
+    if (isRecord(row) && !ROW_CAPACITIES.includes(row['capacity'])) problems.push('capacity');
+    for (const problem of problems) findings.push(finding('C24', 'rows-malformed', `rows[${index}].${problem}`));
+    if (problems.length > 0 || !isRecord(row)) return;
+    // The overload action is the only slot an action may name, so the rendered
+    // action is exactly the one the kernel would emit for this row.
+    const rendered = String(row['action']).split('{overload_action}').join(overload);
+    if (!actions.includes(rendered)) findings.push(finding('C24', 'row-action-undeclared', `rows[${index}]:${rendered}`));
+  });
+  if (!endsInCatchAll(rows)) findings.push(finding('C24', 'rows-no-catch-all', `rows[${rows.length - 1}]`));
+  return findings;
 }
 
 function overloadAction(backpressure: Record<string, unknown> | undefined): string {

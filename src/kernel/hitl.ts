@@ -1,5 +1,7 @@
 import { KernelError } from '../lib/json';
+import type { HitlReasonRow } from '../registry/policy';
 import { isRiskTier, type Registries, type RiskTier } from './context';
+import { evaluateCollect, type Condition, type Fact } from './table';
 
 // Human-in-the-loop as a queryable entity. autonomy.ceiling_by_risk answers "how
 // far may this unit go alone"; this section answers "must a HUMAN decide, and
@@ -34,10 +36,14 @@ export interface HitlSection {
   record_home: string;
 }
 
-// The autonomy level at which an action first leaves the working tree, so
-// `external-effect` fires at that level and every level above it rather than at
-// a hand-listed pair of ids (rules/risk-autonomy.md A3).
-const EXTERNAL_EFFECT_FLOOR = 'A3';
+// The facts a policy.hitl.reason_table row may test, the named set its `in`
+// conditions may cite, and the fact ordered by the autonomy levels (so
+// `external-effect` fires at {"at_least": "A3"} and every level above it rather
+// than at a hand-listed pair of ids — rules/risk-autonomy.md A3). The C26
+// schema check holds the table to this vocabulary.
+export const HITL_FACTS = ['risk', 'evidence', 'external_effect', 'autonomy', 'conflict', 'situation', 'topology'] as const;
+export const HITL_SETS = ['retry.never_retry'] as const;
+export const HITL_ORDERED_FACT = 'autonomy';
 
 interface DropInputs {
   evidence: string;
@@ -45,18 +51,6 @@ interface DropInputs {
   autonomyIndex: number;
   levels: readonly string[];
   highWithThinEvidence: string;
-}
-
-interface ReasonInputs {
-  risk: RiskTier;
-  evidence: string;
-  external: boolean;
-  conflict: boolean;
-  situation: string;
-  topology: boolean;
-  autonomyIndex: number;
-  externalFloorIndex: number;
-  neverRetry: readonly string[];
 }
 
 export function hitlSection(facts: HitlFacts, regs: Registries): HitlSection {
@@ -105,24 +99,33 @@ export function hitlSection(facts: HitlFacts, regs: Registries): HitlSection {
     );
   }
 
-  const externalFloorIndex = levels.indexOf(EXTERNAL_EFFECT_FLOOR);
-  if (externalFloorIndex < 0) {
-    throw new KernelError(
-      `policy.json .autonomy.levels does not declare ${EXTERNAL_EFFECT_FLOOR} — hitl cannot resolve the external-effect floor`,
-    );
-  }
+  const table = policy.hitl.reason_table;
+  requireFloorsDeclared(table, levels);
 
-  const triggered = triggeredReasons({
+  // The table says when each reason is true; the registry's reasons list
+  // decides which may be cited and in which order. The four retry.never_retry
+  // ids collapse to the one never-retry-situation row, which cites them as a
+  // named set — they are the same decision (stop, escalate to a human, do not
+  // retry) — while the hitl.situations ids each carry their own row. An absent
+  // situation is null, so it equals and belongs to nothing; topology-approval
+  // tests no tier or level because the approval a topology owes is a fact
+  // about the request (a matched rule-multi-agent-design).
+  const measured: Record<(typeof HITL_FACTS)[number], Fact> = {
     risk,
     evidence,
-    external,
+    external_effect: external,
+    autonomy: facts.autonomy,
     conflict,
-    situation,
+    situation: situation === '' ? null : situation,
     topology,
-    autonomyIndex,
-    externalFloorIndex,
-    neverRetry: policy.retry.never_retry,
-  });
+  };
+  const matched = evaluateCollect(table, {
+    facts: measured,
+    sets: { 'retry.never_retry': policy.retry.never_retry },
+    orders: { [HITL_ORDERED_FACT]: levels },
+  }).map((row) => row.reason);
+  // Several rows may share a reason (an OR); each is cited once.
+  const triggered = [...new Set(matched)];
   const undeclared = triggered.filter((reason) => !policy.hitl.reasons.includes(reason));
   if (undeclared.length > 0) {
     throw new KernelError(
@@ -145,29 +148,23 @@ export function hitlSection(facts: HitlFacts, regs: Registries): HitlSection {
   };
 }
 
-// The reasons this kernel can observe. The registry decides which of them may be
-// cited and in which order; this function only says when each one is true. The four retry.never_retry ids collapse to the single reason
-// never-retry-situation — they are the same decision (stop, escalate to a
-// human, do not retry) — while the hitl.situations ids each carry their own.
-function triggeredReasons(inputs: ReasonInputs): string[] {
-  const reasons: string[] = [];
-  if (inputs.risk === 'high') reasons.push('high-risk');
-  if (inputs.evidence === 'thin') reasons.push('evidence-insufficient');
-  if (inputs.external && inputs.autonomyIndex >= inputs.externalFloorIndex) reasons.push('external-effect');
-  if (inputs.conflict) reasons.push('policy-conflict');
-  if (inputs.situation !== '' && inputs.neverRetry.includes(inputs.situation)) {
-    reasons.push('never-retry-situation');
+// An autonomy floor a row names must be a declared level, checked on every call
+// (whether or not the row's other conditions hold) so a registry that drops the
+// level is refused with the message callers already parse rather than with the
+// table's generic one.
+function requireFloorsDeclared(table: readonly HitlReasonRow[], levels: readonly string[]): void {
+  for (const row of table) {
+    const condition = row.when[HITL_ORDERED_FACT];
+    if (isFloor(condition) && !levels.includes(condition.at_least)) {
+      throw new KernelError(
+        `policy.json .autonomy.levels does not declare ${condition.at_least} — hitl cannot resolve the ${row.reason} floor`,
+      );
+    }
   }
-  if (inputs.situation === 'destructive') reasons.push('destructive-action');
-  if (inputs.situation === 'budget-exhausted' || inputs.situation === 'reject') {
-    reasons.push('budget-exhausted');
-  }
-  if (inputs.situation === 'breaker-open') reasons.push('breaker-open');
-  // Not a tier's implication and not a situation: the approval a topology owes
-  // is a fact about the request (a matched rule-multi-agent-design), so it
-  // fires at any tier and any autonomy level.
-  if (inputs.topology) reasons.push('topology-approval');
-  return reasons;
+}
+
+function isFloor(condition: Condition | undefined): condition is { readonly at_least: string } {
+  return typeof condition === 'object' && !Array.isArray(condition) && 'at_least' in condition;
 }
 
 // Thin evidence DROPS autonomy; it can never raise it. One level down, then two
