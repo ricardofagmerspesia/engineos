@@ -1,7 +1,9 @@
 // Warm embedding tie-break daemon (opt-in: ENGINEOS_EMBED_DAEMON=1).
 //
-// Started by the developer (`npm --prefix tools/embedding-daemon start`), never
-// by a hook. The model is loaded BEFORE the socket is bound, so a socket that
+// Installed by the developer with `npm --prefix tools/embedding-daemon ci
+// --ignore-scripts` once its reviewed lockfile exists (.npmrc also sets
+// ignore-scripts, so no dependency lifecycle script runs), and started with
+// `npm --prefix tools/embedding-daemon start`, never by a hook. The model is loaded BEFORE the socket is bound, so a socket that
 // exists is a warm daemon: the client's "socket present" test doubles as the
 // readiness test and no prompt ever waits on a cold model load.
 import { createServer, type Server, type Socket } from 'node:net';

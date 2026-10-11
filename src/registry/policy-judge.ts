@@ -51,6 +51,13 @@ const KIND = /^[a-z][a-z0-9-]*$/;
 // A bare file name: the breaker state lives in the telemetry directory, and a
 // separator or a dot-dot segment would let the registry aim the write elsewhere.
 const STATE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// The only origin the judge's bearer key may be sent to (D3). src/judge/jev.ts
+// keeps its own copy for the request-time check, since src/judge stays free of
+// registry imports; a provider change is a code change in both, never a
+// registry edit.
+const JUDGE_ENDPOINT_ORIGIN = 'https://api.typesafe.ai';
+// `{m,}` at the start of the remaining source: a quantifier with no upper bound.
+const OPEN_RANGE = /^\{[0-9]{1,6},\}/;
 
 const { malformed, requireRecord, requireString, requireNumber, requireRows } = strictReader('policy.json');
 
@@ -104,8 +111,34 @@ function parsePatterns(value: unknown, at: string): JudgeRedactionPattern[] {
     if (!KIND.test(kind)) malformed(`${at}.patterns[${i}].kind must be a lower-case slug`);
     const pattern = nonBlank(row['pattern'], `${at}.patterns[${i}].pattern`);
     if (!compiles(pattern)) malformed(`${at}.patterns[${i}].pattern does not compile as a regular expression`);
+    if (hasUnboundedQuantifier(pattern)) malformed(`${at}.patterns[${i}].pattern must bound every quantifier ({m,n}, ?)`);
     return { kind, pattern };
   });
+}
+
+// Redaction runs on every judged prompt inside the hook budget, so a pattern
+// must be linear-time by construction: `*`, `+` and `{m,}` are refused outside
+// a character class, which also rules out nested unbounded repetition. Bounded
+// forms ({m,n}, {m}, ?) remain, so the worst case per start position is a
+// constant the pattern itself states; keeping a bounded nested group
+// unambiguous (as the shipped set does) keeps that constant small.
+function hasUnboundedQuantifier(source: string): boolean {
+  let inClass = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '\\') {
+      index += 1;
+      continue;
+    }
+    if (inClass) {
+      if (char === ']') inClass = false;
+      continue;
+    }
+    if (char === '[') inClass = true;
+    else if (char === '*' || char === '+') return true;
+    else if (char === '{' && OPEN_RANGE.test(source.slice(index))) return true;
+  }
+  return false;
 }
 
 function compiles(pattern: string): boolean {
@@ -150,6 +183,10 @@ function httpsEndpoint(value: unknown, path: string): string {
   // the URL itself, are refused.
   if (parsed.protocol !== 'https:') malformed(`${path} must use https`);
   if (parsed.username !== '' || parsed.password !== '') malformed(`${path} must not carry credentials`);
+  // The bearer key travels to this origin. Registries are data that
+  // ENGINEOS_ROOT can point anywhere, so the one origin the key may reach is
+  // fixed here, in code: a registry naming any other host or port is refused.
+  if (parsed.origin !== JUDGE_ENDPOINT_ORIGIN) malformed(`${path} must be on ${JUDGE_ENDPOINT_ORIGIN}`);
   return endpoint;
 }
 

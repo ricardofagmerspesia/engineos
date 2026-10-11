@@ -1,22 +1,27 @@
 // Builds the `state` object sent to Jev (contracts.md@rev1 §10.2): only the
 // redacted request text, the repository facts and the session's last intent —
 // nothing else from the environment ever reaches the request body.
-import { redactText } from './redact';
+import { redactBounded } from './redact';
 import type { JudgeInput, JudgePolicy, JudgeState } from './types';
 
 export type StateResult = { kind: 'ok'; state: JudgeState } | { kind: 'oversize' };
 
+// The prompt is pre-capped before redaction (D3): the state can never carry
+// more than max_state_bytes of text, and every character takes at least one
+// byte, so twice that many characters is all redaction ever needs to see.
+const PRE_CAP_FACTOR = 2;
+
 export function buildJudgeState(input: JudgeInput, policy: JudgePolicy): StateResult {
-  const text = redactText(input.text, policy.redaction.patterns);
-  const full = stateWith(input, text, false);
+  const { text, capped } = redactBounded(input.text, policy.redaction.patterns, PRE_CAP_FACTOR * policy.max_state_bytes);
+  const full = stateWith(input, text, capped);
   if (byteLength(full) <= policy.max_state_bytes) return { kind: 'ok', state: full };
   return truncateToFit(input, text, policy.max_state_bytes);
 }
 
 // Cuts request.text at a code-point boundary (never inside a UTF-8 sequence or
 // a surrogate pair) to the longest prefix whose serialized state still fits.
-// Redaction already ran on the whole text, so a cut can never expose part of a
-// secret that the full text would have hidden.
+// Redaction already ran on the whole pre-capped prefix, so a cut can never
+// expose part of a secret that the prefix would have hidden.
 function truncateToFit(input: JudgeInput, text: string, maxBytes: number): StateResult {
   const codePoints = Array.from(text);
   if (byteLength(stateWith(input, '', true)) > maxBytes) return { kind: 'oversize' };

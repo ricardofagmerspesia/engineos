@@ -95,6 +95,8 @@ export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDeci
 
 // A registry without source markers (one older than policy 1.8.0) cannot tell
 // the frames apart, and reads every prompt as the user's — today's behaviour.
+// This fail-open answer is for routing only: the judge's egress applies the
+// stricter, fail-closed judgeMayReceive in ./prompt-judge (D3).
 function typedByUser(env: HookEnvelope, regs: Registries): boolean {
   try {
     return classifyPromptSource(env, regs.policy.router.source_markers) === 'user';

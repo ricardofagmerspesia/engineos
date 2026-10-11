@@ -6,6 +6,8 @@
 // dimensions, int8 ONNX weights, about 23 MB) is the class the plan names; a
 // model change is a new revision constant plus a recalibration in the approved
 // eval stage, never a silent swap.
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { env, pipeline } from '@huggingface/transformers';
 import type { Candidate } from './protocol.ts';
 
@@ -19,6 +21,7 @@ const MAX_CACHED_VECTORS = 4_096;
 const SCORE_DECIMALS = 100;
 
 export interface EmbedderOptions {
+  // The cache root; the model lives in a subdirectory named for MODEL_REVISION.
   cacheDir: string;
   // true: never reach the Hugging Face hub; the model must already be cached.
   offline: boolean;
@@ -34,7 +37,7 @@ export class EmbeddingShapeError extends Error {
 }
 
 export async function createEmbedder(options: EmbedderOptions): Promise<Embedder> {
-  env.cacheDir = options.cacheDir;
+  env.cacheDir = revisionCacheDir(options.cacheDir);
   env.allowRemoteModels = !options.offline;
   const extractor = await pipeline('feature-extraction', MODEL_ID, { revision: MODEL_REVISION, dtype: MODEL_DTYPE });
   const cache = new Map<string, number[]>();
@@ -66,6 +69,16 @@ export async function createEmbedder(options: EmbedderOptions): Promise<Embedder
       return scores;
     },
   };
+}
+
+// The library caches by model id alone, so files from another revision under
+// the same id would be loaded as this one, offline, with no error. One
+// directory per pinned revision keeps a revision bump from reading a stale or
+// planted model; it is created owner-only, since its files decide every score.
+function revisionCacheDir(root: string): string {
+  const dir = join(root, MODEL_REVISION);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
 }
 
 // Best exemplar wins: an intent is as close as its closest paraphrase. Vectors

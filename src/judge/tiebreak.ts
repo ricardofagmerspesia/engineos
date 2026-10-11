@@ -15,7 +15,7 @@ import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isPrivateDir, lstatFacts, runtimeDir, type FileFacts } from '../lib/runtime-dir';
-import { redactText } from './redact';
+import { cutAtCodeUnit, redactBounded } from './redact';
 import type { RedactionPattern } from './types';
 
 const ENABLE_ENV = 'ENGINEOS_EMBED_DAEMON';
@@ -28,6 +28,8 @@ const DEFAULT_DEADLINE_MS = 150;
 // Mirrors tools/embedding-daemon/src/protocol.ts LIMITS: the daemon refuses
 // oversize input, so the client trims to these before sending.
 const LIMITS = { maxLineBytes: 65_536, maxTextChars: 2_000, maxCandidates: 10, maxExemplars: 10, maxExemplarChars: 300 } as const;
+// The redaction pre-cap, as a multiple of maxTextChars (D3).
+const PRE_CAP_FACTOR = 2;
 const MAX_RESPONSE_BYTES = 16_384;
 const INTENT_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
@@ -94,9 +96,12 @@ export async function tiebreak(input: TiebreakInput, deps: TiebreakDeps): Promis
   if (candidates.length === 0) return skipped('no-candidates');
   const socket = privateSocket(deps);
   if (socket.kind === 'skipped') return socket;
-  // Redact before trimming so a secret cut in half by the trim cannot escape
-  // its pattern; the daemon never logs text, but it does hold it in memory.
-  const text = redactText(input.text, deps.redaction).slice(0, LIMITS.maxTextChars);
+  // Pre-cap, redact, then trim (D3): redaction sees a bounded prefix, never the
+  // whole prompt, and runs before the trim so a secret cut in half by the trim
+  // cannot escape its pattern. The daemon never logs text, but it does hold it
+  // in memory.
+  const { text: redacted } = redactBounded(input.text, deps.redaction, PRE_CAP_FACTOR * LIMITS.maxTextChars);
+  const text = cutAtCodeUnit(redacted, LIMITS.maxTextChars);
   if (text.trim() === '') return skipped('no-candidates');
   const line = `${JSON.stringify({ v: PROTOCOL_VERSION, op: 'rank', text, candidates })}\n`;
   if (Buffer.byteLength(line) > LIMITS.maxLineBytes) return skipped('oversize');

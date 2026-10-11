@@ -1,5 +1,6 @@
 import type { DecisionRule } from '../registry/decision-rules';
-import type { IntentRow, Registries, RiskTier } from './context';
+import { aggregateIntents, highest, RISK_ORDER } from './combine-aggregate';
+import type { Registries, RiskTier } from './context';
 import { matchFromRule, rulesInPriorityOrder, type DecisionMatch, type DecisionsSection } from './decisions';
 import { judgeSummary, OTHER_PRIMARY, type JevFact, type JudgeFact, type JudgeMode, type JudgeSummary } from './judge-facts';
 import type { EscalateRouteSection, RankedIntent, SuppressedIntent } from './route';
@@ -49,9 +50,6 @@ export interface CombineOutput {
   tiebreakWinner: string | null;
 }
 
-// The ordering of the tier vocabulary itself, as in route.ts.
-const RISK_ORDER: readonly RiskTier[] = ['low', 'medium', 'high'];
-
 // Two rules are derived in code, not from judge.rules (§4.3).
 const FANOUT_RULE = 'rule-fanout';
 const FANOUT_SCALE = 2;
@@ -62,7 +60,8 @@ const LOW_CONFIDENCE_REASON = 'low-confidence';
 const MULTI_AGENT_REASON = 'multi-agent-dispatch';
 const DISPATCH_PLAN_REASON = 'requires-dispatch-plan';
 
-// A similarity score never drops a domain whose floor is this tier (§4.7).
+// Neither a similarity score (§4.7) nor a judge fold (§4.1) drops a
+// deterministic survivor whose floor is this tier.
 const KEPT_FLOOR: RiskTier = 'high';
 
 export function combine(input: CombineInput): CombineOutput {
@@ -116,9 +115,7 @@ function narrowed(
   riskProposal: RiskTier | null,
 ): CombineOutput {
   const { route, decisions, regs } = input;
-  const keptFloorIds = new Set(
-    regs.intents.intents.filter((row) => row.risk_floor === KEPT_FLOOR).map((row) => row.id),
-  );
+  const keptFloorIds = highFloorIds(route.intents, regs);
   // route.intents is in registry order, so both partitions are too.
   const kept = route.intents.filter((id) => id === winner || keptFloorIds.has(id));
   const dropped = route.intents.filter((id) => !kept.includes(id));
@@ -150,8 +147,14 @@ function folded(
   const { route, decisions, regs } = input;
   const thresholds = regs.policy.judge.thresholds;
   const choice = chooseIntents(jev, regs);
-  const aggregate = aggregateIntents(choice.ids, regs);
-  const added = judgeAddedRules(jev, choice.ids, decisions, regs).map((rule) => matchFromRule(rule.id, regs));
+  // Rule 1, add-only (review finding #8): every deterministic survivor with a
+  // high floor stays in the folded set, after the judge's choice and never
+  // suppressed by it, so the fold cannot drop the domain whose rules, agents
+  // and reviewer a high-risk prompt needs.
+  const keptHigh = highFloorIds(route.intents, regs);
+  const ids = [...choice.ids, ...route.intents.filter((id) => keptHigh.has(id) && !choice.ids.includes(id))];
+  const aggregate = aggregateIntents(ids, regs, keptHigh);
+  const added = judgeAddedRules(jev, ids, decisions, regs).map((rule) => matchFromRule(rule.id, regs));
   const decisionMatches = [...decisions.matches, ...added];
   const anyHigh = decisionMatches.some((match) => match.risk === 'high');
   // Rule 1 and 2b: the deterministic floor is kept, the folded intents and a
@@ -185,7 +188,9 @@ function folded(
     escalateReasons,
     suppressed: aggregate.suppressed,
     agents: aggregate.agents,
-    modelTier: aggregate.modelTier,
+    // Never below the deterministic tier: uncertainty favours the stronger
+    // model (rules/models.md), as in narrowed().
+    modelTier: highest([route.model_tier, aggregate.modelTier], regs.models.escalation_order),
     riskFloor,
     // The judge is the semantic tier above the tie-break, so the fold ignores it.
     tiebreakWinner: null,
@@ -215,45 +220,10 @@ function chooseIntents(jev: JevFact, regs: Registries): IntentChoice {
   return { ids: [], ambiguous: true };
 }
 
-interface IntentAggregate {
-  intents: string[];
-  suppressed: SuppressedIntent[];
-  agents: string[];
-  modelTier: string | null;
-  riskFloor: RiskTier | null;
-  // The two intent-derived escalation conditions routeEscalate applies to the
-  // raw survivors, applied here to these survivors (§4.5 rev 3).
-  multiAgent: boolean;
-  dispatchPlan: boolean;
-}
-
-// Suppression and aggregation over the folded (or narrowed) set, the same
-// single, non-transitive pass routeEscalate runs over the raw set; lists keep
-// the order of `ids`.
-function aggregateIntents(ids: readonly string[], regs: Registries): IntentAggregate {
-  const chosen = new Set(ids);
-  const rows = ids.flatMap((id) => regs.intents.intents.filter((row) => row.id === id));
-  const hasNonSuppressible = rows.some((row) => !row.suppressible);
-  const suppressed: SuppressedIntent[] = [];
-  const surviving: IntentRow[] = [];
-  for (const row of rows) {
-    const by = row.suppressible && hasNonSuppressible
-      ? 'more-specific-match'
-      : row.suppressed_by.find((id) => chosen.has(id)) ?? null;
-    if (by === null) surviving.push(row);
-    else suppressed.push({ id: row.id, by });
-  }
-  return {
-    intents: surviving.map((row) => row.id),
-    suppressed,
-    agents: [...new Set(surviving.flatMap((row) => row.agents))],
-    modelTier: highest(surviving.map((row) => row.model_tier), regs.models.escalation_order),
-    riskFloor: highest(surviving.map((row) => row.risk_floor), RISK_ORDER),
-    multiAgent:
-      surviving.filter((row) => row.agents.length > 0).length >=
-      regs.policy.router.escalate_when.multi_agent_intents_min,
-    dispatchPlan: surviving.some((row) => row.requires_dispatch_plan),
-  };
+// The deterministic survivors whose registry floor is KEPT_FLOOR.
+function highFloorIds(survivors: readonly string[], regs: Registries): Set<string> {
+  const high = new Set(regs.intents.intents.filter((row) => row.risk_floor === KEPT_FLOOR).map((row) => row.id));
+  return new Set(survivors.filter((id) => high.has(id)));
 }
 
 // Rule 2a, add-only (§4.3), in the keyword tier's priority order. The spec
@@ -283,20 +253,4 @@ function proposalOf(jev: JevFact): RiskTier {
   // Levels are validated 0|1|2, so the lookup always hits; were it ever to miss,
   // failing toward the higher tier is the only direction raise-only permits.
   return RISK_ORDER[top] ?? 'high';
-}
-
-// Max by position in a declared ordering. A value the ordering does not name
-// never wins, and an all-null set aggregates to null.
-function highest<T extends string>(values: readonly (T | null)[], order: readonly T[]): T | null {
-  let best: T | null = null;
-  let bestIndex = -1;
-  for (const value of values) {
-    if (value === null) continue;
-    const index = order.indexOf(value);
-    if (index > bestIndex) {
-      bestIndex = index;
-      best = value;
-    }
-  }
-  return best;
 }

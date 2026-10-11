@@ -18,6 +18,12 @@ type Admission =
 
 type Exchange = { kind: 'json'; raw: unknown } | { kind: 'failed'; reason: FailedReason };
 
+// The only origin the bearer key may reach (D3). The registry loader
+// (src/registry/policy-judge.ts) already refuses any other; this copy guards a
+// JudgePolicy built some other way, because src/judge never imports the
+// registry layer.
+const ALLOWED_ORIGIN = 'https://api.typesafe.ai';
+
 export async function judge(input: JudgeInput, deps: JudgeDeps): Promise<JudgeOutcome> {
   const admission = admit(input, deps);
   if (admission.kind === 'skipped') return admission;
@@ -48,6 +54,9 @@ function admit(input: JudgeInput, deps: JudgeDeps): Admission {
   const key = env[policy.key_env];
   if (key === undefined || key.trim() === '') return { kind: 'skipped', reason: 'no-key' };
   if (deps.fetch === undefined) return { kind: 'skipped', reason: 'no-fetch' };
+  // An endpoint off the allowlisted origin is a judge that cannot be enabled:
+  // `disabled`, before the breaker file is read and before any byte is sent.
+  if (!onAllowedOrigin(policy.endpoint)) return { kind: 'skipped', reason: 'disabled' };
   const breaker = deps.breaker.read();
   // Half-open: once the cooldown has elapsed one probe proceeds; its outcome
   // closes (recordSuccess) or re-opens (recordFailure re-stamps opened_at).
@@ -55,6 +64,15 @@ function admit(input: JudgeInput, deps: JudgeDeps): Admission {
     return { kind: 'skipped', reason: 'breaker-open' };
   }
   return { kind: 'go', key, transport: deps.fetch };
+}
+
+function onAllowedOrigin(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return url.origin === ALLOWED_ORIGIN && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
 }
 
 function fail(reason: FailedReason, deps: JudgeDeps): JudgeOutcome {

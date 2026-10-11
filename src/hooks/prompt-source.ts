@@ -11,6 +11,11 @@
 // neither over-match nor cost a backtracking pass on a long prompt.
 //
 // Pure: no I/O, no clock, no registry read. The caller passes the markers.
+//
+// The judge asks a stricter question (D3, review finding #10): its answer
+// decides whether text leaves the machine, so judgeMayReceive fails closed
+// where classifyPromptSource fails open. Kernel routing keeps the permissive
+// classification; only the judge's egress uses the strict one.
 import { isRecord } from '../lib/json';
 import type { HookEnvelope } from './envelope';
 
@@ -38,6 +43,10 @@ const HOST_SOURCE_VALUES: Readonly<Record<string, PromptSource>> = {
   hook_echo: 'hook-echo',
 };
 
+// The judge's tag-frame test (judgeMayReceive): anchored, one bounded
+// quantifier, so constant work whatever the prompt length.
+const TAG_FRAME = /^<[A-Za-z][A-Za-z0-9_.:-]{0,63}(?:[\s/>]|$)/;
+
 export function classifyPromptSource(env: HookEnvelope, markers: SourceMarkers): PromptSource {
   const declared = hostDeclaredSource(env.raw);
   if (declared !== null) return declared;
@@ -48,6 +57,21 @@ export function classifyPromptSource(env: HookEnvelope, markers: SourceMarkers):
   if (startsWithAny(text, markers.tool_result)) return 'tool-result';
   if (startsWithAny(text, markers.hook_echo)) return 'hook-echo';
   return 'user';
+}
+
+// The judge-only egress test. A prompt is the user's for the judge only when
+// the permissive classification says `user` AND its first non-space character
+// does not open a tag frame (`<name` followed by whitespace, `>`, `/` or the
+// end): the harness wraps what it injects in such frames, and a frame no
+// marker lists yet is still not the user's typing. A classification that
+// throws, including the registry read that supplies the markers, is non-user.
+export function judgeMayReceive(env: HookEnvelope, markers: () => SourceMarkers): boolean {
+  try {
+    if (classifyPromptSource(env, markers()) !== 'user') return false;
+    return !TAG_FRAME.test(env.prompt.trimStart());
+  } catch {
+    return false;
+  }
 }
 
 function hostDeclaredSource(raw: unknown): PromptSource | null {

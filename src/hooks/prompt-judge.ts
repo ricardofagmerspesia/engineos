@@ -27,6 +27,7 @@ import { loadProjectConfig } from '../registry/project-config';
 import { editContext } from './edit-context';
 import type { HookEnvelope } from './envelope';
 import type { HookContext } from './output';
+import { judgeMayReceive } from './prompt-source';
 import type { EventData, SpanFacts, SpanFields } from './telemetry';
 
 // The S0 refusal's name: the route event's `skipped` value, and the judge
@@ -121,6 +122,11 @@ export async function consultJudge(env: HookEnvelope, ctx: HookContext, regs: Re
   } catch {
     return NOT_CONSULTED;
   }
+  // The strict, judge-only source test (D3): S0 in the advisor fails open for
+  // routing, but text whose origin is in doubt never leaves the machine. Not
+  // the user's input declares no fact, exactly as the judge's own
+  // `not-user-input` skip does.
+  if (!judgeMayReceive(env, () => regs.policy.router.source_markers)) return { fact: null, policy, latencyMs: null, span: null };
   try {
     // One git process answers both the breaker's home and the repository facts.
     const where = env.cwd === '' ? null : editContext(env.cwd, ctx);
