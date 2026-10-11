@@ -9,11 +9,15 @@
 // behavioural half (C26b) lives in ./runtime-governance-hitl-canary.ts.
 // Spec: docs/specs/2026-09-03-engineos-default-methodology-plan.md Task 4
 // ADR: docs/adr/2026-09-03-hitl-as-kernel-entity.md
+import { isRecord } from '../lib/json';
+import { HITL_FACTS, HITL_ORDERED_FACT, HITL_SETS } from '../kernel/hitl';
 import { finding, result, type CheckResult, type Finding } from './findings';
 import type { CheckContext } from './lib';
 import { runMirrors, sliceSection } from './mirror';
 import { rowsOf } from './mirrors';
+import { rowProblems, type RowShape } from './runtime-governance-tables';
 import {
+  POLICY_JSON,
   answerStrings,
   arrayOf,
   child,
@@ -30,6 +34,12 @@ export const C26_FINDINGS = [
   'situations-missing-or-empty',
   'record-home-missing-or-empty',
   'situations-overlap-never-retry',
+  // .reason_table, the COLLECT table src/kernel/hitl.ts evaluates: each row
+  // well-formed against the arm's facts, sets and autonomy order, citing a
+  // declared reason, and every declared reason reachable through some row.
+  'reason-table-malformed',
+  'reason-table-undeclared-reason',
+  'reason-without-row',
 ] as const;
 
 export const C26C_FINDINGS = [
@@ -73,7 +83,6 @@ const C26D_TITLE =
 const RISK_AUTONOMY_MD = 'rules/risk-autonomy.md';
 const GATES_MD = 'rules/gates.md';
 const CHANGE_TEMPLATE = '.engineos/changes/_template.md';
-const ADMIT_TS = 'src/kernel/admit.ts';
 const HITL_ANCHOR = '## Human-in-the-loop';
 const RELEASE_ANCHOR = '## Release gate — exit criteria';
 const HITL_CALL = 'kernel.sh hitl';
@@ -110,6 +119,7 @@ export function checkC26(ctx: CheckContext): CheckResult[] {
   const neverRetry = new Set(stringsOf(child(document, 'retry'), 'never_retry'));
   const overlap = stringsOf(hitl, 'situations').filter((id) => neverRetry.has(id));
   if (overlap.length > 0) findings.push(finding('C26', 'situations-overlap-never-retry', overlap.join(',')));
+  findings.push(...reasonTableFindings(document, reasons));
   return [result('C26', C26_TITLE, findings)];
 }
 
@@ -140,10 +150,11 @@ export function checkC26d(ctx: CheckContext): CheckResult[] {
   const hitl = child(document, 'hitl');
   const findings: Finding[] = [];
 
-  // The literal moved out of scripts/kernel.sh when that became a shim over
-  // dist/engineos.cjs; the source that owns the message is what gets read. The
-  // greps below are skipped rather than left to match an empty string when the
-  // registry no longer declares the id.
+  // The literal moved out of scripts/kernel.sh into src/kernel/admit.ts, and
+  // from there into the reject row of policy.json .parallelism.backpressure.rows,
+  // which is the source that owns the message now. The reads below are skipped
+  // rather than left to match an empty string when the registry no longer
+  // declares the id.
   if (
     !stringsOf(hitl, 'reasons').includes(BUDGET_EXHAUSTED) ||
     !stringsOf(hitl, 'situations').includes(BUDGET_EXHAUSTED)
@@ -151,10 +162,8 @@ export function checkC26d(ctx: CheckContext): CheckResult[] {
     findings.push(finding('C26d', 'not-declared-in-both-reasons-and-situations', BUDGET_EXHAUSTED));
     return [result('C26d', C26D_TITLE, findings)];
   }
-  // Code lines only: a comment naming the literal must not satisfy the check.
-  const code = (ctx.readText(ADMIT_TS) ?? '').split('\n').filter((line) => !/^[ \t]*\/\//.test(line));
-  if (!code.some((line) => line.includes(`hitl: ${BUDGET_EXHAUSTED}`))) {
-    findings.push(finding('C26d', 'admit-reject-message-does-not-cite', ADMIT_TS));
+  if (!rejectReason(document).includes(`hitl: ${BUDGET_EXHAUSTED}`)) {
+    findings.push(finding('C26d', 'admit-reject-message-does-not-cite', POLICY_JSON));
   }
   const low = stringOrEmpty(child(child(document, 'autonomy'), 'ceiling_by_risk')?.['low']);
   const cited = answerStrings(kernelAnswer(ctx, ['hitl', '--risk', 'low', '--autonomy', low, '--situation', 'reject']), 'reasons').join(',');
@@ -165,6 +174,46 @@ export function checkC26d(ctx: CheckContext): CheckResult[] {
 }
 
 // ------------------------------------------------------------------ internals
+
+function reasonTableFindings(document: Record<string, unknown>, reasons: readonly string[]): Finding[] {
+  const rows = arrayOf(child(document, 'hitl'), 'reason_table');
+  if (rows === undefined || rows.length === 0) return [finding('C26', 'reason-table-malformed', 'reason_table')];
+  const levels = (arrayOf(child(document, 'autonomy'), 'levels') ?? []).map((level) =>
+    isRecord(level) ? stringOrEmpty(level['id']) : '',
+  );
+  const shape: RowShape = {
+    conditionKey: 'when',
+    vocabulary: {
+      facts: HITL_FACTS,
+      sets: { [HITL_SETS[0]]: stringsOf(child(document, 'retry'), 'never_retry') },
+      orders: { [HITL_ORDERED_FACT]: levels },
+    },
+    strings: ['reason'],
+  };
+  const findings: Finding[] = [];
+  const cited = new Set<string>();
+  rows.forEach((row, index) => {
+    const problems = rowProblems(row, shape);
+    for (const problem of problems) findings.push(finding('C26', 'reason-table-malformed', `reason_table[${index}].${problem}`));
+    if (problems.length > 0 || !isRecord(row)) return;
+    const reason = String(row['reason']);
+    cited.add(reason);
+    if (!reasons.includes(reason)) findings.push(finding('C26', 'reason-table-undeclared-reason', `reason_table[${index}]:${reason}`));
+  });
+  // A declared reason no row can produce is a gate the kernel can never raise.
+  for (const reason of reasons) {
+    if (!cited.has(reason)) findings.push(finding('C26', 'reason-without-row', reason));
+  }
+  return findings;
+}
+
+// The reason admit renders for a reject: the backpressure row whose action is
+// `reject`.
+function rejectReason(document: Record<string, unknown>): string {
+  const rows = arrayOf(child(child(document, 'parallelism'), 'backpressure'), 'rows') ?? [];
+  const reject = rows.find((row) => isRecord(row) && row['action'] === 'reject');
+  return isRecord(reject) ? stringOrEmpty(reject['reason']) : '';
+}
 
 // record_home is the field with no kernel branch and no canary of its own, so
 // these three greps are the only thing holding it to the prose.
