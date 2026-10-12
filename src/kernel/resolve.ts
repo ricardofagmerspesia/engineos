@@ -134,7 +134,7 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     if (prompt === '') throw new KernelError('a declared prompt fact must not be empty');
     // Once per resolve, and only for a prompt: a path fact never reads the
     // stack, so it never pays for the tree walk.
-    const stack = repositoryStack(ctx.project, ctx.projectCwd);
+    const stack = ctx.stack ?? repositoryStack(ctx.project, ctx.projectCwd);
     answer.route =
       facts.escalate === true || facts.taskContract === true
         ? routeEscalate(prompt, ctx.registries, stack)
@@ -229,10 +229,19 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
 // advisory: a broken .engineos/config.json or an unreadable tree degrades to
 // the plain keyword result, never to a refusal — the same leniency
 // src/hooks/verify-targets.ts projectConfig() applies.
-function repositoryStack(project: string | undefined, cwd: string | undefined): StackFacts | undefined {
+//
+// Exported so the prompt advisor reads the stack exactly the way resolve does.
+// `known` is a package list the caller already holds (the advisor's session
+// cache): the tree walk is skipped and only the focus, which depends on the
+// working directory, is recomputed.
+export function repositoryStack(
+  project: string | undefined,
+  cwd: string | undefined,
+  known?: readonly PackageStack[],
+): StackFacts | undefined {
   if (project === undefined) return undefined;
   try {
-    const packages = resolveStack(project, safeConfig(project)).packages;
+    const packages = known ?? resolveStack(project, safeConfig(project)).packages;
     return { packages, focus: focusPackage(project, cwd, packages) };
   } catch {
     return undefined;

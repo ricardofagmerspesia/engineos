@@ -59,7 +59,18 @@ Rules for routing:
   (`backend` is node, `backend-python` is python) is rebound to its `stack_sibling`
   when the repository's resolved stack (`scripts/kernel.sh resolve-stack`) lacks
   that stack — "add an endpoint" in a FastAPI-only repo loads the FastAPI row.
-  A mixed repo keeps the keyword result. The kernel reports each swap as `rebound`.
+  Evidence is read frameworks first (`stack_frameworks`: NestJS vs FastAPI/Django/Flask),
+  then languages, and the package holding the working directory before the whole
+  repository — so a FastAPI backend beside a React frontend still rebinds; only a
+  repository with both backend frameworks keeps the keyword result. The kernel
+  reports each swap as `rebound`.
+- **A switch, never a model, picks who decides the intents.** `ENGINEOS_ROUTER` =
+  `keyword` | `llm` | `jev` | `auto` (personal env) and `router.mode` in the repo's
+  `.engineos/config.json` cap it; the more restrictive wins. Unset, `registries/policy.json`
+  `router_decision.default` applies — written only by the golden-set run; `null` means
+  shadow. The contract line shows `router=<mode>[/<confidence>]`; a fallback is always
+  announced as `[engineos] router: keyword (<mode> unavailable: <reason>)`. When the line
+  says the router could not decide, dispatch the `router` agent before any write.
 - **The hooks need node >= 18.** Every `hooks/*.sh` is a shim over
   `dist/engineos.cjs`; `jq` is no longer a hook dependency. Under a missing or
   too-old node, `route-before-change.sh`, `mark-unrecorded.sh`,

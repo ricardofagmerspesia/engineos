@@ -91,8 +91,17 @@ flowchart TD
     U([You type a request]) --> UPS
 
     subgraph UPS["UserPromptSubmit"]
-        PA["hooks/prompt-advisor.sh"] --> RT["kernel.sh resolve-task"]
-        RT --> TC["task contract injected:<br/>intents · policy rules · skills · agents<br/>risk floor · autonomy ceiling · gates · hitl"]
+        PA["hooks/prompt-advisor.sh"] --> RT["kernel.sh resolve-task<br/>keyword floor + stack rebind"]
+        RT --> DL{"decision layer<br/>ENGINEOS_ROUTER + repo router.mode<br/>(more restrictive wins)"}
+        DL -->|keyword| KW["keep the keyword floor's intents"]
+        DL -->|llm| LLM["keep the floor's intents<br/>generic-only or no match: escalate"]
+        DL -->|jev| JEV["TypeSafe Jev chooses<br/>among stack-allowed intents"]
+        JEV -.->|"no key / timeout / bad answer"| FB["fallback to keyword, announced:<br/>'[engineos] router: keyword (jev unavailable)'"]
+        KW --> TC
+        LLM --> TC
+        JEV --> TC
+        FB --> TC
+        TC["task contract injected:<br/>intents · policy rules · skills · agents<br/>risk floor · autonomy ceiling · gates · hitl<br/>router=mode/confidence"]
     end
 
     TC --> BYP{bypass active?}
@@ -104,7 +113,7 @@ flowchart TD
     Q -->|no| ROUTER["[router] line:<br/>intent · risk · autonomy · loaded · agent"]
 
     ROUTER --> RISK["classify risk BEFORE first write<br/>rules/risk-autonomy.md"]
-    RISK --> ESC{kernel says<br/>escalate=true?}
+    RISK --> ESC{"kernel says escalate=true,<br/>or router could not decide?"}
     ESC -->|yes| RA["router agent → dispatch plan<br/>(never edits, never dispatches)"]
     ESC -->|no| TOPO
     RA --> TOPO
@@ -168,6 +177,11 @@ Key properties the flow encodes:
 - **Bypass is loud.** When `/engineos:bypass` is on, the reply says so and the
   whole middle of the diagram is skipped — except `git-write-guard.sh`, which is
   the developer's own setting, not the constitution's.
+- **The decision layer only chooses.** Inside `UserPromptSubmit` a setting, never a
+  model, picks `keyword`, `llm` or `jev`; whichever runs may only choose among the
+  intents the repository's stack allows, any failure falls back to keyword on a
+  visible line, and an undecided prompt goes to the `router` agent before any write.
+  Rules, risk and gates stay with the kernel.
 - **Topology before graph code.** A request for more than one agent goes through
   `/engineos:design-agents` first; implementation starts only after the developer's
   approval line (`topology-approval`) is in the change record, and
@@ -182,7 +196,7 @@ Which script fires on which harness event, and what it may do.
 | Event | Matcher | Hook | Effect | Runtime |
 |---|---|---|---|---|
 | `SessionStart` | all | `ensure-project-layout.sh` | Scaffolds `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}` when the project opted in (`.engineos/` present or `ENGINEOS_SCAFFOLD=1`); prints one `[engineos] stack: <framework>@<dir> · … · runners: …` line from `kernel.sh resolve-stack`. Non-blocking | node |
-| `UserPromptSubmit` | all | `prompt-advisor.sh` | Calls `kernel.sh resolve-task`, injects one task contract; writes a `router` span; announces `BYPASS ACTIVE` when bypassed | node |
+| `UserPromptSubmit` | all | `prompt-advisor.sh` | Calls `kernel.sh resolve-task`, then the decision layer (`keyword`, `llm` or `jev`, chosen by `ENGINEOS_ROUTER` and the repo's `router.mode`; any failure falls back to keyword with a visible `[engineos] router: keyword (…)` line); injects one task contract carrying `router=<mode>[/<confidence>]`; writes a `router` span; announces `BYPASS ACTIVE` when bypassed | node |
 | `PreToolUse` | `Edit\|Write\|NotebookEdit` | `route-before-change.sh` | `kernel.sh route-path` on the file → injects the domain's rules/skill/agent (precedence: security → test → backend → dba → backend-python → ios-release → android-release → devops → mobile → frontend → llm) | node |
 | `PreToolUse` | `Agent\|Task` | `announce-agent-dispatch.sh` | Re-injects the green `[agent] … \| model \| mode \| scope` banner | node |
 | `PreToolUse` | `Bash` | `git-write-guard.sh` | Turns a git or forge **write** (`add`, `commit`, `push`, `checkout`, `gh pr create`, …) into a permission prompt tagged `[engineos] git write: <command>` while `ENGINEOS_GIT_WRITES` is `ask` (the default); read-only git is silent; never denies. Bypass does NOT silence it | node |

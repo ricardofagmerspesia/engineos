@@ -221,6 +221,45 @@ tests) when pyright's first run over a large repo needs it. Pin `ruff`, `pyright
 `pytest` to exact versions in the project's dev dependencies: an unpinned tool gets an
 advisory line (`… not pinned to exact versions (rules/verification.md)`), not a block.
 
+### Routing modes
+
+The `prompt-advisor` picks the intents for your prompt in one of these ways. A
+setting chooses the mode, never a model, and every mode starts from the same
+keyword floor (signals plus the stack rebind). Only the intents are decided
+here; rules, risk, autonomy and gates stay deterministic.
+
+| `ENGINEOS_ROUTER` | Who decides the intents | What leaves the machine |
+|---|---|---|
+| `keyword` | the keyword floor alone | nothing |
+| `llm` | the keyword floor; a prompt that matched only generic words, or nothing, escalates to the in-session `router` agent | the prompt, to Anthropic, as any Claude turn already does |
+| `jev` | TypeSafe System One (Jev), one call within a 400 ms budget, choosing among the intents your stack allows | the prompt, languages, frameworks and file names mentioned in the prompt, to TypeSafe — no file contents, no diff |
+| `auto` | `jev` when `TYPESAFE_API_KEY` is set, else `llm` when the `claude` CLI is on PATH, else `keyword` | whatever the resolved mode sends |
+
+Where to set it:
+
+- **Personal**, in `~/.claude/settings.local.json` — never in a repo:
+  ```json
+  {"env": {"ENGINEOS_ROUTER": "auto", "TYPESAFE_API_KEY": "<your key>"}}
+  ```
+- **Per repo**, in `.engineos/config.json`: `"router": {"mode": "keyword"}`, written
+  by `engineos init --router <mode>` (default `auto`). Commit it so the whole team
+  inherits it. The more restrictive of the personal and the repo setting wins
+  (`keyword` < `llm` < `jev` < `auto`), so a client repo that declares `keyword` or
+  `llm` sends nothing to TypeSafe whatever your personal setting says.
+
+With neither set, the hook reads `registries/policy.json` `router_decision.default`.
+Only the golden-set run writes it, never a hand. Until that run exists it is
+`null` and the hook runs in **shadow**: it applies the best available mode, also
+computes the keyword answer, and logs both to the `router` span so real
+disagreements become the golden set.
+
+What you will see: the contract line carries `router=<mode>` (plus `/<confidence>`
+for `jev`). Any failure (no key, no `claude` CLI for `llm`, timeout, HTTP 429/529, an answer
+outside the offered intents) falls back to keyword and says so on its own line,
+`[engineos] router: keyword (<mode> unavailable: <reason>)`, never silently. When
+the line says the router could not decide, dispatch the `router` agent before any
+write.
+
 ---
 
 ## 6. Specs — where plans live

@@ -3,12 +3,22 @@ import { join } from 'node:path';
 import { writeJson, type Io } from './io';
 
 export type Command = (argv: string[], io: Io) => number;
-export interface CommandTable { [name: string]: Command }
+// A command that may finish after an await (the hook adapter, whose prompt
+// advisor waits on the routing decision layer). Every other command stays a
+// plain Command; a Command is an AsyncCommand, so the table takes either.
+export type ExitCode = number | Promise<number>;
+export type AsyncCommand = (argv: string[], io: Io) => ExitCode;
+export interface CommandTable { [name: string]: Command | AsyncCommand }
 
 // Injected by scripts/build.mjs via `define`; falls back for tsc test builds.
 declare const ENGINEOS_VERSION: string | undefined;
 
-export function dispatch(table: CommandTable, argv: string[], io: Io): number {
+// Returns the command's own answer untouched: a number stays a number, so a
+// synchronous command exits exactly as it always did, and only an async one
+// hands the entry point a promise to await.
+export function dispatch(table: Readonly<Record<string, Command>>, argv: string[], io: Io): number;
+export function dispatch(table: CommandTable, argv: string[], io: Io): ExitCode;
+export function dispatch(table: CommandTable, argv: string[], io: Io): ExitCode {
   const [name, ...rest] = argv;
   if (name === '--version' || name === '-v') {
     const v = typeof ENGINEOS_VERSION === 'string' ? ENGINEOS_VERSION : readPackageVersion();

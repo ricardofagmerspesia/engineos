@@ -5,6 +5,7 @@ import { loadIntents, type IntentsRegistry } from '../registry/intents';
 import { loadModels, type ModelsRegistry } from '../registry/models';
 import { loadPolicy, type PolicyRegistry } from '../registry/policy';
 import { loadRouting, type RoutingRegistry } from '../registry/routing';
+import type { StackFacts } from './route';
 import { readSkillState, type SkillState } from './skill-state';
 
 // The risk vocabulary is defined beside the first loader that validates it
@@ -55,6 +56,11 @@ export interface KernelContext {
   // is consulted first when rebinding, so a prompt typed from `backend/` is
   // decided by the backend package before the repository as a whole.
   projectCwd?: string;
+  // The caller's stack, already resolved. A caller that resolves it anyway (the
+  // prompt advisor, which caches it per session and hands the same facts to
+  // the decision layer) passes it here so resolve neither walks the tree a
+  // second time nor answers from a different reading of it.
+  stack?: StackFacts;
 }
 
 export function lazyRegistries(root: string): Registries {

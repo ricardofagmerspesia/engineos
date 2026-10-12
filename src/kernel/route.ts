@@ -211,6 +211,14 @@ function matchIntents(text: string, regs: Registries, stack?: StackInput): Match
   return { rows: all.filter((intent) => specific.has(intent.id)), specific, rebound };
 }
 
+// Whether the floor would keep this intent for the given stack: true unless
+// the rebind below swaps it for its sibling. The decision layer offers a model
+// only the intents this answers true for, so a model can never choose a row the
+// floor itself would have rebound away (contracts §2, "Wave 2a as built").
+export function stackEligible(intent: IntentRow, all: readonly IntentRow[], stack?: StackInput): boolean {
+  return rebindTarget(intent, all, stackFacts(stack)) === null;
+}
+
 interface Swap {
   target: IntentRow;
   reason: Rebound['reason'];

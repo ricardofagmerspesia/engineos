@@ -160,6 +160,40 @@ row, because the React frontend made the repository "mixed". Replaced by:
   per `sha256(prompt)+languages+mode` for the session (Jev calls are not repeated for
   an identical prompt).
 
+### §2/§3 amendment (2026-10-07, before wave 2) — async decision layer
+
+Fact: every hook handler is synchronous (`run(env, ctx): HookDecision`; no
+`await` anywhere in src/hooks/cli.ts or src/dispatch.ts), and a Jev call is an
+async `fetch`. So:
+
+- `resolve()` stays synchronous and deterministic (CLI arms, validator, evals
+  depend on that). It does NOT call the decision layer and emits no `router`
+  section.
+- `decide(input, setting, policy, deps): Promise<Decision>` lives in
+  `src/kernel/decision-layer.ts`, pure apart from the injected `fetch`/`env`/`now`/`hasClaudeCli`.
+  It also exports `buildDecisionInput(task, stack, prompt, regs)` that derives
+  `DecisionInput` from a resolve-task answer, and `effectiveSetting(...)`.
+- The prompt-advisor calls `resolve` (sync, now with `project` = repo root of
+  `env.cwd` and `projectCwd` = `env.cwd`), then `await decide(...)`, then renders.
+  The hook dispatcher (`src/hooks/cli.ts`, `src/dispatch.ts`, `src/cli.ts`)
+  accepts `HookDecision | Promise<HookDecision>` and awaits; every existing
+  handler is unchanged.
+- Hard deadline inside the hook: `policy.router_decision.jev.budget_ms` via
+  `AbortController`; on abort → keyword with `fallback_reason: "timeout"`.
+- Jev answers are cached per session in `src/hooks/cache.ts` keyed by
+  `sha256(prompt) + languages + mode`, so a resubmitted prompt costs no call.
+- Wave split by dependency: 2a decision-layer (+tests) and 2c prose run in
+  parallel; 2b advisor/dispatcher/cache/span runs after 2a lands.
+
+### Wave 2a as built (2026-10-07) — supersedes the §2 decision-layer signatures
+
+- `effectiveSetting(personal, repo, policyDefault, restrictiveness)`; `resolveAuto(setting, env, keyEnv, hasClaudeCli)`; `claudeCliOnPath(env)` (PATH probe, no process spawned);
+  `decide(input, mode, requested, policy, deps): Promise<Decision>` — `auto` is resolved before `decide`.
+- `Decision` field order: `mode, requested, intents, confidence, escalate, fallback_reason, shadow, latency_ms, cost_micros`; `cost_micros = round(usage.cost × 1e6)` or null.
+- `DecisionDeps.schedule` injectable timer; the deadline also covers the body read.
+- `no-cli` fires for explicit `llm` too. `repo-cap` is reported by the advisor (it compares personal vs effective), not by `decide`.
+- **`offered` must be framework-aware (wave 2b):** an intent the floor would rebind away (route.ts two-level rule) is not offered to Jev; route.ts exports the eligibility helper the floor already uses.
+
 ## 4. Router agent brief (wave 2c)
 
 `agents/router.md` gains an input section: `languages`, `frameworks`, `offered`

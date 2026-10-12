@@ -66,7 +66,19 @@ Rules for routing:
   (`backend` is node, `backend-python` is python) is rebound to its `stack_sibling`
   when the repository's resolved stack (`scripts/kernel.sh resolve-stack`) lacks
   that stack — "add an endpoint" in a FastAPI-only repo loads the FastAPI row.
-  A mixed repo keeps the keyword result. The kernel reports each swap as `rebound`.
+  Evidence is read frameworks first (`stack_frameworks`: NestJS vs FastAPI/Django/Flask),
+  then languages, and the package holding the working directory before the whole
+  repository — so a FastAPI backend beside a React frontend still rebinds; only a
+  repository with both backend frameworks keeps the keyword result. The kernel
+  reports each swap as `rebound`.
+- **A switch, never a model, picks who decides the intents.** In Claude Code the
+  prompt hook reads `ENGINEOS_ROUTER` = `keyword` | `llm` | `jev` | `auto` (personal env)
+  and `router.mode` in the repo's `.engineos/config.json`; the more restrictive wins, and
+  unset means `registries/policy.json` `router_decision.default` (golden-set written;
+  `null` = shadow). Its line shows `router=<mode>[/<confidence>]` and announces every
+  fallback as `[engineos] router: keyword (<mode> unavailable: <reason>)`. Here no hook
+  runs, so route from the table and dispatch the `router` agent yourself before any
+  write when only generic words matched or the request spans domains.
 - **Hooks do not run under Codex.** The `[router] …` context, the edit-time
   route and both Stop gates are model discipline here — see
   `templates/adapters/codex.md`. In Claude Code they need node >= 18 and are

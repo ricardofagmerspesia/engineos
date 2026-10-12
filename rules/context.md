@@ -23,6 +23,17 @@ When the budget binds, drop from the bottom. Layer 1 never gets dropped; if it
 would have to, the task is too big for one unit and belongs in waves
 (see the parallel-work policy when it is loaded).
 
+## What the decision layer may decide
+
+The prompt hook's decision layer (`keyword`, `llm` or `jev`, configured in
+`registries/policy.json` `router_decision`) decides one thing: which intents
+apply, chosen among those the repository's stack allows. It never decides which
+rules an intent loads, the risk tier, the autonomy ceiling or the gates — those
+stay deterministic kernel answers, and a decision-layer pick that seems to
+contradict them loses. A repository whose `.engineos/config.json` caps
+`router.mode` at `keyword` or `llm` sends no prompt to TypeSafe, whatever the
+personal setting says.
+
 ## Rules
 
 - DO separate facts from hypotheses in what you carry forward. "The handler
