@@ -38,20 +38,23 @@ test('a candidate under min_score is ranked but not matched', () => {
   assert.equal(answer.margin, 0.75);
 });
 
-test('max_intents keeps the highest scores and emits the survivors in registry order', () => {
+// Contracts rev 4 item (b): the cap trims only exemplar-assisted admissions, so
+// rows whose declared signals clear min_score survive it. Trimming and the
+// last-slot tie are covered in route-cap.test.ts.
+test('max_intents keeps every declared-evidence match and emits them in registry order', () => {
   const regs = registriesWith([row('low', 'alpha', 1), row('mid', 'beta', 2), row('high', 'gamma', 3)], {
     scoring: { max_intents: 2 },
   });
   const answer = routeByIntent('alpha beta gamma', regs);
-  assert.deepEqual(answer.matches.map((m) => m.id), ['mid', 'high']);
+  assert.deepEqual(answer.matches.map((m) => m.id), ['low', 'mid', 'high']);
   assert.deepEqual(answer.ranked.map((r) => r.id), ['high', 'mid', 'low']);
 });
 
-test('max_intents breaks a score tie by registry order', () => {
+test('max_intents does not trim tied declared-evidence matches', () => {
   const regs = registriesWith([row('first', 'alpha', 1), row('second', 'beta', 1), row('third', 'gamma', 1)], {
     scoring: { max_intents: 2 },
   });
-  assert.deepEqual(routeByIntent('gamma beta alpha', regs).matches.map((m) => m.id), ['first', 'second']);
+  assert.deepEqual(routeByIntent('gamma beta alpha', regs).matches.map((m) => m.id), ['first', 'second', 'third']);
 });
 
 test('top_k truncates ranked while the margin still reads the untruncated ranking', () => {
