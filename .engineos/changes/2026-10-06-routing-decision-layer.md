@@ -26,15 +26,18 @@ No new runtime dependency; `TYPESAFE_API_KEY` only in personal settings / CI sec
 - [x] Plan drafted and refined with the developer (spec + contracts)
 - [x] Wave 1 — (a) floor: stack rebind, generic_only, validator check · (b) stack-tagged eval cases, config `router.mode`, policy `router_decision` · barrier fix: framework-first, package-first rebind + `fixtures` skipped in detection (contracts §2 amendment)
 - [x] Wave 2 — decision layer (modes, restrictiveness, fallback, Jev client; async, called by the hook), async hook dispatch, advisor rendering + span + cache, framework-aware `offered`, router agent brief + prose
-- [ ] Wave 3 — shadow collect script, docs, COMPATIBILITY
-- [ ] Later, after real use — golden set curated and run; `router_decision.default` written by the run
+- [x] Wave 3 — `router-golden collect` (shadow spans joined to transcript prompts → gitignored candidates), `router-golden run` (every mode graded end to end, RESULTS.md, `--write-default` as the only writer of the default), README, START/CODEBASE_MAP/COMPATIBILITY
+- [ ] Later, after real use (the developer's step) — install the new bundle so sessions write shadow spans, collect across repos, curate `evals/router-golden/cases.jsonl`, `router-golden.sh run --write-default`; `router_decision.default` stays `null` until then
 
 ## What was made
-<filled on completion>
+- Wave 1: the keyword floor became stack-aware. Intents gained `stack`, `stack_sibling`, `stack_frameworks` and `generic_signals`; a stack-bearing intent the repository cannot use is rebound to its sibling (frameworks first, focus package before repo, then languages), and every route reports `rebound` and `generic_only`. `policy.json` gained the `router_decision` block with its own strict loader, `.engineos/config.json` gained `router.mode` (`init --router`), and intent eval cases gained `stack`, routed through the real kernel in throwaway projects. A validator check guards the new intent fields.
+- Wave 2: the decision layer (`src/kernel/decision-layer.ts`) chooses who decides the intents — `keyword`, `llm` (in-session router agent on the residue) or `jev` (one TypeSafe call under a 400 ms deadline, offered only stack-eligible intents) — from the personal setting capped by the repo's, falling back to keyword visibly on any failure. The hook dispatcher became async-capable, the prompt advisor runs resolve-task then the decision, renders `router=<mode>[/<confidence>]` plus fallback and escalation lines, caches decisions per session, and writes the shadow facts into the router span (`provider`, `model`, `note`). The router agent brief and the routing prose followed.
+- Wave 3: `scripts/router-golden.sh` (`engineos router-golden`). `collect` reads each repo's router spans, joins each to the human prompt that fired it via the session transcript, resolves the repo's stack, and appends de-duplicated candidates to the gitignored `evals/router-golden/candidates.local.jsonl`, printing counts only. `run` grades every mode on the curated `cases.jsonl` through resolve-task and the advisor's `routeDecision` in throwaway stack projects (stack project builder extracted from the stack-routing tier and shared), writes `RESULTS.md`, and with `--write-default` applies the acceptance rule and rewrites only `default`/`default_written_by` in place, restoring the file if the strict loader refuses it. README for the set; START, CODEBASE_MAP and COMPATIBILITY updated. `default` remains `null`.
 
 ## Verification
 Wave 1 barrier (2026-10-07): typecheck clean; full suite in a scratch mirror without console/node_modules 2362 tests, 0 failed, 23 skipped; validator 116/116; evals 13/13 deterministic incl. 19 stack-tagged cases. Live, rebuilt kernel, five generic backend prompts (endpoint, service, controller, migration, worker): backend-python from labv-assist, the opensearch demo (root and backend/), portal_dds (root, backend/, frontend/), portal_nexxus, projeto_ppp, lana_documento_ssma; backend from gest_leite and from the EngineOS repo itself. The prompt hook does not pass the project yet (wave 2b), so sessions still route by keywords until then.
 Wave 2 barrier (2026-10-07): typecheck clean; full suite in a mirror 2441 tests, 0 failed, 23 skipped; validator 116/116; evals 13/13 incl. 19 stack cases. Live through the real prompt-advisor hook (no TYPESAFE_API_KEY in env): portal_dds (root, backend/), portal_nexxus, labv-assist → backend-python + python-patterns, `rebound=backend->backend-python(framework/…)`; gest_leite → backend, no rebound; `ENGINEOS_ROUTER=jev` without a key → `[engineos] router: keyword (jev unavailable: no-key)`. The `claude` CLI is not on the hook's PATH here, so `auto` resolves to keyword on this machine.
+Wave 3 (2026-10-12): typecheck clean; router-golden + stack-routing suites 25/25; full suite in a mirror 2457 tests, 0 failed, 23 skipped; validator 116/116; evals 13/13 (55 live skipped); `router-golden.sh collect` on this repo: spans read 84, no decision 83, non-human 1, appended 0 (the installed hook predates wave 2, so almost no span carries a decision yet); `router-golden.sh run`: no cases, exit 0.
 Planned: typecheck, `npm test`, `validate-engineos.sh`, `run-evals.sh`; live kernel
 runs from labv-assist (python) and gest_leite (node) with the five measured prompts;
 Jev client against a fake fetch; fallback paths; real run against the installed hook
@@ -47,7 +50,24 @@ after `install.sh`.
 - 2026-10-06 | Sergio Hermsdorff | design | approved | open questions settled as proposed: generic_signals per row; restrictiveness keyword<llm<jev<auto; thresholds in policy.json (400 ms / 0.6 / 0.15); Jev state = prompt+languages+frameworks+files named; single choice + specific extras; llm mode = in-session router agent on the residue; client repos declare keyword or llm
 
 ## Changes registered
-<filled on completion>
+Commits (`git log --oneline 571a633..HEAD`):
+- dae8e52 feat(routing): async decision layer with keyword/llm/jev switch, wired into the prompt hook; shadow logging (wave 2)
+- b229853 feat(routing): stack-aware routing floor, framework-first rebind, router_decision policy and stack-tagged evals (wave 1)
+
+Uncommitted at wave-3 close (`git status --short`):
+- M .gitignore
+- M dist/engineos.cjs
+- M docs/CODEBASE_MAP.md
+- M docs/COMPATIBILITY.md
+- M docs/START.md
+- M src/cli.ts
+- M src/evals/stack-routing.ts
+- M .engineos/changes/2026-10-06-routing-decision-layer.md
+- ?? evals/router-golden/README.md
+- ?? scripts/router-golden.sh
+- ?? src/evals/router-golden.ts, router-golden.test.ts
+- ?? src/evals/router-golden-cases.ts, router-golden-collect.ts, router-golden-collect.test.ts, router-golden-policy.ts, router-golden-run.ts, router-golden-transcript.ts
+- ?? PR-python-stack-and-agent-design.md (pre-existing, not part of this change)
 
 ## Notes
 - Wave 2 deviations accepted: `Decision.escalate_reason` added (tie vs needs-router is not derivable); decision cache key also includes frameworks, focus package and requested setting; contract line says "Router dispatch needed" when the router line follows; C27c accepts `withSpanAsync`.
@@ -56,4 +76,6 @@ after `install.sh`.
 - Open for wave 2: should an explicitly named framework ("build it with FastAPI" in a node-only repo) beat the rebind? Recommended yes; awaiting the developer.
 - `console/node_modules` (created 2026-09-29 by Claude for the console CI fix) makes the in-repo `npm test` copy ~500 MB per check case; deletion awaits the developer's approval.
 - Git writes: every commit is asked for explicitly (ENGINEOS_GIT_WRITES=ask; Sergio's rule).
+- Wave 3 deviations: the module is split into six files (cli, cases, collect, transcript, run, policy) to stay under the ~300-line rule; candidates also carry `frameworks` (contracts §5 shape) and `shadow.escalate`; the span records the decided intents only as `route`, so a disagreeing candidate's `shadow.intents` is the primary only; `--write-default` refuses a run that did not score every policy mode, and a no-winner run writes `null`/`null` (retiring an earlier winner); `run` uses the in-process advisor path in throwaway stack projects rather than `dist/engineos.cjs` against each repo's checkout (brief over contracts §5).
+- UserPromptSubmit also fires for subagent hand-backs and task notifications (verified in a live transcript 2026-10-12): those spans are routed and are counted `non-human` by `collect`, never attributed to a human prompt. Whether the hook should skip them at all is open.
 - Journal: shadow data rides in existing span fields (provider, model, note); no schema change this round.

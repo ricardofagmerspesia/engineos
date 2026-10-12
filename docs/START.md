@@ -253,6 +253,18 @@ Only the golden-set run writes it, never a hand. Until that run exists it is
 computes the keyword answer, and logs both to the `router` span so real
 disagreements become the golden set.
 
+How the default gets written: `scripts/router-golden.sh collect [<repo>...]` turns
+each repo's shadow `router` spans, joined to the prompt in your local session
+transcript, into candidates in `evals/router-golden/candidates.local.jsonl`
+(gitignored — it may hold client data). You label `expect_intents`, redact, and
+move the cases you keep into `evals/router-golden/cases.jsonl`. Then
+`scripts/router-golden.sh run` grades `keyword`, `llm` and `jev` on that set and
+writes `evals/router-golden/RESULTS.md`; only `run --write-default` writes
+`router_decision.default`, and only when one mode has a strictly highest intent
+accuracy with full stack correctness — otherwise it stays `null` and the run says
+why. Grading `jev` sends the curated prompts to TypeSafe, so curate first. See
+`evals/router-golden/README.md`.
+
 What you will see: the contract line carries `router=<mode>` (plus `/<confidence>`
 for `jev`). Any failure (no key, no `claude` CLI for `llm`, timeout, HTTP 429/529, an answer
 outside the offered intents) falls back to keyword and says so on its own line,

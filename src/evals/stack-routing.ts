@@ -92,40 +92,55 @@ function parseEntry(entry: unknown): CasePackage | null {
   return { language, framework };
 }
 
-// The registries come from the EngineOS root being graded; only ctx.project
-// varies, because the stack is the one input resolve derives from the caller's
-// repository. One temp project per distinct stack, created on first use and
-// removed by dispose(), so a set of fifty cases builds at most three directories.
-export function kernelStackRouter(engineosRoot: string, resolver: Resolver = resolve): StackRouterHandle {
-  const registries = lazyRegistries(engineosRoot);
+// One throwaway project per distinct stack, created on first use and removed
+// by dispose(): one directory per package holding only that package's
+// manifest, so two node packages (a NestJS api and a React frontend) are two
+// packages to the kernel, exactly as in a real monorepo. Shared by this tier
+// and the router golden set (./router-golden-run), which routes the same
+// stacks through the full prompt-advisor path.
+export interface StackProjects {
+  projectFor(packages: readonly CasePackage[]): string;
+  dispose(): void;
+}
+
+export function stackProjects(): StackProjects {
   const roots = new Map<string, string>();
-
-  // One directory per package, so two node packages (a NestJS api and a React
-  // frontend) are two packages to the kernel, exactly as in a real monorepo.
-  function projectFor(packages: readonly CasePackage[]): string {
-    const key = packages.map((pkg) => `${pkg.language}:${pkg.framework ?? ''}`).sort().join('+');
-    const existing = roots.get(key);
-    if (existing !== undefined) return existing;
-    const dir = mkdtempSync(join(tmpdir(), 'engineos-eval-stack-'));
-    packages.forEach((pkg, i) => {
-      const pkgDir = join(dir, `pkg${i}`);
-      mkdirSync(pkgDir);
-      const manifest = manifestFor(pkg);
-      writeFileSync(join(pkgDir, manifest.file), manifest.text);
-    });
-    roots.set(key, dir);
-    return dir;
-  }
-
   return {
-    route(prompt: string, packages: readonly CasePackage[]): string[] {
-      const ctx: KernelContext = { root: engineosRoot, registries, project: projectFor(packages) };
-      const answer = resolver({ prompt, taskContract: true }, ctx);
-      return answer.task_contract?.intents ?? [];
+    projectFor(packages: readonly CasePackage[]): string {
+      const key = packages.map((pkg) => `${pkg.language}:${pkg.framework ?? ''}`).sort().join('+');
+      const existing = roots.get(key);
+      if (existing !== undefined) return existing;
+      const dir = mkdtempSync(join(tmpdir(), 'engineos-eval-stack-'));
+      packages.forEach((pkg, i) => {
+        const pkgDir = join(dir, `pkg${i}`);
+        mkdirSync(pkgDir);
+        const manifest = manifestFor(pkg);
+        writeFileSync(join(pkgDir, manifest.file), manifest.text);
+      });
+      roots.set(key, dir);
+      return dir;
     },
     dispose(): void {
       for (const dir of roots.values()) rmSync(dir, { recursive: true, force: true });
       roots.clear();
+    },
+  };
+}
+
+// The registries come from the EngineOS root being graded; only ctx.project
+// varies, because the stack is the one input resolve derives from the caller's
+// repository. A set of fifty cases builds at most a handful of directories.
+export function kernelStackRouter(engineosRoot: string, resolver: Resolver = resolve): StackRouterHandle {
+  const registries = lazyRegistries(engineosRoot);
+  const projects = stackProjects();
+  return {
+    route(prompt: string, packages: readonly CasePackage[]): string[] {
+      const ctx: KernelContext = { root: engineosRoot, registries, project: projects.projectFor(packages) };
+      const answer = resolver({ prompt, taskContract: true }, ctx);
+      return answer.task_contract?.intents ?? [];
+    },
+    dispose(): void {
+      projects.dispose();
     },
   };
 }

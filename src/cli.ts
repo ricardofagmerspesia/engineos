@@ -14,6 +14,7 @@ import { runSettingsMerge } from './install/cli';
 import { runBypass } from './bypass/cli';
 import { runGen } from './gen/cli';
 import { runEvals } from './evals/run';
+import { runRouterGolden } from './evals/router-golden';
 import { runBench } from './bench/run';
 import { runUsageReport } from './report/usage';
 import { runValidate } from './validate/cli';
@@ -73,6 +74,7 @@ const table: CommandTable = {
   bypass: runBypass,
   gen: runGen,
   evals: runEvals,
+  'router-golden': runRouterGolden,
   bench: runBench,
   'usage-report': runUsageReport,
   validate: runValidate,
