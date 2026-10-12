@@ -146,7 +146,7 @@ function target(
   if (handle === null) return [];
   if (!runnerHasTarget(selection, handle, name, undefined, spawn, root)) return [];
   const result = runnerRun(selection, handle, name, timeoutSeconds, env, spawn, root);
-  return redOf(selection, name, handle, result, registries);
+  return redOf({ selection, target: name, subject: handle, result, registries });
 }
 
 // Probe the binary before running it: a config file existing while the linter is
@@ -177,14 +177,22 @@ function lint(
     if (execRun(spawn, command, [...rest, linter.target, '--version'], root, env, PROBE_TIMEOUT_SECONDS).code !== 0) return [];
     const args = linter.target === 'biome' ? [...rest, linter.target, 'check', file] : [...rest, linter.target, file];
     const result = execRun(spawn, command, args, root, env, LINT_TIMEOUT_SECONDS);
-    return redOf(selection, linter.target, file, result, registries);
+    return redOf({ selection, target: linter.target, subject: file, result, registries });
   }
   return [];
 }
 
 // The only failure this hook reports. `infra` — a timeout, a stale target probe,
 // a runtime too old — is not the edit's fault and never becomes exit 2.
-function redOf(selection: RunnerSelection, target: string, subject: string, result: RunResult, registries: Registries): Failure[] {
+interface RunVerdictInput {
+  selection: RunnerSelection;
+  target: string;
+  subject: string;
+  result: RunResult;
+  registries: Registries;
+}
+
+function redOf({ selection, target, subject, result, registries }: RunVerdictInput): Failure[] {
   const verdict = classify(
     { kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut },
     registries.policy.repair.infra_patterns,

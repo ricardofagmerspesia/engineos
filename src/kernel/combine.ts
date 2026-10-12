@@ -1,7 +1,8 @@
 import type { DecisionRule } from '../registry/decision-rules';
-import { aggregateIntents, highest, RISK_ORDER } from './combine-aggregate';
+import { aggregateIntents } from './combine-aggregate';
 import type { Registries, RiskTier } from './context';
 import { matchFromRule, rulesInPriorityOrder, type DecisionMatch, type DecisionsSection } from './decisions';
+import { highest, highFloorIntentIds, RISK_ORDER } from './intent-order';
 import { judgeSummary, OTHER_PRIMARY, type JevFact, type JudgeFact, type JudgeMode, type JudgeSummary } from './judge-facts';
 import type { EscalateRouteSection, RankedIntent, SuppressedIntent } from './route';
 import type { ScaleSection } from './scale';
@@ -59,10 +60,6 @@ const NEW_FEATURE_INTENT = 'new-feature';
 const LOW_CONFIDENCE_REASON = 'low-confidence';
 const MULTI_AGENT_REASON = 'multi-agent-dispatch';
 const DISPATCH_PLAN_REASON = 'requires-dispatch-plan';
-
-// Neither a similarity score (§4.7) nor a judge fold (§4.1) drops a
-// deterministic survivor whose floor is this tier.
-const KEPT_FLOOR: RiskTier = 'high';
 
 export function combine(input: CombineInput): CombineOutput {
   const { judge } = input;
@@ -220,9 +217,10 @@ function chooseIntents(jev: JevFact, regs: Registries): IntentChoice {
   return { ids: [], ambiguous: true };
 }
 
-// The deterministic survivors whose registry floor is KEPT_FLOOR.
+// The deterministic survivors with a kept high floor: neither a similarity
+// score (§4.7) nor a judge fold (§4.1) drops one.
 function highFloorIds(survivors: readonly string[], regs: Registries): Set<string> {
-  const high = new Set(regs.intents.intents.filter((row) => row.risk_floor === KEPT_FLOOR).map((row) => row.id));
+  const high = highFloorIntentIds(regs);
   return new Set(survivors.filter((id) => high.has(id)));
 }
 

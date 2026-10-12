@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { patternShape } from './policy-judge-pattern';
-import { strictReader } from './strict';
+import { numberBounds, strictReader } from './strict';
 
 // The `.judge` block of registries/policy.json (contracts.md@rev2 §6.2). The
 // shape is declared here structurally rather than imported from src/judge/types:
@@ -74,7 +74,9 @@ const MAX_STATE_BYTES_CAP = 16384;
 // arrive as a registry edit; update it only with a reviewed pattern change.
 const REDACTION_PATTERNS_SHA256 = 'dffb903c4b0f554d494e3cf78981703f3c85f42c97240de5be2e844d82d86058';
 
-const { malformed, requireRecord, requireString, requireNumber, requireRows } = strictReader('policy.json');
+const reader = strictReader('policy.json');
+const { malformed, requireRecord, requireString, requireNumber, requireRows } = reader;
+const { positiveInteger, unitInterval, aboveZeroAtMostOne } = numberBounds(reader);
 
 export function parseJudge(value: unknown, breakerScopes: readonly string[]): JudgePolicy {
   const at = '.judge';
@@ -107,10 +109,10 @@ export function parseJudge(value: unknown, breakerScopes: readonly string[]): Ju
 function parseThresholds(value: unknown, at: string): JudgeThresholds {
   const thresholds = requireRecord(value, at);
   return {
-    intent_default: aboveZero(thresholds['intent_default'], `${at}.intent_default`),
+    intent_default: aboveZeroAtMostOne(thresholds['intent_default'], `${at}.intent_default`),
     primary_confidence: unitInterval(thresholds['primary_confidence'], `${at}.primary_confidence`),
     margin: unitInterval(thresholds['margin'], `${at}.margin`),
-    rule_default: aboveZero(thresholds['rule_default'], `${at}.rule_default`),
+    rule_default: aboveZeroAtMostOne(thresholds['rule_default'], `${at}.rule_default`),
   };
 }
 
@@ -197,22 +199,4 @@ function nonBlank(value: unknown, path: string): string {
   const text = requireString(value, path);
   if (text.trim() === '') malformed(`${path} must not be empty`);
   return text;
-}
-
-function positiveInteger(value: unknown, path: string): number {
-  const number = requireNumber(value, path);
-  if (!Number.isInteger(number) || number < 1) malformed(`${path} must be a positive integer`);
-  return number;
-}
-
-function aboveZero(value: unknown, path: string): number {
-  const number = requireNumber(value, path);
-  if (number <= 0 || number > 1) malformed(`${path} must be greater than 0 and at most 1`);
-  return number;
-}
-
-function unitInterval(value: unknown, path: string): number {
-  const number = requireNumber(value, path);
-  if (number < 0 || number > 1) malformed(`${path} must be between 0 and 1`);
-  return number;
 }

@@ -1,11 +1,9 @@
 import type { IntentRow, Registries, RiskTier } from './context';
+import { highest, RISK_ORDER, suppressorOf } from './intent-order';
 import type { SuppressedIntent } from './route';
 
 // The aggregation half of the combination policy (contracts.md@rev3 §4.2,
 // §4.7), split out of ./combine so each file stays one concern. Pure, no I/O.
-
-// The ordering of the tier vocabulary itself, as in route.ts.
-export const RISK_ORDER: readonly RiskTier[] = ['low', 'medium', 'high'];
 
 export interface IntentAggregate {
   intents: string[];
@@ -50,25 +48,4 @@ export function aggregateIntents(
       regs.policy.router.escalate_when.multi_agent_intents_min,
     dispatchPlan: surviving.some((row) => row.requires_dispatch_plan),
   };
-}
-
-function suppressorOf(row: IntentRow, chosen: ReadonlySet<string>, hasNonSuppressible: boolean): string | null {
-  if (row.suppressible && hasNonSuppressible) return 'more-specific-match';
-  return row.suppressed_by.find((id) => chosen.has(id)) ?? null;
-}
-
-// Max by position in a declared ordering. A value the ordering does not name
-// never wins, and an all-null set aggregates to null.
-export function highest<T extends string>(values: readonly (T | null)[], order: readonly T[]): T | null {
-  let best: T | null = null;
-  let bestIndex = -1;
-  for (const value of values) {
-    if (value === null) continue;
-    const index = order.indexOf(value);
-    if (index > bestIndex) {
-      bestIndex = index;
-      best = value;
-    }
-  }
-  return best;
 }

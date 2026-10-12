@@ -22,7 +22,7 @@ import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceLookups, guidanceNotes, judgeNote, type TaskAnswer } from './prompt-advisor-guidance';
 import { consultSemantics, judgeEventData, NOT_USER_INPUT, type Consultation, type TiebreakScores } from './prompt-judge';
-import { classifyPromptSource } from './prompt-source';
+import { classifyPromptSource, sourceMarkersOf } from './prompt-source';
 import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
 import { event, recordSpan, telemetrySink, withSpan, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
 
@@ -55,6 +55,13 @@ interface ResolvedTask {
 
 type Attempt = readonly [JudgeFact | null, TiebreakScores | null];
 
+interface TaskRequest {
+  prompt: string;
+  declared: Attempt;
+  kernel: KernelContext;
+  sink: Sink | null;
+}
+
 export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDecision> {
   if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return context('UserPromptSubmit', BYPASS_NOTICE);
   // An empty prompt resolves nothing and is not evidence of anything, so it is
@@ -75,7 +82,7 @@ export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDeci
   if (consultation.span !== null && consultation.latencyMs !== null) {
     recordSpan(sink, { ...JUDGE_SPAN, ...consultation.span }, consultation.latencyMs);
   }
-  const resolved = resolveTask(env.prompt, [consultation.fact, tiebreak], kernel, sink);
+  const resolved = resolveTask({ prompt: env.prompt, declared: [consultation.fact, tiebreak], kernel, sink });
   if (resolved === null) return silent;
   const { task } = resolved;
   const judged: Consultation = { ...consultation, fact: resolved.fact };
@@ -99,7 +106,7 @@ export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDeci
 // stricter, fail-closed judgeMayReceive in ./prompt-judge (D3).
 function typedByUser(env: HookEnvelope, regs: Registries): boolean {
   try {
-    return classifyPromptSource(env, regs.policy.router.source_markers) === 'user';
+    return classifyPromptSource(env, sourceMarkersOf(regs)) === 'user';
   } catch {
     return true;
   }
@@ -116,7 +123,7 @@ function typedByUser(env: HookEnvelope, regs: Registries): boolean {
 // fallback that names the judge failure. Null when every attempt fails, which
 // is bash's `|| exit 0`. A failed attempt writes NO span: withSpan records an
 // outcome, and a kernel that did not answer has none.
-function resolveTask(prompt: string, declared: Attempt, kernel: KernelContext, sink: Sink | null): ResolvedTask | null {
+function resolveTask({ prompt, declared, kernel, sink }: TaskRequest): ResolvedTask | null {
   for (const [fact, scores] of attemptsFor(declared)) {
     try {
       return withSpan(sink, ROUTER_SPAN, () => {

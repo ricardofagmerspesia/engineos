@@ -8,13 +8,14 @@
 // in-process `resolve({ path })` call answers both `excluded` and
 // `hook_guidance`, and the guidance string itself is rendered by the kernel
 // (src/kernel/route.ts renderGuidance), never here.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { lazyRegistries, type KernelContext } from '../kernel/context';
 import { resolve } from '../kernel/resolve';
 import { findUpFile } from '../lib/git';
 import { isRecord } from '../lib/json';
 import { routeCachePaths, type RouteCachePaths } from './cache';
+import { activeChangeRecords } from './change-records';
 import { editContext, routeCacheBuster, routingSignature, writeAtomic, type WorktreeFacts } from './edit-context';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import type { HookEnvelope } from './envelope';
@@ -32,11 +33,6 @@ const CHANGE_RECORD_NOTE = ' | no active .engineos/changes record — open one (
 // The extensions that make an edit a CODE edit, and so worth a change-record
 // reminder. Same list the bash case statement carried.
 const CODE_EXTENSIONS: readonly string[] = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.sql'];
-
-// grep -l '^status:[[:space:]]*active' over one change record. The class is the
-// horizontal whitespace of a single line: grep matches per line, so the newline
-// members of [[:space:]] can never participate.
-const ACTIVE_RECORD = /^status:[ \t\f\v\r]*active/m;
 
 export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (env.file === '') return silent;
@@ -163,7 +159,8 @@ function changeRecordNote(file: string, repo: string): string {
   if (!CODE_EXTENSIONS.some((extension) => file.endsWith(extension))) return '';
   const dir = join(repo, '.engineos', 'changes');
   if (!isDirectory(dir)) return '';
-  return hasActiveRecord(dir) ? '' : CHANGE_RECORD_NOTE;
+  // The first active record answers; the rest are never read.
+  return activeChangeRecords(dir).next().done === true ? CHANGE_RECORD_NOTE : '';
 }
 
 function isDirectory(path: string): boolean {
@@ -172,27 +169,4 @@ function isDirectory(path: string): boolean {
   } catch {
     return false;
   }
-}
-
-// The bash glob was `<dir>/*.md`: direct children only, dotfiles excluded. A
-// directory that cannot be read counts as holding no active record, which is
-// the same answer the failing grep produced.
-function hasActiveRecord(dir: string): boolean {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return false;
-  }
-  for (const entry of entries) {
-    if (!entry.endsWith('.md') || entry.startsWith('.')) continue;
-    let contents: string;
-    try {
-      contents = readFileSync(join(dir, entry), 'utf8');
-    } catch {
-      continue;
-    }
-    if (ACTIVE_RECORD.test(contents)) return true;
-  }
-  return false;
 }

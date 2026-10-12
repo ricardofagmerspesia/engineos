@@ -1,6 +1,7 @@
 import type { IntentRow } from '../registry/intents';
 import type { RoutingDomain } from '../registry/routing';
 import type { Registries, RiskTier } from './context';
+import { highest, highFloorIntentIds, RISK_ORDER, suppressorOf } from './intent-order';
 import { scaleSection, type ScaleSection } from './scale';
 import { marginOf, matchPathDomain, scoreIntents, type RankedIntent } from './score';
 import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
@@ -111,12 +112,11 @@ export function routeByIntent(text: string, regs: Registries): IntentRouteSectio
   return { matches, ambiguous, ranked: candidates.slice(0, scoring.top_k), margin };
 }
 
-const CAP_EXEMPT_FLOOR: RiskTier = 'high';
-
 // max_intents trims only what any-match would never have routed. Two kinds of
-// admitted candidate are exempt, mirroring combine.ts `keptHigh`: a high-floor
-// intent (dropping it would lower the floor and lose the reviewer a high-risk
-// prompt needs), and an intent whose declared evidence alone (phrases, pair,
+// admitted candidate are exempt: a high-floor intent, by the same set
+// combine.ts keeps (./intent-order highFloorIntentIds), since dropping it would
+// lower the floor and lose the reviewer a high-risk prompt needs; and an
+// intent whose declared evidence alone (phrases, pair,
 // path, minus negatives) clears min_score, which is the §1.5 any-match set.
 // The cap fills its remaining slots, score then registry order, from intents
 // that needed exemplar similarity to clear min_score. A v1 registry has no
@@ -125,7 +125,7 @@ function keptIntentIds(text: string, candidates: readonly RankedIntent[], regs: 
   const scoring = regs.policy.router.scoring;
   const admitted = candidates.filter((candidate) => candidate.score >= scoring.min_score);
   if (admitted.length <= scoring.max_intents) return new Set(admitted.map((candidate) => candidate.id));
-  const highFloor = new Set(regs.intents.intents.filter((row) => row.risk_floor === CAP_EXEMPT_FLOOR).map((row) => row.id));
+  const highFloor = highFloorIntentIds(regs);
   const declared = new Set(
     scoreIntents(text, withoutExemplars(regs))
       .filter((candidate) => candidate.score >= scoring.min_score)
@@ -200,12 +200,6 @@ export interface EscalateRouteSection {
   margin: number | null;
 }
 
-// The bash arm spells this ordering inline rather than reading policy.json, and
-// so does the port: it is the ordering of the tier vocabulary itself — the same
-// three names RiskTier is — not a policy knob somebody could re-tune. The model
-// tiers are the opposite case, and come from models.json escalation_order.
-const RISK_ORDER: readonly RiskTier[] = ['low', 'medium', 'high'];
-
 // Whether a dispatch plan is needed: the condition of frozen contract 1 of
 // docs/specs/2026-08-06-decision-kernel-p3-router-agent.md. Reuses routeByIntent
 // and scaleSection rather than reimplementing either, resolves suppression in a
@@ -235,7 +229,7 @@ export function routeEscalate(text: string, regs: Registries): EscalateRouteSect
   const suppressed: SuppressedIntent[] = [];
   const surviving: IntentRow[] = [];
   for (const intent of matched) {
-    const by = suppressorOf(intent, hasNonSuppressible, rawIds);
+    const by = suppressorOf(intent, rawIds, hasNonSuppressible);
     if (by === null) surviving.push(intent);
     else suppressed.push({ id: intent.id, by });
   }
@@ -298,30 +292,4 @@ export function routeEscalate(text: string, regs: Registries): EscalateRouteSect
     ranked: raw.ranked,
     margin: raw.margin,
   };
-}
-
-function suppressorOf(
-  intent: IntentRow,
-  hasNonSuppressible: boolean,
-  rawIds: ReadonlySet<string>,
-): string | null {
-  if (intent.suppressible && hasNonSuppressible) return 'more-specific-match';
-  return intent.suppressed_by.find((id) => rawIds.has(id)) ?? null;
-}
-
-// Max by position in a declared ordering, the aggregation both the tier and the
-// floor use. A value the ordering does not name cannot be compared against one
-// it does, so it never wins and an all-unknown set aggregates to null.
-function highest<T extends string>(values: readonly (T | null)[], order: readonly T[]): T | null {
-  let best: T | null = null;
-  let bestIndex = -1;
-  for (const value of values) {
-    if (value === null) continue;
-    const index = order.indexOf(value);
-    if (index > bestIndex) {
-      bestIndex = index;
-      best = value;
-    }
-  }
-  return best;
 }

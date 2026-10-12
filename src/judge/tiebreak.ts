@@ -14,6 +14,7 @@
 import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isRecord } from '../lib/json';
 import { isPrivateDir, lstatFacts, runtimeDir, type FileFacts } from '../lib/runtime-dir';
 import { cutAtCodeUnit, redactBounded } from './redact';
 import type { RedactionPattern } from './types';
@@ -202,8 +203,4 @@ function skipped(reason: TiebreakSkippedReason): Skipped {
 
 function failed(reason: TiebreakFailedReason): TiebreakOutcome {
   return { kind: 'failed', reason };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -10,12 +10,15 @@
 // policy.router.source_markers — never as regular expressions, so a marker can
 // neither over-match nor cost a backtracking pass on a long prompt.
 //
-// Pure: no I/O, no clock, no registry read. The caller passes the markers.
+// Pure: no I/O, no clock, no registry read. The caller passes the markers;
+// sourceMarkersOf only names where they live in the loaded registries, and the
+// (lazy, possibly throwing) read happens wherever the caller invokes it.
 //
 // The judge asks a stricter question (D3, review finding #10): its answer
 // decides whether text leaves the machine, so judgeMayReceive fails closed
 // where classifyPromptSource fails open. Kernel routing keeps the permissive
 // classification; only the judge's egress uses the strict one.
+import type { Registries } from '../kernel/context';
 import { isRecord } from '../lib/json';
 import type { HookEnvelope } from './envelope';
 
@@ -57,6 +60,12 @@ export function classifyPromptSource(env: HookEnvelope, markers: SourceMarkers):
   if (startsWithAny(text, markers.tool_result)) return 'tool-result';
   if (startsWithAny(text, markers.hook_echo)) return 'hook-echo';
   return 'user';
+}
+
+// policy.router.source_markers of the loaded registries. Reading it may load,
+// and so throw on, policy.json: callers keep the call inside their own guard.
+export function sourceMarkersOf(regs: Registries): SourceMarkers {
+  return regs.policy.router.source_markers;
 }
 
 // The judge-only egress test. A prompt is the user's for the judge only when

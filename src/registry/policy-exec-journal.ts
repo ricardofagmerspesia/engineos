@@ -50,13 +50,13 @@ export function loadExecJournalPolicy(root: string): ExecJournalPolicy {
     home: r.requireString(block['home'], '.telemetry.exec_journal.home'),
     // bash read this through `// empty` and then a digits-only case statement,
     // so an absent, non-numeric or zero value reached the same fallback.
-    max_value_length: positiveInteger(block['max_value_length']),
+    max_value_length: positiveIntegerOrFallback(block['max_value_length']),
     span_kinds: r.requireStrings(block['span_kinds'], '.telemetry.exec_journal.span_kinds'),
     statuses: r.requireStrings(block['statuses'], '.telemetry.exec_journal.statuses'),
   };
 }
 
-function positiveInteger(value: unknown): number {
+function positiveIntegerOrFallback(value: unknown): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) return MAX_VALUE_LENGTH_FALLBACK;
   return value;
 }

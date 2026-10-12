@@ -1,4 +1,4 @@
-import { strictReader } from './strict';
+import { numberBounds, strictReader } from './strict';
 
 // The `.router` block of registries/policy.json, split from policy.ts so each
 // sibling stays one concern. Scoring feeds src/kernel/score.ts and route.ts,
@@ -63,8 +63,9 @@ export interface RouterPolicy {
   fixtures: RouterFixture[];
 }
 
-const { malformed, requireRecord, requireString, requireNumber, requireBoolean, requireStrings, requireRows } =
-  strictReader('policy.json');
+const reader = strictReader('policy.json');
+const { malformed, requireRecord, requireString, requireNumber, requireBoolean, requireStrings, requireRows } = reader;
+const { positiveInteger, unitInterval, aboveZeroAtMostOne } = numberBounds(reader);
 
 export function parseRouter(value: unknown): RouterPolicy {
   const router = requireRecord(value, '.router');
@@ -158,26 +159,8 @@ function parseTiebreak(value: unknown): TiebreakPolicy {
   };
 }
 
-function aboveZeroAtMostOne(value: unknown, path: string): number {
-  const number = requireNumber(value, path);
-  if (number <= 0 || number > 1) malformed(`${path} must be greater than 0 and at most 1`);
-  return number;
-}
-
 function atLeastZero(value: unknown, path: string): number {
   const number = requireNumber(value, path);
   if (number < 0) malformed(`${path} must be at least 0`);
-  return number;
-}
-
-function unitInterval(value: unknown, path: string): number {
-  const number = requireNumber(value, path);
-  if (number < 0 || number > 1) malformed(`${path} must be between 0 and 1`);
-  return number;
-}
-
-function positiveInteger(value: unknown, path: string): number {
-  const number = requireNumber(value, path);
-  if (!Number.isInteger(number) || number < 1) malformed(`${path} must be a positive integer`);
   return number;
 }

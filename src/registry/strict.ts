@@ -15,6 +15,37 @@ export interface StrictReader {
   optionalStrings(value: unknown, path: string): string[];
 }
 
+// Bounded numbers several policy blocks share. Built over a reader so each
+// refusal still names the registry file that reader was made for.
+export interface NumberBounds {
+  positiveInteger(value: unknown, path: string): number;
+  // [0, 1]
+  unitInterval(value: unknown, path: string): number;
+  // (0, 1]
+  aboveZeroAtMostOne(value: unknown, path: string): number;
+}
+
+export function numberBounds(reader: Pick<StrictReader, 'malformed' | 'requireNumber'>): NumberBounds {
+  const { malformed, requireNumber } = reader;
+  return {
+    positiveInteger(value: unknown, path: string): number {
+      const number = requireNumber(value, path);
+      if (!Number.isInteger(number) || number < 1) malformed(`${path} must be a positive integer`);
+      return number;
+    },
+    unitInterval(value: unknown, path: string): number {
+      const number = requireNumber(value, path);
+      if (number < 0 || number > 1) malformed(`${path} must be between 0 and 1`);
+      return number;
+    },
+    aboveZeroAtMostOne(value: unknown, path: string): number {
+      const number = requireNumber(value, path);
+      if (number <= 0 || number > 1) malformed(`${path} must be greater than 0 and at most 1`);
+      return number;
+    },
+  };
+}
+
 export function strictReader(file: string): StrictReader {
   function malformed(what: string): never {
     throw new KernelError(`registries/${file}: ${what}`);

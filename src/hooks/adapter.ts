@@ -74,7 +74,7 @@ const NEVER_SILENCED: ReadonlySet<string> = new Set(['git-write-guard']);
 // below the checkout; the bound only stops a walk from a misplaced copy.
 const MAX_ROOT_DEPTH = 8;
 
-export function nodeInProcessGuardDeps(): InProcessGuardDeps {
+function nodeInProcessGuardDeps(): InProcessGuardDeps {
   return {
     uid: typeof process.getuid === 'function' ? process.getuid() : null,
     pid: process.pid,

@@ -8,6 +8,7 @@
 // ({ model, state, questions }); `state` holds the redacted prompt and nothing
 // from the environment. The API key goes into the Authorization header only and
 // never into an outcome, an error or a log line.
+import { raceDeadline } from '../lib/deadline';
 import { parseJevResponse, reportedInputTokens } from './response';
 import { buildJudgeState } from './state';
 import type { FailedReason, JudgeDeps, JudgeInput, JudgeOutcome, JudgePolicy, SkippedReason } from './types';
@@ -89,18 +90,14 @@ async function exchangeWithDeadline(
   policy: JudgePolicy,
 ): Promise<Exchange> {
   const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<Exchange>((resolve) => {
-    timer = setTimeout(() => {
+  return raceDeadline<Exchange>({
+    start: () => exchange({ transport, key, body, endpoint: policy.endpoint, signal: controller.signal }),
+    ms: policy.timeout_ms,
+    onTimeout: () => {
       controller.abort();
-      resolve({ kind: 'failed', reason: 'timeout' });
-    }, policy.timeout_ms);
+      return { kind: 'failed', reason: 'timeout' };
+    },
   });
-  try {
-    return await Promise.race([exchange({ transport, key, body, endpoint: policy.endpoint, signal: controller.signal }), deadline]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 interface ExchangeRequest {
