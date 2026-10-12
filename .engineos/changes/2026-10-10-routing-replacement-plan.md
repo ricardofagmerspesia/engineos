@@ -108,7 +108,8 @@ installer (docs/release-notes/1.8.0.md, Rollback).
 - 2026-10-11, Ricardo Fagmer: re-run after the critic fixes scoped to "Typecheck and targeted tests only" (build, typecheck, judge and route test files); full npm test, validate and evals excluded.
 - 2026-10-11, Ricardo Fagmer: final security review of the redaction fix (8742ba6) and the judge data paths at d54c802, with npm audit, declined. Reason ids: high-risk. The review stays pending; verified completion and release clearance are not established while it is open.
 - 2026-10-11, Ricardo Fagmer: /code-review fix scope "Code and docs; defer tuning". One fix pass covers every Standards finding (redact.ts split included), Spec items 3, 6 and 7, and the ADR no-retry record. Spec items 1, 2 and 8 (threshold/margin calibration, single-common-word weights, authoritative-mode latency) go to a follow-up issue because they need eval evidence; routing behaviour does not change in this pass.
-- Pending: security review of the redaction fix; security review before Jev leaves individual opt-in.
+- 2026-10-11, Ricardo Fagmer: final checks on the code-review fix pass (94ed515, 20de2e8) kept pending. [validation] pending: the refactor is not typechecked, built or tested; committed dist/ was built at 0bf60a7 and does not carry it.
+- Pending: final checks on the code-review fix pass; security review of the redaction fix; security review before Jev leaves individual opt-in.
 
 ## Changes registered
 See `git diff --stat 0b2e442..feat/routing-replacement`.
