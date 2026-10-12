@@ -3307,14 +3307,55 @@ function routeByPath(file, regs, root) {
 function routeByIntent(text2, regs) {
   const scoring = regs.policy.router.scoring;
   const candidates = scoreIntents(text2, regs);
-  const kept = new Set(
-    candidates.filter((candidate) => candidate.score >= scoring.min_score).slice(0, scoring.max_intents).map((candidate) => candidate.id)
-  );
+  const kept = keptIntentIds(text2, candidates, regs);
   const matches2 = regs.intents.intents.filter((intent) => kept.has(intent.id)).map((intent) => intentMatch(intent, regs));
   const margin = marginOf(candidates);
   const top = candidates[0];
   const ambiguous = matches2.length === 0 || top === void 0 || top.confidence < scoring.threshold || margin !== null && margin < scoring.margin;
   return { matches: matches2, ambiguous, ranked: candidates.slice(0, scoring.top_k), margin };
+}
+var CAP_EXEMPT_FLOOR = "high";
+function keptIntentIds(text2, candidates, regs) {
+  const scoring = regs.policy.router.scoring;
+  const admitted = candidates.filter((candidate) => candidate.score >= scoring.min_score);
+  if (admitted.length <= scoring.max_intents) return new Set(admitted.map((candidate) => candidate.id));
+  const highFloor = new Set(regs.intents.intents.filter((row) => row.risk_floor === CAP_EXEMPT_FLOOR).map((row) => row.id));
+  const declared4 = new Set(
+    scoreIntents(text2, withoutExemplars(regs)).filter((candidate) => candidate.score >= scoring.min_score).map((candidate) => candidate.id)
+  );
+  const isExempt = (id) => highFloor.has(id) || declared4.has(id);
+  const exempt = admitted.filter((candidate) => isExempt(candidate.id));
+  const slots2 = Math.max(0, scoring.max_intents - exempt.length);
+  const capped = admitted.filter((candidate) => !isExempt(candidate.id)).slice(0, slots2);
+  return new Set([...exempt, ...capped].map((candidate) => candidate.id));
+}
+function withoutExemplars(regs) {
+  const policy = regs.policy;
+  const declaredOnly = { ...policy, router: { ...policy.router, scoring: { ...policy.router.scoring, bm25_weight: 0 } } };
+  return {
+    get routing() {
+      return regs.routing;
+    },
+    get intents() {
+      return regs.intents;
+    },
+    get models() {
+      return regs.models;
+    },
+    policy: declaredOnly,
+    get decisionRules() {
+      return regs.decisionRules;
+    },
+    get capabilities() {
+      return regs.capabilities;
+    },
+    get agents() {
+      return regs.agents;
+    },
+    get skillState() {
+      return regs.skillState;
+    }
+  };
 }
 function intentMatch(intent, regs) {
   return {
@@ -4253,28 +4294,277 @@ var RedactionPatternError = class extends Error {
 function redactText(text2, patterns) {
   let redacted = text2;
   for (const { kind, pattern } of patterns) {
-    redacted = redacted.replace(compile2(kind, pattern), `<redacted:${kind}>`);
+    const marker = placeholder(kind);
+    redacted = redacted.replace(compile2(kind, pattern), () => marker);
   }
   return redacted;
 }
 function redactBounded(text2, patterns, preCapChars) {
   if (text2.length <= preCapChars) return { text: redactText(text2, patterns), capped: false };
-  const prefix = dropTrailingFragment(cutAtCodeUnit(text2, preCapChars));
-  return { text: redactText(prefix, patterns), capped: true };
+  let agreed = cutAtCodeUnit(text2, preCapChars);
+  for (const { kind, pattern } of patterns) agreed = redactAgreedPrefix(agreed, kind, pattern);
+  return { text: withoutTrailingHighSurrogate(agreed), capped: true };
 }
 function cutAtCodeUnit(text2, maxChars) {
   if (text2.length <= maxChars) return text2;
   const end = isHighSurrogate(text2.charCodeAt(maxChars - 1)) ? maxChars - 1 : maxChars;
   return text2.slice(0, Math.max(0, end));
 }
-function dropTrailingFragment(text2) {
-  for (let index = text2.length - 1; index >= 0; index -= 1) {
-    if (isWhitespace(text2.charCodeAt(index))) return text2.slice(0, index + 1);
-  }
-  return "";
+function redactAgreedPrefix(text2, kind, pattern) {
+  const matches2 = findMatches(text2, compile2(kind, pattern));
+  const reach = patternReach(pattern);
+  const end = reach === null ? 0 : agreedEnd(text2, matches2, reach);
+  return splice(text2, matches2, placeholder(kind), end);
 }
-function isWhitespace(code) {
-  return code === 32 || code >= 9 && code <= 13 || code === 160 || code === 8232 || code === 8233;
+function agreedEnd(text2, matches2, reach) {
+  const safeBelow = Math.max(0, text2.length - reach.window + 1);
+  let position = safeBelow;
+  let index = 0;
+  for (; index < matches2.length; index += 1) {
+    const match = matches2[index];
+    if (match === void 0 || match.start >= safeBelow) break;
+    position = Math.max(position, match.end);
+  }
+  while (position < text2.length) {
+    if (reach.mayReadPastEnd(text2, position)) return position;
+    const match = matches2[index];
+    if (match !== void 0 && match.start === position) {
+      position = match.end > position ? match.end : position + 1;
+      index += 1;
+    } else {
+      position += 1;
+    }
+  }
+  return text2.length;
+}
+function findMatches(text2, regex) {
+  const found = [];
+  for (let match = regex.exec(text2); match !== null; match = regex.exec(text2)) {
+    found.push({ start: match.index, end: match.index + match[0].length });
+    if (match[0].length === 0) regex.lastIndex += 1;
+  }
+  return found;
+}
+function splice(text2, matches2, marker, end) {
+  let output = "";
+  let copied = 0;
+  for (const { start, end: matchEnd } of matches2) {
+    if (start >= end) break;
+    output += text2.slice(copied, start) + marker;
+    if (matchEnd > end) return output;
+    copied = matchEnd;
+  }
+  return output + text2.slice(copied, end);
+}
+var reachCache = /* @__PURE__ */ new Map();
+function patternReach(pattern) {
+  const cached = reachCache.get(pattern);
+  if (cached !== void 0) return cached;
+  const reach = analyse(pattern);
+  reachCache.set(pattern, reach);
+  return reach;
+}
+function analyse(pattern) {
+  let root;
+  try {
+    root = new PatternParser(pattern).parse();
+  } catch {
+    return null;
+  }
+  const prefixes = prefixSource(root);
+  const window = maxLength(root) + 1;
+  if (prefixes === null) return { window, mayReadPastEnd: () => false };
+  let regex;
+  try {
+    regex = new RegExp(`(?:${prefixes})$`, "y");
+  } catch {
+    return null;
+  }
+  return {
+    window,
+    mayReadPastEnd: (text2, start) => {
+      regex.lastIndex = start;
+      return regex.test(text2);
+    }
+  };
+}
+function maxLength(node) {
+  switch (node.type) {
+    case "unit":
+      return 1;
+    case "sequence":
+      return node.items.reduce((total, item) => total + maxLength(item), 0);
+    case "choice":
+      return node.options.reduce((longest, option) => Math.max(longest, maxLength(option)), 0);
+    case "lookahead":
+      return maxLength(node.body);
+    case "zero-width":
+      return 0;
+    case "repeat": {
+      const body = maxLength(node.body);
+      return body === 0 ? 0 : node.max * body;
+    }
+  }
+}
+function render2(node) {
+  switch (node.type) {
+    case "unit":
+      return node.source;
+    case "sequence":
+      return node.items.map(render2).join("");
+    case "choice":
+      return `(?:${node.options.map(render2).join("|")})`;
+    case "lookahead":
+      return "";
+    case "zero-width":
+      return node.source;
+    case "repeat": {
+      const body = render2(node.body);
+      return body === "" ? "" : `(?:${body})${bounds(node.min, node.max)}`;
+    }
+  }
+}
+function prefixSource(node) {
+  switch (node.type) {
+    case "unit":
+      return node.source;
+    case "sequence": {
+      const options = [];
+      node.items.forEach((item, index) => {
+        const tail = prefixSource(item);
+        if (tail !== null) options.push(node.items.slice(0, index).map(render2).join("") + tail);
+      });
+      return either(options);
+    }
+    case "choice":
+      return either(node.options.map(prefixSource).filter((option) => option !== null));
+    case "lookahead":
+      return prefixSource(node.body);
+    case "zero-width":
+      return null;
+    case "repeat": {
+      const tail = prefixSource(node.body);
+      if (tail === null || node.max === 0) return null;
+      if (node.body.type === "unit") return `${node.body.source}${bounds(1, node.max)}`;
+      return `(?:${render2(node.body)})${bounds(0, node.max - 1)}(?:${tail})`;
+    }
+  }
+}
+function either(options) {
+  return options.length === 0 ? null : `(?:${options.join("|")})`;
+}
+function bounds(min, max) {
+  return max === Number.POSITIVE_INFINITY ? `{${min},}` : `{${min},${max}}`;
+}
+var UnsupportedPatternError = class extends Error {
+};
+var RANGE_QUANTIFIER2 = /^\{(\d+)(?:(,)(\d*))?\}/;
+var PatternParser = class {
+  source;
+  index = 0;
+  constructor(source) {
+    this.source = source;
+  }
+  parse() {
+    const root = this.choice();
+    if (this.index !== this.source.length) throw new UnsupportedPatternError("unbalanced group");
+    return root;
+  }
+  choice() {
+    const options = [this.sequence()];
+    while (this.source[this.index] === "|") {
+      this.index += 1;
+      options.push(this.sequence());
+    }
+    return options.length === 1 && options[0] !== void 0 ? options[0] : { type: "choice", options };
+  }
+  sequence() {
+    const items = [];
+    while (this.index < this.source.length && this.source[this.index] !== "|" && this.source[this.index] !== ")") {
+      items.push(this.quantified(this.term()));
+    }
+    return { type: "sequence", items };
+  }
+  term() {
+    const char = this.source[this.index];
+    if (char === "(") return this.group();
+    if (char === "[") return this.characterClass();
+    if (char === "\\") return this.escape();
+    if (char === "^" || char === "$") {
+      this.index += 1;
+      return { type: "zero-width", source: char };
+    }
+    if (char === void 0 || "*+?".includes(char)) throw new UnsupportedPatternError("dangling quantifier");
+    this.index += 1;
+    if (char === "{") {
+      if (RANGE_QUANTIFIER2.test(this.source.slice(this.index - 1))) throw new UnsupportedPatternError("dangling quantifier");
+      return { type: "unit", source: "\\{" };
+    }
+    return { type: "unit", source: char };
+  }
+  group() {
+    var _a;
+    const start = this.index;
+    const rest = this.source.slice(this.index);
+    const opener = ((_a = /^\((?:\?:|\?=|\?!|\?<=|\?<!|\?<[A-Za-z_$][\w$]*>)?/.exec(rest)) == null ? void 0 : _a[0]) ?? "(";
+    this.index += opener.length;
+    const body = this.choice();
+    if (this.source[this.index] !== ")") throw new UnsupportedPatternError("unclosed group");
+    this.index += 1;
+    if (opener === "(?=" || opener === "(?!") return { type: "lookahead", body };
+    if (opener === "(?<=" || opener === "(?<!") return { type: "zero-width", source: this.source.slice(start, this.index) };
+    return body;
+  }
+  characterClass() {
+    const start = this.index;
+    this.index += 1;
+    while (this.index < this.source.length && this.source[this.index] !== "]") {
+      this.index += this.source[this.index] === "\\" ? 2 : 1;
+    }
+    if (this.index >= this.source.length) throw new UnsupportedPatternError("unclosed class");
+    this.index += 1;
+    return { type: "unit", source: this.source.slice(start, this.index) };
+  }
+  escape() {
+    const next = this.source[this.index + 1];
+    if (next === void 0 || /[1-9k]/.test(next)) throw new UnsupportedPatternError("backreference");
+    if (next === "b" || next === "B") {
+      const source2 = this.source.slice(this.index, this.index + 2);
+      this.index += 2;
+      return { type: "zero-width", source: source2 };
+    }
+    if (next === "c") throw new UnsupportedPatternError("control escape");
+    const rest = this.source.slice(this.index);
+    const width = /^\\x[0-9A-Fa-f]{2}/.test(rest) ? 4 : /^\\u[0-9A-Fa-f]{4}/.test(rest) ? 6 : 2;
+    const source = rest.slice(0, width);
+    this.index += width;
+    return { type: "unit", source };
+  }
+  quantified(body) {
+    const char = this.source[this.index];
+    let min;
+    let max;
+    if (char === "?" || char === "*" || char === "+") {
+      this.index += 1;
+      min = char === "+" ? 1 : 0;
+      max = char === "?" ? 1 : Number.POSITIVE_INFINITY;
+    } else {
+      const braces = RANGE_QUANTIFIER2.exec(this.source.slice(this.index));
+      if (braces === null) return body;
+      const [whole, minText = "0", comma, maxText = ""] = braces;
+      this.index += whole.length;
+      min = Number.parseInt(minText, 10);
+      max = comma === void 0 ? min : maxText === "" ? Number.POSITIVE_INFINITY : Number.parseInt(maxText, 10);
+    }
+    if (this.source[this.index] === "?") this.index += 1;
+    return { type: "repeat", body, min, max };
+  }
+};
+function placeholder(kind) {
+  return `<redacted:${kind}>`;
+}
+function withoutTrailingHighSurrogate(text2) {
+  return text2.length > 0 && isHighSurrogate(text2.charCodeAt(text2.length - 1)) ? text2.slice(0, -1) : text2;
 }
 function isHighSurrogate(code) {
   return code >= 55296 && code <= 56319;
@@ -4932,10 +5222,10 @@ function parseAppendArgs(argv) {
 function appendLine(root, file, argv, now, regs) {
   requireModelsRegistry(root);
   const { fields } = parseAppendArgs(argv);
-  const maxLength = regs.execJournal.max_value_length;
+  const maxLength2 = regs.execJournal.max_value_length;
   for (const { spec, text: text2 } of setInArgvOrder(fields)) {
-    if (text2.length > maxLength) {
-      throw new JournalError(`${spec.flag} must be at most ${maxLength} characters, got ${text2.length}`);
+    if (text2.length > maxLength2) {
+      throw new JournalError(`${spec.flag} must be at most ${maxLength2} characters, got ${text2.length}`);
     }
   }
   if (unset(fields[DEFAULTED_FIELD])) fields[DEFAULTED_FIELD] = now();

@@ -2986,14 +2986,55 @@ function routeByPath(file, regs, root) {
 function routeByIntent(text2, regs) {
   const scoring = regs.policy.router.scoring;
   const candidates = scoreIntents(text2, regs);
-  const kept = new Set(
-    candidates.filter((candidate) => candidate.score >= scoring.min_score).slice(0, scoring.max_intents).map((candidate) => candidate.id)
-  );
+  const kept = keptIntentIds(text2, candidates, regs);
   const matches2 = regs.intents.intents.filter((intent) => kept.has(intent.id)).map((intent) => intentMatch(intent, regs));
   const margin = marginOf(candidates);
   const top = candidates[0];
   const ambiguous = matches2.length === 0 || top === void 0 || top.confidence < scoring.threshold || margin !== null && margin < scoring.margin;
   return { matches: matches2, ambiguous, ranked: candidates.slice(0, scoring.top_k), margin };
+}
+var CAP_EXEMPT_FLOOR = "high";
+function keptIntentIds(text2, candidates, regs) {
+  const scoring = regs.policy.router.scoring;
+  const admitted = candidates.filter((candidate) => candidate.score >= scoring.min_score);
+  if (admitted.length <= scoring.max_intents) return new Set(admitted.map((candidate) => candidate.id));
+  const highFloor = new Set(regs.intents.intents.filter((row) => row.risk_floor === CAP_EXEMPT_FLOOR).map((row) => row.id));
+  const declared2 = new Set(
+    scoreIntents(text2, withoutExemplars(regs)).filter((candidate) => candidate.score >= scoring.min_score).map((candidate) => candidate.id)
+  );
+  const isExempt = (id) => highFloor.has(id) || declared2.has(id);
+  const exempt = admitted.filter((candidate) => isExempt(candidate.id));
+  const slots2 = Math.max(0, scoring.max_intents - exempt.length);
+  const capped = admitted.filter((candidate) => !isExempt(candidate.id)).slice(0, slots2);
+  return new Set([...exempt, ...capped].map((candidate) => candidate.id));
+}
+function withoutExemplars(regs) {
+  const policy = regs.policy;
+  const declaredOnly = { ...policy, router: { ...policy.router, scoring: { ...policy.router.scoring, bm25_weight: 0 } } };
+  return {
+    get routing() {
+      return regs.routing;
+    },
+    get intents() {
+      return regs.intents;
+    },
+    get models() {
+      return regs.models;
+    },
+    policy: declaredOnly,
+    get decisionRules() {
+      return regs.decisionRules;
+    },
+    get capabilities() {
+      return regs.capabilities;
+    },
+    get agents() {
+      return regs.agents;
+    },
+    get skillState() {
+      return regs.skillState;
+    }
+  };
 }
 function intentMatch(intent, regs) {
   return {
