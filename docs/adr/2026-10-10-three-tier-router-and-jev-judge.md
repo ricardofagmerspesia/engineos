@@ -113,6 +113,21 @@ Option 1, with these bound sub-decisions:
   disabled (`mode: shadow`).
   Zero-data-retention terms from TypeSafe are a precondition for any team-wide
   default-on; until then the judge is a per-machine opt-in.
+- **No retry in the Jev client (recorded 2026-10-11, code review of PR #132).**
+  `src/judge/jev.ts` sends exactly one POST per user prompt and never retries,
+  and the policy loader refuses any `judge.retries` other than `0`
+  (`src/registry/policy-judge.ts`). Why: the call has a 400 ms deadline
+  (`judge.timeout_ms`, enforced by an abort plus a race) inside the prompt
+  advisor's 600 ms budget, so a second attempt would double the worst case
+  past that budget. The deterministic route is resolved whatever the judge
+  does and stands whenever it does not answer: the kernel folds a `fallback`
+  fact naming the failure, never a guess. Repeated failure is the breaker's
+  job, not a retry loop's: each failed request counts against the file-backed
+  breaker (`src/judge/breaker.ts`), which opens at `breaker.failure_threshold`
+  (3) consecutive failures and skips the judge for `judge.breaker.cooldown_ms`
+  (60 s) before letting one half-open probe through. Rejected alternative: one
+  retry on `http-429`, `http-5xx` or `network`; it cannot fit the budget and
+  would hide a degrading provider from the breaker.
 - **Source check.** `classifyPromptSource` runs before anything else; a
   notification, tool result or hook echo gets no routing and no judge call.
   For the judge only, the check fails closed toward no egress

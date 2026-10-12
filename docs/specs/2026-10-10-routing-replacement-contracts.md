@@ -70,6 +70,14 @@ that code disagree, the code wins and the line is corrected here. Full text:
    so its output is always a prefix of `redactText(wholePrompt)`. The
    earlier "final limit is at most half the pre-cap" argument failed once
    earlier redactions shrank the text (critic, PR #132).
+   (e) §2.2, §17.1 — code-review fix pass on PR #132 (same revision, no
+   rev 5), wording only. §2.2's `matches` line now states the §1.5 cap rule
+   from (b) instead of "at most `max_intents`": the cap trims only
+   exemplar-assisted admissions, high-floor and declared-evidence intents are
+   always kept, so a route can exceed `max_intents`. §17.1 and the rev 4
+   evidence list name the presence record's real homes,
+   `adapters/claude-code-mod/host/presence.ts` and `src/lib/runtime-dir.ts`;
+   no `src/inprocess/` directory exists.
 
 **rev 3 (2026-10-11)** — five T06 questions, the T12 tie-break fact, and T12's
 accepted spawn-count deviation. Full text and consumer deltas: **§16 Revision 3**.
@@ -128,7 +136,7 @@ byte-identical to rev 1.
 - **rev 4 evidence read** (PR checkout `feat/routing-replacement` at `a481025`):
   `src/kernel/{combine,combine-aggregate}.ts`, `src/hooks/{adapter,prompt-source,prompt-judge}.ts`,
   `src/judge/{jev,redact,state,tiebreak}.ts`, `src/registry/policy-judge.ts`,
-  `src/lib/runtime-dir.ts`, `src/inprocess/*`, `src/checks/kernel-router.ts`,
+  `src/lib/runtime-dir.ts`, `adapters/claude-code-mod/host/presence.ts`, `src/checks/kernel-router.ts`,
   `adapters/claude-code-mod/hooks/register.ts`, `scripts/build.mjs`,
   `tools/embedding-daemon/{.npmrc,src/*}`, `registries/policy.json`.
 - **rev 3 evidence read** (PR checkout `feat/routing-replacement` at `64dfce8`):
@@ -340,9 +348,12 @@ export type JudgeReason =
 Key order: `matches`, `ambiguous`, **`ranked`**, **`margin`**.
 
 - `matches: IntentMatch[]` — the eleven-field object, unchanged, in **registry
-  order**, for every candidate whose score `>= router.scoring.min_score`, at
-  most `router.scoring.max_intents` (highest scores kept; ties by registry
-  order).
+  order**, for every candidate whose score `>= router.scoring.min_score`,
+  capped by `router.scoring.max_intents` exactly as §1.5 states (rev 4): the
+  cap trims only exemplar-assisted admissions (highest scores kept; ties by
+  registry order), while every high-floor intent and every intent whose
+  declared evidence alone clears `min_score` is always kept, so `matches` can
+  carry more than `max_intents` entries.
 - `ambiguous: boolean` — `matches.length === 0 || top.confidence < router.scoring.threshold || margin < router.scoring.margin`, where `top` is `ranked[0]`.
 - `ranked: RankedIntent[]` — every candidate with score `> 0`, score descending,
   ties by registry order, truncated to `router.scoring.top_k`.
@@ -1449,7 +1460,7 @@ the contract; every earlier line here that it contradicts is corrected in
 place (changelog rev 4). Operator-facing detail lives in `docs/OPT-IN-TIERS.md`;
 the decision and threat model live in the ADR ("Threat model and redaction").
 
-### 17.1 Presence record v2 (`src/inprocess/`, `src/lib/runtime-dir.ts`)
+### 17.1 Presence record v2 (`adapters/claude-code-mod/host/presence.ts`, `src/lib/runtime-dir.ts`)
 
 Paths (one home, `src/lib/runtime-dir.ts`; directory `0700`, refused when a
 symlink, owned by another uid, or carrying any group/other bit; socket `0600`;

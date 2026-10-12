@@ -43,7 +43,9 @@ router table.
 - [x] Critic findings fixed: max_intents cap (BLOCKING), redaction pre-cap leak (SERIOUS), docs drift and release notes (MINOR)
 - [x] Affected final checks re-run after the critic fixes (scoped: build, typecheck, judge and route tests)
 - [ ] Security review of the redaction fix (needs final security consent)
-- [ ] /code-review on the PR branch, one fix pass
+- [x] /code-review on the PR branch (standards + spec axes), one fix pass integrated
+- [ ] Final checks on the code-review fix pass (needs approval)
+- [ ] C38b golden-set presence check (needs a new finding code and test; final test stage)
 - [ ] First live Jev shadow run (approved, blocked on TYPESAFE_API_KEY in the session env)
 - [ ] Security review and recorded human decision before Jev leaves individual opt-in (rule-sensitive-data)
 - [ ] main carries the base fixes (C5, C14, 93 base test failures); branch synced; PR marked ready
@@ -104,7 +106,9 @@ installer (docs/release-notes/1.8.0.md, Rollback).
 - 2026-10-11, Ricardo Fagmer: one live Jev shadow call approved for the committed request docs/specs/2026-10-10-jev-shadow-request.json only. Reason ids: high-risk, external-effect. Blocked: TYPESAFE_API_KEY not set; no request sent.
 - 2026-10-11, Ricardo Fagmer: fix all critic findings (blocking cap, serious redaction leak, change record, minor docs drift, release notes).
 - 2026-10-11, Ricardo Fagmer: re-run after the critic fixes scoped to "Typecheck and targeted tests only" (build, typecheck, judge and route test files); full npm test, validate and evals excluded.
-- Pending: final security consent for the redaction fix; security review before Jev leaves individual opt-in.
+- 2026-10-11, Ricardo Fagmer: final security review of the redaction fix (8742ba6) and the judge data paths at d54c802, with npm audit, declined. Reason ids: high-risk. The review stays pending; verified completion and release clearance are not established while it is open.
+- 2026-10-11, Ricardo Fagmer: /code-review fix scope "Code and docs; defer tuning". One fix pass covers every Standards finding (redact.ts split included), Spec items 3, 6 and 7, and the ADR no-retry record. Spec items 1, 2 and 8 (threshold/margin calibration, single-common-word weights, authoritative-mode latency) go to a follow-up issue because they need eval evidence; routing behaviour does not change in this pass.
+- Pending: security review of the redaction fix; security review before Jev leaves individual opt-in.
 
 ## Changes registered
 See `git diff --stat 0b2e442..feat/routing-replacement`.
@@ -118,3 +122,11 @@ Follow-ups: npm warns that `onnxruntime-node-install` in tools/embedding-daemon/
 is an unknown project config; stop-verify.ts length; doubled newline in stderr
 for an unknown hook; the fold returns intents in judge order; the prompt-advisor
 tie-break fallback order is untested; hostPaths == sessionPaths is pending.
+Code review (2026-10-11) labels: repair commit 773d460 is a routing behaviour
+change (bare "pipeline" no longer routes to devops), made under the T13
+calibration approval although its subject reads as a test repair. Deferred
+tuning: threshold 0 and margin 0 leave low-confidence escalation and the
+tie-break unreachable (plan §4); single common words still route alone at
+weight 1 (plan §2 problem 1); authoritative mode runs the judge and tie-break
+serially (400 + 150 ms of the 600 ms hook budget). Files over ~300 lines left
+for later: kernel/cli.ts, git-write-guard.ts, report/usage.ts, registry/policy.ts.
