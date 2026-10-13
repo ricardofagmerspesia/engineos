@@ -34,28 +34,70 @@ current branch/PR and final approval-only tests. Routing adds no approval gate t
 authorized work.
 
 Rules for routing:
-- Multi-match: load applicable table rows in order. Unknown intent gets a suitable
-  available worker, always-on rules and exclusive scope; never bypass/stall routing.
-  Pure questions need no routing. Named agents MUST be dispatched.
-- **Closed loads:** every non-always-on rule reference must be loaded in the same
-  row. Always-on `base.md`, `security.md`, `git.md`, `context.md` may reference
-  only always-on rules, templates or `registries/*.json`. Non-always-on rules may
-  reference always-on or same-row rules. `scripts/validate-engineos.sh` enforces both.
-- Paths are relative here. Offer applicable Output artifact options after delivery.
-- Stack/domain rows mirror `registries/routing.json` match/excluded globs;
-  `scripts/kernel.sh route-path` powers `hooks/route-before-change.sh` (PreToolUse).
-  Validator rejects table/registry drift; remaining rows are request-driven.
-- Hook routing emits ONE first-match route, in this precedence chain: security → test → backend → dba → backend-python → ios-release → android-release → devops → mobile → frontend → llm. When you route from the table, load every applicable row.
-  The backend-python slot is inactive compatibility; table routing remains multi-match.
-- Hooks require node >= 18; shell shims call `dist/engineos.cjs`, without jq.
-  Missing/old node: route-before-change, mark-unrecorded, record-verify and
-  prompt-advisor silently exit 0; others emit skipped messages. Missing router
-  context warrants checking the hook PATH's node before assuming routing failure.
-- **Bypass:** `[engineos] BYPASS ACTIVE` from UserPromptSubmit means skip routing,
-  dispatch, spec/change-record gates and artifact offers; open with `[engineos] bypassed`.
-  Loaded constitution rules become inapplicable. Per-repo marker expires next
-  SessionStart; `~/.claude/engineos.bypass` and `ENGINEOS_BYPASS=1` persist until off.
-  The personal git guard still applies.
+- Multiple intents can match — load all that apply, in table order.
+- **A row's load list must be closed.** If a rule file cross-references another
+  (`backend.md` defers logging to `observability.md`, `data.md` defers SQL binding to
+  `security.md`), every row that loads the first MUST also load the second — otherwise
+  the deferred rule silently disappears. Always-on files (`base.md`, `security.md`,
+  `git.md`, `context.md`) are always available; they may point only at other always-on files,
+  at repo templates, or at `registries/*.json`. Non-always-on files may point at
+  always-on files or at files loaded in the same row. `scripts/validate-engineos.sh`
+  checks both halves of this rule — it is enforced, not just stated.
+- Unknown intent → proceed with always-on rules only. Never block on routing.
+- Pure questions/explanations need no routing — answer directly.
+- **A row that names an agent means dispatch it**, not "mention it". Doing the work
+  inline when a row names an agent is a defect — see `rules/subagents.md`.
+- Rules paths are relative to this file's directory.
+- After the work is delivered, offer the output artifact — see **Output artifact** below.
+- The **stack/domain rows** below (backend, frontend, mobile, LLM, DBA, DevOps,
+  security, test, and the mobile store-release split) are mirrored
+  deterministically by the `PreToolUse` hook `hooks/route-before-change.sh`.
+  The canonical path→domain map is `registries/routing.json` (`match`/
+  `excluded` globs), resolved by `scripts/kernel.sh route-path`. This table is
+  the human mirror of the **registry**. **They no longer drift silently:**
+  `scripts/validate-engineos.sh` fails CI if the table and the registry
+  disagree. All other rows are request-driven and have no hook equivalent.
+- **Multi-match applies to this table only.** The hook emits exactly ONE route —
+  first match wins, in this precedence chain: security → test → backend → dba →
+  backend-python → ios-release → android-release → devops → mobile → frontend → llm. When you route from the table yourself, load
+  every row that applies; when the hook speaks, it is giving you the single
+  highest-precedence domain, not the complete set.
+- **Stack rows follow the repository's stack.** An intent row carrying a `stack`
+  (`backend` is node, `backend-python` is python) is rebound to its `stack_sibling`
+  when the repository's resolved stack (`scripts/kernel.sh resolve-stack`) lacks
+  that stack — "add an endpoint" in a FastAPI-only repo loads the FastAPI row.
+  Evidence is read frameworks first (`stack_frameworks`: NestJS vs FastAPI/Django/Flask),
+  then languages, and the package holding the working directory before the whole
+  repository — so a FastAPI backend beside a React frontend still rebinds; only a
+  repository with both backend frameworks keeps the keyword result. The kernel
+  reports each swap as `rebound`.
+- **A switch, never a model, picks who decides the intents.** `ENGINEOS_ROUTER` =
+  `keyword` | `llm` | `jev` | `auto` (personal env) and `router.mode` in the repo's
+  `.engineos/config.json` cap it; the more restrictive wins. Unset, `registries/policy.json`
+  `router_decision.default` applies — `jev` today, a recorded developer decision that a
+  golden-set run may overwrite; the keyword answer is always logged beside it (shadow). The contract line shows `router=<mode>[/<confidence>]`; a fallback is always
+  announced as `[engineos] router: llm (<mode> unavailable: <reason>)` — a failure degrades
+  to the in-session router agent, never silently to the keyword floor, which decides
+  alone only when a setting names it. When the line says the router could not decide,
+  dispatch the `router` agent before any write.
+- **The hooks need node >= 18.** Every `hooks/*.sh` is a shim over
+  `dist/engineos.cjs`; `jq` is no longer a hook dependency. Under a missing or
+  too-old node, `route-before-change.sh`, `mark-unrecorded.sh`,
+  `record-verify.sh` and `prompt-advisor.sh` exit 0 silently — routing guidance
+  and the change-record Stop gate simply do not fire — while the other hooks
+  emit a `[engineos] <hook> skipped: node >= 18 required` system message. If you
+  are not seeing `[router] …` context on edits, check which `node` the hook PATH
+  resolves to before assuming the routing is wrong.
+
+- **Bypass short-circuits everything below.** When `/engineos:bypass` is on, the
+  `UserPromptSubmit` hook injects `[engineos] BYPASS ACTIVE` on every turn. On seeing
+  it: skip this table, emit no `[router]` line, dispatch no agents, skip the spec gate,
+  the change record, and the output-artifact offer — and open your reply with
+  `[engineos] bypassed` so the user knows the guardrails are down. The rule files stay
+  in context (nothing can unload a `CLAUDE.md` import); treat them as not applicable.
+  The per-repo marker expires at the next SessionStart; the machine-wide flag
+  (`~/.claude/engineos.bypass`) and `ENGINEOS_BYPASS=1` do not — they hold until
+  toggled off.
 
 | Intent (signals) | Load |
 |---|---|
@@ -63,7 +105,7 @@ Rules for routing:
 | Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` from the task contract; fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
 | Backend work (NestJS, Express, Node backend, Node.js backend, plain Node, pure Node, API, service, controller, migration, queue, router, endpoint) | `rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
-| Deprecated inactive Python backend compatibility (no automatic matching or dispatch) | `rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
+| Backend work (FastAPI, router, endpoint, Pydantic, SQLAlchemy, Alembic) | `rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
 | Frontend work (React, Next, component, page/app, UI, styling) | `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; agent `frontend-coordinator` |
 | Mobile work / mirror web to mobile (React Native, screen, navigation, native module, iOS/Android app; "mirror to mobile", "port to mobile", "mobile parity") | `rules/architecture.md` + `rules/frontend.md` + `rules/backend.md` (API-consumption parts) + `rules/observability.md` + `rules/testing.md`, adapted the mobile way; agent `mobile-coordinator` (elias) |
 | Mobile store release ("build ios", "publish to App Store", "TestFlight", "build android", "Play Store", "release the app", ipa/aab, store submission) | `rules/security.md` (signing keys/store credentials); agent `ios-builder` for Apple, `android-builder` for Google Play. Store review submission / production rollout only on explicit instruction |

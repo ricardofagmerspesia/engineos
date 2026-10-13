@@ -37,7 +37,7 @@ always requires design, regardless of size.
 
 ## Validation ladder
 
-`rules/verification.md` owns check scope. Complete applicable rungs in order:
+`rules/verification.md` owns which checks are in scope. Complete applicable rungs in order:
 
 1. **Local** — typecheck and lint; unit tests only with explicit current-task final-stage user approval. Run once at
    the final gate, not after every edit.

@@ -190,12 +190,14 @@ both('case2 failing-test-not-opted-in — no block', (t, legacy) => {
 
 // Same package as case 2, but with the opt-in flag set: "test" joins the targets
 // and the failing script must now block.
-both('case2b failing-test-opted-in — block', (t, legacy) => {
+// The flag is deprecated: a failing test script never blocks, flag or not.
+both('case2b failing-test-with-deprecated-flag — no block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
   const repo = fixtureRepo(tempRoot(t), { pkg: pkg({ test: 'exit 1' }), files: { 'src/x.ts': '', '.engineos/.keep': '' } });
   const path = transcriptFile(repo, edits(repo, 'src/x.ts'), legacy);
   const result = invoke(repo, path, { env: { ENGINEOS_VERIFY_TESTS: '1' } });
-  assert.equal(decisionOf(result.stdout), 'block');
+  assert.equal(decisionOf(result.stdout), '');
+  assert.ok(result.stdout.includes('ENGINEOS_VERIFY_TESTS is deprecated and ignored'), result.stdout);
 });
 
 // Proves the opt-in path itself does not spuriously block when the test passes.
@@ -229,19 +231,19 @@ both('case6 failing-lint-pass-test — block', (t, legacy) => {
 });
 
 // The edited file lives under a directory whose name contains a space, and that
-// directory — not the repo root — is the package the gate must enter. Opted in,
-// since "test" is the only script the spaced package declares.
+// directory — not the repo root — is the package the gate must enter; its red
+// lint is what proves the gate entered it.
 both('case7 space-in-path — block', (t, legacy) => {
   if (skipWithoutTooling(t)) return;
   const repo = fixtureRepo(tempRoot(t), {
     files: {
-      'my pkg/package.json': `${JSON.stringify(pkg({ test: 'exit 1' }))}\n`,
+      'my pkg/package.json': `${JSON.stringify(pkg({ lint: 'exit 1' }))}\n`,
       'my pkg/src/x.ts': '',
       '.engineos/.keep': '',
     },
   });
   const path = transcriptFile(repo, edits(repo, 'my pkg/src/x.ts'), legacy);
-  const result = invoke(repo, path, { env: { ENGINEOS_VERIFY_TESTS: '1' } });
+  const result = invoke(repo, path);
   assert.equal(decisionOf(result.stdout), 'block');
 });
 

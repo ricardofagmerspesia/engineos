@@ -24,12 +24,12 @@ import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
 import { bypassActive } from './bypass';
 import { classify, type InfraReason } from './classify-failure';
-import { PYTHON_UNAVAILABLE_REASON, runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
+import { runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
 import { unpinnedTools } from './runner-python';
 import { event, telemetrySink, withSpan, type EventData, type SpanFacts } from './telemetry';
 import type { SpanStatus } from '../registry/policy-exec-journal';
 import type { ProjectConfig } from '../registry/project-config';
-import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasPythonExtension, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
+import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
 import { lazyRegistries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
 import { isRecord } from '../lib/json';
@@ -125,9 +125,8 @@ export function verify(
   const files = changedFiles(env.transcriptPath);
   if (files.length === 0) return silent;
 
-  const skippedFiles = files.filter(hasPythonExtension).map((file) => `[engineos] skipped ${file}: ${PYTHON_UNAVAILABLE_REASON}`);
-  const packages = packageDirs(files.filter((file) => !hasPythonExtension(file)), root);
-  if (packages.length === 0) return skippedFiles.length === 0 ? silent : message(skippedFiles.join('\n'));
+  const packages = packageDirs(files, root);
+  if (packages.length === 0) return silent;
 
   const targets = DEFAULT_TARGETS;
   // The nvm default is tried first; a node still too old is judged per Node
@@ -135,7 +134,6 @@ export function verify(
   // regardless — its toolchain never ran on node.
   const environment = verifyEnvironment(ctx.io.env, nodeVersion);
   const plan = planRuns(packages, targets, root, projectConfig(root), environment, spawn);
-  plan.lines.unshift(...skippedFiles);
   // Nothing to run means nothing was verified, so there is no verdict to record
   // and no span to open — only the lines that say why.
   if (plan.runs.length === 0) return plan.lines.length === 0 ? silent : message(plan.lines.join('\n'));

@@ -18,8 +18,11 @@ import { loadProjectConfig, type ProjectConfig } from '../registry/project-confi
 // re-exported here so every caller keeps the one name it always had.
 export { PROBE_TIMEOUT_SECONDS };
 
-// Python extensions/markers remain collected so the final gate can report an
-// explicit unsupported skip instead of implying verification coverage.
+// Only the families a runner exists for: the Node arms understand
+// package.json/nx targets, the Python arm ruff/pyright/pytest. Another
+// extension would be collected but never verified — a silent no-op that reads
+// as coverage — so any stack outside these two still verifies manually
+// (CLAUDE.md #2).
 export const NODE_EXTENSIONS: readonly string[] = ['ts', 'tsx', 'js', 'jsx', 'mts', 'cts', 'mjs', 'cjs'];
 export const PYTHON_EXTENSIONS: readonly string[] = ['py', 'pyi'];
 export const VERIFY_EXTENSIONS: readonly string[] = [...NODE_EXTENSIONS, ...PYTHON_EXTENSIONS];
@@ -158,14 +161,14 @@ export function containedIn(root: string, candidate: string): boolean {
   return !relative(rootReal, candidateReal).split(sep).some((segment) => FOREIGN_SEGMENTS.includes(segment));
 }
 
-// Active verification resolves the nearest Node owner first. A legacy manifest
-// nested inside a Node package must not claim its JavaScript/TypeScript files
-// and suppress that package's checks. Python-only fallback preserves a visible
-// unsupported skip for legacy callers, with requirements promoted as before.
+// The package that owns a file: the nearest PACKAGE_MARKERS hit, bounded by
+// `stop`, with the one promotion design §A1.1 asks for — a directory whose only
+// marker is requirements.txt belongs to the pyproject.toml above it when one
+// sits between it and the ceiling. Without the promotion a `scripts/requirements.txt`
+// inside a FastAPI service would be verified as a package of its own, with no
+// [tool.ruff] and no venv, and the service that owns it would go unverified.
 export function packageOwner(start: string, stop: string): string | null {
-  const nodeOwner = findUpAny(start, NODE_PACKAGE_MARKERS, stop);
-  if (nodeOwner !== null) return nodeOwner;
-  const owner = findUpAny(start, PYTHON_PACKAGE_MARKERS, stop);
+  const owner = findUpAny(start, PACKAGE_MARKERS, stop);
   if (owner === null || !requirementsOnly(owner)) return owner;
   // dirname(stop) lies outside the ceiling, and findUpAny refuses such a start
   // without probing — which is exactly the bound the promotion must keep.
@@ -216,7 +219,7 @@ export function verifyEnvironment(env: NodeJS.ProcessEnv, version: string = proc
 // probe are the same runner as far as the Stop gate's once-per-runner probe is
 // concerned.
 export function runnerProbe(sel: RunnerSelection): readonly string[] {
-  if (sel.kind === 'python') return [];
+  if (sel.kind === 'python') return sel.env.probe;
   const command = (sel.kind === 'nx' ? sel.exec : sel.run).split(' ').find((part) => part !== '');
   return command === undefined ? [] : [command];
 }

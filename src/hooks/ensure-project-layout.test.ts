@@ -20,11 +20,7 @@ const OPT_IN_HINT =
 // Restated rather than imported, like the hint above: a test that imported the
 // constant would pass however the note was rewritten.
 const STACK_QUESTION_NOTE =
-  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. '
-  + 'Before writing any code, your FIRST reply must ask the developer which stack to use for each tier '
-  + 'the work touches (backend, frontend, mobile, LLM/agent runtime) — never pick one yourself '
-  + '(rules/base.md "New projects — stack first"). Persist the answer with '
-  + '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
+  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. Before writing any code, ask the developer which stack this project uses: NestJS (Node.js/TypeScript) or FastAPI (Python) for application backends (including API, worker and LLM service hosts); Node.js alone is a runtime and tooling environment, not a backend framework choice. Then ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers on the Node stack and LangGraph on the Python stack; do not ask the developer to reconfirm them once the backend is chosen. Never offer plain Node.js or standalone Express application backends (rules/base.md "New projects — stack first"). Persist the answer with `engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
 // A manifest EngineOS recognises as a stack choice but resolves no package for,
 // so the cases that are not about the stack keep their stack line out of the way.
 const STACK_FILES: Record<string, string> = { 'go.mod': 'module example.test/app\n' };

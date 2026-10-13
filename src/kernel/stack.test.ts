@@ -116,6 +116,7 @@ test('the walk never enters dependency trees, virtualenvs, build output or the g
     'build/pyproject.toml': '',
     '__pycache__/requirements.txt': '',
     '.next/package.json': '{}',
+    'test/fixtures/py-fastapi/pyproject.toml': '[project]\nname = "fixture"\ndependencies = ["fastapi"]\n',
     'lib/site-packages/y/requirements.txt': 'flask',
   });
   assert.deepEqual(detectPackages(ROOT, deps).map((pkg) => pkg.dir), ['.']);

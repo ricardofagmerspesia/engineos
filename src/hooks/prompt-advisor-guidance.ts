@@ -6,6 +6,22 @@
 // Wave 6 e2e keeps doing so — while the hook itself is a kernel call, three
 // telemetry writes and one decision. Mixing the two would hide both.
 import type { DecisionMatch, DecisionsSection, EscalateRouteSection, HitlSection, TaskContractSection } from '../kernel';
+import type { EscalateReason } from '../kernel/decision-layer';
+import type { Rebound } from '../kernel/route';
+import type { RouterMode, RouterSetting } from '../registry/policy-router-decision';
+
+// What the routing decision layer contributes to the guidance: which mode
+// decided, any downgrade to say out loud, and any residue to hand the router
+// agent. Null when the layer did not run (a pure question, or a kernel answer
+// with nothing substantive to route).
+export interface RouterView {
+  mode: RouterMode;
+  confidence: number | null;
+  // Rendered as `<requested> unavailable: <reason>`; `reason` is the decision's
+  // own fallback reason, or `repo-cap` / `error`, which only the advisor sees.
+  fallback: { requested: RouterSetting; reason: string } | null;
+  escalation: { reason: EscalateReason; candidates: string[] } | null;
+}
 
 // One prompt's kernel answer, narrowed to the four sections the guidance reads.
 // `hitl` is null rather than absent for the same reason the resolve-task
@@ -16,6 +32,7 @@ export interface TaskAnswer {
   decisions: DecisionsSection;
   contract: TaskContractSection;
   hitl: HitlSection | null;
+  router: RouterView | null;
 }
 
 // jq's `(scale_notes + decision_note + route_note + hitl_note + classify_note)`.
@@ -26,6 +43,7 @@ export function guidanceNotes(task: TaskAnswer): string[] {
     ...scaleNotes(task.contract),
     ...decisionNote(task.decisions),
     ...routeNote(task),
+    ...routerNotes(task),
     ...hitlNote(task.hitl),
     ...classifyNote(task),
   ];
@@ -87,10 +105,47 @@ function routeNote(task: TaskAnswer): string[] {
   }
   if (contract.substantive) {
     return [
-      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)} — load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed.`,
+      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)}${routerField(task.router)}${reboundField(route.rebound)} — load these before acting; the risk floor is a floor, not the final tier. ${dispatchClause(task.router)}`,
     ];
   }
   return [];
+}
+
+// The contract line used to end "No router dispatch needed." unconditionally;
+// when the decision layer hands the request on (the line after this one), that
+// sentence would contradict the instruction that follows it.
+function dispatchClause(router: RouterView | null): string {
+  return router === null || router.escalation === null ? 'No router dispatch needed.' : 'Router dispatch needed — see the router line below.';
+}
+
+// ` router=<mode>` plus `/<confidence>` when the mode measured one.
+function routerField(router: RouterView | null): string {
+  if (router === null) return '';
+  return ` router=${router.mode}${router.confidence === null ? '' : `/${router.confidence.toFixed(2)}`}`;
+}
+
+function reboundField(rebound: readonly Rebound[]): string {
+  if (rebound.length === 0) return '';
+  return ` rebound=${rebound.map((swap) => `${swap.from}->${swap.to}(${swap.reason}/${swap.scope})`).join(',')}`;
+}
+
+// The two lines the decision layer adds. A downgrade is always said out loud —
+// a silent one is the failure this layer must never have. The residue line is
+// left out when the kernel already escalated: its own notice names the same
+// agent, and two dispatch instructions for one request read as two dispatches.
+function routerNotes(task: TaskAnswer): string[] {
+  const { router } = task;
+  if (router === null) return [];
+  const notes: string[] = [];
+  if (router.fallback !== null) {
+    notes.push(`[engineos] router: ${router.mode} (${router.fallback.requested} unavailable: ${router.fallback.reason})`);
+  }
+  if (router.escalation !== null && !task.route.escalate) {
+    notes.push(
+      `[engineos] router: ${router.mode} could not decide (${router.escalation.reason}) — dispatch the router agent (agents/router.md, model opus) via the Task tool with the request text, the repository languages/frameworks and these candidates before any write: ${csv(router.escalation.candidates)}. A hook cannot dispatch an agent — you must invoke it.`,
+    );
+  }
+  return notes;
 }
 
 function hitlNote(hitl: HitlSection | null): string[] {

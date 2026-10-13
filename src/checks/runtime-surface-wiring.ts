@@ -3,8 +3,8 @@
 // append site cannot see prompt text, and the reaper covers the new file.
 //
 // The hooks are TypeScript now (design deviation 3). A writer reaches the
-// journal through the span lifecycle in src/hooks/telemetry.ts — `withSpan` for
-// work it can time in one process, or the `openSpan`/`closeSpan` pair a
+// journal through the span lifecycle in src/hooks/telemetry.ts — `withSpan` (or
+// `withSpanAsync`, for work that awaits) for work it can time in one process, or the `openSpan`/`closeSpan` pair a
 // PreToolUse and its PostToolUse need — and states the kind as a `kind: '<k>'`
 // field on the facts it passes. openSpan is the one deliberate exception: the
 // dispatch hook records only the start instant, and the kind is stated by the
@@ -36,9 +36,9 @@ const LAYOUT_HOOK = 'src/hooks/ensure-project-layout.ts';
 // never carry a kind literal; *.test.ts assert on a kind, they do not produce
 // one.
 const NOT_WRITERS = new Set(['src/hooks/telemetry.ts', 'src/hooks/span-writer.ts']);
-// Any of the three lifecycle calls counts as wired; the pair below is what pins
+// Any of the lifecycle calls counts as wired; the pair below is what pins
 // which hook must use which.
-const LIFECYCLE = /openSpan\(|closeSpan\(|withSpan\(/;
+const LIFECYCLE = /openSpan\(|closeSpan\(|withSpan(?:Async)?\(/;
 
 export function checkC27c(ctx: CheckContext): CheckResult[] {
   const skipped = haveExecJournalInputs(ctx, 'C27c', C27c_TITLE);

@@ -33,7 +33,21 @@ Checks case/schema drift against current policy.
    such an expectation could never pass.
 7. `expect_risk`, when present, is a real tier (`low` / `medium` / `high`) and is
    **at or above** the `risk_floor` that `registries/routing.json` sets for every
-   expected domain. Resolve case/registry disagreements before approving execution.
+   expected domain. A case claiming a DBA change is low risk contradicts the
+   registry, and one of the two is wrong — the check forces that argument to
+   happen at authoring time rather than in production.
+8. A case MAY carry `stack`: a non-empty list of packages, each `<language>` or
+   `<language>:<framework>` (`["python"]`, `["python:fastapi", "node:react"]`) —
+   the packages of the repository the prompt is typed in. A stack-tagged case is
+   routed through the real kernel (`resolve` with `taskContract`, the prompt
+   advisor's own call) with a throwaway project holding one directory per entry
+   and only that package's manifest, naming the framework as a dependency when
+   one is given. It passes when every `expect_intents` id survives and no
+   surviving intent declares a stack the case lacks. This is the guard on the
+   keyword floor's stack rebind (`registries/intents.json` `stack` /
+   `stack_sibling` / `stack_frameworks`: framework evidence first, language
+   second). An entry whose language is not `python` / `node`, whose framework is
+   unknown or belongs to the other language, or a repeated entry, is malformed.
 
 ## Live tier (opt-in)
 
@@ -49,6 +63,10 @@ announcement CLAUDE.md mandates:
 - **Fail** — a missing required rule, or a forbidden one present.
 - Cases with `expect_intents: []` pass when **no** `[router]` line is emitted:
   pure questions are exempt from routing, and emitting one is over-routing.
+
+The live tier runs in the session's own working directory and does not honour
+`stack`; a stack-tagged case is graded on the stack there, so the deterministic
+check 8 is the authoritative grade for those cases.
 
 Agent cases are graded by an independent judge session against the `must` /
 `must_not` lists, using the dimensions below.

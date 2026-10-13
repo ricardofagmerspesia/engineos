@@ -66,16 +66,16 @@ and shellcheck for installer/shims.
 | `rules/context.md` | Task-scoped loading and source-attributed context | Always on |
 | `rules/parallelism.md` | Frozen contracts, exclusive files, useful host-bounded concurrency (policy cap 6), refill and bounded retries | In the substantive-task policy bundle; enforced when scale requires it |
 | `rules/models.md` | Work-type tiers, model bindings and budget degradation ladder | In the substantive-task policy bundle |
-| `rules/architecture.md`, `backend.md`, `backend-python.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Domain standards; Python path retained deprecated/inactive | Loaded by router per intent |
+| `rules/architecture.md`, `backend.md`, `backend-python.md`, `frontend.md`, `llm-apps.md`, `testing.md`, `data.md`, `observability.md` | Domain standards, one file per stack (NestJS and FastAPI) | Loaded by router per intent |
 | `rules/production-backend-standards.md` | Deprecated 2026-09-28 client overlay; migrate applicable sections to project rules; remove next MAJOR | Never (kept for the deprecation window) |
 | `registries/routing.json` | Canonical domain path map, precedence, rules/skills/agents and risk floors | Read by `scripts/validate-engineos.sh` |
 | `registries/decision-rules.json` | Conditional requirements resolved in task contracts | Resolved by `scripts/kernel.sh resolve-task`, surfaced by `hooks/prompt-advisor.sh` |
 | `skills/nestjs-patterns` | Team NestJS shapes | Backend work |
 | `skills/react-patterns` | Team React/Next shapes | Frontend work |
 | `skills/llm-engineering` | Prompts, tools, RAG, evals | LLM/agent work |
-| `skills/python-patterns` | Deprecated compatibility path; active backend guidance is `nestjs-patterns` | Legacy reference only; never automatically dispatched |
+| `skills/python-patterns` | Team FastAPI shapes (ports and adapters, routers, schemas, settings, migrations) | Python backend work |
 | `skills/mastra-patterns` | Mastra agents, tools, workflows, memory and NestJS integration; multi-agent implementations require an approved topology | LLM agents and chatbots |
-| `skills/langgraph-patterns` | Deprecated compatibility redirect to `mastra-patterns`; retained through the deprecation window | Legacy invocation only |
+| `skills/langgraph-patterns` | Team LangGraph conventions for tool-using agent loops on the Python stack | After the topology approval, Python agent systems |
 | `skills/agent-system-design` | 12-step topology interview/catalog; developer approval before implementation | Any system with more than one agent, before graph code |
 | `skills/adr` | Decision records | Architecture choices |
 | `skills/eval-harness` | Approved final golden-set/runner/judge scaffolding | LLM feature without evals |
@@ -119,7 +119,7 @@ and shellcheck for installer/shims.
 | `templates/mcp.template.json` | Optional docs/git/browser/backend/data/infra/cloud/collaboration MCP baseline; verify packages before connecting | Manual add — connect only what a machine needs; `$verify` entries confirm package first |
 | `templates/project-claude.md` | JavaScript/TypeScript project constitution starter | Written by `init` when the project has none |
 | `templates/agent-skills/issue-tracker.md`, `domain.md` | Per-project skill config for PRD/tickets/ADR/glossary paths; init copies without overwrite | Copied to `docs/agents/` by `init` when absent, never overwritten |
-| `templates/project-claude-python.md` | Deprecated compatibility template; active `init` supports JavaScript/TypeScript stacks | Legacy reference only |
+| `templates/project-claude-python.md` | Python-only project constitution starter | Written by `init` when every resolved package is Python |
 | `.engineos/config.json` | Declared package stacks; `init --stack auto` or explicit frameworks writes once; resolve-stack uses declaration or truthful detection; legacy fields remain compatible | Read per package by the gate and hooks |
 | `.engineos/changes/` | Active change records — one file per in-progress unit of work | While work is in progress |
 | `.engineos/archived/` | Completed change records, moved from `.engineos/changes/` | After work is done + verified |

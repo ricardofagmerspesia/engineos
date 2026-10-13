@@ -381,19 +381,18 @@ test('tests are opt-in: a red test script alone does not block', (t) => {
   assert.deepEqual(calls.map((c) => c.args.join(' ')), ['--version']);
 });
 
-test('ENGINEOS_VERIFY_TESTS=1 folds the test target back in, with its own budget', (t) => {
+test('ENGINEOS_VERIFY_TESTS=1 is deprecated: the test target never runs and the notice says so', (t) => {
   if (skipWithoutGit(t)) return;
   const repo = repoWith(t, { lint: 'exit 0', typecheck: 'exit 0', test: 'exit 1' });
   const path = transcriptOf(repo, edits(repo, 'src/x.ts'));
   const { spawn, calls } = runnerSpawn({ test: { status: 1, stdout: '2 failing' } });
   const ctx = context({ ...ISOLATED, ENGINEOS_VERIFY_TESTS: '1' });
   const decision = verify(stopOf(repo, 'T1', path), ctx, spawn, MODERN);
-  assert.equal(decision.kind, 'block');
+  assert.deepEqual(decision, message('[engineos] ENGINEOS_VERIFY_TESTS is deprecated and ignored: tests require explicit user approval and a separate final command after integration.'));
   const budgets = calls.filter((c) => !c.args.includes('--version')).map((c) => [c.args.join(' '), c.timeout]);
   assert.deepEqual(budgets, [
     ['run -s lint', 90_000],
     ['run -s typecheck', 90_000],
-    ['run -s test', 180_000],
   ]);
 });
 

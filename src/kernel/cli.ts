@@ -15,9 +15,10 @@ import { resolve, type DeclaredFacts } from './resolve';
 import { skillLookupSection, skillStateSection } from './skill-state';
 import { resolveStack } from './stack';
 
-// `io` is the third argument for the one arm whose answer is about the caller's
-// tree rather than the registries: resolve-stack defaults its directory to the
-// repo root of cwd. Every other arm reads only ctx and args.
+// `io` is the third argument for the arms whose answer is about the caller's
+// tree rather than the registries alone: resolve-stack defaults its directory to
+// the repo root of cwd, and the prompt arms read that same repository's stack to
+// rebind stack-bearing intents. Every other arm reads only ctx and args.
 type Sub = (ctx: KernelContext, args: string[], io: Io) => unknown;
 
 // bash bound "--prompt" to $1 and discarded the real argument, so route-intent
@@ -51,7 +52,8 @@ export function parseFlags(cmd: string, args: string[], allowed: readonly string
 // arm with no legacy counterpart: it emits the sparse Answer itself.
 const SUBCOMMANDS: Record<string, Sub> = {
   'route-path': (ctx, args) => routePathSection(ctx, requirePositional('route-path', 'a file path', args)),
-  'route-intent': (ctx, args) => routeIntentSection(ctx, requirePositional('route-intent', 'the request text', args)),
+  'route-intent': (ctx, args, io) =>
+    routeIntentSection(withProject(ctx, io), requirePositional('route-intent', 'the request text', args)),
   model: modelProjection,
   risk: riskProjection,
   gates: gatesProjection,
@@ -62,9 +64,9 @@ const SUBCOMMANDS: Record<string, Sub> = {
   waves: wavesProjection,
   'decision-rules': decisionRulesProjection,
   scale: scaleProjection,
-  'route-escalate': routeEscalateProjection,
-  'resolve-task': resolveTaskProjection,
-  resolve: resolveProjection,
+  'route-escalate': (ctx, args, io) => routeEscalateProjection(withProject(ctx, io), args),
+  'resolve-task': (ctx, args, io) => resolveTaskProjection(withProject(ctx, io), args),
+  resolve: (ctx, args, io) => resolveProjection(withProject(ctx, io), args),
   'skill-state': skillStateProjection,
   'resolve-stack': resolveStackProjection,
 };
@@ -85,6 +87,20 @@ export function runKernel(argv: string[], io: Io): number {
     }
     throw e;
   }
+}
+
+// The caller's repository for the prompt arms: the repo root of cwd — the
+// directory resolve-stack answers for by default, so `resolve-stack` and the
+// rebind a prompt arm applies read one stack. Unlike resolve-stack there is no
+// fallback to cwd outside a work tree: the rebind walks the tree, and walking an
+// arbitrary directory ($HOME, `/`) on every prompt would cost more than the
+// floor is worth, so outside a repository no stack is known and nothing is
+// rebound. Resolved per prompt arm only: route-path and the policy arms never
+// read the stack and never pay for the git call.
+function withProject(ctx: KernelContext, io: Io): KernelContext {
+  const cwd = io.cwd();
+  const project = repoRoot(cwd, spawnSync);
+  return project === null ? ctx : { ...ctx, project, projectCwd: cwd };
 }
 
 function routePathSection(ctx: KernelContext, file: string): unknown {

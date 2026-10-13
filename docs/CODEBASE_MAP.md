@@ -94,6 +94,7 @@ engineos/
 | `intents.json` | intents[] with signals, rules, skills, agents, risk_floor, model_tier, suppressible/suppressed_by, required_sections (handoff, record-change archive contract) | kernel route-escalate, resolve-task; C16, C18d, C19, C21 |
 | `routing.json` | domains[] with match/excluded globs, sample_path, agent, rules, skills; precedence chain (security, test, backend, dba, backend-python, ios-release, android-release, devops, mobile, frontend, llm — `dba` before `backend-python` so `*/alembic/versions/*` and `*.sql` stay DBA); excluded.self_dirs | kernel route-path; route-before-change hook; mark-unrecorded; C6-C8, C14, C17 |
 | `policy.json` | parallelism (wave cap, backpressure, prompt_signals), retry, repair, breaker, hitl, autonomy, risk, telemetry, exec_journal, router.escalate_when + fixtures | kernel admit/breaker/hitl/repair/risk; journal; hooks; C16, C20-C27 |
+| `policy.json` `router_decision` | modes, restrictiveness order, `default` + `default_written_by` (`jev` today, provenance = a developer decision or a golden-set run; the keyword answer is always logged beside the decision), min_confidence, tie_margin, jev endpoint/model/budget_ms/key_env, state_fields | read by its own strict loader `src/registry/policy-router-decision.ts`, never by the kernel's `loadPolicy`, so risk/gate/escalation answers never depend on it; consumed by `src/kernel/decision-layer.ts` and `init --router` |
 | `decision-rules.json` | rules[] with regex signals, require/prefer artifacts, gate, risk, priority | kernel decisions; prompt-advisor notes; C14 |
 | `models.json` | tier -> model binding (fable / opus / haiku) | gen agent-registry, journal enums, C15, C31 |
 | `agents.json` | GENERATED from agents/*.md frontmatter | announce-agent-return (model tier), C15, C18 |
@@ -101,7 +102,7 @@ engineos/
 | `layout-manifest.json` | dirs/seeds for `.engineos/` + `docs/` scaffold | scaffold.ts, hooks/layout-manifest.sh (literal copy) |
 | `docs-ledger.json` | closure_exceptions, marker_budgets, external_skills, alias_exempt | prose-layer e2e test |
 
-Not a registry but read the same strict way: the project's `.engineos/config.json` (`src/registry/project-config.ts`, written by `engineos init --stack`) — `{ version: 1, stack: { packages: [{ dir, language, framework, compose_service, python_env? }] } }`; an absent file is `null` (detect), a malformed one is an error naming the JSON path. Consumed by `src/kernel/stack.ts`, the Stop gate and the SessionStart stack line.
+Not a registry but read the same strict way: the project's `.engineos/config.json` (`src/registry/project-config.ts`, written by `engineos init --stack`) — `{ version: 1, stack: { packages: [{ dir, language, framework, compose_service, python_env? }] }, router?: { mode: "keyword" | "llm" | "jev" | "auto" } }` (`router.mode` is the repo's cap on the decision layer, written by `init --router`, absent = no cap); an absent file is `null` (detect), a malformed one is an error naming the JSON path. Consumed by `src/kernel/stack.ts`, the Stop gate, the SessionStart stack line and, for `router.mode`, the prompt-advisor's decision layer.
 
 ### `src/kernel/` + `src/registry/` + `src/lib/`
 
@@ -113,6 +114,7 @@ Not a registry but read the same strict way: the project's `.engineos/config.jso
 | `resolve` / `resolve-task` | `--prompt`, `--path`, `--facts`, `--task-contract` | intents, routing, policy, decision-rules | Answer envelope: route, decision_rules, hitl, task_contract |
 | `route-path` | file path | routing.json (first match in precedence) | domain, agent, rules, skills + skills_suppressed, hook_guidance |
 | `resolve-stack` | `[dir]` (optional; defaults to the repo root of cwd) | `.engineos/config.json` first, else `pyproject.toml`/`requirements.txt`/`package.json` per package dir (`src/kernel/stack.ts`); registries play no part | packages[] (dir, language, framework, compose_service, python_env), source `config` \| `detected` |
+| `decide` (no CLI verb; `src/kernel/decision-layer.ts`) | `DecisionInput` from `buildDecisionInput(task, stack, prompt, regs)`; the setting from `effectiveSetting(ENGINEOS_ROUTER, repo router.mode, policy default, restrictiveness)`, with `auto` resolved beforehand by `resolveAuto` (key present → `jev`, else `llm`; never keyword); injected `fetch`/`env`/`now`/`schedule` | policy.router_decision | **async** `Promise<Decision>`: mode that ran, requested setting, intents chosen among `offered`, confidence, escalate, fallback_reason, shadow, latency_ms, cost_micros. Called by the prompt-advisor after `resolve`, never by `resolve` itself, which stays synchronous and emits no `router` section |
 | `skill-state` | `[--id <skill>]` | `skills/*/SKILL.md` frontmatter (`enabled:`, first block only) | skills[] + disabled[], or id/exists/enabled for one id; absence of the key means enabled |
 | `route-escalate` | prompt | intents signals + suppression, policy.router | escalate, reasons, intents, agents, model_tier, risk_floor, scale |
 | `risk` | five inputs | policy.risk | tier (max, never average) |
@@ -133,7 +135,7 @@ Not a registry but read the same strict way: the project's `.engineos/config.jso
 | Event | Matcher | Handler | Emits |
 |---|---|---|---|
 | SessionStart | `""` | `ensure-project-layout.ts` | expire repo bypass marker, reap stale flags/cache/telemetry, scaffold `.engineos/` (opt-in), context hint; `STACK_QUESTION_NOTE` (`stack-question.ts`) when `hasStackSignal` (`src/kernel/stack.ts`) is false — opted in or not, outside a git repo against cwd without scaffolding, never in `$HOME` |
-| UserPromptSubmit | `""` | `prompt-advisor.ts` | one in-process `resolve({taskContract:true})`; additionalContext with scale / decision-rule / route / HITL / classify notes, plus `STACK_QUESTION_NOTE` when a `STACK_DEPENDENT_INTENTS` intent matches in a stackless repo; the only hook that speaks while bypassed |
+| UserPromptSubmit | `""` | `prompt-advisor.ts` | one in-process `resolve({taskContract:true})`, then `await decide(...)` (decision layer); additionalContext with scale / decision-rule / route / HITL / classify notes, plus `router=<mode>[/<confidence>]` on the contract line and the keyword-fallback line when one happened; plus `STACK_QUESTION_NOTE` when a `STACK_DEPENDENT_INTENTS` intent matches in a stackless repo; the only hook that speaks while bypassed |
 | PreToolUse | `Edit\|Write\|NotebookEdit` | `route-before-change.ts` | `[router] ...` context from route-path; per-session file cache under `<gitdir>/engineos-route-cache`; never blocks |
 | PreToolUse | `Agent\|Task` | `announce-agent-dispatch.ts` | green banner instruction; opens a span |
 | PreToolUse | `Bash` | `git-write-guard.ts` | `ask` permission decision (`[engineos] git write: <subcommand>`) when any segment of the command is a git/forge write and `ENGINEOS_GIT_WRITES` is not `auto`; silent otherwise; never denies; ignores bypass |
@@ -186,6 +188,7 @@ Pattern: checks never shell out. They call `runKernel`, `runTelemetry`, `runJour
 | `install/` | `engineos settings-merge` | merges hooks.json + permissions template into `~/.claude/settings.json`; scrubs both old `.sh` and new node hook forms; atomic write, write-once `.engineos.bak` |
 | `init/` | `engineos init [--stack auto\|<framework>[@dir],...]` (`scripts/init-project.sh`, `/engineos:init`) | scaffold `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}`; write `.engineos/config.json` once from `--stack` or detection; seed `CLAUDE.md` from `templates/project-claude.md`; Python template/config retained deprecated; refuses inside the EngineOS checkout (exit 3) |
 | `evals/` | `engineos evals` | deterministic tier (always; 7 assertions over `evals/*.jsonl`, coverage floor 25) + live tier (`ENGINEOS_EVAL_LIVE=1`, grades `[router]` announcement) |
+| `evals/router-golden*` | `engineos router-golden collect \| run` (`scripts/router-golden.sh`) | `collect`: shadow `router` spans from each repo's `.git/engineos-telemetry`, joined by `trace_id` to the user turn in `~/.claude/projects/*/<session>.jsonl`, appended as candidates to `evals/router-golden/candidates.local.jsonl` (gitignored); `run`: grades every mode on the curated `cases.jsonl` through resolve-task + the advisor's `routeDecision` in throwaway stack projects, writes `RESULTS.md`, and with `--write-default` is the only writer of `policy.json` `router_decision.default` |
 | `bench/` | `engineos bench` | five budgets: route-intent 250ms, resolve-task 500ms, prompt-advisor 600ms, route-before-change cache hit 150ms, always-on context 32000 bytes |
 | `report/` | `engineos usage-report [days]` | mines `~/.claude/projects` transcripts + telemetry for skill/agent/intent hit rates (input to `retro`) |
 | `testing/harness.ts` | test only | `tempRoot`, `fixtureRepo`, `relocatedRoot`, `runCli`, `runInProcess`; refuses paths inside the checkout; never bundled |
@@ -203,8 +206,26 @@ Standalone Next.js 15 + React 19 + Drizzle/better-sqlite3 admin console for edit
 
 ### Prompt to task contract (UserPromptSubmit)
 
-Decode prompt/cwd/session; announce bypass or resolve task contract in-process;
-return route/scale/decision-rule/risk/autonomy/gates/HITL guidance and telemetry.
+```mermaid
+sequenceDiagram
+    participant CC as Claude Code
+    participant H as hook prompt-advisor
+    participant K as kernel resolve
+    participant R as registries
+    participant T as telemetry sink
+
+    CC->>H: stdin {prompt, session_id, cwd}
+    H->>H: bypassActive? -> BYPASS notice
+    H->>K: resolve({prompt, taskContract:true})
+    K->>R: intents.json signals + suppression
+    K->>R: policy.parallelism.prompt_signals (scale)
+    K->>R: decision-rules.json (any_high, require/prefer)
+    K->>R: policy.autonomy ceiling, policy.hitl
+    K-->>H: {route, decision_rules, hitl, task_contract}
+    H->>H: await decide() over the stack-allowed intents (keyword, llm or jev, a jev failure falls back to llm)
+    H->>T: events route / decision-rules / hitl
+    H-->>CC: additionalContext: scale notes, decision notes, [router] or dispatch-router instruction, HITL, classify note
+```
 
 ### File edit to routing guidance (PreToolUse)
 

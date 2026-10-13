@@ -14,6 +14,7 @@ import { runSettingsMerge } from './install/cli';
 import { runBypass } from './bypass/cli';
 import { runGen } from './gen/cli';
 import { runEvals } from './evals/run';
+import { runRouterGolden } from './evals/router-golden';
 import { runBench } from './bench/run';
 import { runUsageReport } from './report/usage';
 import { runValidate } from './validate/cli';
@@ -73,8 +74,23 @@ const table: CommandTable = {
   bypass: runBypass,
   gen: runGen,
   evals: runEvals,
+  'router-golden': runRouterGolden,
   bench: runBench,
   'usage-report': runUsageReport,
   validate: runValidate,
 };
-process.exit(dispatch(table, argv, io));
+const code = dispatch(table, argv, io);
+if (typeof code === 'number') {
+  process.exit(code);
+} else {
+  // Exit as soon as the command settles rather than when the event loop drains:
+  // a keep-alive socket from the decision layer's fetch must not hold the hook
+  // open after its answer is already written.
+  code.then(
+    (status) => process.exit(status),
+    (e: unknown) => {
+      io.err(`[engineos] ${e instanceof Error ? e.message : String(e)}\n`);
+      process.exit(1);
+    },
+  );
+}

@@ -2,7 +2,8 @@
 // gates CI. It grades the eval set against evals/RUBRIC.md: valid JSONL, rules
 // and agents that exist, no contradictory expectations, must_load sets closed
 // under the deferral graph, no assertions on always-on rules, expect_risk values
-// that respect the registry floors, and a coverage floor under which the set is
+// that respect the registry floors, stack-tagged cases that the kernel routes as
+// they expect (./stack-routing), and a coverage floor under which the set is
 // decorative.
 //
 // Every printed line is byte-identical to the bash it replaces. The ok/FAIL lines
@@ -16,6 +17,7 @@ import { join } from 'node:path';
 import type { Io } from '../io';
 import { isRecord, readJsonFile } from '../lib/json';
 import { alwaysOnRules, deferralsOf } from '../lib/deferrals';
+import { gradeStackRouting, kernelStackRouter, type StackRouterFactory } from './stack-routing';
 
 export const INTENTS = 'evals/intent-routing-cases.jsonl';
 export const AGENTS = 'evals/agent-cases.jsonl';
@@ -28,6 +30,10 @@ const RISK_RANKS: Record<string, number> = { low: 1, medium: 2, high: 3 };
 
 export interface TierCounts { pass: number; fail: number }
 export interface DeterministicResult extends TierCounts { intentCount: number }
+
+// The kernel router is the default; a test hands in its own to grade the
+// stack-routing report without routing through a real registry.
+export interface DeterministicDeps { stackRouter?: StackRouterFactory }
 
 export interface Grader {
   ok(message: string): void;
@@ -55,7 +61,7 @@ export function grader(io: Io): Grader {
   };
 }
 
-export function runDeterministicTier(root: string, io: Io): DeterministicResult {
+export function runDeterministicTier(root: string, io: Io, deps: DeterministicDeps = {}): DeterministicResult {
   const g = grader(io);
   io.out('== deterministic tier ==\n');
 
@@ -63,6 +69,7 @@ export function runDeterministicTier(root: string, io: Io): DeterministicResult 
 
   const alwaysOn = alwaysOnRules(readTextOrEmpty(join(root, 'CLAUDE.md')));
   gradeIntentCases(root, alwaysOn, g);
+  gradeStackRouting(root, nonEmptyLines(root, INTENTS).map(parseCase), g, deps.stackRouter ?? kernelStackRouter);
   gradeAgentCases(root, g);
 
   const intentCount = nonEmptyLines(root, INTENTS).length;

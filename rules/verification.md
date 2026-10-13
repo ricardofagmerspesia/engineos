@@ -26,7 +26,9 @@ review evidence without intermediate gates. Bound repairs by repository policy,
 repeat only affected checks after repair and report remaining red honestly.
 
 Stop runs lint/typecheck only. `ENGINEOS_VERIFY_TESTS` is deprecated and ignored.
-Approved tests run as a separate explicit supervisor command after integration;
+Tests join the gate ONLY after implementation and integration are complete and the
+user approved them for this task. Approved tests run as a separate explicit
+supervisor command after integration;
 consent may be a prior explicit same-task/same-scope request, never a stored
 approval or environment variable.
 
@@ -37,9 +39,10 @@ use existing npm/pnpm/yarn/Nx `lint`, `typecheck`, `build` scripts and approved
 final `test`. Inspect script contents: targets invoking tests also need consent;
 use an equivalent non-test target or report pending approval.
 
-Missing scripts produce visible skips; install/invent no tools. Deprecated Python
-stack declarations remain compatibility data, without active Python runners;
-unsupported packages receive a scope notice. Budget: 90 seconds per non-test
+Missing scripts produce visible skips; install/invent no tools. A Python package
+runs `ruff check`, `ruff format --check` and `pyright` through its environment
+(`.venv` → `uv` → compose, see the per-stack table); a package with no environment
+receives a visible skip. Budget: 90 seconds per non-test
 target, 180 seconds for approved tests; `ENGINEOS_VERIFY_BUDGET_S` permits positive
 integer overrides. Missing tooling/timeouts are unavailable evidence, never pass;
 genuine diagnostics are red.
