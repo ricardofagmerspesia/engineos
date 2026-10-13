@@ -1,5 +1,3 @@
-import { accessSync, constants, statSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { isRecord } from '../lib/json';
 import type { IntentRow } from '../registry/intents';
@@ -18,8 +16,8 @@ import { stackEligible, type IntentMatch, type StackFacts } from './route';
 // which of the offered intents a prompt is about. It is async because the Jev
 // call is a `fetch`, so resolve() never calls it — the prompt advisor does,
 // after resolve-task, under a hard deadline. Every I/O (fetch, env, clock,
-// timer, CLI probe) is injected with a real default so the tests drive each
-// failure without a network.
+// timer) is injected with a real default so the tests drive each failure
+// without a network.
 
 export interface DecisionInput {
   prompt: string;
@@ -33,7 +31,7 @@ export interface DecisionInput {
   genericOnly: boolean;
 }
 
-export type FallbackReason = 'no-key' | 'timeout' | `http-${number}` | 'bad-answer' | 'network' | 'no-cli';
+export type FallbackReason = 'no-key' | 'timeout' | `http-${number}` | 'bad-answer' | 'network';
 
 // Why the layer handed the request to the router agent. Carried on the
 // Decision because two of the five (a tie, the model saying it needs a
@@ -47,7 +45,8 @@ export interface DecisionShadow {
 }
 
 export interface Decision {
-  // The mode that actually decided; `keyword` after any fallback.
+  // The mode that actually decided. A Jev failure falls back to `llm`, never
+  // to `keyword`: the floor decides only when the setting itself says so.
   mode: RouterMode;
   // The setting after the restrictiveness merge, before `auto` was resolved.
   requested: RouterSetting;
@@ -55,7 +54,8 @@ export interface Decision {
   confidence: number | null;
   escalate: boolean;
   fallback_reason: FallbackReason | null;
-  // Non-null iff the policy has no measured default yet (shadow mode).
+  // The keyword floor's own answer beside the decision, always carried so the
+  // golden set keeps collecting disagreements whatever the policy default is.
   shadow: DecisionShadow | null;
   latency_ms: number;
   cost_micros: number | null;
@@ -71,7 +71,6 @@ export interface DecisionDeps {
   fetch?: typeof fetch;
   env?: NodeJS.ProcessEnv;
   now?: () => number;
-  hasClaudeCli?: () => boolean;
   schedule?: Schedule;
 }
 
@@ -126,34 +125,16 @@ function rank(setting: RouterSetting, restrictiveness: readonly string[]): numbe
 }
 
 // `auto` means the best mode this machine can run: Jev when its key is set,
-// the in-session router agent when the claude CLI is present, else the floor.
+// else the in-session router agent. The agent is a Claude Code subagent, so it
+// needs nothing on this machine — `auto` never resolves to the keyword floor;
+// that mode runs only when a setting names it.
 export function resolveAuto(
   setting: RouterSetting,
   env: Readonly<Record<string, string | undefined>>,
   keyEnv: string,
-  hasClaudeCli: () => boolean,
 ): RouterMode {
   if (setting !== 'auto') return setting;
-  if (nonEmpty(env[keyEnv])) return 'jev';
-  return safeProbe(hasClaudeCli) ? 'llm' : 'keyword';
-}
-
-// The real CLI probe: an executable `claude` file on PATH. No process is
-// spawned — a probe that runs the CLI would cost seconds inside a hook.
-export function claudeCliOnPath(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  const names = process.platform === 'win32' ? ['claude.exe', 'claude.cmd', 'claude'] : ['claude'];
-  const dirs = (env['PATH'] ?? '').split(delimiter).filter((dir) => dir !== '');
-  return dirs.some((dir) => names.some((name) => isExecutableFile(join(dir, name))));
-}
-
-function isExecutableFile(path: string): boolean {
-  try {
-    if (!statSync(path).isFile()) return false;
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return nonEmpty(env[keyEnv]) ? 'jev' : 'llm';
 }
 
 // --- the input --------------------------------------------------------------
@@ -219,7 +200,7 @@ interface Verdict {
   cost_micros: number | null;
 }
 
-// Never throws: every failure is a keyword decision with a named reason, so the
+// Never throws: every failure is an llm decision with a named reason, so the
 // advisor can always render a contract and say visibly what degraded.
 export async function decide(
   input: DecisionInput,
@@ -239,9 +220,7 @@ export async function decide(
     confidence: verdict.confidence,
     escalate: verdict.escalate,
     fallback_reason: verdict.fallback_reason,
-    shadow: policy.default === null
-      ? { keyword_intents: keywordIntents, disagreement: verdict.mode !== 'keyword' && !sameSet(verdict.intents, keywordIntents) }
-      : null,
+    shadow: { keyword_intents: keywordIntents, disagreement: verdict.mode !== 'keyword' && !sameSet(verdict.intents, keywordIntents) },
     latency_ms: Math.max(0, Math.round(now() - started)),
     cost_micros: verdict.cost_micros,
     escalate_reason: verdict.escalate ? verdict.escalate_reason : null,
@@ -256,31 +235,33 @@ async function verdictFor(
   keywordIntents: string[],
 ): Promise<Verdict> {
   const env = deps.env ?? process.env;
-  if (mode === 'keyword') return keywordVerdict(keywordIntents, null);
-  if (mode === 'llm') {
-    const hasClaudeCli = deps.hasClaudeCli ?? (() => claudeCliOnPath(env));
-    if (!safeProbe(hasClaudeCli)) return keywordVerdict(keywordIntents, 'no-cli');
-    // The hook calls no model: the in-session router agent decides, and only
-    // on the residue the floor could not settle.
-    return {
-      mode: 'llm',
-      intents: keywordIntents,
-      confidence: null,
-      escalate: input.genericOnly || input.candidates.length === 0,
-      escalate_reason: input.genericOnly ? 'generic-only' : input.candidates.length === 0 ? 'no-match' : null,
-      fallback_reason: null,
-      cost_micros: null,
-    };
-  }
+  if (mode === 'keyword') return keywordVerdict(keywordIntents);
+  if (mode === 'llm') return llmVerdict(input, keywordIntents, null);
   const key = env[policy.jev.key_env];
-  if (!nonEmpty(key)) return keywordVerdict(keywordIntents, 'no-key');
+  if (!nonEmpty(key)) return llmVerdict(input, keywordIntents, 'no-key');
   return jevVerdict(input, policy, deps, key, keywordIntents);
 }
 
 // The keyword verdict escalates nothing itself: the floor's own escalation
 // (policy.router) is the advisor's, already computed by resolve-task.
-function keywordVerdict(keywordIntents: string[], reason: FallbackReason | null): Verdict {
-  return { mode: 'keyword', intents: keywordIntents, confidence: null, escalate: false, escalate_reason: null, fallback_reason: reason, cost_micros: null };
+function keywordVerdict(keywordIntents: string[]): Verdict {
+  return { mode: 'keyword', intents: keywordIntents, confidence: null, escalate: false, escalate_reason: null, fallback_reason: null, cost_micros: null };
+}
+
+// The hook calls no model: the in-session router agent decides, and only on
+// the residue the floor could not settle. This is also where every Jev failure
+// lands, with the reason named, so a lost key or a timeout degrades to the
+// agent and never silently to the floor.
+function llmVerdict(input: DecisionInput, keywordIntents: string[], reason: FallbackReason | null): Verdict {
+  return {
+    mode: 'llm',
+    intents: keywordIntents,
+    confidence: null,
+    escalate: input.genericOnly || input.candidates.length === 0,
+    escalate_reason: input.genericOnly ? 'generic-only' : input.candidates.length === 0 ? 'no-match' : null,
+    fallback_reason: reason,
+    cost_micros: null,
+  };
 }
 
 // --- jev --------------------------------------------------------------------
@@ -303,9 +284,9 @@ async function jevVerdict(
   keywordIntents: string[],
 ): Promise<Verdict> {
   const call = await callJev(jevRequestBody(input, policy), policy, deps, key);
-  if (!call.ok) return keywordVerdict(keywordIntents, call.reason);
+  if (!call.ok) return llmVerdict(input, keywordIntents, call.reason);
   const answer = parseJevAnswer(call.body, input.offered);
-  if (answer === null) return keywordVerdict(keywordIntents, 'bad-answer');
+  if (answer === null) return llmVerdict(input, keywordIntents, 'bad-answer');
 
   const ranked = [...answer.probabilities].sort((a, b) => b - a);
   const gap = (ranked[0] ?? 0) - (ranked[1] ?? 0);
@@ -467,14 +448,6 @@ function unitNumber(value: unknown): number | null {
 }
 
 // --- helpers ----------------------------------------------------------------
-
-function safeProbe(probe: () => boolean): boolean {
-  try {
-    return probe();
-  } catch {
-    return false;
-  }
-}
 
 function nonEmpty(value: string | undefined): value is string {
   return value !== undefined && value !== '';

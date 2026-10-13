@@ -14,9 +14,14 @@ import { dirname, join, relative, resolve as resolvePath } from 'node:path';
 import type { AsyncCommand } from '../dispatch';
 import type { Io } from '../io';
 import { lazyRegistries } from '../kernel/context';
-import { claudeCliOnPath } from '../kernel/decision-layer';
 import { resolveRoot } from '../registry/paths';
-import { isRouterMode, loadRouterDecisionPolicy, type RouterMode } from '../registry/policy-router-decision';
+import {
+  isGoldenSetProvenance,
+  isRouterMode,
+  loadRouterDecisionPolicy,
+  type RouterDecisionPolicy,
+  type RouterMode,
+} from '../registry/policy-router-decision';
 import { parseCases } from './router-golden-cases';
 import { CANDIDATES_FILE, collect, renderSummary } from './router-golden-collect';
 import { writeRouterDefault } from './router-golden-policy';
@@ -44,7 +49,6 @@ export interface RouterGoldenDeps {
   spawn: typeof spawnSync;
   caseRouter: CaseRouterFactory;
   fetch?: typeof fetch;
-  hasClaudeCli?: () => boolean;
   clock?: () => number;
 }
 
@@ -146,7 +150,7 @@ async function runGolden(argv: string[], io: Io, deps: RouterGoldenDeps): Promis
   const verdict = acceptance(scores, policy.modes);
   const date = new Date(deps.now()).toISOString().slice(0, 10);
   const defaultLine = args.writeDefault
-    ? applyDefault(root, { verdict, scores, date, golden: goldenSetId(shownPath, text, parsed.cases.length) })
+    ? applyDefault(root, { verdict, scores, date, golden: goldenSetId(shownPath, text, parsed.cases.length), policy })
     : `unchanged (${policy.default ?? 'null'}); run with --write-default to apply the acceptance rule`;
 
   const results = renderResults({ date, head: gitHead(root, deps.spawn), casesPath: shownPath, cases: parsed.cases, scores, verdict, defaultLine });
@@ -166,7 +170,6 @@ async function runGolden(argv: string[], io: Io, deps: RouterGoldenDeps): Promis
 function caseRouterDeps(io: Io, deps: RouterGoldenDeps): Parameters<CaseRouterFactory>[1] {
   const out: Parameters<CaseRouterFactory>[1] = {
     env: io.env,
-    hasClaudeCli: deps.hasClaudeCli ?? (() => claudeCliOnPath(io.env)),
     now: deps.clock ?? (() => performance.now()),
   };
   if (deps.fetch !== undefined) out.fetch = deps.fetch;
@@ -178,17 +181,23 @@ interface DefaultFacts {
   scores: ReadonlyMap<RouterMode, ModeScore>;
   date: string;
   golden: string;
+  policy: RouterDecisionPolicy;
 }
 
-// A winner writes the default with its provenance; no winner writes null/null
-// — shadow continues — so a later tie also retires an earlier winner.
+// A winner writes the default with its provenance. No winner retires an
+// earlier golden-set winner to null (a later tie is a real result), but never
+// a developer's recorded decision: the set has not shown anything better.
 function applyDefault(root: string, facts: DefaultFacts): string {
+  const standing = facts.policy.default_written_by;
+  if (facts.verdict.kind !== 'winner' && standing !== null && !isGoldenSetProvenance(standing)) {
+    return `unchanged (${String(facts.policy.default)}): no winner, the developer decision of ${standing.date} stands`;
+  }
   const value = facts.verdict.kind === 'winner'
     ? { mode: facts.verdict.mode, writtenBy: { date: facts.date, golden_set: facts.golden, scores: scoresForPolicy(facts.scores) } }
     : { mode: null, writtenBy: null };
   const outcome = writeRouterDefault(root, value);
   if (!outcome.ok) return `NOT written: ${outcome.reason}`;
-  const what = value.mode === null ? 'null (shadow continues)' : value.mode;
+  const what = value.mode === null ? 'null (auto)' : value.mode;
   return outcome.changed ? `written: ${what}` : `already ${what}`;
 }
 

@@ -232,8 +232,8 @@ here; rules, risk, autonomy and gates stay deterministic.
 |---|---|---|
 | `keyword` | the keyword floor alone | nothing |
 | `llm` | the keyword floor; a prompt that matched only generic words, or nothing, escalates to the in-session `router` agent | the prompt, to Anthropic, as any Claude turn already does |
-| `jev` | TypeSafe System One (Jev), one call within a 400 ms budget, choosing among the intents your stack allows | the prompt, languages, frameworks and file names mentioned in the prompt, to TypeSafe — no file contents, no diff |
-| `auto` | `jev` when `TYPESAFE_API_KEY` is set, else `llm` when the `claude` CLI is on PATH, else `keyword` | whatever the resolved mode sends |
+| `jev` | TypeSafe System One (Jev), one call within a 1000 ms budget, choosing among the intents your stack allows | the prompt, languages, frameworks and file names mentioned in the prompt, to TypeSafe — no file contents, no diff |
+| `auto` | `jev` when `TYPESAFE_API_KEY` is set, else `llm` — never `keyword`, which runs only when a setting names it | whatever the resolved mode sends |
 
 Where to set it:
 
@@ -247,11 +247,13 @@ Where to set it:
   (`keyword` < `llm` < `jev` < `auto`), so a client repo that declares `keyword` or
   `llm` sends nothing to TypeSafe whatever your personal setting says.
 
-With neither set, the hook reads `registries/policy.json` `router_decision.default`.
-Only the golden-set run writes it, never a hand. Until that run exists it is
-`null` and the hook runs in **shadow**: it applies the best available mode, also
-computes the keyword answer, and logs both to the `router` span so real
-disagreements become the golden set.
+With neither set, the hook reads `registries/policy.json` `router_decision.default`,
+which ships as `jev` (a developer decision recorded in `default_written_by` after the
+first live run on 2026-10-13). Without `TYPESAFE_API_KEY` that degrades to `llm` and
+says so on every prompt — the loud way to notice a missing key. Whatever the
+default, the hook also computes the keyword answer and logs both to the `router`
+span (**shadow**), so real disagreements keep becoming the golden set. A
+golden-set run may overwrite the default with a measured winner.
 
 How the default gets written: `scripts/router-golden.sh collect [<repo>...]` turns
 each repo's shadow `router` spans, joined to the prompt in your local session
@@ -259,18 +261,20 @@ transcript, into candidates in `evals/router-golden/candidates.local.jsonl`
 (gitignored — it may hold client data). You label `expect_intents`, redact, and
 move the cases you keep into `evals/router-golden/cases.jsonl`. Then
 `scripts/router-golden.sh run` grades `keyword`, `llm` and `jev` on that set and
-writes `evals/router-golden/RESULTS.md`; only `run --write-default` writes
-`router_decision.default`, and only when one mode has a strictly highest intent
-accuracy with full stack correctness — otherwise it stays `null` and the run says
-why. Grading `jev` sends the curated prompts to TypeSafe, so curate first. See
+writes `evals/router-golden/RESULTS.md`; `run --write-default` overwrites
+`router_decision.default` only when one mode has a strictly highest intent
+accuracy with full stack correctness — otherwise a developer decision stands, an
+earlier golden-set winner is retired to `null`, and the run says why. Grading `jev` sends the curated prompts to TypeSafe, so curate first. See
 `evals/router-golden/README.md`.
 
 What you will see: the contract line carries `router=<mode>` (plus `/<confidence>`
-for `jev`). Any failure (no key, no `claude` CLI for `llm`, timeout, HTTP 429/529, an answer
-outside the offered intents) falls back to keyword and says so on its own line,
-`[engineos] router: keyword (<mode> unavailable: <reason>)`, never silently. When
-the line says the router could not decide, dispatch the `router` agent before any
-write.
+for `jev`). Any `jev` failure (no key, timeout, HTTP 429/529, an answer outside the
+offered intents) falls back to `llm` — the keyword floor plus the in-session `router`
+agent on whatever the floor could not settle — and says so on its own line,
+`[engineos] router: llm (<mode> unavailable: <reason>)`, never silently. `llm` itself
+needs nothing on your machine and never falls back. The keyword floor decides alone
+only when `ENGINEOS_ROUTER` or the repo's `router.mode` says `keyword`. When the line
+says the router could not decide, dispatch the `router` agent before any write.
 
 ---
 

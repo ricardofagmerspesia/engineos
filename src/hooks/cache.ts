@@ -106,7 +106,7 @@ export function writeCachedDecision(path: string, decision: Decision): void {
 }
 
 const ESCALATE_REASONS: readonly EscalateReason[] = ['generic-only', 'low-confidence', 'tie', 'needs-router', 'no-match'];
-const FALLBACK_REASON = /^(no-key|timeout|bad-answer|network|no-cli|http-\d{3})$/;
+const FALLBACK_REASON = /^(no-key|timeout|bad-answer|network|http-\d{3})$/;
 
 // The Decision's exact shape, field by field; anything else is a miss. Rebuilt
 // rather than returned as parsed, so an extra key in a tampered entry never
@@ -146,7 +146,7 @@ export function parseDecision(value: unknown): Decision | null {
 }
 
 function fallbackReason(text: string): FallbackReason {
-  if (text === 'no-key' || text === 'timeout' || text === 'bad-answer' || text === 'network' || text === 'no-cli') return text;
+  if (text === 'no-key' || text === 'timeout' || text === 'bad-answer' || text === 'network') return text;
   return `http-${Number.parseInt(text.slice('http-'.length), 10)}`;
 }
 

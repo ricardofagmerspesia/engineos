@@ -138,7 +138,7 @@ function spySchedule(fireImmediately = false): { schedule: Schedule; armed: numb
 }
 
 function jevDeps(fetchImpl: typeof fetch, extra: DecisionDeps = {}): DecisionDeps {
-  return { fetch: fetchImpl, env: { [KEY_ENV]: KEY }, hasClaudeCli: () => true, ...extra };
+  return { fetch: fetchImpl, env: { [KEY_ENV]: KEY }, ...extra };
 }
 
 function assertKeyAbsent(decision: Decision): void {
@@ -187,21 +187,18 @@ test('the policy default stands in for an unset personal value', () => {
 // --- resolveAuto ------------------------------------------------------------
 
 test('auto resolves to jev when the key is set', () => {
-  assert.equal(resolveAuto('auto', { [KEY_ENV]: KEY }, KEY_ENV, () => true), 'jev');
+  assert.equal(resolveAuto('auto', { [KEY_ENV]: KEY }, KEY_ENV), 'jev');
 });
 
-test('auto without a key resolves to llm when the claude CLI is present', () => {
-  assert.equal(resolveAuto('auto', { [KEY_ENV]: '' }, KEY_ENV, () => true), 'llm');
-});
-
-test('auto with neither a key nor the CLI resolves to keyword', () => {
-  assert.equal(resolveAuto('auto', {}, KEY_ENV, () => false), 'keyword');
-  assert.equal(resolveAuto('auto', {}, KEY_ENV, () => { throw new Error('probe failed'); }), 'keyword');
+test('auto without a key resolves to llm, never to keyword', () => {
+  assert.equal(resolveAuto('auto', { [KEY_ENV]: '' }, KEY_ENV), 'llm');
+  assert.equal(resolveAuto('auto', {}, KEY_ENV), 'llm');
+  assert.equal(resolveAuto('auto', { PATH: '' }, KEY_ENV), 'llm');
 });
 
 test('an explicit mode passes through untouched', () => {
-  assert.equal(resolveAuto('keyword', { [KEY_ENV]: KEY }, KEY_ENV, () => true), 'keyword');
-  assert.equal(resolveAuto('jev', {}, KEY_ENV, () => false), 'jev');
+  assert.equal(resolveAuto('keyword', { [KEY_ENV]: KEY }, KEY_ENV), 'keyword');
+  assert.equal(resolveAuto('jev', {}, KEY_ENV), 'jev');
 });
 
 // --- buildDecisionInput -----------------------------------------------------
@@ -293,7 +290,7 @@ test('keyword mode returns the candidates and never calls out', async () => {
 });
 
 test('llm mode keeps the candidates and escalates a specific floor result not at all', async () => {
-  const decision = await decide(input(), 'llm', 'auto', policy(), { hasClaudeCli: () => true });
+  const decision = await decide(input(), 'llm', 'auto', policy(), {});
   assert.equal(decision.mode, 'llm');
   assert.equal(decision.requested, 'auto');
   assert.deepEqual(decision.intents, ['backend-python']);
@@ -302,23 +299,23 @@ test('llm mode keeps the candidates and escalates a specific floor result not at
 });
 
 test('llm mode escalates a generic-only floor result to the router agent', async () => {
-  const decision = await decide(input({ genericOnly: true }), 'llm', 'llm', policy(), { hasClaudeCli: () => true });
+  const decision = await decide(input({ genericOnly: true }), 'llm', 'llm', policy(), {});
   assert.equal(decision.escalate, true);
   assert.equal(decision.escalate_reason, 'generic-only');
 });
 
 test('llm mode escalates when the floor matched nothing', async () => {
-  const decision = await decide(input({ candidates: [] }), 'llm', 'llm', policy(), { hasClaudeCli: () => true });
+  const decision = await decide(input({ candidates: [] }), 'llm', 'llm', policy(), {});
   assert.equal(decision.escalate, true);
   assert.equal(decision.escalate_reason, 'no-match');
   assert.deepEqual(decision.intents, []);
 });
 
-test('llm mode without the claude CLI falls back to keyword with no-cli', async () => {
-  const decision = await decide(input({ genericOnly: true }), 'llm', 'llm', policy(), { hasClaudeCli: () => false });
-  assert.equal(decision.mode, 'keyword');
-  assert.equal(decision.fallback_reason, 'no-cli');
-  assert.equal(decision.escalate, false);
+test('llm mode needs nothing on the machine: an empty PATH and no key still decide as llm', async () => {
+  const decision = await decide(input({ genericOnly: true }), 'llm', 'llm', policy(), { env: { PATH: '' } });
+  assert.equal(decision.mode, 'llm');
+  assert.equal(decision.fallback_reason, null);
+  assert.equal(decision.escalate, true);
 });
 
 // --- jev: the request -------------------------------------------------------
@@ -428,34 +425,56 @@ test('jev answering __none__ keeps the keyword intents and escalates', async () 
   assert.deepEqual(decision.shadow, { keyword_intents: ['new-feature'], disagreement: false });
 });
 
-test('a measured default turns shadow off', async () => {
+test('shadow stays on under a written default, so the golden set keeps collecting', async () => {
   const transport = fakeFetch(() => jevResponse(confident()));
   const measured = policy({
     default: 'jev',
     default_written_by: { date: '2026-10-20', golden_set: 'evals/router-golden/cases.jsonl', scores: {} },
   });
   const decision = await decide(input(), 'jev', 'jev', measured, jevDeps(transport.fetch));
-  assert.equal(decision.shadow, null);
+  assert.deepEqual(decision.shadow, { keyword_intents: ['backend-python'], disagreement: false });
 });
 
 // --- jev: failures ----------------------------------------------------------
 
-test('jev without a key falls back to keyword with no-key and never calls out', async () => {
+test('jev without a key falls back to llm with no-key and never calls out', async () => {
   const transport = fakeFetch(() => jevResponse(confident()));
   for (const env of [{}, { [KEY_ENV]: '' }]) {
     const decision = await decide(input(), 'jev', 'jev', policy(), { fetch: transport.fetch, env });
-    assert.equal(decision.mode, 'keyword');
+    assert.equal(decision.mode, 'llm');
     assert.equal(decision.fallback_reason, 'no-key');
     assert.deepEqual(decision.intents, ['backend-python']);
+    assert.equal(decision.escalate, false);
   }
   assert.equal(transport.calls.length, 0);
+});
+
+test('a jev fallback keeps the llm escalation rule: a generic-only floor still goes to the router agent', async () => {
+  const decision = await decide(input({ genericOnly: true }), 'jev', 'auto', policy(), { env: {} });
+  assert.equal(decision.mode, 'llm');
+  assert.equal(decision.fallback_reason, 'no-key');
+  assert.equal(decision.escalate, true);
+  assert.equal(decision.escalate_reason, 'generic-only');
+});
+
+test('no failure path ever lands on the keyword floor', async () => {
+  const failures: Array<typeof fetch> = [
+    () => Promise.resolve(new Response('no', { status: 529 })),
+    () => Promise.resolve(new Response('{"answers": ', { status: 200 })),
+    () => Promise.reject(new TypeError('fetch failed')),
+  ];
+  for (const failing of failures) {
+    const decision = await decide(input(), 'jev', 'jev', policy(), jevDeps(failing));
+    assert.equal(decision.mode, 'llm');
+    assert.notEqual(decision.fallback_reason, null);
+  }
 });
 
 for (const status of [429, 529, 500]) {
   test(`jev answering HTTP ${status} falls back with http-${status}`, async () => {
     const transport = fakeFetch(() => new Response(`upstream says no, key ${KEY}`, { status }));
     const decision = await decide(input(), 'jev', 'jev', policy(), jevDeps(transport.fetch));
-    assert.equal(decision.mode, 'keyword');
+    assert.equal(decision.mode, 'llm');
     assert.equal(decision.fallback_reason, `http-${status}`);
     assert.equal(decision.escalate, false);
     assert.deepEqual(decision.intents, ['backend-python']);
@@ -477,7 +496,7 @@ for (const [name, answer] of BAD_ANSWERS) {
   test(`jev returning ${name} falls back with bad-answer`, async () => {
     const transport = fakeFetch(answer);
     const decision = await decide(input(), 'jev', 'jev', policy(), jevDeps(transport.fetch));
-    assert.equal(decision.mode, 'keyword');
+    assert.equal(decision.mode, 'llm');
     assert.equal(decision.fallback_reason, 'bad-answer');
     assert.deepEqual(decision.intents, ['backend-python']);
     assertKeyAbsent(decision);
@@ -489,7 +508,7 @@ test('jev that never answers within the budget falls back with timeout', async (
   // and the real timer must be cleared so it cannot hold the process open.
   const hanging: typeof fetch = () => new Promise<Response>(() => undefined);
   const decision = await decide(input(), 'jev', 'jev', policy({ jev: { endpoint: ENDPOINT, model: 'jev-latest', budget_ms: 5, key_env: KEY_ENV } }), jevDeps(hanging));
-  assert.equal(decision.mode, 'keyword');
+  assert.equal(decision.mode, 'llm');
   assert.equal(decision.fallback_reason, 'timeout');
   assertKeyAbsent(decision);
 });
@@ -508,7 +527,7 @@ test('a rejected fetch falls back with network', async () => {
   const schedule = spySchedule();
   const failing: typeof fetch = () => Promise.reject(new TypeError(`fetch failed for ${KEY}`));
   const decision = await decide(input(), 'jev', 'jev', policy(), jevDeps(failing, { schedule: schedule.schedule }));
-  assert.equal(decision.mode, 'keyword');
+  assert.equal(decision.mode, 'llm');
   assert.equal(decision.fallback_reason, 'network');
   assert.equal(schedule.cancelled, 1);
   assertKeyAbsent(decision);

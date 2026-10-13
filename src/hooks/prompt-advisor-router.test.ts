@@ -100,15 +100,16 @@ function spans(repo: string, sid: string): Record<string, unknown>[] {
     });
 }
 
-test('auto with the claude CLI rebinds to the FastAPI row and hands a generic prompt to the router agent', async (t) => {
+test('unset means the policy default (jev); without a key it degrades to llm out loud, rebinds to the FastAPI row and hands a generic prompt to the router agent', async (t) => {
   if (!hasGit()) return t.skip('git is not installed');
   const repo = fastapiReactRepo(t);
-  const text = await advise(promptOf(PROMPT, repo, 'r1'), ctxWith({}), { hasClaudeCli: () => true, fetch: neverCalled().fetch });
+  const text = await advise(promptOf(PROMPT, repo, 'r1'), ctxWith({ PATH: '' }), { fetch: neverCalled().fetch });
   const line = contractLine(text);
   assert.match(line, /intents=backend-python /);
   assert.match(line, /rules=backend-python,architecture,data,testing,observability /);
   assert.match(line, /skills=python-patterns /);
   assert.match(line, / router=llm rebound=backend->backend-python\(framework\/repo\) — load these/);
+  assert.ok(text.includes('[engineos] router: llm (jev unavailable: no-key)'), text);
   assert.ok(text.includes('[engineos] router: llm could not decide (generic-only)'), text);
   assert.ok(text.includes('these candidates before any write: backend-python.'), text);
 });
@@ -132,19 +133,20 @@ test('a NestJS repository keeps the node row with no rebind', async (t) => {
 test('keyword mode names itself and never hands off', async (t) => {
   if (!hasGit()) return t.skip('git is not installed');
   const repo = fastapiReactRepo(t);
-  const text = await advise(promptOf(PROMPT, repo, 'r3'), ctxWith({ ENGINEOS_ROUTER: 'keyword' }), { hasClaudeCli: () => true });
+  const text = await advise(promptOf(PROMPT, repo, 'r3'), ctxWith({ ENGINEOS_ROUTER: 'keyword' }), {});
   assert.match(contractLine(text), / router=keyword rebound=/);
   assert.ok(!text.includes('could not decide'), text);
   assert.ok(!text.includes('[engineos] router:'), text);
 });
 
-test('jev without its key falls back to keyword out loud and never calls out', async (t) => {
+test('jev without its key falls back to llm out loud, keeps the handoff, and never calls out', async (t) => {
   if (!hasGit()) return t.skip('git is not installed');
   const repo = fastapiReactRepo(t);
   const transport = neverCalled();
   const text = await advise(promptOf(PROMPT, repo, 'r4'), ctxWith({ ENGINEOS_ROUTER: 'jev' }), { fetch: transport.fetch });
-  assert.ok(text.includes('[engineos] router: keyword (jev unavailable: no-key)'), text);
-  assert.match(contractLine(text), / router=keyword /);
+  assert.ok(text.includes('[engineos] router: llm (jev unavailable: no-key)'), text);
+  assert.match(contractLine(text), / router=llm /);
+  assert.ok(text.includes('[engineos] router: llm could not decide (generic-only)'), text);
   assert.equal(transport.calls, 0);
 });
 
@@ -226,9 +228,31 @@ test('a failing decision path renders the kernel contract with an error fallback
       delete policy['router_decision'];
     },
   });
-  const text = await advise(promptOf(PROMPT, repo, 'err1'), ctxWith({}, broken), { hasClaudeCli: () => true });
-  assert.ok(text.includes('[engineos] router: keyword (auto unavailable: error)'), text);
-  assert.match(contractLine(text), /intents=backend-python .* router=keyword rebound=/);
+  const text = await advise(promptOf(PROMPT, repo, 'err1'), ctxWith({}, broken), {});
+  assert.ok(text.includes('[engineos] router: llm (auto unavailable: error)'), text);
+  assert.match(contractLine(text), /intents=backend-python .* router=llm rebound=/);
+  assert.ok(text.includes('[engineos] router: llm could not decide (generic-only)'), text);
+});
+
+test('a failing decision path under an explicit keyword setting stays keyword', async (t) => {
+  if (!hasGit()) return t.skip('git is not installed');
+  const config = {
+    version: 1,
+    stack: { packages: [{ dir: 'backend', language: 'python', framework: 'fastapi', compose_service: null }] },
+    router: { mode: 'keyword' },
+  };
+  const capped = fastapiReactRepo(t, { '.engineos/config.json': JSON.stringify(config) });
+  const broken = relocatedRoot(tempRoot(t), {
+    mutate: (policy) => {
+      delete policy['router_decision'];
+    },
+  });
+  // Policy loading fails before the repo cap is read, so the setting the error
+  // reports is the personal one; an explicit keyword personal setting holds.
+  const text = await advise(promptOf(PROMPT, capped, 'err2'), ctxWith({ ENGINEOS_ROUTER: 'keyword' }, broken), {});
+  assert.ok(text.includes('[engineos] router: keyword (keyword unavailable: error)'), text);
+  assert.match(contractLine(text), / router=keyword rebound=/);
+  assert.ok(!text.includes('could not decide'), text);
 });
 
 test('a pure question never reaches the decision layer', async (t) => {

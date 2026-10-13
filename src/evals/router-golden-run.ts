@@ -87,7 +87,6 @@ export const advisorCaseRouter: CaseRouterFactory = (root, deps) => {
 function routerDeps(deps: AdvisorRouterDeps): RouterDeps {
   const out: RouterDeps = {};
   if (deps.fetch !== undefined) out.fetch = deps.fetch;
-  if (deps.hasClaudeCli !== undefined) out.hasClaudeCli = deps.hasClaudeCli;
   if (deps.now !== undefined) out.now = deps.now;
   if (deps.schedule !== undefined) out.schedule = deps.schedule;
   return out;

@@ -67,10 +67,12 @@ Rules for routing:
 - **A switch, never a model, picks who decides the intents.** `ENGINEOS_ROUTER` =
   `keyword` | `llm` | `jev` | `auto` (personal env) and `router.mode` in the repo's
   `.engineos/config.json` cap it; the more restrictive wins. Unset, `registries/policy.json`
-  `router_decision.default` applies — written only by the golden-set run; `null` means
-  shadow. The contract line shows `router=<mode>[/<confidence>]`; a fallback is always
-  announced as `[engineos] router: keyword (<mode> unavailable: <reason>)`. When the line
-  says the router could not decide, dispatch the `router` agent before any write.
+  `router_decision.default` applies — `jev` today, a recorded developer decision that a
+  golden-set run may overwrite; the keyword answer is always logged beside it (shadow). The contract line shows `router=<mode>[/<confidence>]`; a fallback is always
+  announced as `[engineos] router: llm (<mode> unavailable: <reason>)` — a failure degrades
+  to the in-session router agent, never silently to the keyword floor, which decides
+  alone only when a setting names it. When the line says the router could not decide,
+  dispatch the `router` agent before any write.
 - **The hooks need node >= 18.** Every `hooks/*.sh` is a shim over
   `dist/engineos.cjs`; `jq` is no longer a hook dependency. Under a missing or
   too-old node, `route-before-change.sh`, `mark-unrecorded.sh`,

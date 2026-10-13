@@ -43,7 +43,7 @@ export type JoinResult =
 // with milliseconds BEFORE the hook. So the turn may sit up to one second past
 // the span's printed second, never more.
 const SPAN_RESOLUTION_MS = 1000;
-// A hook answers in milliseconds (the Jev budget is 400 ms); a turn older than
+// A hook answers in milliseconds (the Jev budget is one second); a turn older than
 // this is not the prompt the span routed, it is the one before a lost turn.
 export const JOIN_WINDOW_MS = 60_000;
 

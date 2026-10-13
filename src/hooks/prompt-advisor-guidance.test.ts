@@ -58,7 +58,10 @@ test('every rebind is named with its evidence level and scope', () => {
   assert.match(contractLine(rebound), / router=keyword rebound=backend->backend-python\(framework\/package\),x->y\(language\/repo\) — load these/);
 });
 
-test('a fallback is always said out loud', () => {
+test('a fallback is always said out loud, naming the mode that took over', () => {
+  const llmView: RouterView = { mode: 'llm', confidence: null, fallback: { requested: 'jev', reason: 'timeout' }, escalation: null };
+  const llmNotes = guidanceNotes({ ...taskFor(RESOLVED), router: llmView });
+  assert.ok(llmNotes.includes('[engineos] router: llm (jev unavailable: timeout)'), llmNotes.join('\n'));
   const view: RouterView = { ...KEYWORD, fallback: { requested: 'jev', reason: 'no-key' } };
   const notes = guidanceNotes({ ...taskFor(RESOLVED), router: view });
   assert.ok(notes.includes('[engineos] router: keyword (jev unavailable: no-key)'), notes.join('\n'));

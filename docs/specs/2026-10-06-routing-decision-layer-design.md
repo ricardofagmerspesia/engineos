@@ -95,8 +95,9 @@ useful even if layers 2 and 3 are never enabled.
   **The more restrictive wins**: a repo that says `keyword` is never routed through a
   network model whatever the personal setting says (client code never leaves the
   machine). Order: `keyword` < `llm` < `jev` < `auto` in restrictiveness, where
-  `auto` = `jev` when a key is present, else `llm` when the `claude` CLI is present,
-  else `keyword`. `[?]` Confirm the restrictiveness order: is `llm` (Anthropic, the
+  `auto` = `jev` when a key is present, else `llm` (amended 2026-10-13: the CLI probe
+  is gone — `llm` is the in-session router agent and needs nothing on the machine, so
+  `auto` never resolves to `keyword`). `[?]` Confirm the restrictiveness order: is `llm` (Anthropic, the
   provider the session already talks to) really less restrictive than `jev`
   (a second provider)? Proposed: yes — `llm` sends to the provider the session
   already uses; `jev` adds TypeSafe.
@@ -110,7 +111,7 @@ useful even if layers 2 and 3 are never enabled.
   developer flips nothing by hand; a new golden-set run rewrites the field.
 
 **Mode `jev`.** One HTTP call, `POST https://api.typesafe.ai/v1/systemone`, bearer
-`TYPESAFE_API_KEY`, via node `fetch` (no new dependency; node ≥ 18). Budget 400 ms
+`TYPESAFE_API_KEY`, via node `fetch` (no new dependency; node ≥ 18). Budget 400 ms (raised to 1000 ms on 2026-10-13 after live measurement: real calls take 363–399 ms)
 `[?]`, no retries (429/529 → fallback, never backoff inside a hook).
 
 - `state`: `{ prompt, languages, frameworks, project_claude_head (≤ 1500 chars),
@@ -149,9 +150,11 @@ Proposed: (a) as the `llm` mode. (b) only as the eval harness's grader.
 
 **Mode `keyword`.** Layer 1 only. The contract says `router=keyword`.
 
-**Fallback, every mode.** Any error, timeout, missing key or CLI → keyword result
-plus one visible line: `[engineos] router: keyword (jev unavailable: <reason>)`. A
-silent downgrade is the one thing this layer must never do.
+**Fallback, every mode.** Any error, timeout or missing key → the `llm` result (the
+floor plus the router agent on the residue) plus one visible line:
+`[engineos] router: llm (jev unavailable: <reason>)` (amended 2026-10-13: the fallback
+target was keyword; the developer's rule is that keyword is never the implicit default).
+A silent downgrade is the one thing this layer must never do.
 
 ### 3.3 Layer 3: the contract
 

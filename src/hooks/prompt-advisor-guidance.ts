@@ -138,7 +138,7 @@ function routerNotes(task: TaskAnswer): string[] {
   if (router === null) return [];
   const notes: string[] = [];
   if (router.fallback !== null) {
-    notes.push(`[engineos] router: keyword (${router.fallback.requested} unavailable: ${router.fallback.reason})`);
+    notes.push(`[engineos] router: ${router.mode} (${router.fallback.requested} unavailable: ${router.fallback.reason})`);
   }
   if (router.escalation !== null && !task.route.escalate) {
     notes.push(

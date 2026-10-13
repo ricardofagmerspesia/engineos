@@ -34,7 +34,7 @@ intent has a routing domain whose `sample_path` routes to it" (reuses C17).
   "default_written_by": null,
   "min_confidence": 0.6,
   "tie_margin": 0.15,
-  "jev": { "endpoint": "https://api.typesafe.ai/v1/systemone", "model": "jev-latest", "budget_ms": 400, "key_env": "TYPESAFE_API_KEY" },
+  "jev": { "endpoint": "https://api.typesafe.ai/v1/systemone", "model": "jev-latest", "budget_ms": 1000, "key_env": "TYPESAFE_API_KEY" },
   "state_fields": ["prompt", "languages", "frameworks", "files_named"]
 }
 ```
@@ -109,9 +109,10 @@ Mode semantics:
   `criteria` keys = `offered` ids only. Answer validated: `choice` ∈ offered ∪ {__none__},
   `confidence` ∈ [0,1]. `intents = [choice] ∪ specific extras from candidates`;
   `escalate = confidence < min_confidence || top2 gap < tie_margin || needs_router ≥ 0.5 || existing rules`.
-  Any failure → `mode: 'keyword'`, `fallback_reason` set, candidates returned.
-- `auto` resolves to `jev` when `env[key_env]` is set, else `llm` when the claude CLI
-  is on PATH, else `keyword`; the resolved mode is reported in `requested` as `auto`
+  Any failure → `mode: 'llm'` (the llm verdict over the same candidates), `fallback_reason` set
+  (amended 2026-10-13, below; was `'keyword'`).
+- `auto` resolves to `jev` when `env[key_env]` is set, else `llm` (amended 2026-10-13;
+  the CLI probe is gone); the resolved mode is reported in `requested` as `auto`
   and in `mode` as what ran.
 - Shadow (policy `default === null`): the keyword result is always computed; when
   `mode !== 'keyword'`, `shadow.disagreement = intents differ from keyword_intents`.
@@ -148,7 +149,8 @@ row, because the React frontend made the repository "mixed". Replaced by:
 - Contract line (prompt-advisor-guidance.ts) gains ` router=<mode>` and, when
   `confidence !== null`, `/<confidence to 2 decimals>`.
 - New line when `fallback_reason !== null`:
-  `[engineos] router: keyword (<requested> unavailable: <fallback_reason>)`.
+  `[engineos] router: <mode> (<requested> unavailable: <fallback_reason>)` — `<mode>` is the
+  mode that took over (amended 2026-10-13: `llm`; `keyword` only under an explicit keyword setting).
 - New line when `escalate` and the existing route did not already escalate:
   `[engineos] router: <mode> could not decide (<reason>) — dispatch the router agent … (same wording as the existing escalation note)`.
 - Router span (`withSpan` in prompt-advisor.ts) fields, all EXISTING journal fields:
@@ -193,6 +195,21 @@ async `fetch`. So:
 - `DecisionDeps.schedule` injectable timer; the deadline also covers the body read.
 - `no-cli` fires for explicit `llm` too. `repo-cap` is reported by the advisor (it compares personal vs effective), not by `decide`.
 - **`offered` must be framework-aware (wave 2b):** an intent the floor would rebind away (route.ts two-level rule) is not offered to Jev; route.ts exports the eligibility helper the floor already uses.
+
+### Amendment (2026-10-13) — keyword is never the implicit default
+
+The developer's rule: the keyword floor decides alone only when a setting names it.
+The installed hook had shown `router=keyword` under `auto` because the `claude` CLI is
+not on the hook's PATH — a leftover of the rejected in-hook `claude -p` variant; the
+chosen `llm` mode is the in-session router agent and needs nothing on the machine.
+
+- `resolveAuto(setting, env, keyEnv)` → `jev` when `env[keyEnv]` is set, else `llm`. `claudeCliOnPath` and `DecisionDeps.hasClaudeCli` are removed; `'no-cli'` leaves `FallbackReason` (and the cache's accepted set).
+- `llm` never falls back. Every `jev` failure (`no-key`, `timeout`, `http-N`, `bad-answer`, `network`) returns the **llm verdict** over the same candidates — `mode: 'llm'`, `fallback_reason` set, the llm escalation rule (`generic-only` / `no-match`) intact — so a lost key degrades to the router agent, never silently to the floor. `mode: 'keyword'` is produced only when the resolved mode is `keyword`.
+- Advisor error path (the decision path threw): `mode` is `keyword` when the personal setting is `keyword`, else `llm` with the escalation read off the kernel's route (`generic_only` / no intents); the span records that mode. The personal setting is read before the policy loads so a thrown policy still reports it.
+- Fallback line: `[engineos] router: <mode> (<requested> unavailable: <reason>)`, `<mode>` being the mode that took over.
+- Golden set: `llm` cases never count as fallbacks; `jev` without a key is a fallback to `llm` (rate 1.0 as before).
+- **Default is `jev` (2026-10-13, developer decision).** `default_written_by` admits two provenance shapes: a golden-set run (`date`, `golden_set`, `scores`) or a developer decision (`date`, `decided_by`, `reason`); a row mixing both is refused, and a default with no provenance stays refused. `decide` now always carries `shadow` (keyword intents + disagreement), so the golden set keeps collecting under a written default. `run --write-default` with no winner leaves a developer decision untouched and only retires a golden-set winner. Unset personal setting → `jev`; without a key → `llm` with the `jev unavailable: no-key` line on every prompt.
+- `jev.budget_ms` 400 → 1000 (2026-10-13, after the first live run): five real calls measured 363–399 ms inside the layer, one at the budget; a 400 ms deadline would turn ordinary jitter into `timeout` fallbacks. The hook's total wall time was 500–650 ms per prompt, 120 ms on a cache hit.
 
 ## 4. Router agent brief (wave 2c)
 

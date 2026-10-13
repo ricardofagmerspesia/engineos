@@ -69,7 +69,7 @@ in-session router agent, which the run reports but does not grade.
 
 **`jev` needs `TYPESAFE_API_KEY` in your environment and sends every case's prompt,
 languages, frameworks and named files to TypeSafe.** Curate and redact before you
-run it. Without the key every `jev` case falls back to keyword and shows up as a
+run it. Without the key every `jev` case falls back to `llm` and shows up as a
 fallback rate of 1.0.
 
 ## Acceptance rule and the default
@@ -82,6 +82,8 @@ It writes a mode only when all of these hold:
 - that mode's `intent_accuracy` is strictly the highest (a tie decides nothing);
 - its `stack_correctness` is 1.0.
 
-Otherwise it writes `null` for both — shadow continues — and says why. The rest
+Otherwise it says why and writes nothing when the standing default is a developer
+decision (`decided_by` + `reason`); an earlier golden-set winner is retired to
+`null` (= `auto`). Shadow logging runs whatever the default is. The rest
 of `policy.json` stays byte-identical, and a rewrite the strict loader refuses is
 put back. The hook obeys the new default from the next prompt.

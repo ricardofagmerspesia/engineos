@@ -74,9 +74,11 @@ Rules for routing:
 - **A switch, never a model, picks who decides the intents.** In Claude Code the
   prompt hook reads `ENGINEOS_ROUTER` = `keyword` | `llm` | `jev` | `auto` (personal env)
   and `router.mode` in the repo's `.engineos/config.json`; the more restrictive wins, and
-  unset means `registries/policy.json` `router_decision.default` (golden-set written;
-  `null` = shadow). Its line shows `router=<mode>[/<confidence>]` and announces every
-  fallback as `[engineos] router: keyword (<mode> unavailable: <reason>)`. Here no hook
+  unset means `registries/policy.json` `router_decision.default` (`jev`, a recorded
+  developer decision a golden-set run may overwrite; the keyword answer is always logged
+  beside it). Its line shows `router=<mode>[/<confidence>]` and announces every
+  fallback as `[engineos] router: llm (<mode> unavailable: <reason>)` — a failure degrades
+  to the router agent, never silently to the keyword floor. Here no hook
   runs, so route from the table and dispatch the `router` agent yourself before any
   write when only generic words matched or the request spans domains.
 - **Hooks do not run under Codex.** The `[router] …` context, the edit-time

@@ -64,7 +64,7 @@ test('run reports every policy mode and leaves the default alone without --write
   assert.equal(status, 0);
   for (const mode of ['keyword', 'llm', 'jev']) assert.match(stdout, new RegExp(`${mode} intent_accuracy`));
   assert.match(stdout, /jev wins/);
-  assert.match(stdout, /default unchanged \(null\)/);
+  assert.match(stdout, /default unchanged \(jev\)/);
   assert.equal(readFileSync(join(root, 'registries', 'policy.json'), 'utf8'), before);
   const results = readFileSync(join(root, RESULTS_FILE), 'utf8');
   assert.match(results, /\| jev \| 1\.000 \| 1\.000 \| 5 \| 0\.000 \| 0\.000 \|/);
@@ -77,34 +77,39 @@ test('run reports every policy mode and leaves the default alone without --write
 test('--write-default writes the winner and the policy round-trips through the strict loader', async (t) => {
   const root = engineosRoot(t, CASES);
   const before = readFileSync(join(root, 'registries', 'policy.json'), 'utf8');
+  const standing = loadRouterDecisionPolicy(root);
   const { status, stdout } = await run(root, ['--write-default'], tableRouter({ keyword: ONE_MISS, llm: ONE_MISS, jev: ALL_RIGHT }));
   assert.equal(status, 0, stdout);
   assert.match(stdout, /default written: jev/);
   const policy = loadRouterDecisionPolicy(root);
   assert.equal(policy.default, 'jev');
-  assert.equal(policy.default_written_by?.date, '2026-10-12');
-  assert.match(policy.default_written_by?.golden_set ?? '', /^evals\/router-golden\/cases\.jsonl sha256:[0-9a-f]{12} cases:3$/);
-  assert.equal(policy.default_written_by?.scores.jev?.intent_accuracy, 1);
-  assert.equal(policy.default_written_by?.scores.keyword?.intent_accuracy, 0.6667);
+  const written = policy.default_written_by;
+  assert.ok(written !== null && 'golden_set' in written);
+  assert.equal(written.date, '2026-10-12');
+  assert.match(written.golden_set, /^evals\/router-golden\/cases\.jsonl sha256:[0-9a-f]{12} cases:3$/);
+  assert.equal(written.scores.jev?.intent_accuracy, 1);
+  assert.equal(written.scores.keyword?.intent_accuracy, 0.6667);
   // Only the two values changed: everything outside them is byte-identical.
   const after = readFileSync(join(root, 'registries', 'policy.json'), 'utf8');
-  const restored = replaceDefault(after, { mode: null, writtenBy: null });
+  const restored = replaceDefault(after, { mode: standing.default, writtenBy: standing.default_written_by });
   assert.equal(restored, before);
-  // A later tie retires the winner: shadow again.
+  // A later tie retires a golden-set winner (never a developer decision): auto again.
   const tie = await run(root, ['--write-default'], tableRouter({ keyword: ALL_RIGHT, llm: ALL_RIGHT, jev: ALL_RIGHT }));
-  assert.match(tie.stdout, /default written: null \(shadow continues\)/);
-  assert.equal(readFileSync(join(root, 'registries', 'policy.json'), 'utf8'), before);
+  assert.match(tie.stdout, /default written: null \(auto\)/);
+  const retired = loadRouterDecisionPolicy(root);
+  assert.equal(retired.default, null);
+  assert.equal(retired.default_written_by, null);
 });
 
-test('--write-default leaves the default null on a tie and says why', async (t) => {
+test('--write-default leaves a developer-decided default alone on a tie and says why', async (t) => {
   const root = engineosRoot(t, CASES);
   const before = readFileSync(join(root, 'registries', 'policy.json'), 'utf8');
   const { status, stdout } = await run(root, ['--write-default'], tableRouter({ keyword: ALL_RIGHT, llm: ALL_RIGHT, jev: ONE_MISS }));
   assert.equal(status, 0);
   assert.match(stdout, /no winner — tie on intent_accuracy 1\.000 between keyword, llm/);
-  assert.match(stdout, /default already null \(shadow continues\)/);
+  assert.match(stdout, /default unchanged \(jev\): no winner, the developer decision of 2026-10-13 stands/);
   assert.equal(readFileSync(join(root, 'registries', 'policy.json'), 'utf8'), before);
-  assert.equal(loadRouterDecisionPolicy(root).default, null);
+  assert.equal(loadRouterDecisionPolicy(root).default, 'jev');
 });
 
 test('--write-default leaves the default null when the leader is below full stack correctness', async (t) => {
@@ -113,7 +118,7 @@ test('--write-default leaves the default null when the leader is below full stac
   const foreign = { ...ALL_RIGHT, 'rg-001': ['backend-python', 'backend'] };
   const { stdout } = await run(root, ['--write-default'], tableRouter({ keyword: ONE_MISS, llm: ONE_MISS, jev: foreign }));
   assert.match(stdout, /jev leads on intent_accuracy but its stack_correctness is 0\.667 < 1\.0/);
-  assert.equal(loadRouterDecisionPolicy(root).default, null);
+  assert.equal(loadRouterDecisionPolicy(root).default, 'jev', 'the developer decision stands');
 });
 
 test('--write-default refuses to decide from a run that skipped a mode', async (t) => {
@@ -121,7 +126,7 @@ test('--write-default refuses to decide from a run that skipped a mode', async (
   const { stdout } = await run(root, ['--mode', 'jev', '--write-default'], tableRouter({ jev: ALL_RIGHT }));
   assert.match(stdout, /did not score keyword, llm/);
   assert.ok(!/ keyword intent_accuracy/.test(stdout), 'only the requested mode is scored');
-  assert.equal(loadRouterDecisionPolicy(root).default, null);
+  assert.equal(loadRouterDecisionPolicy(root).default, 'jev', 'the developer decision stands');
 });
 
 test('run with no cases says so and exits 0', async (t) => {
@@ -167,8 +172,8 @@ test('advisorCaseRouter routes a case end to end in every mode, with fallbacks v
       answers: { intent: { choice: 'backend-python', confidence: 0.92, probabilities: { 'backend-python': 0.92, frontend: 0.05 } }, needs_router: { noul: 0.1 } },
     }), { status: 200 });
   };
-  const withKey = advisorCaseRouter(checkout, { env: { TYPESAFE_API_KEY: 'test-key-not-real' }, fetch: fakeFetch, hasClaudeCli: () => true });
-  const noKey = advisorCaseRouter(checkout, { env: {}, fetch: fakeFetch, hasClaudeCli: () => false });
+  const withKey = advisorCaseRouter(checkout, { env: { TYPESAFE_API_KEY: 'test-key-not-real' }, fetch: fakeFetch });
+  const noKey = advisorCaseRouter(checkout, { env: { PATH: '' }, fetch: fakeFetch });
   try {
     const keyword = await withKey.route(item, 'keyword');
     assert.ok(keyword.intents.includes('backend-python'));
@@ -181,7 +186,7 @@ test('advisorCaseRouter routes a case end to end in every mode, with fallbacks v
     const llm = await withKey.route(item, 'llm');
     assert.equal(llm.fallback, false);
     assert.deepEqual(await noKey.route(item, 'jev').then((outcome) => outcome.fallback), true);
-    assert.deepEqual(await noKey.route(item, 'llm').then((outcome) => outcome.fallback), true);
+    assert.deepEqual(await noKey.route(item, 'llm').then((outcome) => outcome.fallback), false, 'llm needs nothing on the machine');
     assert.equal(calls.length, 1, 'no key, no call');
   } finally {
     withKey.dispose();

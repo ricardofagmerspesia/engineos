@@ -96,7 +96,7 @@ flowchart TD
         DL -->|keyword| KW["keep the keyword floor's intents"]
         DL -->|llm| LLM["keep the floor's intents<br/>generic-only or no match: escalate"]
         DL -->|jev| JEV["TypeSafe Jev chooses<br/>among stack-allowed intents"]
-        JEV -.->|"no key / timeout / bad answer"| FB["fallback to keyword, announced:<br/>'[engineos] router: keyword (jev unavailable)'"]
+        JEV -.->|"no key / timeout / bad answer"| FB["fallback to llm, announced:<br/>'[engineos] router: llm (jev unavailable)'"]
         KW --> TC
         LLM --> TC
         JEV --> TC
@@ -179,8 +179,9 @@ Key properties the flow encodes:
   the developer's own setting, not the constitution's.
 - **The decision layer only chooses.** Inside `UserPromptSubmit` a setting, never a
   model, picks `keyword`, `llm` or `jev`; whichever runs may only choose among the
-  intents the repository's stack allows, any failure falls back to keyword on a
-  visible line, and an undecided prompt goes to the `router` agent before any write.
+  intents the repository's stack allows, any failure falls back to `llm` on a
+  visible line (never silently to the keyword floor, which runs only when a setting
+  names it), and an undecided prompt goes to the `router` agent before any write.
   Rules, risk and gates stay with the kernel.
 - **Topology before graph code.** A request for more than one agent goes through
   `/engineos:design-agents` first; implementation starts only after the developer's

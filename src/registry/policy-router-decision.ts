@@ -38,12 +38,25 @@ export interface RouterModeScores {
   fallback_rate: number;
 }
 
-// Who set `default`, and on what evidence: the golden-set run that wrote it.
-// A default with no provenance is a hand edit, which the loader refuses.
-export interface RouterDecisionProvenance {
+// Who set `default`, and on what evidence: the golden-set run that wrote it,
+// or the developer's recorded decision. A default with no provenance is an
+// anonymous edit, which the loader refuses.
+export interface GoldenSetProvenance {
   date: string;
   golden_set: string;
   scores: Partial<Record<RouterMode, RouterModeScores>>;
+}
+
+export interface DeveloperProvenance {
+  date: string;
+  decided_by: string;
+  reason: string;
+}
+
+export type RouterDecisionProvenance = GoldenSetProvenance | DeveloperProvenance;
+
+export function isGoldenSetProvenance(p: RouterDecisionProvenance): p is GoldenSetProvenance {
+  return 'golden_set' in p;
 }
 
 export interface JevPolicy {
@@ -114,12 +127,12 @@ function routerDecisionPolicy(block: Record<string, unknown>): RouterDecisionPol
     ? null
     : routerDecisionProvenance(requireRecord(rawProvenance, `${at}.default_written_by`), modes, `${at}.default_written_by`);
   if (defaultMode !== null && provenance === null) {
-    refuse(`${at}.default is set by a golden-set run, never by hand: default_written_by must record it`);
+    refuse(`${at}.default needs provenance: default_written_by must record the golden-set run (golden_set, scores) or the developer decision (decided_by, reason)`);
   }
   if (defaultMode === null && provenance !== null) {
-    refuse(`${at}.default_written_by records a run that set no default`);
+    refuse(`${at}.default_written_by records a decision that set no default`);
   }
-  if (defaultMode !== null && provenance !== null && provenance.scores[defaultMode] === undefined) {
+  if (defaultMode !== null && provenance !== null && isGoldenSetProvenance(provenance) && provenance.scores[defaultMode] === undefined) {
     refuse(`${at}.default_written_by.scores must score the default mode "${defaultMode}"`);
   }
 
@@ -156,6 +169,16 @@ function routerDecisionProvenance(
   modes: readonly RouterMode[],
   at: string,
 ): RouterDecisionProvenance {
+  // A developer decision names who and why; a golden-set run names the set and
+  // its scores. The two never mix: a row with both is refused as ambiguous.
+  if ('decided_by' in row || 'reason' in row) {
+    if ('golden_set' in row || 'scores' in row) refuse(`${at} mixes a developer decision with a golden-set run`);
+    return {
+      date: requireNonEmpty(row['date'], `${at}.date`),
+      decided_by: requireNonEmpty(row['decided_by'], `${at}.decided_by`),
+      reason: requireNonEmpty(row['reason'], `${at}.reason`),
+    };
+  }
   const scoresRow = requireRecord(row['scores'], `${at}.scores`);
   const scores: Partial<Record<RouterMode, RouterModeScores>> = {};
   for (const [mode, value] of Object.entries(scoresRow)) {

@@ -5,13 +5,12 @@
 // which mode decides, folds the answer into the contract the guidance renders,
 // and states what the router span records. It never throws and never blocks a
 // prompt — any failure renders the kernel's contract with a visible
-// `router: keyword (... unavailable: error)` line.
+// `router: llm (... unavailable: error)` line.
 import type { spawnSync } from 'node:child_process';
 import type { TaskContractSection } from '../kernel';
 import type { Registries } from '../kernel/context';
 import {
   buildDecisionInput,
-  claudeCliOnPath,
   decide,
   effectiveSetting,
   resolveAuto,
@@ -44,8 +43,8 @@ import type { RouterView, TaskAnswer } from './prompt-advisor-guidance';
 import type { SpanFields } from './telemetry';
 import { projectConfig } from './verify-targets';
 
-// What a test injects in place of the network, the CLI probe and the clocks.
-export type RouterDeps = Pick<DecisionDeps, 'fetch' | 'hasClaudeCli' | 'now' | 'schedule'>;
+// What a test injects in place of the network and the clocks.
+export type RouterDeps = Pick<DecisionDeps, 'fetch' | 'now' | 'schedule'>;
 
 // The caller's repository as the advisor sees it: where it is, where its git
 // dir is (for the session cache), and its resolved stack.
@@ -120,20 +119,21 @@ export interface RouteParams {
 export async function routeDecision(params: RouteParams): Promise<RoutedTask> {
   const { task } = params;
   if (!task.contract.substantive) return { task, fields: {} };
-  let requested: RouterSetting = 'auto';
+  const env = params.ctx.io.env;
+  const personal = env['ENGINEOS_ROUTER'];
+  // Read before the policy loads, so a thrown policy still reports the setting
+  // the developer actually chose (an explicit keyword stays keyword).
+  let requested: RouterSetting = isRouterSetting(personal) ? personal : 'auto';
   try {
     const policy = loadRouterDecisionPolicy(params.ctx.root);
-    const env = params.ctx.io.env;
-    const personal = env['ENGINEOS_ROUTER'];
     const asked: RouterSetting = isRouterSetting(personal) ? personal : policy.default ?? 'auto';
     requested = asked;
     const repoMode = params.project.root === null ? null : projectConfig(params.project.root)?.router?.mode ?? null;
     const setting = effectiveSetting(personal, repoMode, policy.default, policy.restrictiveness);
     requested = setting;
-    const hasClaudeCli = params.deps.hasClaudeCli ?? (() => claudeCliOnPath(env));
-    const mode = resolveAuto(setting, env, policy.jev.key_env, hasClaudeCli);
+    const mode = resolveAuto(setting, env, policy.jev.key_env);
     const input = decisionInput(params);
-    const { decision, cacheHit } = await cachedDecision(params, input, { mode, setting, policy, hasClaudeCli });
+    const { decision, cacheHit } = await cachedDecision(params, input, { mode, setting, policy });
     const capped = decision.fallback_reason === null && decision.mode === 'keyword' && looser(asked, setting, policy);
     const fallback = decision.fallback_reason !== null
       ? { requested: decision.requested, reason: decision.fallback_reason }
@@ -152,10 +152,23 @@ export async function routeDecision(params: RouteParams): Promise<RoutedTask> {
       fields: spanFields(decision, policy, cacheHit, fallback?.reason ?? null),
     };
   } catch {
+    // The floor is what the kernel already rendered, so a thrown decision path
+    // degrades to the llm mode over it (the agent on the residue), and to
+    // keyword only when keyword was the setting.
     const fallback = { requested, reason: ERROR };
-    const view: RouterView = { mode: 'keyword', confidence: null, fallback, escalation: null };
-    return { task: { ...task, router: view }, fields: errorFields(requested, task) };
+    const mode: RouterMode = requested === 'keyword' ? 'keyword' : 'llm';
+    const view: RouterView = { mode, confidence: null, fallback, escalation: mode === 'llm' ? floorEscalation(task) : null };
+    return { task: { ...task, router: view }, fields: errorFields(mode, requested, task) };
   }
+}
+
+// The llm mode's own escalation rule, read off the kernel's route when the
+// decision layer itself could not run.
+function floorEscalation(task: TaskAnswer): RouterView['escalation'] {
+  const { route } = task;
+  if (route.generic_only) return { reason: 'generic-only', candidates: [...route.intents] };
+  if (route.intents.length === 0) return { reason: 'no-match', candidates: [] };
+  return null;
 }
 
 // The floor's surviving matches as IntentMatch rows: routeByIntent over the
@@ -178,7 +191,6 @@ interface DecideFacts {
   mode: RouterMode;
   setting: RouterSetting;
   policy: RouterDecisionPolicy;
-  hasClaudeCli: () => boolean;
 }
 
 // The floor costs nothing to recompute, so only a mode that may call out or
@@ -204,7 +216,6 @@ async function cachedDecision(
   const decision = await decide(input, facts.mode, facts.setting, facts.policy, {
     ...params.deps,
     env: params.ctx.io.env,
-    hasClaudeCli: facts.hasClaudeCli,
   });
   if (path !== null) writeCachedDecision(path, decision);
   return { decision, cacheHit: false };
@@ -260,10 +271,10 @@ function spanFields(decision: Decision, policy: RouterDecisionPolicy, cacheHit: 
   return fields;
 }
 
-function errorFields(requested: RouterSetting, task: TaskAnswer): SpanFields {
+function errorFields(mode: RouterMode, requested: RouterSetting, task: TaskAnswer): SpanFields {
   return {
-    provider: 'keyword',
-    model: KEYWORD_MODEL,
+    provider: mode,
+    model: mode === 'keyword' ? KEYWORD_MODEL : ROUTER_AGENT_MODEL,
     cache_hit: false,
     note: routerNote({ requested, confidence: null, escalate: false, fallback: ERROR, keyword: task.route.intents, disagreement: null }),
   };
