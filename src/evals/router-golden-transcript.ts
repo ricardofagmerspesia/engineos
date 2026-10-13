@@ -21,6 +21,7 @@
 // to an earlier human prompt.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { humanPrompt, isHarnessPrompt } from '../lib/harness-prompt';
 import { isRecord } from '../lib/json';
 
 export type TurnKind = 'human' | 'non-human';
@@ -45,12 +46,6 @@ const SPAN_RESOLUTION_MS = 1000;
 // A hook answers in milliseconds (the Jev budget is 400 ms); a turn older than
 // this is not the prompt the span routed, it is the one before a lost turn.
 export const JOIN_WINDOW_MS = 60_000;
-
-// Harness-injected user lines that are not something the developer typed.
-const HARNESS_PREFIXES: readonly string[] = [
-  '<task-notification', '<command-name', '<command-message', '<command-args', '<local-command-',
-  '<bash-input', '<bash-stdout', '<bash-stderr', '<user-memory-input',
-];
 
 export function transcriptFiles(home: string, sessionId: string): string[] {
   const projects = join(home, '.claude', 'projects');
@@ -111,11 +106,14 @@ function turnText(content: unknown): string | null {
   return joined === '' ? null : joined;
 }
 
+// The same classification the prompt hook applies (src/lib/harness-prompt.ts),
+// so a turn the hook refused to route is never joined as a human prompt, and a
+// turn the hook routed by its human part joins by that same part.
 function turnKind(line: Record<string, unknown>, text: string): TurnKind {
   if (line['isMeta'] === true) return 'non-human';
   const origin = line['origin'];
   if (isRecord(origin) && origin['kind'] !== 'human') return 'non-human';
-  return HARNESS_PREFIXES.some((prefix) => text.startsWith(prefix)) ? 'non-human' : 'human';
+  return isHarnessPrompt(text) ? 'non-human' : 'human';
 }
 
 // The latest turn at or before the span (with the span's one-second
@@ -129,5 +127,5 @@ export function joinSpan(turns: readonly Turn[] | null, spanAt: number): JoinRes
     if (best === null || turn.at >= best.at) best = turn;
   }
   if (best === null) return { kind: 'no-turn' };
-  return best.kind === 'human' ? { kind: 'joined', text: best.text } : { kind: 'non-human' };
+  return best.kind === 'human' ? { kind: 'joined', text: humanPrompt(best.text) } : { kind: 'non-human' };
 }

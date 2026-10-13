@@ -93,6 +93,24 @@ test('an empty prompt resolves nothing and stays silent', async () => {
   assert.deepEqual(await run(promptOf(''), hookCtx()), silent);
 });
 
+test('a subagent hand-back is not a request and stays silent', async () => {
+  const handback = 'Another Claude session sent a message:\n<agent-message from="a1">\n[Subagent hand-back] add an endpoint that lists invoices — done\n</agent-message>';
+  assert.deepEqual(await run(promptOf(handback), hookCtx()), silent);
+});
+
+test('a task notification wrapped in a system reminder stays silent', async () => {
+  const notice = '<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification><task-id>x</task-id><summary>Agent finished: add an endpoint</summary></task-notification>\n</system-reminder>';
+  assert.deepEqual(await run(promptOf(notice), hookCtx()), silent);
+});
+
+test('a prompt behind a leading reminder block is routed by its human part only', async () => {
+  const mixed = '<system-reminder>\nfiles were re-read\n</system-reminder>\nadd a NestJS endpoint that lists invoices';
+  const decision = await run(promptOf(mixed), hookCtx());
+  assert.equal(decision.kind, 'context');
+  const text = decision.kind === 'context' ? decision.text : '';
+  assert.match(text, /intents=[^ ]*backend/);
+});
+
 test('a pure question stays silent', async () => {
   assert.deepEqual(await run(promptOf('what does this function return?'), hookCtx()), silent);
 });

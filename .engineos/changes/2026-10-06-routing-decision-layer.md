@@ -70,6 +70,7 @@ Uncommitted at wave-3 close (`git status --short`):
 - ?? PR-python-stack-and-agent-design.md (pre-existing, not part of this change)
 
 ## Notes
+- Wave 3b (2026-10-12): UserPromptSubmit fires for subagent hand-backs, task/system notifications and local-command echoes, and the hook had been routing them (a task contract on every agent report all session; spans that would have polluted the golden set). Fixed by stripping leading harness blocks and routing the residue; a prompt that is harness text end to end is silent. Verified live: hand-back → no output; reminder block + prompt → contract for the prompt.
 - Wave 2 deviations accepted: `Decision.escalate_reason` added (tie vs needs-router is not derivable); decision cache key also includes frameworks, focus package and requested setting; contract line says "Router dispatch needed" when the router line follows; C27c accepts `withSpanAsync`.
 - Open: under `llm`, every generic-only prompt escalates to the router agent even when the stack floor already settled it — cost to weigh before `llm` can win the golden set.
 - Barrier findings, fixed before commit: (1) the contract said "stack from ctx.root", but root is the EngineOS checkout — `KernelContext.project`/`projectCwd` added; (2) a language-only rebind left every FastAPI+React repo on NestJS — `stack_frameworks`, framework-first then language, focus package first then repo; (3) EngineOS's own `test/fixtures/py-fastapi` made the repo look like FastAPI — `fixtures` added to the detector's skip list.

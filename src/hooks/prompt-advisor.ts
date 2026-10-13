@@ -21,6 +21,7 @@ import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceNotes, type TaskAnswer } from './prompt-advisor-guidance';
 import { advisorProject, routeDecision, type AdvisorProject, type RouterDeps } from './prompt-advisor-router';
 import { event, telemetrySink, withSpanAsync, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
+import { humanPrompt } from '../lib/harness-prompt';
 
 // The only thing a bypassed session is told, and the only reason this hook still
 // speaks when EngineOS is off: a silent bypass is the failure mode
@@ -48,10 +49,14 @@ export async function runWith(env: HookEnvelope, ctx: HookContext, deps: RouterD
   // An empty prompt resolves nothing and is not evidence of anything, so it is
   // refused before the sink is built — building it would create the telemetry
   // directory for a prompt that never happened.
-  if (env.prompt === '') return silent;
+  // Hand-backs, notifications and command echoes arrive through the same event
+  // as a typed request; only the human part is routed, and a prompt that is
+  // harness text from end to end is no request at all (src/lib/harness-prompt.ts).
+  const prompt = humanPrompt(env.prompt);
+  if (prompt === '') return silent;
   // bypassed is false by construction: the bypass branch above already returned.
   const sink = telemetrySink(env, ctx, { bypassed: false });
-  const task = await resolveTask(env.prompt, { env, ctx, sink, deps });
+  const task = await resolveTask(prompt, { env, ctx, sink, deps });
   if (task === null) return silent;
   writeEvents(sink, task);
   const notes = guidanceNotes(task);

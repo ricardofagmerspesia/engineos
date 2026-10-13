@@ -5232,6 +5232,47 @@ function utcSeconds(ms) {
   return `${new Date(at).toISOString().slice(0, 19)}Z`;
 }
 
+// src/lib/harness-prompt.ts
+var BLOCK_TAGS = [
+  "system-reminder",
+  "task-notification",
+  "agent-message",
+  "cross-session-message",
+  "command-name",
+  "command-message",
+  "command-args",
+  "local-command-stdout",
+  "local-command-stderr",
+  "local-command-caveat",
+  "bash-input",
+  "bash-stdout",
+  "bash-stderr",
+  "user-memory-input"
+];
+var BARE_LINES = [
+  /^Another Claude session sent a message:\s*/,
+  /^That "other Claude session" is an agent working inside this same session[^\n]*\n?/
+];
+function humanPrompt(text3) {
+  let rest = text3;
+  for (; ; ) {
+    const before = rest;
+    rest = rest.replace(/^\s+/, "");
+    for (const tag of BLOCK_TAGS) {
+      if (!rest.startsWith(`<${tag}`)) continue;
+      const close = `</${tag}>`;
+      const end = rest.indexOf(close);
+      rest = end === -1 ? "" : rest.slice(end + close.length);
+    }
+    for (const line of BARE_LINES) rest = rest.replace(line, "");
+    if (rest === before) break;
+  }
+  return rest.trim();
+}
+function isHarnessPrompt(text3) {
+  return text3.trim() !== "" && humanPrompt(text3) === "";
+}
+
 // src/hooks/prompt-advisor.ts
 var BYPASS_NOTICE = "[engineos] BYPASS ACTIVE \u2014 routing, rules, agent dispatch, spec gate, change records, and the Stop gates are OFF for this session. Answer directly, with no [router] line and no agent banners. Do not offer the output artifact. The harness's own safety rules still apply: no secrets in code or commits, and confirm destructive or outward-facing actions. Run `/engineos:bypass off` to restore EngineOS.";
 var ROUTER_SPAN = { kind: "router", capability: "route", modelTier: "cheap" };
@@ -5241,9 +5282,10 @@ function run5(env, ctx) {
 }
 async function runWith(env, ctx, deps) {
   if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return context("UserPromptSubmit", BYPASS_NOTICE);
-  if (env.prompt === "") return silent;
+  const prompt = humanPrompt(env.prompt);
+  if (prompt === "") return silent;
   const sink = telemetrySink(env, ctx, { bypassed: false });
-  const task = await resolveTask(env.prompt, { env, ctx, sink, deps });
+  const task = await resolveTask(prompt, { env, ctx, sink, deps });
   if (task === null) return silent;
   writeEvents(sink, task);
   const notes = guidanceNotes(task);
@@ -7586,17 +7628,6 @@ var import_node_fs37 = require("node:fs");
 var import_node_path30 = require("node:path");
 var SPAN_RESOLUTION_MS = 1e3;
 var JOIN_WINDOW_MS = 6e4;
-var HARNESS_PREFIXES = [
-  "<task-notification",
-  "<command-name",
-  "<command-message",
-  "<command-args",
-  "<local-command-",
-  "<bash-input",
-  "<bash-stdout",
-  "<bash-stderr",
-  "<user-memory-input"
-];
 function transcriptFiles(home, sessionId) {
   const projects = (0, import_node_path30.join)(home, ".claude", "projects");
   let dirs;
@@ -7654,7 +7685,7 @@ function turnKind(line, text3) {
   if (line["isMeta"] === true) return "non-human";
   const origin = line["origin"];
   if (isRecord(origin) && origin["kind"] !== "human") return "non-human";
-  return HARNESS_PREFIXES.some((prefix) => text3.startsWith(prefix)) ? "non-human" : "human";
+  return isHarnessPrompt(text3) ? "non-human" : "human";
 }
 function joinSpan(turns, spanAt) {
   if (turns === null) return { kind: "no-transcript" };
@@ -7664,7 +7695,7 @@ function joinSpan(turns, spanAt) {
     if (best === null || turn.at >= best.at) best = turn;
   }
   if (best === null) return { kind: "no-turn" };
-  return best.kind === "human" ? { kind: "joined", text: best.text } : { kind: "non-human" };
+  return best.kind === "human" ? { kind: "joined", text: humanPrompt(best.text) } : { kind: "non-human" };
 }
 
 // src/evals/router-golden-collect.ts
