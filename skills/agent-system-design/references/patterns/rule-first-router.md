@@ -3,6 +3,14 @@ id: rule-first-router
 title: Deterministic classification first, LLM only for the residue
 origin: portal_nexxus
 ---
+> Active implementation uses Mastra on Node.js/TypeScript, hosted by NestJS providers. Any Python
+> file citations below are historical design evidence only, not executable
+> guidance. TypeScript/zod recommendations translate historical constraints;
+> they are not claims about the cited Python code's APIs.
+> Resolve JS APIs from installed dependencies. Eval/test strategies
+> are plans until integration and explicit current-task final-stage approval.
+
+
 ## Use when
 - Most inputs carry structure a rule can read (a prefix, a family, a code); the model is for the long tail.
 - Cost or latency per item matters and the item volume is high.
@@ -22,8 +30,8 @@ origin: portal_nexxus
 - Step 9 failure policy: a rule never fails; a failed model batch stays pending; human-reviewed records are untouchable on both paths.
 - Step 11 evals: the rule table is a golden set by construction; the residue gets its own.
 
-## LangGraph shape
-No graph (langgraph-patterns §1) — a routing function in front of a pipeline. If embedded in a graph: state keys `record`, `classified_by`, `theme`; nodes `rule_stage`, `llm_stage`, `persist`; one conditional edge `rule_stage → {persist | llm_stage}`; no reducer.
+## Mastra shape
+A Mastra workflow runs a deterministic classification step, branches on its typed result, and calls a Mastra agent only for unresolved inputs. Both branches converge on a validated output/persistence step. The NestJS provider binds tenant identity and enforces timeout and idempotency; rules and model fallback use the same output contract.
 
 ```mermaid
 flowchart LR
@@ -45,7 +53,7 @@ flowchart LR
 - Residue share: on a real-base golden set, assert what fraction reaches the model; a regression here is a cost regression.
 - Model residue: typed-pipeline's golden batch.
 
-## Example
+## Example — historical design provenance
 - `portal_nexxus/backend/src/infrastructure/classifier/rule_classifier.py:14-48` (the table; `REVIEWED` never overwritten; `RULE_MODEL` stamped).
 - Residue ordering and batching: `src/application/use_cases/classify_pending.py:32-54`.
 - The family the rule keys on: `src/infrastructure/classifier/normalizer.py:48-61`.

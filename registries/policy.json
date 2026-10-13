@@ -134,7 +134,7 @@
     "subagent_depth": 1,
     "disjoint_file_scopes": true,
     "backpressure": {
-      "note": "Admission control for the orchestrator's dispatch loop. Capacity is wave_concurrency_cap above (never a second copy). Answered by scripts/kernel.sh admit; mirrored in rules/parallelism.md 'Backpressure'. defer = hold the unit for the next wave; reject = stop planning, report BLOCKED, re-plan with a human (a hitl reason).",
+      "note": "Admission control for the orchestrator's dispatch loop. Policy capacity is wave_concurrency_cap above (never a second copy); orchestrators also enforce available host worker slots before dispatch. Answered by scripts/kernel.sh admit; mirrored in rules/parallelism.md 'Backpressure'. defer = hold the unit until dependencies and a worker slot are ready; reject = stop planning, report BLOCKED, re-plan with a human (a hitl reason).",
       "max_queued_units": 12,
       "overload_action": "defer",
       "actions": ["dispatch", "defer", "reject"]
@@ -147,7 +147,8 @@
       "spec": "\\b(spec|specification|prd|requirement[s]?|product brief|design doc|rfc|adr)\\b",
       "design_strong": "\\b(decompose|trade.?off|should we use|adr)\\b",
       "design_weak": "\\b(architect|architecture|design)\\b"
-    }
+    },
+    "scheduling": {"strategy": "dependency-ready", "capacity": "min(wave_concurrency_cap, available host worker slots)", "ownership": "exclusive file scopes; freeze shared contracts before dispatch", "refill": "dispatch newly ready units as soon as a worker finishes; do not wait for unrelated units", "tests": "final phase only, after integration and explicit current-task user approval"}
   },
   "retry": {
     "max_attempts_per_unit": 2,

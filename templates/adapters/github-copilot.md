@@ -2,9 +2,9 @@
 
 ## How rules load
 
-`.github/copilot-instructions.md` for repo-wide instructions, and
-`.github/instructions/*.instructions.md` with `applyTo:` frontmatter for
-path-scoped rules:
+Repo-wide: .github/copilot-instructions.md. Path-scoped:
+.github/instructions/*.instructions.md, with applyTo patterns generated from
+registries/routing.json.
 
 ```markdown
 ---
@@ -13,34 +13,25 @@ applyTo: "**/*.controller.ts,**/*.service.ts,**/*.module.ts"
 <backend rules>
 ```
 
-Generate the `applyTo` patterns from `registries/routing.json`.
-
 ## What is enforced
 
-- Repo-wide instructions: yes.
-- Path-scoped instructions: yes.
-- Everything else: no.
+Repo-wide and path-scoped instructions load; other EngineOS mechanisms do not.
 
 ## What degrades to convention
 
-Everything hook-driven. Copilot has the weakest agentic control surface of the
-four, so the methodology has to move outward:
-
-- **Verification gate** -> required status checks on the branch.
-- **Change record** -> a PR template checkbox plus a CI check that
-  `.engineos/changes/` or `.engineos/archived/` gained a file.
-- **Risk tier and gates** -> PR template fields (`risk:`, `rollback:`, `owner:`),
-  reviewed by a human rather than a hook.
-- **Critic pass** -> the `claude-review.yml` workflow in `templates/github/`.
+Hook-driven obligations move to external review/CI:
+- Verification → required branch checks.
+- Change record → PR checkbox and CI file check in changes/ or archived/.
+- Risk/gates → human-reviewed PR fields risk/rollback/owner.
+- Critic → templates/github/claude-review.yml.
 
 ## CI fallback
 
-`templates/github/claude-review.yml` and `claude-security.yml` already exist and
-carry most of the weight here. Add the `scripts/` suite.
+Use templates/github/claude-review.yml, claude-security.yml and applicable scripts.
+Final tests/evals/behavioral scripts need explicit current-task approval after
+integration; CI configuration alone is not consent (rules/verification.md).
 
 ## Honest assessment
 
-On Copilot, EngineOS is a well-specified convention with CI teeth, not an
-enforced runtime. That is a real degradation, not a configuration detail — say so
-to the team adopting it rather than letting them discover it after an unrecorded
-change ships.
+Instructions and CI enforce parts of EngineOS; Copilot has no EngineOS hook
+runtime. Explain the remaining convention-only gates to adopting teams.

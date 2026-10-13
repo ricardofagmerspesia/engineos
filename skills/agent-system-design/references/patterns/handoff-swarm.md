@@ -3,6 +3,14 @@ id: handoff-swarm
 title: Agents transfer control by explicit handoff tools, no supervisor
 origin: new
 ---
+> Active implementation uses Mastra on Node.js/TypeScript, hosted by NestJS providers. Any Python
+> file citations below are historical design evidence only, not executable
+> guidance. TypeScript/zod recommendations translate historical constraints;
+> they are not claims about the cited Python code's APIs.
+> Resolve JS APIs from installed dependencies. Eval/test strategies
+> are plans until integration and explicit current-task final-stage approval.
+
+
 ## Use when
 - A small number of peers (2–4) with clearly separated domains, where the current agent is the best judge of when it is out of its domain.
 - Conversations stay with one agent for many turns and switch rarely (triage → billing → back).
@@ -20,23 +28,20 @@ origin: new
 - Step 3 tools: one `HandoffTo<Agent>Tool` per allowed edge, with a typed reason and summary; no shared data tools.
 - Step 4 protocol: what a handoff carries — the summary and the last user message, not the transcript, unless step 4 says otherwise and why.
 - Step 6 memory: per agent or shared; the active agent persisted per thread so the next turn resumes there.
-- Step 7 harness: handoffs-per-turn cap (2) plus per-agent iteration cap; a ping-pong must hit the cap, not the recursion limit.
+- Step 7 harness: handoffs-per-turn cap (2) plus per-agent iteration cap; a ping-pong must hit the cap, not the workflow transition cap.
 - Step 9 failure policy: a handoff to an unknown target or beyond the cap → the current agent answers with a warning.
 - Step 10 observability: the handoff chain per turn as a span list.
 
-## LangGraph shape
-State: `messages` (`add_messages`), `active_agent: str`, `handoffs: int`, `handoff_summary: str | None`, `run_id` (langgraph-patterns §2).
-Nodes: one per agent — each a react-tool-loop subgraph or a node factory with its own tools — and no supervisor.
-Handoff: the handoff tool returns `Command(goto="agent_b", update={"active_agent": "agent_b", "handoffs": state["handoffs"] + 1, "handoff_summary": …})` (`Command` from `langgraph.types`); from inside a subgraph the target lives in the parent, so `Command(goto=…, graph=Command.PARENT)`. The tool executor must be the custom one (§3): it returns the `Command` instead of a `ToolMessage`.
-Edges: `START → <active_agent>` through a conditional edge on `active_agent`; every agent → `END` when it answers; handoff edges exist only through `Command`, so the matrix is enforced by which handoff tools each agent is given (§5 allowlist).
-Caps: `handoffs` checked inside the handoff tool + per-agent iteration cap + `recursion_limit` + `asyncio.wait_for` (§4).
+## Mastra shape
+A Mastra workflow or bounded routing coordinator owns explicit handoff decisions between Mastra agents. A handoff returns a strict target, scoped task packet and summary; only registered targets are accepted. Each target receives its own allowed tools and memory rather than the prior agent's full state.
+Persist the active agent and handoff count in typed run state. Enforce handoffs-per-turn and per-agent step caps, token budget and timeout. Do not implement unbounded model-driven ping-pong; return a typed exhausted outcome.
 
 ```mermaid
 flowchart LR
   START -->|active_agent == a| agent_a
   START -->|active_agent == b| agent_b
-  agent_a -->|"HandoffToBTool: Command(goto=b)"| agent_b
-  agent_b -->|"HandoffToATool: Command(goto=a)"| agent_a
+  agent_a -->|"HandoffToBTool: handoff to b"| agent_b
+  agent_b -->|"HandoffToATool: handoff to a"| agent_a
   agent_a -->|answer| END
   agent_b -->|answer| END
 ```
@@ -52,5 +57,5 @@ flowchart LR
 - Matrix: for every agent, assert its tool list contains exactly its allowed handoffs.
 - Cap: fake models that always hand off; assert the turn ends with the cap and the warning within `handoffs + 1` agent calls.
 
-## Example
+## Example — historical design provenance
 none yet — the developer's repos have no peer handoffs, and the recommendation stands: reach for supervisor-workers first.

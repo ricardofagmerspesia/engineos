@@ -44,8 +44,29 @@
 ## ADRs
 Decisions live in `docs/adr/`. Read related ADRs before structural changes.
 
+## Agent skills
+<!-- Matt skills read this during new-feature. init seeds missing docs/agents
+     files and preserves edits. -->
+
+### Issue tracker
+
+Local markdown in the EngineOS layout: PRDs in `docs/prds/`, tickets in `docs/specs/<feature>/tickets/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — recorded on a ticket's `Triage:` line; the `**Status:**` line keeps its own closed vocabulary (`docs/agents/issue-tracker.md`). See `docs/agents/triage-labels.md` (create it only to override a default).
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/` (`YYYY-MM-DD-<slug>.md`). See `docs/agents/domain.md`.
+
+## tlc-spec-lean
+<!-- SPEC/build profile; .specs/features/<feature>/ indexed from docs/specs/. -->
+profile: light
+budget: 150k
+
 ## EngineOS
 Adopted with `scripts/init-project.sh`. The test policy is defined once, in
 `rules/verification.md` — read it there and do not restate it here. This section
-declares only the delta: the areas where this project requires tests regardless of
-what was asked for: <none | e.g. "apps/api/src/billing/**">.
+records requested test scope only: <none | named areas>. It never grants
+automatic test approval; the human approves current-task testing after integration.

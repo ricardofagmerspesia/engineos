@@ -31,25 +31,6 @@ export function meanReciprocalRank(cases: Array<{ relevant: Set<string>; ranked:
 }
 ```
 
-Python (`tests/evals/<feature>/metrics.py`), same contract:
-
-```python
-def recall_at_k(relevant: set[str], ranked: list[str], k: int) -> float:
-    hits = sum(1 for chunk_id in ranked[:k] if chunk_id in relevant)
-    return 0.0 if not relevant else hits / len(relevant)
-
-# Precondition: len(ranked) >= k, otherwise the short window undercounts precision (hits / k with fewer than k candidates).
-def precision_at_k(relevant: set[str], ranked: list[str], k: int) -> float:
-    hits = sum(1 for chunk_id in ranked[:k] if chunk_id in relevant)
-    return 0.0 if k == 0 else hits / k
-
-def reciprocal_rank(relevant: set[str], ranked: list[str]) -> float:
-    return next((1 / (index + 1) for index, chunk_id in enumerate(ranked) if chunk_id in relevant), 0.0)
-
-def mean_reciprocal_rank(cases: list[tuple[set[str], list[str]]]) -> float:
-    return 0.0 if not cases else sum(reciprocal_rank(relevant, ranked) for relevant, ranked in cases) / len(cases)
-```
-
 Thresholds to start from (raise, never lower silently): Recall@K >= 0.9 at the
 generator's K, MRR >= 0.7. Record them in `evals/<feature>/retrieval/BASELINE.md`
 with date, index version and chunking version.

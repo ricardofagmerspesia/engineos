@@ -1,4 +1,9 @@
-# Backend Rules (NestJS) — NestJS / Node
+# Backend Rules — NestJS
+
+## Application hosting
+- Apply the mandatory NestJS backend policy in `rules/base.md`, including existing-service migration handling.
+- DO bootstrap HTTP services with `NestFactory.create()` and worker-only services with `NestFactory.createApplicationContext()`; register work in modules and injectable providers.
+- Express is permitted as Nest's HTTP adapter; keep routes and lifecycle inside Nest controllers/providers rather than a separately bootstrapped Express server.
 
 ## Module structure
 - DO one Nest module per domain feature; module exports only its service surface.
@@ -27,6 +32,31 @@
   `{ statusCode, code, message, correlationId }` — where `code` is the stable
   taxonomy value defined in `rules/observability.md`. `statusCode` is the HTTP
   status it maps to; clients switch on `code`, never on prose in `message`.
+
+## Contracts before parallel implementation
+- For a new or changed API consumed by another unit, freeze a project contract
+  using `templates/api-contract.md` before dispatching backend/frontend/agent
+  consumers. Name one owner, a revision, the authoritative schema path and the
+  exact revision each consumer uses. The contract is ready when every consumed
+  operation and wire shape is defined and unresolved blocking decisions are closed.
+- Record method/path, auth requirements, request inputs, response/status variants,
+  stable error codes and pagination; include streaming events, completion/error
+  behavior and cancellation semantics when applicable. Declare serialization
+  (dates, null versus omitted fields, numeric limits) rather than leaking entity types.
+- Keep separate Nest input/output DTOs and explicit response mapping. Export or
+  generate frontend wire types/schemas through a framework-independent boundary;
+  consumers import neither Nest decorators nor ORM/backend runtime dependencies.
+- Use the project's existing schema/codegen toolchain, with one owner for generated
+  artifacts and shared wiring. Record source-to-output paths and the existing
+  generation command; use plain TypeScript wire definitions if no generator exists.
+  Reconcile those definitions with the authoritative schema through their owner.
+- TypeScript types and OpenAPI descriptions are static contracts, not runtime
+  validation. Keep executable input validation at Nest boundaries and response
+  mapping consistent with the wire shape; runtime response checks, where required,
+  use the project's existing validator. A response DTO annotation alone checks no payload.
+- A contract change pauses only affected consumers. Its owner resolves the change,
+  increments the revision and records compatibility/migration needs before those
+  consumers resume; unrelated ready work continues.
 
 ## Async & jobs
 - DO use queues (Bull/BullMQ) for the slow work `rules/architecture.md` says belongs in the background, with retries + backoff and dead-letter handling.

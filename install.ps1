@@ -203,6 +203,57 @@ if (Test-Path $skillsSrc) {
     }
 }
 
+# ---------- 4a2. Link pinned third-party skills (directories -> junctions) ----------
+# Windows counterpart of install.sh step 4a2. `/engineos:new-feature` runs Matt
+# Pocock's /grill-with-docs, /to-spec and /to-tickets plus tlc-spec-lean; they are
+# vendored under .agents/skills/ at the versions skills-lock.json pins. Only these
+# two sources: the lock also pins skills EngineOS does not route to, and installing
+# those is the developer's call, not the installer's. A name EngineOS ships under
+# skills/ is skipped so the EngineOS skill keeps its link (both ship `retro`).
+# Every failure here is a warning, never an abort: ConvertFrom-Json replaces the
+# node parser install.sh uses, so there is no runtime to be missing.
+$PinnedSources  = @('mattpocock/skills', 'tech-leads-club/agent-skills')
+$SkillsLock     = Join-Path $RepoDir 'skills-lock.json'
+$VendoredSkills = Join-Path (Join-Path $RepoDir '.agents') 'skills'
+if (-not (Test-Path -LiteralPath $SkillsLock -PathType Leaf)) {
+    Write-Warn "skip: skills-lock.json not found - pinned third-party skills not linked"
+} else {
+    $lockParsed = $true
+    $pinnedEntries = @()
+    try {
+        $lock = Get-Content -LiteralPath $SkillsLock -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        # Same reading as install.sh: a lock without a `skills` object pins nothing.
+        if ($null -ne $lock -and $lock.skills -is [System.Management.Automation.PSCustomObject]) {
+            $pinnedEntries = @($lock.skills.PSObject.Properties)
+        }
+    } catch {
+        $lockParsed = $false
+    }
+    if (-not $lockParsed) {
+        Write-Warn "skip: skills-lock.json could not be parsed - pinned third-party skills not linked"
+    } else {
+        foreach ($entry in $pinnedEntries) {
+            $name = $entry.Name
+            # A name becomes a path component under ~/.claude/skills: no separators, no dot-dirs.
+            # \z, not $: .NET $ also matches before a trailing newline, JS $ does not.
+            if ($name -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9._-]*\z') { continue }
+            $source = $null
+            if ($entry.Value -is [System.Management.Automation.PSCustomObject]) { $source = $entry.Value.source }
+            if (-not ($source -is [string]) -or -not ($PinnedSources -ccontains $source)) { continue }
+
+            $src    = Join-Path $VendoredSkills $name
+            $target = Join-Path $skillsDest $name
+            if (Test-Path -LiteralPath (Join-Path $skillsSrc $name) -PathType Container) {
+                Write-Warn "skip: pinned skill $name - EngineOS ships its own skills\$name, which wins"
+            } elseif (-not (Test-Path -LiteralPath $src -PathType Container)) {
+                Write-Warn "skip: pinned skill $name is not vendored at .agents\skills\$name"
+            } elseif (New-Link -Target $target -Value $src -IsDir $true) {
+                Write-Host "pinned skill linked: $name"
+            }
+        }
+    }
+}
+
 # ---------- 4b. Link agents (markdown files -> symlinks) ----------
 $agentsDest = Join-Path $ClaudeDir 'agents'
 New-Item -ItemType Directory -Force -Path $agentsDest | Out-Null

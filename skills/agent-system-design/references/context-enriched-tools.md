@@ -1,84 +1,112 @@
+> Active runtime: Mastra on Node.js/TypeScript inside NestJS providers. Python
+> citations are historical design provenance, not JS APIs/tooling. Resolve APIs
+> against installed dependencies. Tests/evals are plans until integration and
+> explicit current-task final-stage approval.
+
 # Context-enriched tools
 
-*Reference for step 3 of the design form (`references/form.md`); folded into every catalog pattern. Grounding: `labv-opensearch-agent-demo/backend`, cited as `file:line`. The implementation shapes are the `langgraph-patterns` skill's §5 — that file says how to write it; this one says what to decide and why.*
+Step-3 reference for `references/form.md`; implementation uses
+`mastra-patterns`. Historical citations are relative to
+`labv-opensearch-agent-demo/backend` unless a full path is given.
+Each tool owns context, internal reasoning, error vocabulary and scope behind a
+typed interface; the router chooses tools rather than constructing their queries.
 
-The developer called this "the most important feature": the demo's answer quality comes from what each tool knows before it acts, not from the router prompt. A tool that owns its context, its own sub-agent, its own error vocabulary and its own scoping is a small agent behind a typed interface; the router only chooses which one to call.
+## 1. Three knowledge layers
 
-## 1. The three knowledge layers
+| Layer | Ownership/storage/refresh | Consumer |
+|---|---|---|
+| Semantic model: naming, lookup/join/language rules | Human PRs; `data/profiles/_default/semantic_layer.yaml` + tenant file | Router summary (`services/schema_registry.py:148-152`, `graph/workflow.py:207-217`); detail stays in tool |
+| Curated index fields/gotchas/aggregations/notes | Human PRs; _default/index_context.yaml + tenant overlay + hand_notes.yaml | Tool sub-agent only |
+| Sampled live paths/enums/counts | Scheduler; gitignored `profiles/<tenant>/index_facts.yaml` (`.gitignore:100`); weekly, daily check/startup (`services/index_facts.py:282-328`) | Tool sub-agent only |
 
-| Layer | Owner | Lives in | Refresh | Reaches |
-|---|---|---|---|---|
-| **Semantic layer** — data model: naming pattern, lookup fields per entity, join keys, language rules | humans, git-reviewed | `data/profiles/_default/semantic_layer.yaml` (+ per-tenant file) | on PR | the router, as a rendered index/relationship summary (`services/schema_registry.py:148-152`, `graph/workflow.py:207-217`); field detail stays out of it |
-| **Curated per-index context** — field descriptions, gotchas, aggregation fields, advisory notes | humans, git-reviewed | `_default/index_context.yaml` + per-tenant overlay (+ `hand_notes.yaml`) | on PR | the tool's sub-agent only |
-| **Machine facts** — live field paths with presence counts, enums with doc counts, doc counts | the backend's scheduler | `profiles/<tenant>/index_facts.yaml`, **gitignored** (`.gitignore:100`) | weekly, checked daily and on startup (`services/index_facts.py:282-328`) | the tool's sub-agent only |
+Overlay rules: agg_fields union(default-first, ordered); fields override by field
+path, appending new paths; notes concatenate(default-first)
+(`data/profiles/_default/index_context.yaml:1-12`,
+`services/index_context_registry.py:88-135`). Machine facts win mechanical
+claims; curated descriptions/notes remain. Drop nonexistent curated paths from
+prompts and report contradictions (`index_context_registry.py:249-288`,
+`index_facts.py:335-355`); plan an approved-final check rather than only a warning.
+Reject writes below _MIN_ENTITIES_TO_WRITE or the allowed known-field retention
+threshold _MAX_FIELD_LOSS_RATIO (`index_facts.py:38-39,191-196,232-243`).
+Sample documents rather than _mapping under tenant DLS credentials (`:10-12`).
 
-Merge rules for the curated overlay, declared in the file header and implemented once (`data/profiles/_default/index_context.yaml:1-12`, `services/index_context_registry.py:88-135`):
-- `agg_fields` → union, default first, order kept.
-- `fields` → override by `field` path; overlay entries with a new path are appended.
-- `notes` → concatenate, default first.
+## 2. Tenant registry and injection
 
-Facts on top (`index_context_registry.py:249-288`): facts win on mechanical claims (field paths, types, enums); curated text keeps descriptions and notes; a curated path missing from live data is dropped from the prompt and reported as a contradiction (`index_facts.py:335-355`) — a startup warning in the demo, a test in the target project (§9).
+Build registry once per (profile, tenant), with restricted credentials and explicit
+tenant term on **every** live aggregation (`graph/workflow.py:107-110`,
+`index_context_registry.py:167-171,227-230`); internal _-principals aggregate
+nothing. Shared index prefixes make unscoped value discovery leak tenant data.
+Render/get context by index (`:290-332`); inject field detail between mappings
+and output instruction in the tool sub-agent prompt
+(`tools/search.py:146,156-164`, `agents/dsl_agent.py:41-64`), never router.
 
-Write guards on the facts file (`index_facts.py:38-39,191-196,232-243`): a run that discovers fewer than `_MIN_ENTITIES_TO_WRITE` populated entities is treated as failed; a new file carrying fewer than `_MAX_FIELD_LOSS_RATIO` of the known fields is refused. A flaky cluster must never poison a tenant's context. Discovery samples documents instead of calling `_mapping`, because tenant-scoped credentials are DLS-restricted (`index_facts.py:10-12`).
+## 3. Bounded self-repair
 
-## 2. The registry
+Internal dsl-role model receives previous attempt/error up to MAX_DSL_RETRIES,
+then typed failure (`tools/search.py:19,152-194,251`). Handle invalid JSON,
+ERROR_SYNTAX and guard rejection (global aggregation;
+`utils/guardrails.py:256-264`). Router sees only final output/failure.
+D10 additionally requires strict zod parsing, one schema-feedback retry then typed
+failure; extract_first_json/match_all fallback is an anti-pattern
+(`dsl_agent.py:87-111`).
 
-Built once at startup per `(profile, tenant)` with **tenant-restricted credentials** and an explicit tenant term on every live aggregation (`graph/workflow.py:107-110`, `index_context_registry.py:167-171,227-230`): all tenants share one index prefix, so an unscoped `terms` aggregation would enumerate other tenants' values into this tenant's prompt. Internal principals (`_`-prefixed) aggregate nothing (`:171`). The registry renders one context string per index (`:290-326`) and serves it by index name (`:328-332`).
+## 4. Contracts and feature flags
 
-## 3. Injection point
+Historical contract provenance: name/description/input schema
+(`graph/workflow.py:93-120`). Give every input field actionable usage/default
+instructions (`tools/schemas.py:45-52,115-118`), dependencies and sentinels
+(`workflow.py:101,136-138`). Register tool and prompt block behind the same
+flag (`:171-174,212-217`). Model session_id guidance says leave empty;
+server overrides regardless (`graph/nodes.py:156-159`).
 
-The rendered per-index context goes into the **tool's own sub-agent prompt**, between the mappings and the output instruction (`tools/search.py:146,156-164`, `agents/dsl_agent.py:41-64`). Never into the router: the router decides *which* tool and *which* index from the semantic-layer summary; the field-level knowledge belongs to the agent that writes the query. In the router it bloats every turn and invites the router to "help" with DSL fragments the tool then has to trust.
+## 5. Envelope, memo and handoff
 
-## 4. Bounded self-repair
+Envelope fields remain `_dsl`, `_result`, `_handoff_result`: model gets capped
+preview; pop/cache full payload server-side before state insertion
+(`tools/search.py:246-249`, `graph/nodes.py:177-190,330,338-355`). Nexxus
+SQL LAST_QUERY uses the same contract (`portal_nexxus/backend/src/infrastructure/agent/state.py:21-26`,
+`tools.py:100-115`). Plot/extract/compute resolve empty or sentinel data_json
+from handoff (`nodes.py:18-22,74-86`). Memo index::question returns cached
+content with execution_time_ms=0 (`:118-131,356-359`). Same-turn small lookup
+≤_LOOKUP_MAX_HITS cannot replace derived rows; data-shaped searches/new turns may
+(`:24-30,339-355`). Exhaust set pagination server-side before consumers compute;
+model sees page one plus note (`search.py:25-31,34-109`).
 
-The tool embeds its own model call under its own role (`dsl`, langgraph-patterns §6) and repairs its own output: previous attempt + error fed back through a retry appendix, `MAX_DSL_RETRIES` attempts, then a typed failure (`tools/search.py:19,152-194,251`, `dsl_agent.py:41-46`). Repair triggers: invalid JSON from the sub-agent, `ERROR_SYNTAX` from the store, a guardrail rejection (`ensure_company_filter` raises on a `global` aggregation, `utils/guardrails.py:256-264`). The router never sees an intermediate failure — only the final result or the typed failure.
+## 6. Errors, limits and scoping
 
-D10 applies to the sub-agent's output: the demo's `extract_first_json` with a `match_all` fallback (`dsl_agent.py:87-111`) is the anti-pattern. Validate with Pydantic, retry once with the error, then the typed failure.
+Return ERROR_<REASON> plus actionable details; empty results get SEARCH_HINT
+before declaring absence (`nodes.py:194-204`). ERROR_RESPONSE_TOO_LARGE explains
+slim _source/split/stable paging/aggregate, never silent truncation
+(`search.py:196-234`). Narration excludes ERROR_/Error: findings
+(`nodes.py:274-279`); shared constants live in one protocol module.
 
-## 5. Tool contract
+Bind tenant-restricted credentials/term through factories, not model arguments
+(`config/opensearch_credentials.py:52-64`, `tools/search.py:112-128`,
+`tools/document_search.py:22-43`). Fail closed: inject bool.filter, reject global
+aggregation, strip forbidden clauses, charset-allowlist index before prefix check
+(`utils/guardrails.py:151-187,194-224,245-286`). Historical SQL analogue:
+parsed single SELECT, allowlisted views, forced LIMIT, not regex
+(`portal_nexxus/backend/src/infrastructure/agent/guardrails.py:17-50`).
+Load `references/tenant-profiles.md` for credential/model resolution.
 
-- `StructuredTool(name="PascalCaseTool", description=…, coroutine=…, args_schema=<Name>Input)` (`graph/workflow.py:93-120`).
-- Every `Field(description=…)` carries **usage guidance**, not a type restatement: "Leave as 'LAST_SEARCH' (the default) … you do NOT need to copy the data" (`tools/schemas.py:45-52,115-118`).
-- Ordering rules and sentinels live in the description: "Call IndexMappingTool first", "call this tool with data_json='LAST_SEARCH'" (`workflow.py:101,136-138`).
-- A tool's prompt block is registered together with the tool behind one feature flag (`workflow.py:171-174,212-217`; rules/llm-apps.md); one without the other is a bug.
-- Any argument the model could use to reach another session (`session_id`) says "Leave empty — the system fills this" and is overridden server-side (`schemas.py:115-118`, `graph/nodes.py:156-159`).
+## 7. Approved-final eval plan
 
-## 6. Envelope, memo, hand-off
+Golden fake-provider query pairs assert **post-guard** tenant/script/index behavior;
+negative global aggregation repairs or fails typed. Plan curated+overlay versus
+committed-facts contradiction checks (`index_context_registry.py:261-263`)
+and fence-escape/no-customer-string/version-pin probes. D13 prohibits provider
+calls. Author/run via eval-harness only in the approved final stage; any CI
+automation needs separate approval.
 
-- Envelope `{"_dsl", "_result", "_handoff_result"}`: `_result` is the preview the model sees; `_handoff_result` is popped before results enter state and cached server-side under the hand-off key (`tools/search.py:246-249`, `graph/nodes.py:177-190,330,338-355`). Nexxus's `LAST_QUERY` is the same envelope over SQL (`portal_nexxus/backend/src/infrastructure/agent/state.py:21-26`, `tools.py:100-115`).
-- Consumer tools (plot, extract, compute) read the hand-off when their `data_json` is empty or a sentinel (`nodes.py:18-22,74-86`).
-- Memo key `f"{index}::{question}"` in `search_cache`; a hit returns the cached content with `execution_time_ms=0` (`nodes.py:118-131,356-359`).
-- Derived-data guard: a lookup of at most `_LOOKUP_MAX_HITS` in the same turn does not overwrite derived rows under the hand-off key; data-shaped searches and new turns do (`nodes.py:24-30,339-355`).
-- Server-side exhaustion: a query that asked for a set is paginated to completion behind the scenes so consumers never compute on a truncated population; the model still sees page one plus a note (`search.py:25-31,34-109`).
+## 8. Eight decisions per tool
 
-## 7. Errors and limits
+Record every cell in §3; blank means undecided:
 
-- Typed strings `ERROR_<REASON>: …` the router can branch on; empty results get a `SEARCH_HINT` appended — retry with broader terms before concluding the data is missing (`nodes.py:194-204`).
-- A size cap returns `ERROR_RESPONSE_TOO_LARGE` telling the model how to **replan** (slim `_source`, split filters, paginate with a stable sort, aggregate) — never a silent truncation (`search.py:196-234`).
-- Narration filters `ERROR_` and `Error:` payloads out so an error is never narrated as a finding (`nodes.py:274-279`).
-- Every constant two modules agree on lives in one protocol module (langgraph-patterns §11).
-
-## 8. Scoping
-
-- Tenant baked in at construction: closures and factories over tenant-restricted credentials (`effective_profile`, `config/opensearch_credentials.py:52-64`), the tenant term passed explicitly (`tools/search.py:112-128`, `tools/document_search.py:22-43`); the model never passes a tenant.
-- Fail-closed guards on everything the model generates: tenant filter merged under `bool.filter` with `global` aggregations rejected (`utils/guardrails.py:245-286`); forbidden clauses stripped (`:194-224`); index names charset-allowlisted **before** the prefix check (`:151-187`). Nexxus's SQL variant: one `SELECT`, allowlisted views, forced `LIMIT`, parsed with sqlglot rather than regex (`portal_nexxus/backend/src/infrastructure/agent/guardrails.py:17-50`).
-- Where the credentials and per-role models come from: `references/tenant-profiles.md`.
-
-## 9. Evals
-
-- Golden `question → query` pairs per tool: run the sub-agent with a fake model returning the golden DSL and assert the query **after** guardrails (tenant filter present, no script clause, index inside the prefix); plus a negative set where the fake returns a `global` aggregation and the tool must repair or fail typed. Scaffold with the `eval-harness` skill; no test calls the provider (D13).
-- The curated-vs-facts contradiction check as a test: load `index_context.yaml` (+ overlay) and a committed fixture `index_facts.yaml`, assert `detect_contradictions(...) == []`. The demo runs it only as a startup warning (`index_context_registry.py:261-263`); the target project makes it fail CI.
-- The three prompt tests of rules/llm-apps.md on the sub-agent prompt (fence-escape, no-customer-string, version pin) — curated notes are customer-adjacent text.
-
-## 10. Per-tool checklist — the form's eight sub-decisions
-
-One row per tool in the topology spec; a blank cell is a decision not taken.
-
-1. **Inventory** — `PascalCaseTool`, purpose, `<Name>Input` with guidance in every `Field`, envelope (`_result` / `_handoff_result`), agents allowed to call it.
-2. **Dependencies** — which tool runs first; stated in the description and in the flagged prompt block.
-3. **Context** — which of the three layers apply (retrieval tool: all three), who owns each, the machine layer's refresh cadence, the injection point (the tool's sub-agent).
-4. **Internal reasoning** — sub-agent yes or no, its role, the self-repair budget (`N` attempts, then `ERROR_<REASON>`).
-5. **Errors and limits** — the `ERROR_<REASON>` set, hints on empty results, the size cap and its replan text.
-6. **Memory of prior calls** — memo key, hand-off sentinel, derived-data guard.
-7. **Scoping** — what is baked in at construction, which guards run on generated output, which model-supplied ids are overridden.
-8. **Evals** — the golden-pairs file and the contradiction test.
+1. Inventory: PascalCaseTool, purpose, guided input schema, envelope, callers.
+2. Dependencies: prerequisite tool, description and flagged prompt block.
+3. Context: applicable layers, owners, facts refresh and tool-agent injection.
+4. Internal reasoning: yes/no, role, repair N then ERROR_<REASON>.
+5. Errors/limits: codes, empty hint, response cap and replanning text.
+6. Prior calls: memo key, sentinel, derived-data guard.
+7. Scoping: construction tenant, output guards, overridden model ids.
+8. Evals: golden-pair file and contradiction-check plan.

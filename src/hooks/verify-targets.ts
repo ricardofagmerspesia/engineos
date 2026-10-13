@@ -23,7 +23,7 @@ export { PROBE_TIMEOUT_SECONDS };
 // extension would be collected but never verified — a silent no-op that reads
 // as coverage — so any stack outside these two still verifies manually
 // (CLAUDE.md #2).
-export const NODE_EXTENSIONS: readonly string[] = ['ts', 'tsx', 'js', 'jsx'];
+export const NODE_EXTENSIONS: readonly string[] = ['ts', 'tsx', 'js', 'jsx', 'mts', 'cts', 'mjs', 'cjs'];
 export const PYTHON_EXTENSIONS: readonly string[] = ['py', 'pyi'];
 export const VERIFY_EXTENSIONS: readonly string[] = [...NODE_EXTENSIONS, ...PYTHON_EXTENSIONS];
 

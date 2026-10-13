@@ -10,12 +10,15 @@ import { fixtureRepo, tempRoot } from '../testing/harness';
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { silent, type HookContext } from './output';
 import { run } from './prompt-advisor';
+import { STACK_QUESTION_NOTE } from './stack-question';
 
 const checkout = resolveRoot({}, __dirname);
 
 // The operator's machine-wide bypass must never decide a case (the bash suite
 // exports the same isolation before it runs).
-const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass' };
+// ENGINEOS_ROUTER pinned: the shipped default is jev, which without a key adds a
+// visible fallback line; these tests are about the kernel's own output.
+const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_ROUTER: 'llm' };
 
 // The bypass announcement, restated rather than imported: it is the one thing a
 // bypassed session is told, and a test that imported the constant would pass
@@ -387,4 +390,70 @@ test('a project that never adopted EngineOS is never written to', async (t) => {
   const repo = fixtureRepo(tempRoot(t));
   await run(promptOf('deploy the billing service to production', repo, 'spans6'), hookCtx());
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
+});
+
+// ------------------------------------------------------------------ the stack question
+
+// Restated rather than imported, like BYPASS_NOTICE above.
+const BUILD_PROMPT = 'add a paginated orders endpoint to the API';
+
+async function contextIn(prompt: string, cwd: string, env: NodeJS.ProcessEnv = ISOLATED): Promise<string> {
+  const decision = await run(promptOf(prompt, cwd), hookCtx(env));
+  return decision.kind === 'context' ? decision.text : '';
+}
+
+test('a stack-dependent prompt in a stackless repo ends with the stack question', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  const text = await contextIn(BUILD_PROMPT, repo);
+  assert.ok(text.endsWith(`\n${STACK_QUESTION_NOTE}`) || text === STACK_QUESTION_NOTE, text);
+  assert.equal(text.split(STACK_QUESTION_NOTE).length, 2, 'the note appears exactly once');
+});
+
+test('a stack-dependent prompt in an empty directory outside git is asked too', async (t) => {
+  const scratch = tempRoot(t);
+  assert.ok((await contextIn(BUILD_PROMPT, scratch)).includes(STACK_QUESTION_NOTE));
+});
+
+test('a pure question in a stackless repo is not asked for a stack', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(await run(promptOf('what does this function return?', repo), hookCtx()), silent);
+});
+
+test('a repo with a manifest is not asked for a stack', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), { files: { 'services/api/pyproject.toml': '[project]\nname = "api"\n' } });
+  assert.ok(!(await contextIn(BUILD_PROMPT, repo)).includes('no stack declared'));
+});
+
+test('a repo with a declared config is not asked for a stack', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t), { files: { '.engineos/config.json': '{}' } });
+  assert.ok(!(await contextIn(BUILD_PROMPT, repo)).includes('no stack declared'));
+});
+
+test('a bypassed stackless session hears only the bypass notice', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = fixtureRepo(tempRoot(t));
+  assert.deepEqual(await run(promptOf(BUILD_PROMPT, repo), hookCtx({ ...ISOLATED, ENGINEOS_BYPASS: '1' })), {
+    kind: 'context',
+    event: 'UserPromptSubmit',
+    text: BYPASS_NOTICE,
+  });
 });

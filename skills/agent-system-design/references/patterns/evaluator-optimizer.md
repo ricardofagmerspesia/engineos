@@ -3,6 +3,14 @@ id: evaluator-optimizer
 title: Generator + critic, standard verdict schema, retry guard mirrored in the routing function
 origin: labv-opensearch-agent-demo
 ---
+> Active implementation uses Mastra on Node.js/TypeScript, hosted by NestJS providers. Any Python
+> file citations below are historical design evidence only, not executable
+> guidance. TypeScript/zod recommendations translate historical constraints;
+> they are not claims about the cited Python code's APIs.
+> Resolve JS APIs from installed dependencies. Eval/test strategies
+> are plans until integration and explicit current-task final-stage approval.
+
+
 ## Use when
 - The generator's output can be judged against the question and the evidence it used (tool traces, session notes), and a short instruction can fix it.
 - A second pass is worth its cost for the product (analytical answers, reports) — not for every chat turn.
@@ -15,14 +23,15 @@ origin: labv-opensearch-agent-demo
 ## Decisions it forces
 - Step 1 topology: an `evaluator` node after the generator — any generator (react-tool-loop, supervisor-workers, plan-execute-replan).
 - Step 2 roster: the `evaluator` role on a cheaper model; it sees the context package (question, answer, tool summary, previous verdict), never credentials or full result sets.
-- Step 4 protocol: the verdict schema — `passed`, `retry_recommended`, `retry_instruction | None`, `diagnosis` — validated with Pydantic (D10).
+- Step 4 protocol: the verdict schema — `passed`, `retry_recommended`, `retry_instruction | None`, `diagnosis` — validated with zod (D10).
 - Step 6 memory: whether the previous verdict is fed to the next evaluation (yes: it stops the judge repeating itself).
 - Step 7 harness: `max_retries` per run, `allow_retry` per request; the generator's iteration budget resets on retry.
 - Step 9 failure policy: evaluator unavailable or invalid → the answer ships unaudited with a warning, never a 500.
 - Step 10 observability: the verdict stored per run; retries counted per session.
 
-## LangGraph shape
-State adds `evaluate`, `allow_retry`, `evaluation_result`, `retry_count`, `max_retries` (langgraph-patterns §2). Node `evaluator` builds the context package, calls the judge under `nostream` (§6), validates the verdict; on retry it appends `RETRY_PREFIX + instruction + original question` as a message, increments `retry_count`, resets `iteration` (§4). Edge `evaluator → {generator | END}` by `should_retry`, **whose guard is the node's guard verbatim**: `allow_retry and retry_recommended and retry_instruction and retry_count < max_retries`. The generator widens its window back to the original question when the latest message carries `RETRY_PREFIX` (§11 owns the constant).
+## Mastra shape
+A Mastra workflow calls the generator agent, then a critic agent with a strict verdict schema. The retry step consumes a non-empty corrective instruction and the original scoped task; it increments the retry counter before generation.
+The same policy guards both the retry decision and execution: retries enabled, retry recommended, non-empty instruction and remaining budget. Keep retry state in typed workflow outputs/state, enforce a timeout and per-agent step caps, and expose only the final approved output to the product user.
 
 ```mermaid
 flowchart LR
@@ -42,7 +51,7 @@ flowchart LR
 - Routing: table-driven test of `should_retry` over (allow_retry, recommended, instruction, count, max) — every row.
 - End-to-end: a fake generator that fails once and a fake judge that asks for one retry; assert exactly one retry and the `iteration` reset.
 
-## Example
+## Example — historical design provenance
 - Guard mirrored: `labv-opensearch-agent-demo/backend/graph/workflow.py:48-65` and `graph/nodes.py:464-471`.
 - Context package and judge call: `graph/nodes.py:432-460`, `agents/evaluator_agent.py:49-76`.
-- Typed verdict plus system-note retry (the shape to copy): `portal_nexxus/backend/src/infrastructure/agent/graph.py:58-61,84-107,156-177`.
+- Typed verdict plus system-note retry (historical design provenance): `portal_nexxus/backend/src/infrastructure/agent/graph.py:58-61,84-107,156-177`.

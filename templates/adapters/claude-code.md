@@ -1,6 +1,6 @@
 # Adapter — Claude Code
 
-The reference implementation. Everything else degrades from this.
+Reference hook implementation.
 
 ## How rules load
 
@@ -25,23 +25,21 @@ which resolves `registries/routing.json` through `scripts/kernel.sh route-path`.
 | PreToolUse (`Agent`/`Task`) | `announce-agent-dispatch.sh` | Re-injects the dispatch banner |
 | PostToolUse (edit) | `mark-unrecorded.sh` | Sets the change-record flag |
 | PostToolUse (`Agent`/`Task`) | `announce-agent-return.sh` | Re-injects the return banner |
-| Stop | `stop-verify.sh` | Blocks on failing lint/typecheck/tests |
+| Stop | `stop-verify.sh` | Blocks on failing lint/typecheck |
 | Stop | `record-verify.sh` | Blocks on an unrecorded change |
 
-All of it needs node >= 18. Under an older node the four routing/record hooks
-exit 0 silently and the rest print a `[engineos] <hook> skipped` message —
-`CLAUDE.md` names which.
+Requires Node >=18. Older runtime: four routing/record hooks exit silently;
+others report skipped. CLAUDE.md identifies each.
 
 ## What degrades to convention
 
-The per-edit lint/typecheck: `post-edit-check.sh` is built but registered by
-nothing, so scoped verification happens at the Stop gate instead of after each
-edit. Everything else in the table above is enforced — this is the tool the
-enforcement was written for.
+post-edit-check.sh is unregistered; scoped checks run at final Stop, not every
+edit. Hooks enforce the table when runtime requirements hold. Tests/evals are
+separate final actions requiring current-task human approval.
 
 ## Bootstrap
 
 1. `install.sh`
 2. Confirm `node --version` is 18 or newer.
-3. `scripts/validate-engineos.sh` — expect all checks green.
+3. Final approved validation per rules/verification.md; behavioral validator needs test approval.
 4. Add the CI workflow from `templates/github/`.

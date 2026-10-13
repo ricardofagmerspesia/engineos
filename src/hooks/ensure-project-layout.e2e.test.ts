@@ -39,6 +39,15 @@ const OPT_IN_HINT =
 
 const SCAFFOLDED = `[engineos] scaffolded standard layout: ${SIX_DIRS.join(', ')} (review seeded READMEs)`;
 
+// The fragment the stack question opens with (design 2026-10-06 §C2); the full
+// string is pinned by the in-process suite, this one asserts it crosses the
+// process boundary.
+const STACK_QUESTION = '[engineos] no stack declared';
+
+// A manifest that answers the stack question without resolving a package, so the
+// cases about the opt-in gate and the scaffold keep their exact payloads.
+const STACK_FILES: Record<string, string> = { 'go.mod': 'module example.test/app\n' };
+
 // ------------------------------------------------------------------ helpers
 
 function hasGit(): boolean {
@@ -148,7 +157,7 @@ test('an un-adopted repo is not scaffolded without opt-in', (t) => {
 
 test('an un-adopted repo is told how to opt in', (t) => {
   if (skipWithoutGit(t)) return;
-  const repo = fixtureRepo(tempRoot(t));
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
   assert.equal(contextText(hook(repo).stdout), OPT_IN_HINT);
 });
 
@@ -158,6 +167,23 @@ test('ENGINEOS_SCAFFOLD=0 disables scaffolding even for an adopted repo', (t) =>
   const result = hook(repo, { ENGINEOS_SCAFFOLD: '0' });
   assert.equal(result.stdout, '');
   assert.equal(existsSync(join(repo, 'docs')), false);
+});
+
+test('an empty non-git dir is asked for its stack, with exit 0 and nothing written', (t) => {
+  const scratch = tempRoot(t);
+  const result = hook(scratch);
+  assert.equal(result.status, 0);
+  assert.equal(contextEvent(result.stdout), 'SessionStart');
+  assert.ok(contextText(result.stdout).startsWith(STACK_QUESTION), result.stdout);
+  assert.equal(existsSync(join(scratch, 'docs')), false);
+});
+
+test('an un-adopted stackless repo is told how to opt in and asked for its stack', (t) => {
+  if (skipWithoutGit(t)) return;
+  const repo = fixtureRepo(tempRoot(t));
+  const lines = contextText(hook(repo).stdout).split('\n');
+  assert.equal(lines[0], OPT_IN_HINT);
+  assert.ok((lines[1] ?? '').startsWith(STACK_QUESTION), lines.join('\n'));
 });
 
 // ------------------------------------------------------------------ the scaffold
@@ -198,13 +224,13 @@ test('the scaffold line is emitted as SessionStart context', (t) => {
 
 test('the scaffold prints one warn line naming what it created', (t) => {
   if (skipWithoutGit(t)) return;
-  const repo = fixtureRepo(tempRoot(t));
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
   assert.equal(contextText(hook(repo, { ENGINEOS_SCAFFOLD: '1' }).stdout), SCAFFOLDED);
 });
 
 test('a re-run creates nothing and prints nothing', (t) => {
   if (skipWithoutGit(t)) return;
-  const repo = fixtureRepo(tempRoot(t));
+  const repo = fixtureRepo(tempRoot(t), { files: STACK_FILES });
   hook(repo, { ENGINEOS_SCAFFOLD: '1' });
   // No ENGINEOS_SCAFFOLD on the second run: .engineos/ now carries the opt-in.
   assert.equal(hook(repo).stdout, '');
@@ -220,8 +246,9 @@ test('an existing file is never overwritten', (t) => {
   assert.equal(readFileSync(seeded, 'utf8'), 'KEEP\n');
 });
 
-test('a non-git dir is left alone, silently, with exit 0', (t) => {
+test('a non-git dir with a stack is left alone, silently, with exit 0', (t) => {
   const scratch = tempRoot(t);
+  writeFileSync(join(scratch, 'go.mod'), 'module example.test/app\n');
   const result = hook(scratch, { ENGINEOS_SCAFFOLD: '1' });
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
@@ -260,7 +287,7 @@ test('the hook still scaffolds on a PATH without jq', (t) => {
     t.skip('cannot build a jq-free PATH here (symlinks, bash or node unavailable)');
     return;
   }
-  const repo = fixtureRepo(root);
+  const repo = fixtureRepo(root, { files: STACK_FILES });
   const result = spawnSync('bash', [join(checkout, 'hooks', 'ensure-project-layout.sh')], {
     input: envelope({ event: 'SessionStart', cwd: repo, sid: SESSION }),
     env: { ...ISOLATED, PATH: `${bin}:/bin`, ENGINEOS_SCAFFOLD: '1' },

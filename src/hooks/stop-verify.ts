@@ -1,8 +1,9 @@
 // EngineOS Stop hook: runs scoped lint + typecheck for the packages changed this
 // session and blocks finishing if any fail. No-op when there is nothing to run.
 // Never blocks on infra quirks — only on genuine red (a real lint/type/test
-// failure). Tests are opt-in, not part of the default gate (rules/verification.md
-// "Tests are opt-in"); ENGINEOS_VERIFY_TESTS=1 folds the test target back in.
+// failure). Automatic hooks run lint/typecheck only. Approved tests are a
+// separate orchestrator command after implementation is fully integrated
+// (rules/verification.md); environment flags cannot provide user consent.
 // It runs ONLY in projects that have adopted EngineOS — a working tree carrying
 // `.engineos/` — because the checks it runs are the target repo's own scripts.
 //
@@ -127,7 +128,7 @@ export function verify(
   const packages = packageDirs(files, root);
   if (packages.length === 0) return silent;
 
-  const targets = targetsFor(ctx.io.env);
+  const targets = DEFAULT_TARGETS;
   // The nvm default is tried first; a node still too old is judged per Node
   // package in planRuns, so a Python package in the same repo is verified
   // regardless — its toolchain never ran on node.
@@ -152,7 +153,10 @@ export function verify(
   // Skip, infra and advisory lines ride along on a block too: a red lint must
   // not hide that pyright was skipped or that ruff is unpinned, or the
   // developer fixes the red and meets the next finding one Stop later.
-  const lines = [...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
+  const testNotice = ctx.io.env['ENGINEOS_VERIFY_TESTS'] === '1'
+    ? ['[engineos] ENGINEOS_VERIFY_TESTS is deprecated and ignored: tests require explicit user approval and a separate final command after integration.']
+    : [];
+  const lines = [...testNotice, ...plan.lines, ...ladder.infra.map(infraLineOf), ...ladder.advisories];
   if (ladder.failures.length > 0) {
     const reason = blockReason(ctx.root, ladder.failures);
     return block(lines.length === 0 ? reason : `${reason}\n${lines.join('\n')}`);
@@ -161,10 +165,6 @@ export function verify(
 }
 
 // ------------------------------------------------------------------ internals
-
-function targetsFor(env: NodeJS.ProcessEnv): readonly string[] {
-  return env['ENGINEOS_VERIFY_TESTS'] === '1' ? [...DEFAULT_TARGETS, TEST_TARGET] : DEFAULT_TARGETS;
-}
 
 // The one timeout table, applied to whichever runner was selected. The budget
 // is a setting, not a new constant (design §A1.5): pyright's first run over a

@@ -7,6 +7,7 @@ import type { ProjectConfig } from '../registry/project-config';
 import {
   dependencyName,
   detectPackages,
+  hasStackSignal,
   languagesOf,
   packageJsonDependencies,
   packageLabel,
@@ -240,4 +241,60 @@ test('the default deps read a real tree', (t) => {
     ],
     source: 'detected',
   });
+});
+
+// ------------------------------------------------------------------ stack signal
+
+test('an empty tree carries no stack signal', () => {
+  assert.equal(hasStackSignal(ROOT, tree({})), false);
+  assert.equal(hasStackSignal(ROOT, tree({ 'README.md': '# x\n', 'docs/notes.md': 'x' })), false);
+});
+
+test('a manifest at depth 0 through 3 is a stack signal, one at depth 4 is not', () => {
+  assert.equal(hasStackSignal(ROOT, tree({ 'go.mod': 'module x\n' })), true);
+  assert.equal(hasStackSignal(ROOT, tree({ 'a/Cargo.toml': '' })), true);
+  assert.equal(hasStackSignal(ROOT, tree({ 'a/b/Gemfile': '' })), true);
+  assert.equal(hasStackSignal(ROOT, tree({ 'a/b/c/package.json': '{}' })), true);
+  assert.equal(hasStackSignal(ROOT, tree({ 'a/b/c/d/package.json': '{}' })), false);
+});
+
+test('dot-directories and skipped directories never answer the stack signal', () => {
+  assert.equal(hasStackSignal(ROOT, tree({
+    '.agents/skills/x/package.json': '{}',
+    '.claude/pyproject.toml': '',
+    'node_modules/left-pad/package.json': '{}',
+    '.venv/lib/requirements.txt': '',
+    'dist/package.json': '{}',
+    'build/pom.xml': '',
+  })), false);
+});
+
+test('a declared .engineos/config.json is a stack signal on its own', () => {
+  assert.equal(hasStackSignal(ROOT, tree({ '.engineos/config.json': '{}' })), true);
+});
+
+test('a .csproj or .sln suffix is a stack signal', () => {
+  assert.equal(hasStackSignal(ROOT, tree({ 'src/Api/Api.csproj': '<Project/>' })), true);
+  assert.equal(hasStackSignal(ROOT, tree({ 'App.sln': '' })), true);
+});
+
+test('an unreadable directory is treated as empty, never thrown', () => {
+  const deps: StackDeps = {
+    exists: () => false,
+    readFile: () => {
+      throw new Error('EACCES');
+    },
+    listDir: () => {
+      throw new Error('EACCES');
+    },
+  };
+  assert.equal(hasStackSignal(ROOT, deps), false);
+});
+
+test('the default deps read the stack signal off a real tree', (t) => {
+  const root = tempRoot(t);
+  assert.equal(hasStackSignal(root), false);
+  mkdirSync(join(root, 'services', 'api'), { recursive: true });
+  writeFileSync(join(root, 'services', 'api', 'pom.xml'), '<project/>');
+  assert.equal(hasStackSignal(root), true);
 });

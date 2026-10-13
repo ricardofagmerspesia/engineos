@@ -2,62 +2,44 @@
 
 ## How rules load
 
-`AGENTS.md` at the repo root, read automatically. Keep it to the always-on set
-plus a pointer to the router table — the full corpus does not fit and should not
-be loaded eagerly (`rules/context.md`).
+Root AGENTS.md loads automatically. Keep always-on guidance and a router pointer;
+load activity references on demand (rules/context.md).
 
 ```markdown
 # Engineering rules
 <always-on set inline>
 
 # Routing
-Before substantive work, classify the intent and read the matching files from
-`rules/`. Table: <link to CLAUDE.md router section>. Announce what you loaded.
+Supervisor routes project writes/dispatch, including small edits/follow-ups.
+Read matching rules/skills/patterns; table: <CLAUDE.md router link>. Announce route.
 ```
 
-Nested `AGENTS.md` files in subdirectories are the closest analogue to
-path-scoped routing: put the backend rules in `api/AGENTS.md`, the frontend rules
-in `web/AGENTS.md`.
+Nested AGENTS.md supplies directory guidance (e.g. api/ and web/).
 
 ## The AGENTS.md copy
 
-`AGENTS.md` at the repo root is a copy of `CLAUDE.md`, kept in sync by hand. It
-deliberately differs in four places, and a sync that "fixes" them is a
-regression:
+Root AGENTS.md mirrors CLAUDE.md by hand, retaining these intentional differences:
+- Longer always-on imports: parallelism, models, memory, subagents, verification,
+  risk-autonomy and gates; no prompt advisor loads them.
+- Install path ~/.Codex/AGENTS.md; wording "the Codex environment".
+- Rule citations say "always-on", not "from the task contract".
+- Hooks are absent, rather than requiring a Node version.
 
-- The always-on import list is longer: `parallelism`, `models`, `memory`,
-  `subagents`, `verification`, `risk-autonomy` and `gates` are always-on here,
-  because no prompt advisor loads them per intent.
-- The install path is `~/.Codex/AGENTS.md`, and the tool is named "the Codex
-  environment" where `CLAUDE.md` names Claude Code.
-- Rule files are cited as "(always-on)" where `CLAUDE.md` says "from the task
-  contract" — there is no prompt advisor here to produce a contract.
-- The hooks bullet says the hooks do not run at all, instead of naming their
-  node floor.
-
-Everything else is the same document, including the router table row for row:
-C16 counts `CLAUDE.md`'s rows against `registries/intents.json`, so a row that
-lives only in the copy is invisible to the validator and drifts unnoticed. That
-is how the copy carried a "Coordinated multi-domain change" row and a
-`hooks/routing-map.sh` mention for a release after both were gone. Rejected once
-already: generating the copy from `CLAUDE.md` by script — the substitution table
-the four deltas need is more machinery than the hand sync it would replace.
+Other content and router rows stay aligned: C16 validates CLAUDE.md against
+registries/intents.json, so copy-only rows escape validation. Scripted generation
+was rejected because maintaining the four substitutions costs more than hand sync.
 
 ## What is enforced
 
-- Always-on rules: yes.
-- Directory-scoped rules: yes, via nested `AGENTS.md`.
-- Everything else: no.
+Always-on and nested directory instructions load; other EngineOS gates do not.
 
 ## What degrades to convention
 
-- **All hooks.** No PreToolUse, PostToolUse or Stop equivalent. Routing, gate
-  advisory, post-edit checks and both Stop gates are model discipline only.
-- **The return envelope.** Still worth stating in `AGENTS.md` — a structured
-  status is useful even when nothing parses it, because it forces the author to
-  pick `BLOCKED` instead of writing a hopeful paragraph.
+All hooks: routing/advisory, edit checks and Stop gates are model discipline.
+Keep the return envelope: explicit BLOCKED/FAILED status remains useful without a parser.
 
 ## CI fallback
 
-The full `scripts/` suite. On this tool CI is not a backstop, it is the only
-enforcement — weight it accordingly and make the checks blocking.
+CI is the portable executable enforcement. Final lint/typecheck/build can block
+merges; tests/evals/behavioral scripts need explicit current-task approval after
+integration (rules/verification.md), including manual CI dispatch.

@@ -20,6 +20,7 @@ import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceNotes, type TaskAnswer } from './prompt-advisor-guidance';
 import { advisorProject, routeDecision, type AdvisorProject, type RouterDeps } from './prompt-advisor-router';
+import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
 import { event, telemetrySink, withSpanAsync, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
 import { humanPrompt } from '../lib/harness-prompt';
 
@@ -60,6 +61,9 @@ export async function runWith(env: HookEnvelope, ctx: HookContext, deps: RouterD
   if (task === null) return silent;
   writeEvents(sink, task);
   const notes = guidanceNotes(task);
+  // The fallback for a session whose SessionStart note scrolled away: repeated
+  // only on prompts that are about to make a stack choice, never on questions.
+  if (promptNeedsStackQuestion(task.contract.intents, env.cwd, ctx.spawn)) notes.push(STACK_QUESTION_NOTE);
   // A prompt that resolved nothing worth announcing stays silent — the events
   // and the span above are still the honest record that the call happened.
   if (notes.length === 0) return silent;

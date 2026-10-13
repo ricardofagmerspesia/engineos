@@ -6,6 +6,16 @@ allowed-tools: Bash, Read
 
 Adopt EngineOS in the current project.
 
+Application backends must use NestJS, including API services, workers and LLM
+service hosts. Node.js remains the runtime for tooling, scripts and libraries;
+standalone Express or plain Node.js application servers are unsupported.
+For an explicit stack declaration, use `--stack nestjs[@dir]` for a backend and
+`next`, `react` or `react-native` for UI packages. `--stack node` and
+`--stack express` return guidance rather than declaring a generic backend.
+The default `--stack auto` keeps detection truthful for existing packages;
+existing config files remain untouched. If an existing application backend is
+not NestJS, identify the mismatch and scope its migration before extending it.
+
 ## Steps
 
 1. Resolve the EngineOS install root — `${CLAUDE_PLUGIN_ROOT}` in plugin mode,
@@ -24,11 +34,8 @@ Adopt EngineOS in the current project.
    echo "$ENGINEOS_ROOT"
    ```
 
-   The symlink branch works because `install.sh` links every command file back
-   into the checkout, so any one of them leads home; the upward walk makes it
-   independent of nesting depth, and foreign commands are skipped because only a
-   directory holding `scripts/kernel.sh` is accepted. It reads no personal
-   configuration. If the loop prints nothing, report that EngineOS is unreachable
+   Follow installed command symlinks upward to scripts/kernel.sh, skipping
+   foreign commands. Read no personal config. If the loop prints nothing, report that EngineOS is unreachable
    from this project and stop — do NOT fall back to a bare or relative path.
 
 2. Run the bootstrap, substituting the printed root (shell state does not survive

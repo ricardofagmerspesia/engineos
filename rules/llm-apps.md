@@ -1,125 +1,168 @@
 # LLM Application Rules
 
+## Test and eval timing
+
+Plan acceptance criteria, thresholds and cases before code. Every test/eval
+instruction below requires integrated implementation and explicit current-task
+user approval under `rules/verification.md`; features/security/release gates
+supply no consent. Without approval, report evidence pending.
+
+Use TypeScript, zod/JSON Schema and Mastra for all LLM apps, agents and chatbots.
+Host APIs/workers in NestJS modules/providers under `rules/base.md`: Nest owns
+startup, transport, auth and lifecycle; injected Mastra owns model calls, agents,
+tools, workflows and memory. Never bootstrap a separate Mastra server beside
+Nest. Node supports runtime/CLI/shared packages; pure domain helpers stay ordinary
+TypeScript. Existing LangGraph/LangChain/other orchestration requires a reported
+policy deviation and scoped migration before extension; preserve compatibility.
+
 ## Prompts
-- DO keep prompts in versioned files/constants with names and changelog — never inline string soup scattered across code.
-- DO structure prompts: role/context → task → constraints → output format → examples. Examples beat instructions.
-- DO template with explicit variables; validate variables before interpolation.
-- DO test every prompt that carries customer data, three kinds, all required: a **fence-escape probe** (a value containing the data delimiter must not close the fence or land outside it), a **no-customer-string denylist** (no known tenant, product or person string appears in any built prompt — few-shots are synthetic), and a **prompt-version pin** (`PROMPT_VERSION` is stamped into every usage record and the test fails when the text changes without a bump).
-- DO feature-flag a tool's prompt block together with its tool registration — one flag, both sides; a prompt that describes a tool the model cannot call, or a registered tool the prompt never mentions, is a bug.
-- DON'T tweak prompts in production without an eval run (see below).
+
+- Version prompts in named files/constants with changelog. Structure: role/context
+  → task → constraints → output → examples. Validate explicit template variables.
+- Customer-data prompts require three approved final tests: **fence-escape probe**
+  (data delimiters cannot escape), **no-customer-string denylist** (no known tenant,
+  product/person strings; synthetic few-shots), **prompt-version pin**
+  (`PROMPT_VERSION` in every usage record; text changes require version bumps).
+- Feature-flag prompt blocks and corresponding tool registrations together.
+- Production prompt changes require approved eval evidence, never manual vibes.
 
 ## Structured output
-- DO use tool/function calling or structured-output APIs for machine-readable results — never regex-parse free text.
-- DO validate every JSON the model returns against a schema (zod / Pydantic / JSON Schema) before use — verdicts, classifications, DSL, all typed. On validation failure: ONE retry carrying the validation error as feedback, then a typed failure. No regex-and-defaults parsing.
-- DON'T let model output cross a trust boundary unvalidated: it is untrusted input, same as a user form.
+
+- Use tool/function calling or structured-output APIs; never regex-parse free text.
+- Schema-validate all returned JSON (verdicts/classifications/DSL) before use or
+  trust-boundary crossing. Failure gets ONE retry with validation feedback, then
+  typed failure; never regex/default fallbacks.
 
 ## Security (prompt injection)
-- DO treat retrieved documents, user content, and tool results as data, not instructions — delimit clearly and instruct model accordingly.
-- DO scope tools by least privilege: an agent that reads docs gets no write/delete tools.
-- DO require human confirmation for irreversible agent actions (sends, deletes, payments).
-- DON'T put secrets in prompts or let the model see credentials.
-- Corpus-level access control and redaction are the `## RAG` section's rules below — delimiting retrieved text is not a substitute for either.
+
+- Delimit retrieved docs, user content and tool results as untrusted data,
+  explicitly distinguished from instructions.
+- Least-privilege tools; read-only agents receive no write/delete tools.
+- Human confirmation for irreversible sends/deletes/payments; no credentials in prompts.
+- Delimiting text never replaces retrieval ACLs or redaction below.
 
 ## Evals — no vibes-driven development
-- DO build a golden set (10–50 real cases with expected outputs) before iterating on any prompt/agent.
-- DO run evals on every prompt/model/temperature change; track pass rate over time.
-- DO use LLM-as-judge for fuzzy criteria, exact match for structured outputs.
-- DON'T ship a prompt change because one manual test looked good.
+
+- Plan golden-set criteria before implementation; author cases in approved final stage.
+- Approved evals cover every prompt/model/temperature change; track pass rates.
+- LLM judges cover fuzzy criteria, exact match structured output.
+- One successful manual example never proves a shippable prompt change.
 
 ## Reliability & cost
-- DO set max_tokens, timeouts, and retry-with-backoff on every model call.
-- DO design fallbacks: degraded model, cached answer, or honest "unavailable" — never hang.
-- DO log every call: prompt version, model, latency, token counts, outcome. Tokens are money — budget per feature.
-- DO cache aggressively: embeddings permanently (content-hash key), completions where inputs repeat (prompt caching) — with the principal in the key wherever retrieved content is involved (`## RAG`).
+
+- Every model call: max_tokens, timeout, retry/backoff and fallback (degraded model,
+  cached response or honest unavailable).
+- Log prompt version, model, latency, tokens and outcome; budget per feature.
+- Cache content-hashed embeddings permanently and repeated completions where valid;
+  retrieval-dependent keys include principal, as specified below.
 
 ## RAG
 
 ### Corpus safety
 
-**Access control at retrieval.** A shared index with no per-chunk ACL is an IDOR on
-documents — `rules/security.md` owns object-level access, this is the retrieval
-mechanism for it.
+**Access control at retrieval.** Implement object-level authorization (`rules/security.md`):
 
-- DO carry the source document's ACL or tenant in every chunk's metadata.
-- DO derive the principal server-side from the authenticated session or a token claim — never from a request body field, query param, or tool argument the model or the client can write.
-- DO filter by principal BEFORE ranking, server-side — never by instructing the model to ignore what it was handed.
-- DON'T post-filter the top-K: it leaks twice — recall drops silently for the legitimate caller (their own documents get crowded out by chunks they may not see), and a non-empty pre-filter set reveals that the document exists.
-- DO push the principal filter into every retriever branch, dense AND lexical, and bound the re-ranker to the filtered candidate set. A single filter stage drawn before a parallel fan-out is not implementable as one stage.
-- DO assign ACL metadata from the source system's authoritative permissions at ingestion. DON'T parse it from document content, front-matter, or filenames — a document that declares its own ACL is an injection vector.
-- DO either resolve group and reference ids against the authoritative permission source at query time, or state the maximum ACL staleness and the re-index-on-permission-change trigger in the `## Access` block.
-- DO fail closed: a chunk with no ACL metadata is not retrievable, and an index write that omits it fails.
-- DO give a derived or multi-source chunk (summary, hypothetical question, entity table) the intersection of every source's ACL. An index that cannot express one is not built.
-- DO include the principal or ACL scope in every cache key on the retrieval and completion path; only content-hashed embedding caches are principal-free.
-- `retrieval-acl` artifact (`registries/decision-rules.json`, `rule-rag-corpus-safety`): an `## Access` block in the feature README or spec naming the principal source, the chunk metadata field carrying the ACL or tenant, where the filter applies in each branch, the ACL freshness rule, and the fail-closed behaviour. The golden set carries the cross-tenant pair.
+- Every chunk carries source-authoritative ACL/tenant metadata; never infer it from
+  document content, frontmatter or filenames. Index writes lacking ACL fail;
+  chunks lacking ACL are unretrievable.
+- Derive principal server-side from authenticated session/token claims, never
+  client/model-controlled body/query/tool arguments.
+- Filter BEFORE ranking in EVERY dense and lexical branch; re-rank only filtered
+  candidates. Never post-filter top-K (recall loss and existence leakage).
+- Resolve groups/reference ids against authoritative permissions at query time,
+  or declare maximum ACL staleness and permission-change re-index trigger.
+- Derived/multi-source chunks inherit the intersection of every source ACL;
+  an index unable to represent it cannot be built.
+- Retrieval/completion cache keys include principal/ACL scope; only content-hashed
+  embedding caches are principal-free.
+- Required `retrieval-acl` artifact (`registries/decision-rules.json`,
+  `rule-rag-corpus-safety`): feature README/spec `## Access` states principal source,
+  ACL/tenant field, each branch's filter, freshness and fail-closed behavior.
+  Approved golden set includes cross-tenant pairs.
 
-**Redaction before indexing and before prompting.** An embedding is a copy of the
-source text that both neighbouring rules miss: `rules/security.md` keeps PII out of
-logs and the DBA row's data rules encrypt it at rest, and neither stops raw PII
-reaching the embedding provider, sitting in the vector store, or being partially
-inverted back out of the vector.
+**Redaction before indexing and before prompting.** Embeddings also copy sensitive data:
 
-- DO run the detectors at ingestion, before chunking and embedding, and redact or tokenize PII and secrets there.
-- DO run them on the user's question too, before query embedding and before the completion call. State the behaviour when a query redacts to nothing — default: ask the user to rephrase, never answer from the emptied query.
-- DO redact chunk metadata, titles, source paths and the rendered citation string, not only the chunk body.
-- DO run a redaction pass over the assembled context — retrieved chunks, tool results, history, user message — on every request. It is unconditional defense in depth, not a migration step for corpora predating the policy.
-- DO treat a reversible token map as PII itself: encrypted at rest, access-controlled separately from the index, and deleted on the same erasure path as the source document.
-- DO join the redaction version to the chunking version in the embedding cache key.
-- DO treat a redaction-version bump as remediation: re-ingest the affected sources and delete the superseded chunks and vectors. Cache invalidation is not remediation — the unredacted vectors survive it.
-- DO name any data class intentionally left unmasked in the `## Redaction` block; leaving one unmasked raises the feature to `rule-sensitive-data` (threat model, security review, human approval).
-- `pre-index-redaction` artifact of the same rule: a `## Redaction` block stating the detectors, the data classes covered, the masking strategy (drop, mask, or reversible tokenize under the data's own retention), the query-side behaviour on an emptied query, and what is intentionally left unmasked and why.
+- Detect/redact/tokenize PII/secrets at ingestion BEFORE chunking/embedding, including
+  metadata, titles, paths and rendered citations.
+- Redact questions before query embedding/completion; emptied queries ask for
+  rephrasing by default, never generate from nothing.
+- Redact assembled chunks/tools/history/user context on EVERY request, including
+  already-redacted/new corpora (unconditional defense in depth).
+- Reversible token maps are PII: separately access-controlled, encrypted at rest,
+  erased with source documents.
+- Embedding cache keys include chunking AND redaction versions. Redaction bumps
+  require re-ingestion and deletion of superseded chunks/vectors; cache invalidation
+  alone leaves unredacted vectors behind.
+- Declare intentionally unmasked classes/reasons; any such class triggers
+  `rule-sensitive-data`: threat model, security review, human approval.
+- Required `pre-index-redaction` artifact: feature README/spec `## Redaction`
+  names detectors, classes, masking (drop/mask/reversible tokenize under retention),
+  emptied-query behavior and intentional exceptions/reasons.
 
 ### Retrieval quality
 
-- DO chunk by semantic units (sections, paragraphs) with metadata, not fixed char counts blindly.
-- DO measure retrieval quality separately from generation quality — most RAG failures are retrieval failures. Retrieval is measured with **Recall@K**, **Precision@K** and **MRR** against the golden set; generation with **groundedness** (every claim traceable to a retrieved chunk) and **faithfulness** (no claim contradicts the chunks). A feature that reports only an end-to-end pass rate cannot say which half is broken.
-- DO keep the retrieval baseline in `evals/<feature>/retrieval/BASELINE.md` (metric, K, value, date, index version) — this is the `retrieval-evaluation` artifact `registries/decision-rules.json` requires when knowledge is volatile. A prompt or index change that lowers Recall@K does not ship.
-- DO retrieve hybrid by default — dense (vector) AND lexical (BM25/full-text) — then re-rank the merged candidate set before the top-N reaches the model. Dense-only misses exact identifiers, codes and rare terms; lexical-only misses paraphrase. Skip the re-ranker only when Precision@K on the golden set is already above the feature's threshold without it — and record that measurement.
-- DO declare a freshness policy per corpus: what triggers re-indexing, the maximum acceptable staleness, and how a stale answer is labelled — the `freshness-policy` artifact of the same decision rule, declared as a `## Freshness` block in the feature's README or spec.
-- DO include source references in outputs so answers are verifiable.
-- DON'T stuff context: retrieval top-k is a tuned parameter, more ≠ better; tune K on Recall@K vs. Precision@K, not on vibes.
+- Semantic chunks (sections/paragraphs) with metadata; no blind fixed-char slicing.
+- Measure retrieval Recall@K, Precision@K, MRR separately from generation
+  groundedness (claims traceable to chunks) and faithfulness (no contradiction).
+  End-to-end pass rate alone cannot diagnose either.
+- Baseline: `evals/<feature>/retrieval/BASELINE.md` records metric/K/value/date/index
+  version (`retrieval-evaluation` when knowledge volatile). Lower Recall@K blocks shipping.
+- Hybrid dense+lexical retrieval, merge and re-rank before model top-N. Skip re-ranker
+  only with recorded golden-set Precision@K above feature threshold without it.
+- Feature README/spec `## Freshness` (`freshness-policy`) names re-index triggers,
+  maximum staleness and stale-answer labeling.
+- Cite sources; tune K against Recall@K/Precision@K rather than stuffing context.
 
 ### Ingestion
 
-- DO keep the raw source in a document store (object storage or equivalent) keyed by source id and content hash; the vector index is a derived, rebuildable projection, never the only copy.
-- DO parse per format with a dedicated parser — PDF layout preserved, HTML boilerplate stripped, tables kept as tables — and record the parser name and version in chunk metadata; a parser change is a re-index trigger under the freshness policy.
-- DO dedupe by content hash before embedding. Near-duplicate detection is optional and is judged on Precision@K, never on intuition.
-- DO carry a minimum chunk metadata set: source id, source URI, title, section path, offsets, created and updated timestamps, type or tags, ACL, chunking version, redaction version, parser version, embedding model and version.
-- DO make ingestion idempotent — upsert keyed by a chunk id derived from source id, offsets and versions — and incremental, re-ingesting changed sources only.
-- DO keep a full-rebuild path and rehearse it. An index that has never been rebuilt from the document store is not a projection, it is the only copy.
-- DO use one embedding model per index. A model change is a new index plus a swap — DON'T mix vectors from two models in one index.
+- Raw source store keyed by source id/content hash; vector index is rebuildable,
+  never sole copy.
+- Dedicated format parsers preserve PDF layout/tables and strip HTML boilerplate;
+  metadata records parser name/version; changes trigger re-indexing.
+- Dedupe content hashes before embedding; optional near-dedupe requires Precision@K evidence.
+- Minimum metadata: source id/URI, title, section path, offsets, created/updated
+  timestamps, type/tags, ACL, chunking/redaction/parser versions, embedding model/version.
+- Idempotent upserts use chunk ids from source id/offsets/versions; ingest changes
+  incrementally. Keep/rehearse full rebuild from source store in approved validation.
+- One embedding model per index; model changes create a new index plus swap, never mixed vectors.
 
 ### Query pipeline
 
-- DO treat query rewrite — normalization, history-aware reference resolution, decomposition into sub-queries for multi-hop — as a model call whose output is untrusted: schema- and length-bounded before anything downstream sees it.
-- DO adopt a rewrite only when it raises Recall@K on the golden set. A rewrite is a prompt change and owes the same before/after numbers.
-- DO apply metadata filters (date range, type, tags, source) as structured pre-filters, alongside the principal filter and under the same pre-ranking rule.
-- DON'T let the model compose a filter from free text: filter values come from structured extraction validated against an allowlist.
-- DO assemble context under an explicit token budget: order by re-rank score, drop near-identical chunks, expand to the parent section when a chunk alone lacks context, and stamp every chunk with its source id.
-- DO truncate by dropping the lowest-ranked whole chunk, never mid-chunk — a half chunk separates a claim from the citation that backs it.
-- DO answer "not found in the sources" below a relevance threshold, never a completion from parametric memory. Tune the threshold on the golden set and keep the no-answer case in it.
+- Rewrites (normalization, history resolution, multi-hop decomposition) are untrusted
+  model output: schema/length-bound before downstream use. Adopt only with improved
+  golden-set Recall@K and before/after prompt-change evidence.
+- Structured metadata filters (date/type/tags/source) accompany principal pre-ranking
+  filters. Model filter extraction must be allowlist-validated; no free-text filter composition.
+- Explicit context token budget: re-rank order, near-duplicate removal, parent-section
+  expansion when needed and source-id stamps. Drop lowest whole chunks, never mid-chunk.
+- Below tuned relevance threshold answer "not found in the sources", never from
+  parametric memory; golden set includes no-answer cases.
 
 ### Operations
 
-- DO keep app data, cache and sessions, raw documents and backups, and the vector index in separate stores with separate retention.
-- DO back up the document store and the chunk metadata; vectors are rebuilt from those, not restored.
-- DO give conversation history the shortest viable retention — it is PII-bearing, and the DBA row's data rules own retention and encryption at rest for what is stored.
-- DO choose the vector store by the architecture rules' monolith-first default: the existing relational store's vector extension first, a dedicated vector database only when a measured scale or latency need is recorded.
-- DO key the three cache layers distinctly: embedding on the content hash (permanent), retrieval result on normalized query hash + principal + index version (short TTL), answer on normalized query + principal + prompt version + index version (TTL bounded by the freshness policy).
-- DO tune the semantic-cache similarity threshold on the golden set: a hit that serves a wrong answer is an eval failure, not a cache miss.
-- DO capture explicit feedback (rating, correction) and implicit signals (retry, abandon) per answer, with trace id, prompt version and retrieved chunk ids.
-- DO route negative feedback and low-groundedness answers to a human review queue; every reviewed failure becomes a golden case in the PR that fixes it.
-- DO extend the per-call log of `## Reliability & cost` with per-stage latency (rewrite, retrieve, re-rank, generate) and the retrieved chunk ids with their scores. Correlation-id propagation and the log schema stay the observability rules' concern.
+- Separate app data, cache/sessions, raw docs/backups and vectors with separate retention.
+  Back up source store/metadata; rebuild vectors. History gets shortest viable retention;
+  DBA data rules own stored retention/encryption.
+- Prefer existing relational vector extension under monolith-first architecture;
+  dedicated vector DB needs recorded scale/latency measurements.
+- Cache keys: embedding = content hash (permanent, versioned above); retrieval =
+  normalized-query hash + principal + index version (short TTL); answer = normalized
+  query + principal + prompt/index versions (TTL within freshness policy).
+- Tune semantic-cache similarity on golden set; wrong-answer hits are eval failures.
+- Capture rating/correction and retry/abandon feedback with trace/prompt/chunk ids.
+  Queue negative/low-groundedness answers for human review; reviewed failures become
+  approved golden cases in the fixing PR.
+- Extend call logs with rewrite/retrieve/re-rank/generate latency and chunk ids/scores;
+  observability rules retain correlation/log-schema ownership.
 
 ## Agents
-- DO give agents few, well-described tools (5–10 sharp tools beat 30 vague ones).
-- DO cap agent loops (max iterations, max cost) — runaway agents burn money.
-- DO make tool errors informative to the model: return what went wrong and what to try, not just "error".
 
-Any system with more than one agent starts at `/engineos:design-agents` (skill
-`agent-system-design`): topology, roster, tools, protocol, context scoping,
-memory, harness, guardrails, failure policy, observability, evals, diagrams —
-one step at a time, the developer answering each. The agent-topology spec it
-writes is the design-gate artifact; the developer's approval is recorded under
-the change record's `## Human decisions` (hitl reason `topology-approval`)
-before any graph code exists. The `langgraph-patterns` skill is loaded only
-after that approval is recorded, never to choose the topology.
+- Few precise tools (5–10 beats 30 vague); cap iterations and cost.
+- Tool errors tell the model what failed and what to try.
+- Multiple application agents begin `/engineos:design-agents` (`agent-system-design`):
+  topology, roster, tools, protocol, scoped context, memory, harness, guardrails,
+  failure policy, observability, evals and diagrams, one developer-answered step
+  at a time. Topology spec is the design artifact; record developer approval in
+  change-record `## Human decisions` with `topology-approval` BEFORE orchestration code.
+  `mastra-patterns` implements approved topology, never chooses it. Single Mastra
+  agents/ordinary chatbots trigger no topology approval.

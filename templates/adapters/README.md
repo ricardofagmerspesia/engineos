@@ -1,40 +1,26 @@
 # Adapters
 
-The EngineOS methodology — router, gates, risk tiers, evidence contract, fan-out
-discipline — is tool-independent. Only the *enforcement* is Claude Code specific,
-because only Claude Code runs the hooks.
-
-Each adapter states three things, in this order:
-
-1. **How rules load** on that tool.
-2. **What is actually enforced** there.
-3. **What degrades to convention** — the honest part. A rule that nothing checks
-   is a convention, and calling it a gate on a tool that cannot gate it is how
-   teams stop trusting the whole system.
+EngineOS routing, gates, risk, evidence and fan-out are tool-independent; Claude
+Code alone runs these hooks. Each adapter describes loading, actual enforcement
+and convention-only gaps.
 
 ## Enforcement matrix
 
 | Mechanism | Claude Code | Cursor | Codex | Copilot |
 |---|---|---|---|---|
-| Always-on rules in context | hooks + `@` imports | `.cursor/rules` always-apply | `AGENTS.md` | `.github/copilot-instructions.md` |
-| Route on file pattern | `route-before-change.sh` (PreToolUse) | glob-scoped rule files | convention | path-scoped instructions |
-| Gate advisory from decision rules | `prompt-advisor.sh` (UserPromptSubmit) | convention | convention | convention |
-| Post-edit lint/typecheck | `post-edit-check.sh` (opt-in, unregistered by default) | convention | convention | convention |
-| Block "done" without verification | `stop-verify.sh` (Stop) | **none** | **none** | **none** |
-| Block on unrecorded change | `record-verify.sh` (Stop) | **none** | **none** | **none** |
-| Integrity + evals | `scripts/*.sh` in CI | same, via CI | same, via CI | same, via CI |
+| Always-on rules | hooks + @ imports | always-apply .cursor/rules | AGENTS.md | .github/copilot-instructions.md |
+| File routing | route-before-change.sh | glob rules | convention | path instructions |
+| Decision advisory | prompt-advisor.sh | convention | convention | convention |
+| Post-edit checks | post-edit-check.sh (opt-in/unregistered) | convention | convention | convention |
+| Block unverified done | stop-verify.sh | none | none | none |
+| Block unrecorded change | record-verify.sh | none | none | none |
+| Integrity/evals | approval-gated CI scripts | same | same | same |
 
-**CI is the portable enforcement layer.** Everything in the last row runs the same
-everywhere, because it runs in GitHub Actions rather than in the agent. When
-porting to a tool without Stop hooks, move what you can into CI and accept that
-the rest is convention — do not pretend otherwise.
+CI supplies portable executable enforcement; gaps stay explicit. Final
+lint/typecheck/build is separate from final approval-only tests/evals.
 
 ## Writing a new adapter
 
-Copy the shape of `cursor.md`. Requirements:
-
-- Name the tool's actual instruction-loading mechanism, with the real file path.
-- Fill the enforcement matrix row honestly, including the gaps.
-- State the CI fallback for each gap.
-- Do not restate the rules themselves. Adapters map mechanisms; `rules/` holds
-  content, and duplicating it guarantees drift (`rules/memory.md`).
+Follow cursor.md: real loading paths, honest enforcement/gaps and CI fallback.
+Derive routes from registry. Map mechanisms without duplicating rules/ content
+(rules/memory.md).

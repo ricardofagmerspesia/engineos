@@ -1,111 +1,73 @@
-Interview the developer to design the topology of a system with more than one
-agent before any graph code exists. Walk the twelve-step form one decision at a
-time, write each answer into the topology spec as it is given, draw the result
-twice, and stop only when the developer's approval is recorded in the change record.
+# Agent-topology interview procedure
 
-Note: this file is the interview **procedure** — the sibling of
-`patterns/2-Interview-brainstorm.md` for agent systems. The questions themselves,
-the options, the recommendation rules and the spec sections live in
-`skills/agent-system-design/references/form.md`; the spec shape lives in
-`templates/agent-topology.md`. The persona is `llm-coordinator` (alias
-`hermsdorff`) in INTERVIEW mode (`agents/llm-coordinator.md`), invoked by
-`/engineos:design-agents`. All three are resolved from the EngineOS install root
-(`${CLAUDE_PLUGIN_ROOT}` in plugin mode, the engineos repo otherwise), not from
-the target project.
+Design a **product** multi-agent system before any agent/workflow implementation:
+twelve decisions, immediate spec updates, two diagrams and recorded developer consent.
+Questions/options/gates: `skills/agent-system-design/references/form.md`;
+schema: `templates/agent-topology.md`; persona: `llm-coordinator`
+(alias `hermsdorff`) INTERVIEW via `/engineos:design-agents`.
+Resolve these from EngineOS install root (`${CLAUDE_PLUGIN_ROOT}` for plugins),
+not the target project. Development-worker dispatch follows parallelism rules;
+it does not enter this product interview.
 
 ## Preconditions
 
-- The `agent-system` intent matched, or decision rule `rule-multi-agent-design`
-  fired and the prompt advisor announced the `topology-approval` gate.
-- A change record is open in `.engineos/changes/`; its `spec:` field will point
-  at the topology spec once the file exists.
-- The session is the developer's main session. INTERVIEW is interactive: it does
-  not run in a subagent, because a subagent cannot wait for the developer.
-- `skills/agent-system-design/SKILL.md` has been loaded (Skill tool) and
-  `references/form.md` read.
+- agent-system intent or rule-multi-agent-design announced topology-approval.
+- Active `.engineos/changes/` record, linked through spec: when the spec exists.
+- Developer main session; no subagent interview because each decision waits.
+- agent-system-design loaded; form.md read before step 1.
+- Fixed stack: Mastra/Node.js/TypeScript in NestJS providers. Ask only unresolved
+  project facts, never reselect the framework. Single-agent chatbots load
+  mastra-patterns directly and skip the gate.
 
 ## The loop
 
-For each step 1 → 12, in order, never two in one message:
-
-1. **Ask.** State the step's question as `form.md` phrases it, the options with
-   their trade-offs, and one recommendation grounded in the answers already in
-   the spec — with `file:line` into the reference repos where one exists. End
-   the message with the question.
-2. **Wait.** Do nothing until the developer answers. "Whatever you think" is
-   restated as a proposal and asked again; a partial answer gets the missing
-   half asked back.
-3. **Record.** Write the answer into its section of
-   `docs/specs/<date>-<slug>-agent-topology.md` (created from
-   `templates/agent-topology.md` at step 1, in the target project's `docs/specs/`).
-   Shape a free-text answer into the section's table and show the shaped version
-   for confirmation in the same turn. The `<placeholder>` for that section is gone
-   after this; nothing else in the file changes.
-4. **Next.** Check the step's "do not proceed until" line in `form.md`. If it
-   holds, ask the next step. If not, ask for what is missing.
-
-A step the developer revisits is rewritten in place, and every later step that
-depended on it is re-asked from the loop, not patched.
+1. Ask the form question with options/trade-offs and one recommendation grounded
+   in prior answers/reference file:line evidence. End with the question.
+2. Wait for the developer; partial answers require missing facts. “Whatever you
+   think” becomes a proposal for explicit consent. Infer no decision/default.
+3. Record immediately in `docs/specs/<date>-<slug>-agent-topology.md`, created
+   from the template at step 1. Preserve free text, shape its required table and
+   show it for same-turn confirmation. Replace only the answered section's placeholders.
+4. Apply that step's “do not proceed until” condition; ask the next only when met.
+   Never skip/merge steps or ask several together. Revisited decisions replace
+   their section and trigger re-asking every dependent later step.
 
 ## Resume
 
-`/engineos:design-agents resume` opens the newest `docs/specs/*-agent-topology.md`
-whose front-matter says `status: draft` (or the one named as the argument), reads
-it, announces which sections are filled and which is the first one still holding a
-`<placeholder>`, and re-enters the loop at that step. Filled sections are
-summarized back to the developer in one message before the first question, so a
-resumed session is checked, not trusted. Nothing is re-asked unless the developer
-asks for it.
+`/engineos:design-agents resume` reads the newest draft topology spec, or its
+named argument. Summarize filled sections, identify the first placeholder and
+resume there. Check saved answers with the developer; re-ask completed decisions
+only on request or changed dependencies.
 
 ## What the persona may and may not do
 
-May:
+Read relevant target docs/code/settings/tests and cited historical reference repos
+(labv-opensearch-agent-demo/backend, labv-assist/app)/catalog files for grounding.
+Write/rewrite only the spec; step 12 also writes approval/frontmatter in the change
+record. Render both diagrams. Read mastra-patterns for planning when needed.
 
-- Read the target repo — its `docs/`, existing `graph/`, `agents/`, `tools/`,
-  settings, tests — to ground a recommendation in what is already there.
-- Read the reference implementations named in `form.md`
-  (`labv-opensearch-agent-demo/backend`, `labv-assist/app`) and the pattern files
-  under `skills/agent-system-design/references/` to cite them.
-- Write and rewrite the topology spec, and — at step 12 only — the approval line
-  in the change record and the spec front-matter.
-- Render the two Mermaid diagrams and ask for a review.
-
-May not:
-
-- Write code: no file under `graph/`, `agents/`, `tools/`, no test, no prompt
-  module. The spec is the only artifact until the approval line exists.
-- Dispatch builders or any other agent. The form is a conversation with the
-  developer; there is no one else to hand work to yet.
-- Pick for the developer: no topology, agent, tool decision, bound or policy is
-  filled in by default or by inference. A recommendation is offered; the
-  developer's word is what gets recorded.
-- Skip or merge steps, or ask several steps in one message to "save time".
-- Load `langgraph-patterns` before the approval line is recorded.
+Before approval write no agent/workflow/tool implementation, prompts or tests;
+dispatch no builders/other agents during the form. Offer recommendations, never
+choose topology/tools/budgets/policies on the developer's behalf.
 
 ## Exit condition
 
-The developer said "approved" at step 12, and the change record carries, under
-`## Human decisions`:
+Developer says approved at step 12; under change-record `## Human decisions`:
 
 ```
 <date> | <developer> | topology-approval | approved | docs/specs/<date>-<slug>-agent-topology.md
 ```
 
-The spec front-matter reads `status: approved`, `approved_by`, `approved_on`, and
-`pattern_ids` matches §1. The pre-flight list in
-`skills/agent-system-design/SKILL.md` is checked and every box is true. Only
-then does the interview end; a session that stops earlier leaves the spec in
-`status: draft` for `resume`.
+Spec status is approved with approved_by/approved_on; pattern_ids matches §1.
+Every pre-flight item in agent-system-design must pass. Otherwise leave draft for
+resume. Approval permits implementation, not tests.
 
 ## Hand-off to implementation
 
-- Load `langgraph-patterns` for a tool-loop topology; for a pipeline topology
-  (`grounded-pipeline`, `typed-pipeline`) no graph is written — `python-patterns`
-  gives the plain `async` use case.
-- Derive the wave plan per `rules/parallelism.md` from the approved spec: one
-  unit per agent (its node, its packet model, its evals) and one per tool (its
-  schema, its sub-agent, its golden pairs), with disjoint file scopes; the graph
-  wiring, the harness and the end-to-end eval are the barrier after them.
-- Each unit's prompt carries the spec path and the sections it implements; the
-  builders read the spec, not this conversation.
-- `eval-harness` scaffolds §11 once the first code exists.
+After consent, use mastra-patterns for agents/typed workflow steps in NestJS
+providers; deterministic stages may use typed helpers. Derive exclusive units for
+each §2 agent (implementation + packet) and §3 tool (schema + implementation),
+with spec path/sections in each dispatch. Integrate shared Mastra wiring after its
+dependencies under parallelism rules. Builders read the spec, not chat history.
+Only after integration and explicit current-task final-stage test approval may
+`eval-harness` author/run §11.

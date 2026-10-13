@@ -271,6 +271,12 @@
       "skillPath": "skills/productivity/teach/SKILL.md",
       "computedHash": "b8a69574c7a019bed84e84313dc8bf02e1d1bf925ba43057d433217c63863206"
     },
+    "tlc-spec-lean": {
+      "source": "tech-leads-club/agent-skills",
+      "sourceType": "github",
+      "skillPath": "packages/skills-catalog/skills/(development)/tlc-spec-lean/SKILL.md",
+      "computedHash": "38fc6cf1c7fc1e18d3a4b8e9ffbbf7c48e51ca364324a601976c55b3ea644e86"
+    },
     "to-questionnaire": {
       "source": "mattpocock/skills",
       "sourceType": "github",

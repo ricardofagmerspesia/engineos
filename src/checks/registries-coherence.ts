@@ -326,8 +326,8 @@ function invalidSignals(rules: readonly Row[]): Finding[] {
 // the rule's source, the exact artifacts it requires, and the two sentences in
 // the prose that say the requirement is conditional.
 const VERIFICATION_SOURCE = 'rules/verification.md';
-const VERIFICATION_REQUIRE = 'lint output-shown tests-when-in-scope typecheck';
-const VERIFICATION_RULE_SENTENCE = 'Tests join the gate ONLY when tests were ON';
+const VERIFICATION_REQUIRE = 'lint output-shown tests-after-integration-when-user-approved typecheck';
+const VERIFICATION_RULE_SENTENCE = 'Tests join the gate ONLY after implementation and integration are complete';
 const VERIFICATION_GATE_SENTENCE = '`rules/verification.md` owns which checks are in';
 
 function verificationDrift(ctx: CheckContext, rules: readonly Row[]): Finding[] {

@@ -39,7 +39,7 @@
         "require": [
           "typecheck",
           "lint",
-          "tests-when-in-scope",
+          "tests-after-integration-when-user-approved",
           "output-shown"
         ],
         "gate": "validation"
@@ -92,7 +92,7 @@
       "then": {
         "require": [
           "compatibility-plan",
-          "contract-tests",
+          "contract-acceptance-criteria",
           "adr"
         ],
         "gate": "design"
@@ -249,7 +249,7 @@
     {
       "id": "rule-multi-agent-design",
       "priority": 85,
-      "source": "docs/specs/2026-09-28-python-stack-and-agent-design-design.md §4",
+      "source": "docs/specs/2026-10-06-mastra-llm-policy.md; historical provenance: docs/specs/2026-09-28-python-stack-and-agent-design-design.md §4. Mastra/chatbot alone does not establish a multi-agent system; LangGraph signals retain migration detection.",
       "when": {
         "multi_agent_system": true
       },

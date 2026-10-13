@@ -38,7 +38,7 @@
 
 ## Dependencies & supply chain
 - DO run `npm audit` / `pip-audit` (or `uv audit`) / dependabot; patch criticals within days, not quarters.
-- DO pin lockfiles; review postinstall scripts and `setup.py`/build hooks of new deps.
+- DO pin lockfiles; review postinstall scripts and package lifecycle/build hooks of new deps.
 
 ## Pre-merge checklist (apply on review intent)
 - [ ] No secrets in diff

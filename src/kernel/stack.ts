@@ -296,3 +296,60 @@ export function languagesOf(packages: readonly PackageStack[]): Language[] {
   for (const pkg of packages) if (!out.includes(pkg.language)) out.push(pkg.language);
   return out;
 }
+
+// ------------------------------------------------------------------ stack signal
+
+// Any language EngineOS recognises a project by, not only the two it has
+// runners for: the question "did anyone pick a stack yet?" is answered yes by a
+// go.mod as much as by a pyproject.toml.
+export const STACK_MANIFESTS: readonly string[] = [
+  'package.json', 'pyproject.toml', 'requirements.txt', 'go.mod', 'Cargo.toml', 'pom.xml',
+  'build.gradle', 'build.gradle.kts', 'Gemfile', 'composer.json', 'pubspec.yaml', 'mix.exs', 'deno.json',
+];
+export const STACK_MANIFEST_SUFFIXES: readonly string[] = ['.csproj', '.sln'];
+export const STACK_SIGNAL_MAX_DEPTH = 3; // root = depth 0
+
+const PROJECT_CONFIG = join('.engineos', 'config.json');
+
+/** True when `.engineos/config.json` exists at root, or any manifest exists within
+ *  STACK_SIGNAL_MAX_DEPTH, skipping dot-directories and SKIPPED_DIRS (same walk rules
+ *  as detectPackages). Short-circuits on the first hit. Never throws: an unreadable
+ *  directory is treated as empty. */
+export function hasStackSignal(root: string, deps: StackDeps = defaultDeps): boolean {
+  if (existsOrFalse(join(root, PROJECT_CONFIG), deps)) return true;
+  return signalWithin(root, 0, deps);
+}
+
+// Files of a level are checked before any child is entered, so a manifest at the
+// root answers without walking the tree. The depth bound keeps this cheap on the
+// hot path: it runs on every SessionStart and on stack-dependent prompts.
+function signalWithin(dir: string, depth: number, deps: StackDeps): boolean {
+  let entries: readonly DirEntry[];
+  try {
+    entries = deps.listDir(dir);
+  } catch {
+    return false;
+  }
+  const children: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      if (isStackManifest(entry.name)) return true;
+      continue;
+    }
+    if (!entry.name.startsWith('.') && !SKIPPED_DIRS.includes(entry.name)) children.push(entry.name);
+  }
+  if (depth >= STACK_SIGNAL_MAX_DEPTH) return false;
+  return children.some((name) => signalWithin(join(dir, name), depth + 1, deps));
+}
+
+function isStackManifest(name: string): boolean {
+  return STACK_MANIFESTS.includes(name) || STACK_MANIFEST_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+function existsOrFalse(path: string, deps: StackDeps): boolean {
+  try {
+    return deps.exists(path);
+  } catch {
+    return false;
+  }
+}

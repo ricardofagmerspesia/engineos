@@ -1,75 +1,65 @@
 # Sub-agent Rules — always on
 
-The router names agents. Naming an agent and then doing the work inline is a
-defect: the specialist's rules, model tier, and file scope never get applied.
+One supervisor routes every project change and dispatches scoped workers; naming
+an agent while implementing its assignment inline violates dispatch ownership.
 
 ## Dispatch is mandatory
 
-- DO dispatch the agent the router row names, via the Agent/Task tool, whenever
-  that row matches. `agent:backend-coordinator` in a row is an instruction, not a
-  footnote.
-- DO treat this file as the user's standing request to use sub-agents — a harness
-  that only spawns agents "when the user asks" has been asked, here, once and for all.
-- DO dispatch even for a single unit of work. Fan-out (`rules/parallelism.md`) is
-  about how MANY agents run at once; this file is about whether ANY runs at all.
-- DO pass every agent its MODE (AUDIT|IMPLEMENT), exact file scope, frozen
-  contracts, model per `rules/models.md`, and the output format expected back.
-- DON'T dispatch for pure questions, explanations, or a single-line mechanical
-  edit the router didn't route. Those are answered directly.
-- DON'T dispatch an agent whose file scope overlaps another in-flight agent —
-  disjoint scopes or serialize (`rules/parallelism.md`).
+- Before any code/config/design/docs write, including mechanical follow-ups, the
+  supervisor classifies intent/risk, resolves role/rules/skills/patterns and
+  assigns exclusive ownership. Dispatch the named agent via Agent/Task.
+- Resolve deterministic kernel routing first; use the read-only router only for
+  unresolved planning. Unknown intents use always-on rules and a suitable scoped
+  worker; missing specialists do not stall authorized work.
+- This is the user's standing subagent request. Dispatch even for one unit;
+  `rules/parallelism.md` determines concurrent count, not whether dispatch occurs.
+- Brief: MODE (AUDIT|IMPLEMENT), role, rules/skills/patterns, exact files,
+  prerequisites, available host capacity, frozen contracts/revisions,
+  risk/autonomy, branch/PR, model per `rules/models.md`, return envelope.
+  Mark absent contracts/prerequisites/PR as none/unknown.
+- Supervisor owns routing, contracts, integration and final gate; its writes are
+  limited to assigned shared contracts, plans/records and integration. Reroute
+  uncovered implementation units. Keep scopes disjoint or serialize.
+- Answer pure explanations directly; invent no implementation units.
 
 ## Announcement format — green, on its own line
 
-Every dispatch is announced BEFORE the agent runs, and every return is announced
-after. Each announcement is a `diff`-fenced block so the terminal renders it
-green, separated from surrounding prose by a blank line above and below — one
-agent per line, never inline in a paragraph.
+Announce each dispatch before execution and each return afterwards in a
+`diff` fence, separated by blank lines. One agent per line; one block per wave.
+Use aliases when present, with canonical name on first mention:
 
 ```diff
 + [agent] borisenko (backend-coordinator) | model: opus | mode: IMPLEMENT | scope: src/orders/**
 ```
 
-On return:
-
 ```diff
-+ [agent] borisenko -> done | 3 files | final gate green
++ [agent] borisenko -> returned | 3 files | scoped diff inspected
 ```
 
-- DO use the alias when the agent has one (`borisenko`, `arturo`, `elias`, …),
-  with the canonical name in parentheses on first mention.
-- DO emit one line per agent when a wave is dispatched — the wave is one fenced
-  block, one line inside it per agent, so the reader sees who is working at a glance.
-- DO announce failure on the same green line with `-> FAILED` and the reason;
-  never let a wave summary hide a dead branch (`rules/parallelism.md`).
-- DON'T bury an agent name in a sentence, and DON'T batch several agents onto one
-  line. Which agent is working must be readable without parsing prose.
+Failures use the same visible line with `-> FAILED` and reason. Never bury names,
+combine agents on one line or hide a failed unit in a wave summary.
 
 ## If you are the dispatched agent
 
-The brief names your mode. `MODE: AUDIT` is read-only — inspect, gather evidence,
-report, edit nothing. `MODE: IMPLEMENT` makes the change, then states what it
-changed and how it verified. Absent a mode, infer one: a question or
-"review/analyze" reads as AUDIT, an explicit task as IMPLEMENT.
+AUDIT is read-only: inspect, gather evidence, report. IMPLEMENT changes only the
+assignment and reports changes/review evidence. If MODE is absent, infer AUDIT
+from questions/review/analyze and IMPLEMENT from explicit implementation tasks.
 
-You are probably one of several agents on this repo right now, so:
-
-- **Stay inside the file scope you were given** — report anything outside it as
-  `### Out of scope` for the orchestrator to route. Another agent likely owns it.
-- **Honor the frozen contracts** (types, API payloads, DB schema, module
-  surfaces) verbatim. Report a contract that looks wrong; never redefine one
-  unilaterally, since siblings are coding against it.
-- **Verify with scoped lint/typecheck only.** Repo-wide formatters, codemods and
-  `git` writes collide with concurrent agents. Tests join that run only when the
-  brief marked them in scope (`rules/verification.md` "Tests are opt-in"); the
-  full suite and the final gate belong to the orchestrator.
-- **Project `CLAUDE.md` outranks EngineOS** wherever the two conflict.
+- Confirm role, loaded guidance, ownership, contracts, prerequisites and
+  risk/autonomy before writing. Return missing/new assignments for rerouting.
+- Stay inside exclusive scope; report outside findings under `### Out of scope`.
+- Honor frozen types/API/DB/module contracts verbatim; report concerns, never
+  redefine contracts unilaterally.
+- Return review evidence; run no intermediate lint/typecheck/build/test gates,
+  repo-wide formatters/codemods or git writes. Testing requires an approved
+  final-stage brief under `rules/verification.md`.
+- Keep workers flat: never spawn agents. Return independent work to the supervisor
+  for scheduling under `rules/parallelism.md`. Development dispatch does not
+  trigger application topology-design approval.
+- Project `CLAUDE.md` outranks EngineOS.
 
 ## Relation to the router
 
-`rules/parallelism.md` decides how the work splits. `rules/models.md` decides the
-tier each agent runs at. This file decides that the agent runs and that the user
-can see it. All three apply together.
-
-Enforced at the hook level, not by prose alone: `hooks/announce-agent-dispatch.sh` and
-`announce-agent-return.sh` re-inject the banner at dispatch/return time. See README.
+`rules/parallelism.md` owns decomposition; `rules/models.md` owns tiers; this file
+owns dispatch and visibility. Hooks `hooks/announce-agent-dispatch.sh` and
+`announce-agent-return.sh` re-inject banners at dispatch/return (see README).

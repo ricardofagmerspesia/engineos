@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import type { spawnSync } from 'node:child_process';
 import type { Io } from '../io';
 import { loadLayoutManifest, scaffoldLayout, type ManifestEntry } from '../hooks/scaffold';
-import { packageLabel, resolveStack, type StackSource } from '../kernel/stack';
+import { hasStackSignal, packageLabel, resolveStack, type StackSource } from '../kernel/stack';
 import { repoRoot } from '../lib/git';
 import {
   FRAMEWORKS,
@@ -78,6 +78,19 @@ export function claudeMdTemplate(packages: readonly PackageStack[]): string {
 // `engineos_scaffold_dir "$ROOT" ""`.
 function claudeMdSeed(template: string): ManifestEntry[] {
   return [{ dir: '', seeds: [{ src: `@${template}`, dest: 'CLAUDE.md' }] }];
+}
+
+// The per-repo config Matt Pocock's engineering skills read (/to-spec, /to-tickets,
+// /grill-with-docs), pointed at the EngineOS layout instead of his `.scratch/`
+// default — without it those skills would write PRDs and tickets where the spec
+// gate never looks. Seeded through the same one-entry-manifest containment path
+// as CLAUDE.md, so docs/agents/ cannot be a symlink escape either.
+const AGENT_SKILLS_DIR = 'docs/agents';
+const AGENT_SKILLS_TEMPLATE_DIR = 'templates/agent-skills';
+export const AGENT_SKILLS_DOCS: readonly string[] = ['issue-tracker.md', 'domain.md'];
+
+function agentSkillsSeed(name: string): ManifestEntry[] {
+  return [{ dir: AGENT_SKILLS_DIR, seeds: [{ src: `@${AGENT_SKILLS_TEMPLATE_DIR}/${name}`, dest: name }] }];
 }
 
 export interface InitDeps {
@@ -159,8 +172,12 @@ export function initProject(argv: string[], deps: InitDeps): number {
   // template is picked from it, so the two can never disagree about the stack.
   const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
   const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
+  if (stack.kind === 'auto' && packages.length === 0 && hasStackSignal(project)) {
+    io.out('  existing stack signal found, but no package EngineOS has a runner for (Node or Python) was detected — existing files are preserved; declare the stack with --stack\n');
+  }
   writeProjectConfig({ io, project, packages, source, router, dryRun });
   writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
+  for (const name of AGENT_SKILLS_DOCS) writeAgentSkillsDoc({ io, project, root, name, dryRun });
   io.out(doneMessage(root));
   return EXIT_OK;
 }
@@ -236,6 +253,9 @@ export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | {
     const at = entry.indexOf('@');
     const framework = at === -1 ? entry : entry.slice(0, at);
     const rawDir = at === -1 ? '.' : entry.slice(at + 1);
+    if (framework === 'node' || framework === 'express') {
+      return { ok: false, message: `--stack: "${framework}" is not a supported application framework; choose nestjs for application backends, or next, react, react-native for UI. Node.js remains the runtime for tooling; use --stack auto to detect existing packages truthfully.` };
+    }
     if (!isFramework(framework)) {
       return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${FRAMEWORKS.join(', ')})` };
     }
@@ -272,6 +292,29 @@ function writeProjectClaudeMd(opts: { io: Io; project: string; root: string; tem
     isFile(claudeMd)
       ? `  CLAUDE.md: created from ${template} — fill in the Stack and Commands sections\n`
       : '  CLAUDE.md: skipped — the project root did not resolve to a directory inside itself\n',
+  );
+}
+
+// Same existence test as the CLAUDE.md seed (`lstat`, so a dangling symlink
+// counts as occupied): an existing file is the developer's, never overwritten.
+function writeAgentSkillsDoc(opts: { io: Io; project: string; root: string; name: string; dryRun: boolean }): void {
+  const { io, project, root, name, dryRun } = opts;
+  const dest = `${AGENT_SKILLS_DIR}/${name}`;
+  const template = `${AGENT_SKILLS_TEMPLATE_DIR}/${name}`;
+  const target = join(project, AGENT_SKILLS_DIR, name);
+  if (lstatOk(target)) {
+    io.out(`  ${dest}: exists, left untouched\n`);
+    return;
+  }
+  if (dryRun) {
+    io.out(`  would create ${dest} from ${template}\n`);
+    return;
+  }
+  scaffoldLayout(project, root, agentSkillsSeed(name));
+  io.out(
+    isFile(target)
+      ? `  ${dest}: created from ${template}\n`
+      : `  ${dest}: skipped — ${AGENT_SKILLS_DIR}/ is not a plain directory inside the project, or ${template} is missing\n`,
   );
 }
 

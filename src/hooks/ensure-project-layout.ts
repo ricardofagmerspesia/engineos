@@ -15,6 +15,7 @@ import { bypassMarker } from './bypass';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { loadLayoutManifest, scaffoldLayout } from './scaffold';
+import { needsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
 import { languagesOf, packageLabel, resolveStack } from '../kernel/stack';
 import { gitDir, repoRoot } from '../lib/git';
 import { KernelError } from '../lib/json';
@@ -44,8 +45,15 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   const marker = bypassMarker(env.cwd, ctx.spawn);
   if (marker !== null) removeFile(marker);
 
+  // Outside a repo nothing is scaffolded or reaped, but an empty directory is
+  // exactly where a new project starts, so the stack question still applies —
+  // read against cwd, for this check only. ENGINEOS_SCAFFOLD=0 is the developer's
+  // "EngineOS stays quiet here" switch, so it silences this path as it does a repo.
   const project = repoRoot(env.cwd, ctx.spawn);
-  if (project === null) return silent;
+  if (project === null) {
+    if (ctx.io.env['ENGINEOS_SCAFFOLD'] === '0') return silent;
+    return needsStackQuestion(env.cwd, env.cwd) ? context('SessionStart', STACK_QUESTION_NOTE) : silent;
+  }
 
   const git = gitDir(env.cwd, ctx.spawn);
   if (git !== null && isDirectory(git)) {
@@ -60,13 +68,19 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   // Skip the engineos repo itself (it ships the manifest at its root).
   if (isFile(join(project, 'hooks', 'layout-manifest.sh')) && isFile(join(project, 'install.sh'))) return silent;
 
+  // Computed before the opt-in gate: a repo that has not adopted EngineOS is the
+  // likeliest place for a stack to go unchosen, and the hint alone would not say so.
+  const needsStack = needsStackQuestion(env.cwd, project);
+
   // Opt-in gate: scaffolding dirties the worktree, so it never runs on repos that
   // haven't adopted EngineOS. Adopted = `.engineos/` already present, or the user
   // opts a new project in with ENGINEOS_SCAFFOLD=1. ENGINEOS_SCAFFOLD=0 disables
   // even for adopted repos.
   const optIn = ctx.io.env['ENGINEOS_SCAFFOLD'];
   if (optIn === '0') return silent;
-  if (optIn !== '1' && !isDirectory(join(project, '.engineos'))) return context('SessionStart', OPT_IN_HINT);
+  if (optIn !== '1' && !isDirectory(join(project, '.engineos'))) {
+    return context('SessionStart', needsStack ? `${OPT_IN_HINT}\n${STACK_QUESTION_NOTE}` : OPT_IN_HINT);
+  }
 
   const lines: string[] = [];
   try {
@@ -81,6 +95,9 @@ export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   // hook, one decision, so a session start never renders two payloads.
   const stack = stackLine(project);
   if (stack !== null) lines.push(stack);
+  // No stack line can precede this one: a repo without a stack signal resolves
+  // no packages.
+  if (needsStack) lines.push(STACK_QUESTION_NOTE);
   if (lines.length === 0) return silent;
   return context('SessionStart', lines.join('\n'));
 }

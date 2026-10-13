@@ -7,7 +7,7 @@
 // patterns instead of a Check re-grepping a hand-written case ladder.
 // Spec: docs/specs/2026-08-06-decision-kernel-p2-resolver-api.md
 import { compilePromptRegex } from '../kernel/scale';
-import { KernelError } from '../lib/json';
+import { isRecord, KernelError } from '../lib/json';
 import { finding, result, type CheckResult, type Finding } from './findings';
 import type { Check } from './index';
 import {
@@ -51,6 +51,7 @@ function checkC17(ctx: CheckContext): CheckResult[] {
   if (routing === undefined) return [preconditionResult('C17', C17_TITLE, ROUTING_JSON)];
   const findings: Finding[] = [];
   for (const domain of routing.domains) {
+    if (inactiveCompatibilityDomain(ctx, domain.id)) continue;
     // Path globs and basename globs are one pool: a domain matched by either is
     // reachable, and a domain matched by neither can never be routed to.
     if (domain.match.paths.length + domain.match.basenames.length === 0) {
@@ -65,6 +66,21 @@ function checkC17(ctx: CheckContext): CheckResult[] {
   return [result('C17', C17_TITLE, findings)];
 }
 
+// A retained public domain may be deliberately retired from auto-routing. Both
+// metadata flags and the empty routing surface are required; accidental empty
+// active domains continue to fail C17.
+function inactiveCompatibilityDomain(ctx: CheckContext, id: string): boolean {
+  const rows = rawJson(ctx, ROUTING_JSON)?.['domains'];
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row: unknown) => {
+    if (!isRecord(row)) return false;
+    const match = subRecord(row, 'match');
+    return row['id'] === id && row['enabled'] === false && row['deprecated'] === true
+      && row['sample_path'] === null && Array.isArray(match?.['paths']) && match['paths'].length === 0
+      && Array.isArray(match?.['basenames']) && match['basenames'].length === 0;
+  });
+}
+
 // The fixture half of C17: a sample_path must route to the domain that declares
 // it, which validates the patterns AND the precedence chain — a domain shadowed
 // by an earlier one fails here even though its own globs are correct.
@@ -74,6 +90,7 @@ function checkC17b(ctx: CheckContext): CheckResult[] {
   if (routing === undefined) return [preconditionResult('C17b', C17B_TITLE, ROUTING_JSON)];
   const findings: Finding[] = [];
   for (const domain of routing.domains) {
+    if (inactiveCompatibilityDomain(ctx, domain.id)) continue;
     const answer = kernelAnswer(ctx, ['route-path', domain.sample_path ?? '']);
     const got = answer?.['domain'];
     const routed = typeof got === 'string' ? got : 'null';

@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      approve_tests:
+        description: "Approve final tests, behavioral evals, benchmarks and smoke checks for this run"
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -18,12 +25,6 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      # The bash-parity suite skips itself on a machine whose bash cannot parse
-      # the pinned kernel. Here, that skip would be the only parity evidence
-      # quietly disappearing, so this makes it fail instead — see the
-      # skipOrFail helper in src/kernel/parity.test.ts.
-      ENGINEOS_REQUIRE_PARITY: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -53,8 +54,7 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: npm audit --audit-level=high
 
-      # Before the tests: the *.e2e.test.ts suites spawn the committed bundle, so a
-      # stale dist must fail here with this message, not as an e2e assertion.
+      # Build and source drift are non-test integration validation.
       - name: Node runtime — dist drift guard
         run: |
           npm run build
@@ -64,10 +64,6 @@ jobs:
             exit 1
           fi
           echo "ok: dist/engineos.cjs matches src/"
-          test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
-
-      - name: Node runtime — unit and e2e tests
-        run: npm test
 
       # The gen drift guards below stay on the .sh shims on purpose: they are the
       # one CI exercise the deprecated shims get before 2.0 removes them.
@@ -100,8 +96,71 @@ jobs:
           fi
           echo "ok: registries/agents.json matches scripts/gen-agent-registry.sh output"
 
-      - name: EngineOS integrity check
+  # Source and console integration validation run concurrently on every event.
+  console:
+    runs-on: ubuntu-latest
+    # Next builds are the slowest step here; 15 minutes is well above the observed
+    # runtime and still far below the six-hour default.
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: console
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22" # better-sqlite3 >= 13 requires node >= 22 (engines)
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  # Tests are a final stage with explicit human approval for this workflow run.
+  # Push and pull_request events validate integration without authorizing tests.
+  final-tests:
+    needs: [verify, console]
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # The bash-parity suite skips itself on a machine whose bash cannot parse
+      # the pinned kernel. Here, that skip would be the only parity evidence
+      # quietly disappearing, so this makes it fail instead — see the
+      # skipOrFail helper in src/kernel/parity.test.ts.
+      ENGINEOS_REQUIRE_PARITY: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Node runtime — unit and e2e tests
+        run: npm test
+
+      - name: EngineOS integrity and behavioral kernel checks
         run: node dist/engineos.cjs validate
+
+      - name: Bundle version smoke check
+        run: |
+          test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
 
       - name: Evals (deterministic tier)
         run: node dist/engineos.cjs evals
@@ -133,51 +192,37 @@ jobs:
             echo "FAIL: install aborted on a clean repo"; exit 1
           fi
 
-  # E03 — the console was not touched by CI: typecheck, lint, tests and build
-  # ran only on the machine of whoever edited it. A console that publishes and
-  # reverts repository files and makes commits is a write surface, and a write
-  # surface without automated verification is where work loss is born.
-  console:
+  console-tests:
+    needs: [verify, console]
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
     runs-on: ubuntu-latest
-    # Next builds are the slowest step here; 15 minutes is well above the observed
-    # runtime and still far below the six-hour default.
     timeout-minutes: 15
     defaults:
       run:
         working-directory: console
-    env:
-      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22" # better-sqlite3 >= 13 requires node >= 22 (engines)
+          node-version: "22"
           cache: npm
           cache-dependency-path: console/package-lock.json
 
       - name: Install from the lockfile
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
       - name: Publish guard tests (base revision and write lock)
         run: npm test
-
-      - name: Build
-        run: npm run build
 
   # E02 — the published artifact is tested with the final bytes of the release,
   # on Linux and on Windows/Git Bash. A package that installs only on the
   # machine of whoever packaged it is not reproducible distribution.
   package:
-    # Packaging only makes sense once the source it packages is known good, and
-    # two OS legs re-running a red tree just doubles the noise.
-    needs: verify
+    # Packaging includes installer and runtime smoke tests, so the whole job
+    # belongs to the approved final stage after all integration validation.
+    needs: [verify, console]
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
     timeout-minutes: 25
     strategy:
       fail-fast: false

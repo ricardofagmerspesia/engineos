@@ -35,71 +35,40 @@ reference this instead of restating logging guidance.
 
 ## Agent traces
 
-Structured logging above is for the systems we build. This section is for the
-agents that build them. One session is one trace; every dispatched agent, the
-router decision and the verification gate are spans in it.
+One session = one trace; router, agents and final verification are spans.
 
 - Home: `.git/engineos-telemetry/<session_id>.exec.jsonl`, schema
-  `scripts/exec-journal.sh` (v2 fields optional, v1 lines stay valid).
-- Correlation: `trace_id` = session id, `span_id` = the harness tool-use id,
-  `parent_span_id` for nested spans. `span_kind` is one of
+  `scripts/exec-journal.sh` (optional v2 fields preserve v1 validity).
+- Correlation: `trace_id` session id, `span_id` harness tool-use id,
+  `parent_span_id` for nesting. `span_kind` is one of
   `router | coordinator | agent | tool | model | verification`.
-- Per span: `agent`, `model_tier`, `status` (the return-envelope vocabulary),
-  `tokens_in`, `tokens_out`, `duration_ms`, `cost_micros` (integer micro-USD,
-  absent when unknown), `retry_attempt`, `cache_hit`, `route`, `risk`,
-  `tool`, `provider`, `model`.
-- `status` is a FLOOR, not a count: the hooks derive it only from structure —
-  the harness error flag, a top-level `.status` field, or the envelope word as
-  the first token of a string response — and never by reading prose, which would
-  hand a subagent a channel into telemetry. A structured response with none of
-  those reads as `OK`, so real failures are undercounted; the breaker counter
-  below needs a source that actually observes failure before it is built.
-- `duration_ms` is real milliseconds wherever bash 5, GNU `date +%s%3N` or perl
-  `Time::HiRes` is available, which covers macOS and Linux. The last-resort rung
-  is whole seconds scaled by 1000, so a value ending in exactly `000` may be
-  second-resolution rather than a coincidence.
-- Bounded shape, not classified content: every field EXCEPT `note` is a slug
-  (`^[A-Za-z0-9@_./:-]+$`) and the validator rejects a line where one of them is
-  not. The two write boundaries differ on purpose, and the difference IS the
-  claim — the CLI rejects a non-slug value outright, while the hooks sanitize
-  first (`hook_slug` maps every other character to `-`) so a span is recorded
-  rather than lost. A harness-supplied value's characters therefore still
-  transit, dash-joined: `SECRET=hunter2 x` lands as `SECRET-hunter2-x`. What the
-  guard buys is that no field but `note` can carry whitespace, a newline, a
-  quote or a control character, so nothing written through one can break the
-  line format, smuggle a second JSON object or span two lines — and that every
-  value is length-bounded. It bounds the shape and the size of what reaches
-  disk; it does not classify the content, and claiming otherwise is the same
-  false-containment bug in a new coat.
-- `note` is the only field that admits free text — and it is NOT the only field
-  carrying attacker-influenced content, so a consumer that treats `note` as the
-  single untrusted field is wrong. A harness-supplied value transits dash-joined
-  through `hook_slug`, so its characters still reach disk. The slug class admits
-  `.` and `/`: `../../../../etc/cron.d/x` is a valid slug that
-  `exec-journal.sh validate` passes clean. A journal field is therefore never
-  safe as a filesystem path component, and a consumer building a path from one
-  must narrow it itself — `src/lib/slug.ts`'s `hookPathSlug`, which drops
-  `.` and `/` from the class, is that narrowing. What the guard does buy is
-  unchanged and still true: no field but `note` can carry whitespace, a newline,
-  a quote or a control character, so nothing written through one can break the
-  line format, smuggle a second JSON object or span two lines — and every value,
-  `note` included, is capped at `telemetry.exec_journal.max_value_length` (256)
-  characters on append, a reject rather than a truncation. Same words in
-  `registries/policy.json` and `scripts/exec-journal.sh`'s header.
-- Who writes what: the dispatch/return hooks write `agent` spans (duration and
-  status only — `tokens_in` and `tokens_out` are emitted as `null` there,
-  because the hook cannot observe the subagent's usage, and
-  a null is an unknown rather than a zero a consumer could sum); the prompt
-  advisor writes `router`; the Stop gate writes `verification`. `tool` and
-  `model` spans, and real token and cost figures, come from a headless runner
-  that owns the model call.
-- `capability_id` is always an id from `registries/capabilities.json`. Known
-  imprecision: an agent span records `implement`, because dispatching is what
-  the orchestrator does and no capability binds an agent to it — so a
-  security-review dispatch also reads `implement`. Group by `agent` when the
-  distinction matters.
-- Consumers: today, none — spans are written and retained, and nothing reads
-  them yet. Planned: the breaker's consecutive-failure count
-  (`rules/parallelism.md`), blocked on the `status` floor above; then
-  `scripts/usage-report.sh` and the retro, which read the kernel-decision
-  events and do not sum span cost.
+- Fields: `agent`, `model_tier`, envelope `status`, `tokens_in`, `tokens_out`,
+  `duration_ms`, integer micro-USD `cost_micros` (absent when unknown),
+  `retry_attempt`, `cache_hit`, `route`, `risk`, `tool`, `provider`, `model`.
+- `status` is a FLOOR: derived from harness error flag, top-level `.status` or
+  first-token envelope status, never prose (which would admit telemetry injection).
+  Missing structural failure signals read OK and undercount failures; breaker
+  consumers require a genuinely observing failure source.
+- `duration_ms` uses bash 5/GNU date/perl Time::HiRes on macOS/Linux; fallback
+  is whole seconds × 1000, so trailing 000 may indicate coarse resolution.
+- Bounded shape: every field EXCEPT `note` is a slug
+  (`^[A-Za-z0-9@_./:-]+$`). CLI rejects invalid slugs; hooks sanitize via
+  `hook_slug`, replacing other characters with `-` rather than losing spans.
+  Characters still transit dash-joined (`SECRET=hunter2 x` → `SECRET-hunter2-x`).
+  This prevents whitespace/newlines/quotes/control-character line injection;
+  it does not classify the content or remove secrets/attacker influence.
+- `note` alone admits free text; other fields remain untrusted too. Slugs permit
+  `.`/`/` and traversal such as `../../etc/cron.d/x`; never use journal values
+  as filesystem path components without narrowing. `src/lib/slug.ts`
+  `hookPathSlug` excludes those characters. Every value, including note, has
+  `telemetry.exec_journal.max_value_length` (256) on append: reject, never truncate.
+  Registry and journal header mirror the bound.
+- Dispatch/return hooks write agent duration/status with `tokens_in`/`tokens_out`
+  null because usage is unobservable: a null is an unknown rather than a zero
+  a consumer could sum. Prompt advisor writes router; Stop writes verification.
+  Headless model-owning runners supply tool/model spans and actual tokens/cost.
+- `capability_id` comes from `registries/capabilities.json`. Agent dispatches
+  record implement even for security review; group by agent to distinguish them.
+- No current consumers: spans are retained. Planned breaker failure counts
+  (`rules/parallelism.md`) depend on fixing the status floor. Usage-report/retro
+  currently read kernel-decision events and do not sum span cost.

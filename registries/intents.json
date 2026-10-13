@@ -8,14 +8,14 @@
       "title": "New feature / multi-file change",
       "signals": ["add", "build", "create", "implement"],
       "rules": [],
-      "skills": ["superpowers:brainstorming", "superpowers:writing-plans"],
+      "skills": ["tlc-spec-lean"],
       "agents": [],
-      "commands": [],
+      "commands": ["new-feature"],
       "mcp": [],
       "model_tier": null,
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. brainstorming first, then writing-plans for spec/design/tasks, then whichever stack rows also match — so this row names no rules of its own. The brainstorm+plan workflow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the brainstorm/plan flow and to the matched stack rows.",
+      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. The from-scratch flow runs through the new-feature command: PRD + ADR + SPEC + TASKS before code, then whichever stack rows also match — so this row names no rules of its own. EXTERNAL skill: tlc-spec-lean is pinned from tech-leads-club/agent-skills in skills-lock.json and installed unchanged, not shipped under skills/; Matt Pocock's grill-with-docs, to-spec and to-tickets are human-invoked (disable-model-invocation) and run through the command, so they are not listed here. The flow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the command's stages and to the matched stack rows. Acceptance criteria precede code. Test/check implementation and execution are deferred until all code is integrated and the user explicitly approves current-task final tests; an external skill cannot authorize earlier tests.",
       "suppressible": true,
       "generic_signals": ["add", "build", "create", "implement"]
     },
@@ -52,7 +52,7 @@
     {
       "id": "backend",
       "title": "Backend work (NestJS)",
-      "signals": ["NestJS", "API", "service", "controller", "migration", "queue", "router", "endpoint"],
+      "signals": ["NestJS", "Express", "Node backend", "Node.js backend", "plain Node", "pure Node", "API", "service", "controller", "migration", "queue", "router", "endpoint"],
       "rules": ["backend", "architecture", "data", "testing", "observability"],
       "skills": ["nestjs-patterns"],
       "agents": ["backend-coordinator"],
@@ -72,7 +72,16 @@
     {
       "id": "backend-python",
       "title": "Backend work (FastAPI)",
-      "signals": ["FastAPI", "Pydantic", "SQLAlchemy", "Alembic", "Django", "Flask", "uvicorn", "pyproject"],
+      "signals": [
+        "FastAPI",
+        "Pydantic",
+        "SQLAlchemy",
+        "Alembic",
+        "Django",
+        "Flask",
+        "uvicorn",
+        "pyproject"
+      ],
       "rules": ["backend-python", "architecture", "data", "testing", "observability"],
       "skills": ["python-patterns"],
       "agents": ["backend-coordinator"],
@@ -151,10 +160,10 @@
     },
     {
       "id": "llm",
-      "title": "LLM/agent work",
-      "signals": ["prompt", "agent", "RAG", "embedding", "eval", "tool schema", "LangGraph", "LangChain", "orchestrate", "orchestration", "orchestrator", "supervisor", "multi-agent", "multi agent", "multiagent", "agent-to-agent", "A2A"],
+      "title": "LLM/agent/chatbot work",
+      "signals": ["Mastra", "chatbot", "chat bot", "conversational AI", "prompt", "agent", "RAG", "embedding", "eval", "tool schema", "LangGraph", "LangChain", "orchestrate", "orchestration", "orchestrator", "supervisor", "multi-agent", "multi agent", "multiagent", "agent-to-agent", "A2A"],
       "rules": ["llm-apps"],
-      "skills": ["llm-engineering"],
+      "skills": ["llm-engineering", "mastra-patterns"],
       "agents": ["llm-coordinator"],
       "commands": [],
       "mcp": [],
@@ -162,7 +171,7 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "llm",
-      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. An LLM feature with no evals also matches the eval-setup row. A system with more than one agent also matches the agent-system row, which owns the design gate."
+      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. Active LLM/chatbot orchestration uses Mastra in NestJS backend providers; Node.js is the runtime. LangGraph/LangChain signals retain migration ownership, not active implementation defaults. Bare Mastra or chatbot requests and single agents do not require multi-agent topology approval. An LLM feature with no evals also matches the eval-setup row; defer eval authoring/execution until the approved final test phase. A system with more than one agent also matches the agent-system row, which owns the design gate."
     },
     {
       "id": "agent-system",
@@ -177,7 +186,7 @@
       "risk_floor": "medium",
       "hook_mirrored": false,
       "domain": null,
-      "note": "Interactive: llm-coordinator (hermsdorff) runs patterns/3-Agent-topology-interview.md; developer approval recorded before any graph code. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems."
+      "note": "Interactive: llm-coordinator (hermsdorff) designs multi-agent Mastra workflows hosted in NestJS via patterns/3-Agent-topology-interview.md; developer approval recorded before workflow code. LangGraph signals retain legacy migration detection. Mastra/chatbot alone does not trigger this intent. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems."
     },
     {
       "id": "dba",
@@ -264,7 +273,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "qa-tester (alias qa): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Non-interactive — never waits for input."
+      "note": "qa-tester (alias qa): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Dispatch only after implementation/integration and explicit current-task user approval; preserve configured non-interactive execution once approved."
     },
     {
       "id": "audit",
@@ -363,7 +372,7 @@
       "risk_floor": "low",
       "hook_mirrored": true,
       "domain": "test",
-      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias ameer) for well-scoped targets."
+      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias ameer) for well-scoped targets. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing."
     },
     {
       "id": "eval-setup",
@@ -377,7 +386,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Scaffolding a harness against a known shape is build tier. Shares rules/llm-apps.md with the llm row, which this row will usually co-match."
+      "note": "Scaffolding a harness against a known shape is build tier. Shares rules/llm-apps.md with the llm row, which this row will usually co-match. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing."
     },
     {
       "id": "critic-verification",
@@ -497,7 +506,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck/tests and on an unrecorded change record — and they cover the Validation gate only, never the Release gate."
+      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck and on an unrecorded change record; approved final tests run separately after integration — and they cover the Validation gate only, never the Release gate."
     },
     {
       "id": "route-planning",

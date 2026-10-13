@@ -1,53 +1,52 @@
 ---
 name: react-patterns
-description: Team React/Next conventions for components, state, data fetching, forms, and styling. Use when creating or modifying frontend code — components, pages, hooks, layouts, or styles — including React Native screens/components, where mobile work adapts these same patterns.
+description: "React/Next components, pages, hooks, forms, state, fetching and styling; adapt for React Native screens. Use for frontend/mobile UI changes."
 ---
 
 # React Patterns
 
-Apply `rules/frontend.md` and `rules/architecture.md` from EngineOS first (EngineOS
-rules — resolved relative to EngineOS's `CLAUDE.md`, the repo/plugin root, not this
-project). This skill adds the concrete shapes.
+Apply `rules/frontend.md` and `rules/architecture.md` from the EngineOS root.
+Use `src/features/<feature>/{components/,hooks/,api.ts,types.ts}`: colocated
+components; one TanStack Query wrapper per resource; existing client/fetch adapter;
+frontend-safe wire types when not generated. Reuse `src/components/ui/`
+primitives before adding buttons/inputs/modals. Colocated tests are final-stage only.
 
-## Feature folder layout
+## Contract before parallel work
 
-```
-src/features/orders/
-  components/
-    OrderList.tsx
-    OrderList.test.tsx
-    OrderCard.tsx
-  hooks/
-    useOrders.ts             # TanStack Query wrapper, single source for this resource
-  api.ts                     # fetch functions + zod schemas (shared with server validation)
-  types.ts
-```
+Record contract owner, revision and schema source. Reuse wire types/client generation,
+with one generated-file owner. Import frontend-safe payload/schema outputs, never
+NestJS decorated DTOs, ORM entities or backend runtime dependencies. Handle contracted
+errors/stream events and required runtime validation; TypeScript cannot validate
+network values. On mismatch, notify the owner and pause affected work until revision
+resolution; continue independent work and record the updated revision before resuming.
 
-Shared primitives live in `src/components/ui/` (the design system) — check there before creating any new button/input/modal.
+## New-view checklist
 
-## Building a new view — checklist
+1. Plan acceptance criteria and pin the API contract.
+2. Default to Server Components; `'use client'` belongs on interactive leaves.
+3. Client: TanStack Query hook; server: RSC fetch. Hierarchical keys such as
+   `['orders', filters]` stay consistent.
+4. Render loading/skeleton, error/retry, designed empty/message/CTA and success.
+5. Reuse design tokens/UI primitives; check existing variants first.
+6. Apply frontend accessibility rules and dialog focus management.
+7. Return implementation/diff evidence for integration. The supervisor runs final
+   non-test gates; after integration and explicit current-task approval only,
+   author/run focused behavior tests using existing testing-library/user-event.
 
-1. Server Component by default per `rules/frontend.md`; `'use client'` only on the interactive leaf.
-2. Data via hook wrapping TanStack Query (client) or direct fetch in RSC (server). Query keys: `['orders', filters]` — consistent, hierarchical.
-3. Render all four states per `rules/frontend.md`: loading as a skeleton (not spinner-only), error with a retry action, empty with a designed message + CTA.
-4. Styling: design tokens and existing UI primitives, per `rules/frontend.md` — no new one-off variants without checking the system first.
-5. Accessibility pass per `rules/frontend.md`, plus focus management on dialogs (project addition, not in the base rule).
-6. Test: render + interaction test for behavior (testing-library, user-event), not snapshot dumps.
+## Forms and state
 
-## Forms
+Reuse form/validation tools (e.g. react-hook-form + existing Zod resolver).
+Share runtime schemas only if frontend-safe; otherwise align client constraints
+with frozen wire types while NestJS validates class DTOs server-side. Add no
+libraries merely to share decorated classes. Disable pending submission, show inline
+field errors and a toast/banner for server errors.
 
-- **react-hook-form + zod resolver**, importing the schema from the shared `api.ts`/schema file — client/server parity per `rules/frontend.md`.
-- Submit: pending-disable + inline field errors per `rules/frontend.md`; add a toast/banner for server-side errors (project addition).
+Colocate state; lift shared state only. Keep server state in TanStack Query, never
+copy it to useState; global state requires 3+ levels. Put shareable filters/tabs in
+URL searchParams before global state.
 
-## State decision ladder
+## Review traps
 
-State placement follows `rules/frontend.md` (colocate low, lift only when shared, server
-state via TanStack Query — never copy into `useState`, global state only past 3+ levels).
-One team addition: shareable view state (filters, tabs) goes to the URL via `searchParams`
-before reaching for global state.
-
-## Anti-patterns to flag
-
-- `useEffect` + fetch + setState, derived data stored in state, and unmeasured `memo`/`useCallback` — all covered by `rules/frontend.md`'s data-fetching/state rules; catch them here rather than at review.
-- Prop drilling fixed with context for non-global data → restructure composition (children/slots) first.
-- `dangerouslySetInnerHTML` on anything user-influenced.
+Flag useEffect/fetch/setState, stored derived data and unmeasured memo/useCallback
+under frontend rules. Prefer composition/slots over context for non-global prop
+passing. Flag user-influenced dangerouslySetInnerHTML.
