@@ -160,10 +160,10 @@ test('the verification rule repointed at another source is caught', (t) => {
   assert.ok(hasFinding(found, 'verification-source-drift', 'rules/gates.md'));
 });
 
-test('rules/verification.md losing the conditional-tests sentence is caught', (t) => {
+test('rules/verification.md losing the final-integrated-approval sentence is caught', (t) => {
   const found = findingsFor(t, 'C14', (root) => {
     editFile(root, 'rules/verification.md', (text) =>
-      text.replace('Tests join the gate ONLY when tests were ON', 'Tests join the gate when tests were ON'));
+      text.replace('Checks join the gate ONLY after implementation and integration are complete', 'Checks may run whenever convenient'));
   });
   assert.ok(hasFinding(found, 'verification-rule-prose-missing', 'rules/verification.md'));
 });

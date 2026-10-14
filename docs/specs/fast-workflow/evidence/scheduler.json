@@ -1,0 +1,156 @@
+{
+  "state": {
+    "version": 1,
+    "runId": "fast-workflow",
+    "revision": 10,
+    "timestampMs": 1791887727410,
+    "hostCapacity": 3,
+    "units": [
+      {
+        "id": "02-simple-lane",
+        "dependsOn": [],
+        "files": [
+          "src/workflow/contracts.ts",
+          "src/kernel/execution.ts",
+          "src/kernel/resolve.ts",
+          "src/registry/policy.ts"
+        ],
+        "agent": "backend-coordinator",
+        "modelTier": "build",
+        "contractRevision": "fast-workflow-v1",
+        "requiredChecks": [
+          "read-only-integration"
+        ],
+        "state": "integrated",
+        "attempts": 1,
+        "handle": null,
+        "reason": null,
+        "evidence": {
+          "sourceRevision": "sha256:0cc3643bcec6d8179edd164dc4c6d6c94da089b9ba96ae385cf83b0d1a19cffd",
+          "contractRevision": "fast-workflow-v1",
+          "checks": [
+            "read-only-integration"
+          ],
+          "artifacts": [
+            "docs/specs/2026-10-13-fast-workflow.md"
+          ]
+        }
+      },
+      {
+        "id": "03-final-consent",
+        "dependsOn": [],
+        "files": [
+          "src/workflow/gates.ts"
+        ],
+        "agent": "backend-coordinator",
+        "modelTier": "build",
+        "contractRevision": "fast-workflow-v1",
+        "requiredChecks": [
+          "read-only-integration"
+        ],
+        "state": "integrated",
+        "attempts": 1,
+        "handle": null,
+        "reason": null,
+        "evidence": {
+          "sourceRevision": "sha256:8a4c9ef21706c8fcdaf8c496f1ca82c3f84d6f095efa494a35b54f0f8d9b6b80",
+          "contractRevision": "fast-workflow-v1",
+          "checks": [
+            "read-only-integration"
+          ],
+          "artifacts": [
+            "docs/specs/2026-10-13-fast-workflow.md"
+          ]
+        }
+      },
+      {
+        "id": "04-ticket-frontier",
+        "dependsOn": [],
+        "files": [
+          "skills/engineos-spec/SKILL.md",
+          "skills/engineos-implement-spec/SKILL.md",
+          "commands/new-feature.md",
+          "commands/implement.md",
+          "commands/implement-spec.md",
+          "registries/skill-references.json",
+          "src/kernel/skill-reference.ts"
+        ],
+        "agent": "docs-writer",
+        "modelTier": "build",
+        "contractRevision": "fast-workflow-v1",
+        "requiredChecks": [
+          "read-only-integration"
+        ],
+        "state": "integrated",
+        "attempts": 1,
+        "handle": null,
+        "reason": null,
+        "evidence": {
+          "sourceRevision": "sha256:c182a0d40eeaf4441244d0caad7b2f94c8bc1ac3beee337d30fcbde93135d208",
+          "contractRevision": "fast-workflow-v1",
+          "checks": [
+            "read-only-integration"
+          ],
+          "artifacts": [
+            "docs/specs/2026-10-13-fast-workflow.md"
+          ]
+        }
+      },
+      {
+        "id": "05-integration",
+        "dependsOn": [
+          "02-simple-lane",
+          "03-final-consent",
+          "04-ticket-frontier"
+        ],
+        "files": [
+          "rules/parallelism.md",
+          "rules/verification.md",
+          "rules/gates.md",
+          "rules/subagents.md",
+          "AGENTS.md",
+          "CLAUDE.md",
+          "registries/policy.json",
+          "docs/COMPATIBILITY.md"
+        ],
+        "agent": "backend-coordinator",
+        "modelTier": "build",
+        "contractRevision": "fast-workflow-v1",
+        "requiredChecks": [
+          "read-only-integration"
+        ],
+        "state": "integrated",
+        "attempts": 1,
+        "handle": null,
+        "reason": null,
+        "evidence": {
+          "sourceRevision": "sha256:3b68c60edf680e82ce3a62792650d4a8ce3a6656c084b33c0d745541dd2d35b6",
+          "contractRevision": "fast-workflow-v1",
+          "checks": [
+            "read-only-integration"
+          ],
+          "artifacts": [
+            "docs/specs/fast-workflow/evidence/integrated-source.json"
+          ]
+        }
+      }
+    ]
+  },
+  "actions": [],
+  "events": [
+    {
+      "version": 1,
+      "runId": "fast-workflow",
+      "sequence": 0,
+      "timestampMs": 1791887727410,
+      "kind": "unit-started",
+      "unitId": "05-integration",
+      "owner": "backend-coordinator"
+    }
+  ],
+  "enforcement": "conventional",
+  "hostObservation": {
+    "at": "2026-10-13T20:15:44.267715+00:00",
+    "note": "Host source integration snapshot; not a new runtime reducer result or executable check. Previous runtime events retained unchanged."
+  }
+}

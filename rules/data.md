@@ -5,6 +5,11 @@ general "push slow work to background, paginate" principles live in
 `architecture.md`.
 
 ## Migrations
+- Author migrations by default for agent development/maintenance changes; execution
+  follows always-on `security.md` **Database maintenance authorization**. This covers
+  data fixes, seed/backfill, ORM/admin tools and schema sync as well as DDL. Direct
+  writes require a separately confirmed exception to the migration path; authoring
+  files and approving implementation never authorize database execution.
 - DO make every migration backward-compatible with the currently-running code
   (expand-contract): add columns/tables nullable or with defaults first, backfill,
   switch reads/writes, then drop in a later deploy — never break old and new at once.

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 
 const SCREENS = [
+  { href: '/decisions', label: 'Decisions', description: 'Evaluate options with GPT and Claude, inspect evidence and review immutable reports.' },
   { href: '/skills', label: 'Skills', description: 'Browse skills, toggle them, and edit descriptions in the draft.' },
   { href: '/publish', label: 'Publish', description: 'Review the staged diff and write the draft back to the repo.' },
   { href: '/history', label: 'History', description: 'Inspect past publishes and roll back to an earlier commit.' },

@@ -1,0 +1,100 @@
+<!doctype html>
+<!-- Throwaway preview: three chat announcement layouts, selected by ?variant=A|B|C. -->
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype — Subagent announcements</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #111318; color: #e8eaf0; font: 16px/1.6 system-ui, sans-serif; }
+  main { max-width: 900px; margin: 48px auto 130px; padding: 24px; }
+  small { color: #a5abb8; }
+  .notice { color: #ffcf7a; border: 1px dashed #806436; padding: 12px 18px; }
+  .message { padding: 24px; background: #1a1d24; border-radius: 12px; margin-top: 24px; }
+  h1 { font-size: 26px; } h2 { font-size: 20px; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 18px; border: 1px solid #2c6040; border-left: 5px solid #67d994; background: #10251a; color: #8ce8ad; font: 14px/1.8 ui-monospace, monospace; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 16px; }
+  .card { border: 1px solid #36764d; border-top: 4px solid #67d994; padding: 16px; border-radius: 8px; }
+  .status { color: #8ce8ad; font-weight: bold; }
+  table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: 12px; border-bottom: 1px solid #3d424e; vertical-align: top; }
+  th { color: #8ce8ad; }
+  .switcher { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 16px; align-items: center; background: #e8eaf0; color: #111318; border-radius: 30px; padding: 10px 20px; box-shadow: 0 6px 30px #0008; white-space: nowrap; }
+  button { background: #252a34; color: white; border: 0; border-radius: 50%; width: 36px; height: 36px; cursor: pointer; font-size: 20px; }
+  #state { display: block; margin-top: 20px; }
+  .choices { display: flex; flex-wrap: wrap; gap: 12px; }
+  .choices button { border-radius: 8px; width: auto; height: auto; padding: 12px 18px; font-size: 15px; }
+</style>
+<main>
+  <p class="notice"><strong>THROWAWAY PROTOTYPE</strong> — Sample agents only. No subagents are launched. Colors illustrate emphasis; actual chat rendering depends on the host.</p>
+  <h1>Who is starting work?</h1>
+  <small>Design question: Which announcement makes the agent, task and status easiest to identify?</small>
+  <div class="message">
+    <p>I’ve split the work into two independent tasks.</p>
+    <section id="announcement"></section>
+    <p>I’ll integrate their results when they return.</p>
+  </div>
+  <small id="state"></small>
+  <div class="message">
+    <h2>Implementation complete — security review pending</h2>
+    <p>All implementation tasks are integrated. No implementation worker is still running and no fix remains unfinished.</p>
+    <p>Proposed reviewer: <strong>leo-ely (security-reviewer)</strong><br>Task: Review the integrated API changes<br>Scope: src/orders/** · source revision: sample-r1</p>
+    <div class="choices" aria-label="Sample security-review choices">
+      <button data-choice="Run now">Run security review now</button>
+      <button data-choice="Later">Keep review pending</button>
+      <button data-choice="Decline">Decline review</button>
+    </div>
+    <p id="security-state">Sample state: security review pending. These preview buttons do not authorize or launch a real reviewer.</p>
+  </div>
+</main>
+<nav class="switcher" aria-label="Preview variants">
+  <button id="previous" aria-label="Previous variant">←</button>
+  <strong id="label"></strong>
+  <button id="next" aria-label="Next variant">→</button>
+</nav>
+<script>
+  const variants = ['A', 'B', 'C'];
+  const names = { A: 'Highlighted diff block', B: 'Agent cards', C: 'Team table' };
+  const layouts = {
+    A: `<h2>Subagents starting work</h2><pre>+ [agent] borisenko (backend-coordinator)
++ status: starting | task: Update the API
++ model: opus | mode: IMPLEMENT | scope: src/orders/**
+
++ [agent] critic
++ status: starting | task: Review the integrated change
++ model: opus | mode: AUDIT | scope: src/orders/**</pre>`,
+    B: `<h2>Subagents starting work</h2><div class="cards"><article class="card"><strong>borisenko</strong><br><small>backend-coordinator</small><p class="status">Starting</p><p>Update the API</p><small>opus · IMPLEMENT<br>src/orders/**</small></article><article class="card"><strong>critic</strong><p class="status">Starting</p><p>Review the integrated change</p><small>opus · AUDIT<br>src/orders/**</small></article></div>`,
+    C: `<h2>Subagents starting work</h2><table><thead><tr><th>Agent</th><th>Task</th><th>Status / scope</th></tr></thead><tbody><tr><td><strong>borisenko</strong><br><small>backend-coordinator<br>opus · IMPLEMENT</small></td><td>Update the API</td><td><span class="status">Starting</span><br><small>src/orders/**</small></td></tr><tr><td><strong>critic</strong><br><small>opus · AUDIT</small></td><td>Review the integrated change</td><td><span class="status">Starting</span><br><small>src/orders/**</small></td></tr></tbody></table>`
+  };
+  let variant = new URLSearchParams(location.search).get('variant') || 'A';
+  if (!variants.includes(variant)) variant = 'A';
+  function render() {
+    document.getElementById('announcement').innerHTML = layouts[variant];
+    document.getElementById('label').textContent = `${variant} · ${names[variant]}`;
+    document.getElementById('state').textContent = `Preview state: variant=${variant}; sample agents=2; status=starting; launched agents=0; persistence=none.`;
+  }
+  function cycle(direction) {
+    variant = variants[(variants.indexOf(variant) + direction + variants.length) % variants.length];
+    const url = new URL(location.href);
+    url.searchParams.set('variant', variant);
+    history.replaceState(null, '', url);
+    render();
+  }
+  document.getElementById('previous').onclick = () => cycle(-1);
+  document.getElementById('next').onclick = () => cycle(1);
+  document.querySelectorAll('[data-choice]').forEach(button => {
+    button.onclick = () => {
+      const selected = button.dataset.choice;
+      document.getElementById('security-state').textContent = selected === 'Run now'
+        ? 'Sample state: reviewer starting after the recorded choice. No real reviewer launched.'
+        : `Sample state: ${selected.toLowerCase()} selected; required security review remains pending; release is not cleared.`;
+    };
+  });
+  document.addEventListener('keydown', event => {
+    if (event.target.closest('input, textarea, [contenteditable]')) return;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault(); cycle(event.key === 'ArrowLeft' ? -1 : 1);
+    }
+  });
+  render();
+</script>
+</html>

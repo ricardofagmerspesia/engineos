@@ -1,0 +1,57 @@
+[
+  {
+    "id": "01-prompt-source-golden-set",
+    "dependsOn": [],
+    "files": [
+      "test/fixtures/prompt-source/**",
+      "src/hooks/prompt-source.test.ts",
+      "src/hooks/prompt-advisor.test.ts",
+      "src/hooks/prompt-advisor.e2e.test.ts"
+    ],
+    "agent": "test-writer",
+    "modelTier": "build",
+    "contractRevision": "sri-v1",
+    "requiredChecks": ["typecheck", "test"]
+  },
+  {
+    "id": "02-rule-loading-scope",
+    "dependsOn": [],
+    "files": ["install.sh", "install.ps1", "rules/gates.md", "CLAUDE.md", "AGENTS.md"],
+    "agent": "devops-coordinator",
+    "modelTier": "build",
+    "contractRevision": "sri-v1",
+    "requiredChecks": ["validate"]
+  },
+  {
+    "id": "03-record-gate-in-progress",
+    "dependsOn": [],
+    "files": [
+      "src/hooks/record-verify.ts",
+      "src/hooks/record-verify.test.ts",
+      ".engineos/changes/_template.md",
+      "skills/record-change/SKILL.md"
+    ],
+    "agent": "backend-coordinator",
+    "modelTier": "build",
+    "contractRevision": "sri-v1",
+    "requiredChecks": ["typecheck", "test", "build", "validate"]
+  },
+  {
+    "id": "04-generated-diff-and-test-file",
+    "dependsOn": [],
+    "files": [".gitattributes", "package.json", "scripts/test-file.mjs"],
+    "agent": "devops-coordinator",
+    "modelTier": "cheap",
+    "contractRevision": "sri-v1",
+    "requiredChecks": ["test", "validate"]
+  },
+  {
+    "id": "05-ledger-and-contract-drift-rules",
+    "dependsOn": [],
+    "files": ["rules/parallelism.md", "rules/verification.md", "templates/handoff.md"],
+    "agent": "docs-writer",
+    "modelTier": "build",
+    "contractRevision": "sri-v1",
+    "requiredChecks": ["validate"]
+  }
+]

@@ -1,6 +1,6 @@
 ---
 name: gcp-specialist
-description: Read-only Google Cloud specialist — compute, storage, IAM, networking, billing signals, via the gcp MCP. Never mutates cloud resources. Dispatched by the audit orchestrator. Alias: nakamura.
+description: Read-only Google Cloud specialist — compute, storage, IAM, networking, billing signals, via the gcp MCP. Never mutates cloud resources. Dispatched by the audit orchestrator. Alias: gcp.
 tools: Read, Grep, Glob, Bash, mcp__gcp
 model: opus
 tier: build

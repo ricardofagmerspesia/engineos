@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { validationScopeRevision, type HostValidationApproval } from '../workflow/gates';
 import { memoryIo } from '../io';
 import { isRecord } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
@@ -11,9 +12,42 @@ import { envelope, fixtureRepo, tempRoot, transcript, type ToolUse } from '../te
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { message, silent, type HookContext } from './output';
 import type { SpawnSyncLike } from './runner';
-import { run, verify } from './stop-verify';
+import { run, verify as manualVerify } from './stop-verify';
 
 const checkout = resolveRoot({}, __dirname);
+
+function approval(env: HookEnvelope, checks = ['lint', 'typecheck']): HostValidationApproval {
+  let files: string[] = [];
+  try {
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) { value.forEach(walk); return; }
+      if (!isRecord(value)) return;
+      for (const [key, entry] of Object.entries(value)) {
+        if (key === 'file_path' && typeof entry === 'string') {
+          const file = relative(env.cwd, entry);
+          if (file && !file.startsWith('../')) files.push(file);
+        } else walk(entry);
+      }
+    };
+    for (const line of readFileSync(env.transcriptPath, 'utf8').split('\n')) {
+      try { walk(JSON.parse(line)); } catch { /* Fixture includes malformed lines. */ }
+    }
+  } catch { /* Missing transcript still reaches the retained manual guard. */ }
+  files = [...new Set(files)];
+  if (files.length === 0) files = ['src/x.ts'];
+  const scopeRevision = validationScopeRevision(files);
+  const sourceRevision = 'fixture-source';
+  return {taskId: env.sessionId, scopeRevision, sourceRevision, checks, files,
+    facts: {taskId: env.sessionId, scopeRevision, sourceRevision, phase: 'final', integrated: true,
+      completion: {scopeRevision, sourceRevision, requiredTicketIds: ['implementation'], tickets: [{id: 'implementation', state: 'integrated'}], unfinishedCorrections: false},
+      preview: {choice: 'declined', scopeRevision},
+      validation: {requestedAtPhase: 'final', decision: 'approved', scopeRevision, sourceRevision, checks}}};
+}
+// Existing ladder cases explicitly exercise the approved manual entrypoint.
+function verify(env: HookEnvelope, ctx: HookContext, spawn: SpawnSyncLike, version = MODERN) {
+  return manualVerify(env, ctx, spawn, version, approval(env));
+}
+
 
 // A machine-wide bypass flag must never make this suite go quiet and read green.
 const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass' };
@@ -86,7 +120,7 @@ function decode(stdin: string): HookEnvelope {
 // A repo that has adopted EngineOS — the `.engineos/` marker the gate and the
 // telemetry sink both read — whose root package.json declares `scripts`.
 function repoWith(t: Parameters<typeof tempRoot>[0], scripts: Record<string, string>): string {
-  return fixtureRepo(tempRoot(t), { pkg: { name: 'fixture', scripts }, files: { '.engineos/.keep': '' } });
+  return fixtureRepo(tempRoot(t), { pkg: { name: 'fixture', scripts: Object.fromEntries(Object.entries(scripts).map(([target, command]) => [target, `echo ${target} && ${command}`])) }, files: { '.engineos/.keep': '' } });
 }
 
 function stopOf(repo: string, sid: string, transcriptPath: string, stopHookActive = false): HookEnvelope {
@@ -381,13 +415,14 @@ test('tests are opt-in: a red test script alone does not block', (t) => {
   assert.deepEqual(calls.map((c) => c.args.join(' ')), ['--version']);
 });
 
-test('ENGINEOS_VERIFY_TESTS=1 folds the test target back in, with its own budget', (t) => {
+test('explicit final test approval adds the test target with its own budget', (t) => {
   if (skipWithoutGit(t)) return;
   const repo = repoWith(t, { lint: 'exit 0', typecheck: 'exit 0', test: 'exit 1' });
   const path = transcriptOf(repo, edits(repo, 'src/x.ts'));
   const { spawn, calls } = runnerSpawn({ test: { status: 1, stdout: '2 failing' } });
   const ctx = context({ ...ISOLATED, ENGINEOS_VERIFY_TESTS: '1' });
-  const decision = verify(stopOf(repo, 'T1', path), ctx, spawn, MODERN);
+  const env = stopOf(repo, 'T1', path);
+  const decision = manualVerify(env, ctx, spawn, MODERN, approval(env, ['lint', 'typecheck', 'test']));
   assert.equal(decision.kind, 'block');
   const budgets = calls.filter((c) => !c.args.includes('--version')).map((c) => [c.args.join(' '), c.timeout]);
   assert.deepEqual(budgets, [
@@ -539,5 +574,60 @@ test('run drives the same ladder through the context spawner', (t) => {
   const repo = repoWith(t, { lint: 'exit 1' });
   // No transcript: the silent path proves the entry point without spawning a
   // real package manager.
-  assert.deepEqual(run(stopOf(repo, 'S1', join(repo, 'missing.jsonl')), context()), silent);
+  assert.deepEqual(run(stopOf(repo, 'S1', join(repo, 'missing.jsonl')), context()), message('[engineos] Final validation pending explicit user approval after integration; automatic Stop ran no checks.'));
+});
+
+test('automatic Stop never probes runners or executes scripts even with approval flags', t => {
+  const repo = repoWith(t, {lint: 'exit 1', typecheck: 'exit 1', test: 'exit 1'});
+  const env = stopOf(repo, 'automatic', transcriptOf(repo, edits(repo, 'src/x.ts')));
+  let calls = 0;
+  const ctx: HookContext = {...context({...ISOLATED, ENGINEOS_VERIFY_TESTS: '1', ENGINEOS_VERIFY_APPROVED: '1'}), spawn: () => {calls++; throw new Error('automatic subprocess forbidden');}};
+  assert.equal(run(env, ctx).kind, 'message'); assert.equal(calls, 0);
+});
+test('manual validation denies missing stale nonfinal unintegrated and command-mismatched approval before probes', t => {
+  const repo = repoWith(t, {lint: 'exit 0'});
+  const env = stopOf(repo, 'denied', transcriptOf(repo, edits(repo, 'src/x.ts')));
+  const granted = approval(env);
+  const facts = {taskId: granted.taskId, scopeRevision: granted.scopeRevision, sourceRevision: granted.sourceRevision,
+    phase: 'final', integrated: true, completion: {scopeRevision: granted.scopeRevision, sourceRevision: granted.sourceRevision, requiredTicketIds: ['implementation'], tickets: [{id: 'implementation', state: 'integrated'}], unfinishedCorrections: false}, preview: {choice: 'declined', scopeRevision: granted.scopeRevision},
+    validation: {requestedAtPhase: 'final', decision: 'approved', scopeRevision: granted.scopeRevision, sourceRevision: granted.sourceRevision, checks: granted.checks}};
+  const cases = [undefined, {...granted, sourceRevision: 'old'}, {...granted, files: ['src/other.ts']},
+    {...granted, facts: {...facts, phase: 'implementation'}}, {...granted, facts: {...facts, integrated: false}},
+    {...granted, checks: ['test']}];
+  for (const candidate of cases) {
+    const {spawn, calls} = runnerSpawn();
+    assert.equal(manualVerify(env, context(), spawn, MODERN, candidate).kind, 'message'); assert.deepEqual(calls, []);
+  }
+});
+test('exact approved files ignore packages edited by earlier tasks in the same transcript', t => {
+  const repo = repoWith(t, {lint: 'exit 0'});
+  mkdirSync(join(repo, 'earlier'), {recursive: true});
+  writeFileSync(join(repo, 'earlier/package.json'), JSON.stringify({scripts: {lint: 'exit 1'}}));
+  const env = stopOf(repo, 'scope', transcriptOf(repo, edits(repo, 'src/current.ts', 'earlier/old.ts')));
+  const granted = approval(env); const files = ['src/current.ts']; const scopeRevision = validationScopeRevision(files);
+  const narrowed = {...granted, files, scopeRevision, facts: {taskId: granted.taskId, scopeRevision, sourceRevision: granted.sourceRevision,
+    phase: 'final', integrated: true, completion: {scopeRevision, sourceRevision: granted.sourceRevision, requiredTicketIds: ['implementation'], tickets: [{id: 'implementation', state: 'integrated'}], unfinishedCorrections: false}, preview: {choice: 'declined', scopeRevision},
+    validation: {requestedAtPhase: 'final', decision: 'approved', scopeRevision, sourceRevision: granted.sourceRevision, checks: granted.checks}}};
+  const {spawn, calls} = runnerSpawn({lint: {status: 0}});
+  assert.deepEqual(manualVerify(env, context(), spawn, MODERN, narrowed), silent);
+  assert.deepEqual(runCwds(calls), [repo]);
+});
+test('identical command aliases deduplicate and successful evidence reuses only the same source revision', t => {
+  const repo = repoWith(t, {});
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({scripts: {lint: 'tsc --noEmit', typecheck: 'tsc --noEmit'}}));
+  const env = stopOf(repo, 'dedup', transcriptOf(repo, edits(repo, 'src/x.ts'))); const granted = approval(env);
+  const first = runnerSpawn(); assert.deepEqual(manualVerify(env, context(), first.spawn, MODERN, granted), silent);
+  assert.equal(runCwds(first.calls).length, 1);
+  const second = runnerSpawn(); assert.equal(manualVerify(env, context(), second.spawn, MODERN, granted).kind, 'message');
+  assert.equal(runCwds(second.calls).length, 0);
+  const changed = {...granted, sourceRevision: 'new-source', facts: {taskId: granted.taskId, scopeRevision: granted.scopeRevision, sourceRevision: 'new-source', phase: 'final', integrated: true,
+    completion: {scopeRevision: granted.scopeRevision, sourceRevision: 'new-source', requiredTicketIds: ['implementation'], tickets: [{id: 'implementation', state: 'integrated'}], unfinishedCorrections: false}, preview: {choice: 'declined', scopeRevision: granted.scopeRevision}, validation: {requestedAtPhase: 'final', decision: 'approved', scopeRevision: granted.scopeRevision, sourceRevision: 'new-source', checks: granted.checks}}};
+  const third = runnerSpawn(); manualVerify(env, context(), third.spawn, MODERN, changed); assert.equal(runCwds(third.calls).length, 1);
+});
+test('test-chaining scripts need test consent and cannot launder it through lint approval', t => {
+  const repo = repoWith(t, {});
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({scripts: {lint: 'npm test', test: 'node --test'}}));
+  const env = stopOf(repo, 'chain', transcriptOf(repo, edits(repo, 'src/x.ts'))); const granted = approval(env, ['lint']);
+  const {spawn, calls} = runnerSpawn();
+  assert.equal(manualVerify(env, context(), spawn, MODERN, granted).kind, 'block'); assert.equal(runCwds(calls).length, 0);
 });

@@ -10,10 +10,13 @@ import type { AdmitFacts } from './admit';
 import type { BreakerFacts } from './breaker';
 import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from './context';
 import type { HitlFacts } from './hitl';
+import { parseExecutionFacts } from './execution';
 import type { RepairFacts } from './repair';
 import { resolve, type DeclaredFacts } from './resolve';
 import { skillLookupSection, skillStateSection } from './skill-state';
 import { resolveStack } from './stack';
+import { evaluateWorkflowGate } from '../workflow/gates';
+import { skillReference } from './skill-reference';
 
 // `io` is the third argument for the one arm whose answer is about the caller's
 // tree rather than the registries: resolve-stack defaults its directory to the
@@ -60,6 +63,19 @@ const SUBCOMMANDS: Record<string, Sub> = {
   breaker: breakerProjection,
   hitl: hitlProjection,
   waves: wavesProjection,
+  execution: executionProjection,
+  'skill-reference': (ctx, args) => {
+    const flags = parseFlags('skill-reference', args, ['--id']);
+    return skillReference(ctx.root, flags.get('--id') ?? '');
+  },
+  'workflow-gate': (_ctx, args) => {
+    const flags = parseFlags('workflow-gate', args, ['--facts']);
+    const raw = flags.get('--facts');
+    if (raw !== undefined && raw.length > 65536) throw new KernelError('workflow-gate facts exceed 64 KiB');
+    let facts: unknown = {};
+    try { if (raw !== undefined) facts = JSON.parse(raw); } catch { throw new KernelError('workflow-gate --facts must be a JSON object'); }
+    return {...evaluateWorkflowGate(facts), enforcement: 'host-attestation-only'};
+  },
   'decision-rules': decisionRulesProjection,
   scale: scaleProjection,
   'route-escalate': routeEscalateProjection,
@@ -226,6 +242,16 @@ function wavesProjection(ctx: KernelContext, args: string[]): unknown {
   return section;
 }
 
+function executionProjection(ctx: KernelContext, args: string[]): unknown {
+  const flags = parseFlags('execution', args, ['--facts']);
+  const raw = flags.get('--facts');
+  let value: unknown = {};
+  if (raw !== undefined) {
+    try { value = JSON.parse(raw); } catch { throw new KernelError('execution --facts must be a JSON object'); }
+  }
+  return resolve({ execution: parseExecutionFacts(value) }, ctx).execution;
+}
+
 // The four prompt arms bound their flag with ${2:-} and then checked it with
 // `[ -n ... ]`, so an absent flag and an empty value reached one guard and got
 // one message per arm. The message is the arm's own name, verbatim.
@@ -376,6 +402,7 @@ function parseFacts(raw: string): DeclaredFacts {
       // `units` travels unread for the same reason `signals` does; an absent one
       // reaches the waves section, which owns the message for it.
       case 'waves': facts.waves = { units: factRecord(key, value)['units'] }; break;
+      case 'execution': facts.execution = parseExecutionFacts(value); break;
       default: throw new KernelError(`resolve --facts: unknown fact ${key}`);
     }
   }

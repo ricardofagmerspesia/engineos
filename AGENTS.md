@@ -45,9 +45,20 @@ Rules for routing:
   checks both halves of this rule — it is enforced, not just stated.
 - Unknown intent → proceed with always-on rules only. Never block on routing.
 - Pure questions/explanations need no routing — answer directly.
-- **A row that names an agent means dispatch it**, not "mention it". Doing the work
+- **A row that names an agent means dispatch it**, except a complete kernel-resolved
+  eligible direct execution contract under rules/parallelism.md. Otherwise doing the work
   inline when a row names an agent is a defect — see `rules/subagents.md`.
+- **Security-review timing overrides immediate dispatch:** route and record the
+  `security-reviewer` requirement now; queue its dispatch and automated security
+  scans until final integrated consent under `rules/verification.md`. Keep security
+  rules active and assign an appropriate stack worker to implementation; a
+  read-only reviewer never becomes its writer.
+- **Simple-task choice first:** resolve complete execution facts before creating documents. Eligible small, low-risk, reversible work asks permitted clickable **Implement directly** / **Create a lightweight spec** choices. A current scope-bound direct choice uses stack guidance plus security/Git safeguards, without mandatory prototype or PRD/ADR/tickets. Missing facts or expanded scope require re-resolution; independent security/design gates remain.
+- **Test timing overrides immediate dispatch:** queue test-writer and every executable check until ALL implementation tickets and corrections are integrated, then always ask fresh final clickable consent. Earlier broad requests are not check approval.
 - Rules paths are relative to this file's directory.
+- Before selected-spec production implementation or resume, follow
+  rules/parallelism.md **Prototype preview choice**; unanswered choice pauses
+  production writes/dispatch, and selected preview needs scoped revision approval.
 - After the work is delivered, offer the output artifact — see **Output artifact** below.
 - The **stack/domain rows** below (backend, frontend, mobile, LLM, DBA, DevOps,
   security, test, and the mobile store-release split) are mirrored
@@ -79,11 +90,11 @@ Rules for routing:
 
 | Intent (signals) | Load |
 |---|---|
-| New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `/engineos:new-feature` — PRD + ADR + SPEC + TASKS before code: Matt Pocock skills `grill-with-docs` (ADRs → `docs/adr/`, glossary `CONTEXT.md`) → `to-spec` (PRD → `docs/prds/`) → skill `tlc-spec-lean` plan, then checks (SPEC → `.specs/features/<feature>/`, indexed from `docs/specs/`) → `to-tickets` (TASKS → `docs/specs/<feature>/tickets/`, each naming the check ids it closes) → build → the `tlc-spec-lean` Verifier; then stack rules below. Applies at non-negotiable #1's threshold — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks get dispatched as parallel agents, not done one by one |
+| New feature / multi-file change ("add", "build", "create", "implement") — new behavior with no more-specific row below; a more specific matching row suppresses this one | `/engineos:new-feature` — resolve the kernel planning lane first; eligible simple tasks ask clickable direct/spec choices before artifacts. Direct uses stack rules and security/Git safeguards; selected specs use native `engineos-spec` with Matt Pocock `to-tickets` and a consolidated dependency graph. Non-simple feature design produces PRD + ADR + SPEC + TASKS; `engineos-implement-spec` consumes every independent ready ticket. Preserve artifact paths and design review gates. External Matt Pocock/tlc-spec-lean skills are optional upstream references. Apply rules/parallelism.md task-budget guidance, then routed stack rules. A small single-file non-feature change resolves the execution lane and may use direct execution only when the complete kernel contract permits it |
 | Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, "across all X", migration, backfill) | Apply `rules/parallelism.md` + `rules/models.md` (always-on); fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated |
 | Bug / unexpected behavior ("broken", "fails", error pasted, "why does X happen") | `superpowers:systematic-debugging` |
 | Backend work (NestJS, API, service, controller, migration, queue) | `rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator` |
-| Backend work (FastAPI, router, endpoint, Pydantic, SQLAlchemy, Alembic) | `rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
+| Backend work (FastAPI, router, endpoint, Pydantic, SQLAlchemy, Alembic) | `rules/architecture.md` + `rules/backend-python.md` + `rules/backend.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator` |
 | Frontend work (React, Next, component, page/app, UI, styling) | `rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; agent `frontend-coordinator` |
 | Mobile work / mirror web to mobile (React Native, screen, navigation, native module, iOS/Android app; "mirror to mobile", "port to mobile", "mobile parity") | `rules/architecture.md` + `rules/frontend.md` + `rules/backend.md` (API-consumption parts) + `rules/observability.md` + `rules/testing.md`, adapted the mobile way; agent `mobile-coordinator` (elias) |
 | Mobile store release ("build ios", "publish to App Store", "TestFlight", "build android", "Play Store", "release the app", ipa/aab, store submission) | `rules/security.md` (signing keys/store credentials); agent `ios-builder` for Apple, `android-builder` for Google Play. Store review submission / production rollout only on explicit instruction |
@@ -103,15 +114,19 @@ Rules for routing:
 | Review / pre-merge ("review", "is this safe", PR URL) | skill `code-review` (external — provided by the Codex environment, not this repo); if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool) |
 | Test writing — explicit request only ("write tests", "add coverage", "integration tests", "E2E", "TDD this", "run the suite", regression test for a fix) | Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets. This row IS the opt-in path — tests get written/run here, on request, never implicitly by other rows |
 | Eval setup ("set up evals", "golden set", new LLM feature lacking evals) | Read `rules/llm-apps.md`; skill `eval-harness` |
-| Independent verification of high-risk work ("is this actually right", pre-release check on risk=high, release gate needs an independent pass) | `critic` agent (alias `vera`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens |
+| Independent verification of high-risk work ("is this actually right", pre-release check on risk=high, release gate needs an independent pass) | `critic` agent (alias `rogerio`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens |
 | Handoff between agents, waves or sessions ("hand this off", wave barrier reached, session ending mid-task) | `templates/handoff.md` — objective, state (gate, risk), done, decisions, files, evidence, known failures and open risks, not done, next step, resume. Never hand off with "continue where you left off" |
 | Continuous improvement ("run a retro", "what should we improve", same correction recurring, monthly cadence) | skill `retro` — mines `.engineos/archived/`, `.engineos/skill-observations/log.md`, eval failures and integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR. Proposes only; a human merges |
 | Skill/rule friction observed mid-task ("log an observation", "watch for skill opportunities", "observation log", a loaded rule got violated, a correction reveals a missing rule, a skill section proves dead weight) | skill `task-observer` — appends to `.engineos/skill-observations/log.md`; capture only, `retro` consumes OPEN entries. Log at the moment of friction, don't wait for the retro |
 | Work complete / close the change record ("record the change", "log this change", Stop gate reports unrecorded changes) | skill `record-change` |
 | Ambiguous or multi-agent request needing a dispatch plan ("route this", "who should do this", "which agents", request spans several domains with no obvious owner) | `/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no agent is dispatched at all |
-| Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck/tests and on an unrecorded change record |
+| Claiming done / complete / fixed; spec archived / feature shipped ("archiving", "spec done", "moving to archive", spec moved to `.engineos/archived/` or the project's spec archive) | `superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. Automatic `stop-verify.sh` executes no checks; approved final manual validation supplies evidence. `record-verify.sh` still reports an unrecorded change record |
 
 ## Output artifact — offer after every request
+
+After task delivery, separately follow rules/parallelism.md **Completion follow-up**
+for optional Matt Pocock session `/retro`; execute only on opt-in and preserve
+same-task answers on resume. This does not replace the artifact offer below.
 
 Once the request has been answered or the work delivered (after
 `superpowers:verification-before-completion` where it applies), ask in one question which
@@ -142,9 +157,10 @@ Rules:
 Each item names the file that owns it. That file is the single source of truth —
 read it there, not here.
 
-1. **Spec before code** — any change touching >2 files or any new feature. A from-scratch feature carries four artifacts before code — PRD, ADR, SPEC, TASKS — produced by `/engineos:new-feature`.
-2. **The final gate before "done"** — `rules/verification.md`. The automated Stop-gate
-   half covers JS/TS packages (npm/pnpm/yarn/Nx scripts) and Python packages (ruff, pyright, pytest); other stacks are verified manually. This is
+1. **Spec before code** — any change touching >2 files or any new feature outside the complete kernel-resolved simple-task direct exception. Eligible simple tasks ask the clickable spec choice before creating artifacts; a direct choice needs no spec. A selected lightweight spec uses bounded tickets; a non-simple from-scratch feature carries PRD, ADR, SPEC and TASKS from `/engineos:new-feature`.
+2. **The final gate before "done"** — `rules/verification.md`. Automatic Stop executes no package checks. Final manual checks require explicit
+   fresh final clickable current-task approval after ALL implementation tickets and corrections integrate; earlier broad requests are insufficient. Existing JS/TS scripts are resolved
+   under rules/verification.md. Deprecated Python declarations are compatibility only. This is
    the Validation gate of `rules/gates.md`, never the Release gate.
 3. **No secrets** in code, config, or commits. Ever — `rules/security.md`.
 4. **Project conventions win** over these rules when they conflict:
@@ -158,7 +174,7 @@ read it there, not here.
    threshold is the only spec threshold.
 6. **Model tier per work type** — `rules/models.md`.
 7. **Decompose and distribute** — `rules/parallelism.md`.
-8. **Dispatch the agent the router names, and announce it** — `rules/subagents.md`.
+8. **Consume the resolved execution lane and announce it** — rules/subagents.md. A complete eligible `direct` contract permits main-executor work; otherwise dispatch the named routed worker. Missing facts never grant direct execution.
    This file is the standing user request for sub-agent use; a harness that waits
    to be asked has been asked here.
 9. **Offer the output artifact** after every request — **Output artifact** above.

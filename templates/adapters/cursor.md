@@ -40,12 +40,31 @@ Derive patterns/precedence from registries/routing.json; no second hand-maintain
 - **Gate advisory.** `registries/decision-rules.json` is not consulted
   automatically; include a condensed version of `rules/gates.md` in the
   always-apply rule so the model applies it from context.
-- **Post-edit lint.** Use Cursor's own lint-on-save plus CI.
+- **Post-edit checks.** EngineOS runs none; request approval for final validation.
+
+## User decisions
+
+Apply rules/base.md **Awaiting user input** to every user decision with permitted
+clickable host controls; offer **Provide details** when free text is needed. Explain
+labelled-text fallback when controls are unavailable or prohibited for that
+decision. For specific final checks, follow rules/verification.md: clickable
+**Run** / **Skip** per exact distinct command, batch within host limits, then
+clickable confirmation of the selected commands at the integrated revision.
+Record submitted choices, never inferred defaults; these remain host conventions.
 
 ## CI fallback
 
-Final CI lint/typecheck/build covers integrated code. Tests/evals/behavioral
-validator require explicit current-task final approval (rules/verification.md).
+Apply the kernel simple planning choice before artifacts: **Implement directly** /
+**Create a lightweight spec** through permitted clickable host controls. Direct
+requires complete eligible facts and current scope-bound choice, with stack rules
+and security/Git safeguards. It needs no mandatory prototype or ticket workflow.
+Selected specs use Matt Pocock tracer-bullet tickets and a capacity-bounded ready
+frontier. After ALL implementation tickets integrate, always ask fresh clickable
+**Run proposed checks** / **Choose specific checks** / **Skip for now** consent.
+Use honest labelled text only when permitted controls are unavailable.
+
+Final CI lint/typecheck/build/tests/evals/integrity checks require explicit
+current-task final approval for the integrated ref (rules/verification.md).
 CI cannot enforce uncommitted work; the model must apply its final gate.
 
 ## Existing assets

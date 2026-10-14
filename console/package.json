@@ -9,7 +9,9 @@
     "start": "next start -H 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "node -e \"require('node:fs').rmSync('.test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && cd .test-build && node --test"
+    "test": "node -e \"require('node:fs').rmSync('.test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json && cd .test-build && node --test",
+    "decisions:build": "node scripts/build-decisions-worker.mjs",
+    "decisions:worker": "node .decision-build/worker.cjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
@@ -17,7 +19,8 @@
     "drizzle-orm": "^0.45.2",
     "next": "^16.3.5",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",

@@ -8,7 +8,7 @@
     "cost optimization",
     "agent preference"
   ],
-  "conflict_policy": "When two rules disagree, the more specific and higher-risk rule wins. Record the conflict and which rule was applied — an unlogged override is indistinguishable from a missed rule.",
+  "conflict_policy": "When two rules disagree, the more specific and higher-risk rule wins. Record the conflict and which rule was applied \u2014 an unlogged override is indistinguishable from a missed rule.",
   "rules": [
     {
       "id": "rule-spec-threshold",
@@ -37,9 +37,7 @@
       },
       "then": {
         "require": [
-          "typecheck",
-          "lint",
-          "tests-after-integration-when-user-approved",
+          "final-integrated-validation-when-user-approved",
           "output-shown"
         ],
         "gate": "validation"
@@ -249,7 +247,7 @@
     {
       "id": "rule-multi-agent-design",
       "priority": 85,
-      "source": "docs/specs/2026-10-06-mastra-llm-policy.md; historical provenance: docs/specs/2026-09-28-python-stack-and-agent-design-design.md §4. Mastra/chatbot alone does not establish a multi-agent system; LangGraph signals retain migration detection.",
+      "source": "docs/specs/2026-10-06-mastra-llm-policy.md; historical provenance: docs/specs/2026-09-28-python-stack-and-agent-design-design.md \u00a74. Mastra/chatbot alone does not establish a multi-agent system; LangGraph signals retain migration detection.",
       "when": {
         "multi_agent_system": true
       },

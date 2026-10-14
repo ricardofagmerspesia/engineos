@@ -1,0 +1,35 @@
+{
+  "taskId": "fast-workflow",
+  "phase": "final",
+  "integrated": true,
+  "completion": {
+    "scopeRevision": "sha256:eac865676f0089dfe493d7858dc88ee69aaf8a9882242fc947430c8a12bc170a",
+    "sourceRevision": "sha256:3b68c60edf680e82ce3a62792650d4a8ce3a6656c084b33c0d745541dd2d35b6",
+    "requiredTicketIds": [
+      "02-simple-lane",
+      "03-final-consent",
+      "04-ticket-frontier",
+      "05-integration"
+    ],
+    "tickets": [
+      {
+        "id": "02-simple-lane",
+        "state": "integrated"
+      },
+      {
+        "id": "03-final-consent",
+        "state": "integrated"
+      },
+      {
+        "id": "04-ticket-frontier",
+        "state": "integrated"
+      },
+      {
+        "id": "05-integration",
+        "state": "integrated"
+      }
+    ],
+    "unfinishedCorrections": false
+  },
+  "observation": "Supervisor source inspection; executable proof pending; final-proof ticket excluded"
+}

@@ -1,0 +1,77 @@
+{
+  "sourceRevision": "sha256:f2a1a07ca95132effd5d3ac25c3a93df0642f6a314a1ddb3f2577be58473f7ad",
+  "files": [
+    {
+      "path": "agents/dba-coordinator.md",
+      "sha256": "4f5613217c4025b0cbd785ad07f169c2cb6f663d73e997e28424caef808e174a"
+    },
+    {
+      "path": "agents/security-reviewer.md",
+      "sha256": "66d0dca5ef593b65a0e2daa95c62515925f4f54a3e55b16576046f199233409e"
+    },
+    {
+      "path": "docs/COMPATIBILITY.md",
+      "sha256": "94798a8cbebb6476a8fd08e3066a905eb8393005f788c399f6fa82eca98bb34e"
+    },
+    {
+      "path": "rules/base.md",
+      "sha256": "d4850dd222a8f0cebe4760c349a34352aa7982eee0d5d559662edef22f4c1a30"
+    },
+    {
+      "path": "rules/data.md",
+      "sha256": "aae17b255c58c15c1c8cdf9cfc352adff42fb1cad1168f6571eb51783877740d"
+    },
+    {
+      "path": "rules/security.md",
+      "sha256": "a795947b0873d06c5ae73d77f638b3deb9498eab4d1ced794e7323e8ea9323e3"
+    },
+    {
+      "path": "rules/subagents.md",
+      "sha256": "93b58007877f8438fe9a23887c9893d5946690f38679f90478bf507f405ac9df"
+    },
+    {
+      "path": "rules/verification.md",
+      "sha256": "f1632014984929da471531eaacd68246b7fd4bee2f9995f7904a5d36ea31b821"
+    },
+    {
+      "path": "skills/engineos-implement-spec/SKILL.md",
+      "sha256": "0b095fc808460e7c18c4534bdf23b20fb6c83c07e90f84ce37d4f55dbeb17e1b"
+    },
+    {
+      "path": "src/hooks/announce-agent-dispatch.ts",
+      "sha256": "0acc7ed9917792c2f0a215dc15b5ad936a5a97b7bc118d4fc6448570258c4b6d"
+    },
+    {
+      "path": "src/hooks/announce-agent-return.ts",
+      "sha256": "a86d9ff58dec60e8a0ea39da670ce41959a56a92788aeb55354db05216104827"
+    },
+    {
+      "path": "templates/adapters/claude-code.md",
+      "sha256": "53a53810a2bea137388450ddc598a94308514dd5949e7c41009ed965821eddf1"
+    },
+    {
+      "path": "templates/adapters/codex.md",
+      "sha256": "0580f0c60a11f4abb0d504d2cb2eb504c8fee3b65d561a5847c2ae04649e776e"
+    },
+    {
+      "path": "templates/adapters/cursor.md",
+      "sha256": "e856632ad986a1bfa5a74ba3a9117c2d770f13af835ffceb6173fee72993efec"
+    }
+  ],
+  "baseline": "/var/folders/1v/g7nv72wj1ss4h0z3v90yc4k00000gn/T/engineos-presentation-safety-baseline-ckpfvmpt",
+  "implementationTickets": [
+    {
+      "id": "01-agent-labels",
+      "state": "integrated"
+    },
+    {
+      "id": "02-clickable-decisions",
+      "state": "integrated"
+    },
+    {
+      "id": "03-injection-database",
+      "state": "integrated"
+    }
+  ],
+  "validation": "pending final human choice"
+}

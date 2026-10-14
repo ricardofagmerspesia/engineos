@@ -146,7 +146,7 @@ for the executor contract. The 22 roles comprise 6 coordinators, 5 MCP leaves,
 
 Coordinators: backend, frontend, mobile, DBA, DevOps and LLM (AUDIT read-only,
 IMPLEMENT scoped writes). MCP leaves: Postgres, Oracle, Kubernetes, GCP and CI.
-Review lenses: `critic` (vera) for required independent correctness;
+Review lenses: `critic` (rogerio) for required independent correctness;
 `security-reviewer` (leo-ely) for security; `audit-consolidator` merges reports.
 `router` returns plans only. Store submission requires explicit instruction.
 Test/QA agents work only in an approved final test scope.

@@ -1,0 +1,19 @@
+import type { DecisionInput, DecisionReport } from '../../lib/decisions/contracts';
+import { Banner } from '../../components/ui/banner';
+import { Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell } from '../../components/ui/table';
+import { AssessmentComparison, displayScore } from './assessment-comparison';
+export function ReportView({ report, input }: { report: DecisionReport; input: DecisionInput }) {
+  return <section className="space-y-5" aria-labelledby="report-heading"><h2 id="report-heading" className="text-lg font-semibold">Immutable report — {report.outcome}</h2>
+    <Banner variant="info" title={report.outcome === 'READY' ? 'Ready for adoption under policy' : 'Review the gate reasons'}>READY never authorizes an action. Independent verification: no. Agreement after a challenge is not independent verification.</Banner>
+    <p className="break-all text-sm">Revision {report.revision} · Policy {report.policyVersion} · Report hash: <code>{report.reportHash}</code></p>
+    <p className="text-sm">Winning option: {report.winnerOptionId ?? 'Unavailable'} · Challenge rounds: {report.challengeRounds}</p>
+    <ul className="list-inside list-disc text-sm">{report.reasons.map((reason, index) => <li key={index}><strong>{reason.gate}: {reason.code}</strong> — {reason.message}{reason.optionId ? ` (${reason.optionId})` : ''}</li>)}</ul>
+    <Table><TableHead><TableRow><TableHeaderCell>Option</TableHeaderCell><TableHeaderCell>Eligibility</TableHeaderCell><TableHeaderCell>Utility</TableHeaderCell><TableHeaderCell>Plausible bounds</TableHeaderCell><TableHeaderCell>Disagreement</TableHeaderCell><TableHeaderCell>Evidence coverage</TableHeaderCell></TableRow></TableHead><TableBody>{report.scores.map((score) => <TableRow key={score.optionId}><TableCell>{input.options.find((option) => option.id === score.optionId)?.label ?? score.optionId}</TableCell><TableCell>{score.eligibility}</TableCell><TableCell>{displayScore(score.score)}</TableCell><TableCell>[{displayScore(score.lower)}, {displayScore(score.upper)}]</TableCell><TableCell>{displayScore(score.disagreement)}</TableCell><TableCell>{score.evidenceCoverage}</TableCell></TableRow>)}</TableBody></Table>
+    <p className="text-sm text-slate-600">Rows follow the stored report order, not a ranking of ineligible options. Missing scores remain unavailable.</p>
+    {report.scores.map((score) => <div key={score.optionId}><h3 className="font-medium">Assumptions — {score.optionId}</h3><ul className="list-inside list-disc text-sm">{score.assumptions.map((assumption, index) => <li key={index}>{assumption}</li>)}</ul>{score.assumptions.length === 0 && <p className="text-sm">None recorded.</p>}</div>)}
+    <section><h3 className="font-semibold">Disagreement</h3>{report.disagreements.length === 0 ? <p className="text-sm">No disagreement recorded.</p> : <ul className="list-inside list-disc text-sm">{report.disagreements.map((item, index) => <li key={index}>{item.kind}{item.material ? ' · material' : ''}: {item.message}</li>)}</ul>}</section>
+    <section><h3 className="font-semibold">Calculated sensitivity scenarios</h3>{report.sensitivity.length === 0 ? <p className="text-sm">No scenario results. Robustness is not established by this view.</p> : <ul className="list-inside list-disc text-sm">{report.sensitivity.map((scenario) => <li key={scenario.id}>{scenario.id}: winner {scenario.winnerOptionId ?? 'Unavailable'}; {Object.entries(scenario.scores).map(([id, score]) => `${id}: ${displayScore(score)}`).join(' · ')}</li>)}</ul>}</section>
+    <AssessmentComparison input={input} evaluations={report.originalEvaluations} label="Independent first round" />
+    {report.challengeRounds > 0 && <><AssessmentComparison input={input} evaluations={report.evaluations} label="Challenge round — revised assessments" /><ul className="list-inside list-disc text-sm">{report.changes.map((change, index) => <li key={index}>{change}</li>)}</ul></>}
+  </section>;
+}

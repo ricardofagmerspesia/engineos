@@ -1,0 +1,74 @@
+[
+  {
+    "id": "02-simple-lane",
+    "dependsOn": [],
+    "files": [
+      "src/workflow/contracts.ts",
+      "src/kernel/execution.ts",
+      "src/kernel/resolve.ts",
+      "src/registry/policy.ts"
+    ],
+    "agent": "backend-coordinator",
+    "modelTier": "build",
+    "contractRevision": "fast-workflow-v1",
+    "requiredChecks": [
+      "read-only-integration"
+    ]
+  },
+  {
+    "id": "03-final-consent",
+    "dependsOn": [],
+    "files": [
+      "src/workflow/gates.ts"
+    ],
+    "agent": "backend-coordinator",
+    "modelTier": "build",
+    "contractRevision": "fast-workflow-v1",
+    "requiredChecks": [
+      "read-only-integration"
+    ]
+  },
+  {
+    "id": "04-ticket-frontier",
+    "dependsOn": [],
+    "files": [
+      "skills/engineos-spec/SKILL.md",
+      "skills/engineos-implement-spec/SKILL.md",
+      "commands/new-feature.md",
+      "commands/implement.md",
+      "commands/implement-spec.md",
+      "registries/skill-references.json",
+      "src/kernel/skill-reference.ts"
+    ],
+    "agent": "docs-writer",
+    "modelTier": "build",
+    "contractRevision": "fast-workflow-v1",
+    "requiredChecks": [
+      "read-only-integration"
+    ]
+  },
+  {
+    "id": "05-integration",
+    "dependsOn": [
+      "02-simple-lane",
+      "03-final-consent",
+      "04-ticket-frontier"
+    ],
+    "files": [
+      "rules/parallelism.md",
+      "rules/verification.md",
+      "rules/gates.md",
+      "rules/subagents.md",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "registries/policy.json",
+      "docs/COMPATIBILITY.md"
+    ],
+    "agent": "backend-coordinator",
+    "modelTier": "build",
+    "contractRevision": "fast-workflow-v1",
+    "requiredChecks": [
+      "read-only-integration"
+    ]
+  }
+]

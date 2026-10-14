@@ -133,6 +133,7 @@
       "title": "Backend (FastAPI shapes)",
       "rules": [
         "backend-python",
+        "backend",
         "architecture",
         "data",
         "testing",

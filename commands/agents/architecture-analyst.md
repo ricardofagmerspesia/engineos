@@ -1,5 +1,5 @@
 ---
-description: Invoke the architecture-analyst agent (alias analyst).
+description: Invoke the architecture-analyst agent (alias ricardo-fagmer).
 argument-hint: [task or question for the agent]
 allowed-tools: Task
 ---
@@ -9,7 +9,7 @@ similar) — do NOT dispatch a subagent. INTERVIEW mode needs live, interactive
 answers from the user, which a dispatched Task cannot provide. Instead, tell the
 user to run `/talk-about-the-system` in the main session, and stop.
 
-Otherwise, dispatch the `architecture-analyst` agent (alias `analyst`) via the
+Otherwise, dispatch the `architecture-analyst` agent (alias `ricardo-fagmer`) via the
 Task tool, passing `$ARGUMENTS` as its prompt. If `$ARGUMENTS` is empty, ask the
 user what they want the agent to do before dispatching.
 

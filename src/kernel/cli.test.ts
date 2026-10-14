@@ -686,7 +686,6 @@ test('resolve-stack detects the tree at the given directory', (t) => {
   assert.deepEqual(JSON.parse(io.stdout.join('')), {
     packages: [
       { dir: '.', language: 'node', framework: 'react', compose_service: null },
-      { dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
     ],
     source: 'detected',
   });
@@ -715,12 +714,12 @@ test('resolve-stack defaults to cwd outside a work tree and resolves a relative 
   const io = memoryIo({ env, cwd: dir });
   assert.equal(runKernel(['resolve-stack'], io), 0);
   assert.deepEqual(JSON.parse(io.stdout.join('')), {
-    packages: [{ dir: 'svc', language: 'python', framework: 'django', compose_service: null, python_env: 'auto' }],
+    packages: [],
     source: 'detected',
   });
   const io2 = memoryIo({ env, cwd: dir });
   assert.equal(runKernel(['resolve-stack', 'svc'], io2), 0);
-  assert.equal(JSON.parse(io2.stdout.join('')).packages[0].dir, '.');
+  assert.deepEqual(JSON.parse(io2.stdout.join('')).packages, []);
 });
 
 test('resolve-stack refuses a flag, a second argument, a missing directory and a malformed config', (t) => {
@@ -739,4 +738,29 @@ test('resolve-stack refuses a flag, a second argument, a missing directory and a
   const io4 = memoryIo({ env, cwd: dir });
   assert.equal(runKernel(['resolve-stack', dir], io4), 1);
   assert.deepEqual(JSON.parse(io4.stdout.join('')), { error: `${join(dir, '.engineos', 'config.json')}: the document has an unknown key "x"` });
+});
+
+
+test('explicit deprecated Python stack declarations retain compatibility without autodetection', (t) => {
+  const dir = tempRoot(t);
+  mkdirSync(join(dir, '.engineos'));
+  writeFileSync(join(dir, '.engineos/config.json'), JSON.stringify({version: 1, stack: {packages: [
+    {dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto'},
+    {dir: 'svc', language: 'python', framework: 'django', compose_service: null, python_env: 'auto'},
+  ]}}));
+  const io = memoryIo({env});
+  assert.equal(runKernel(['resolve-stack', dir], io), 0);
+  const result = JSON.parse(io.stdout.join(''));
+  assert.equal(result.source, 'config');
+  assert.deepEqual(result.packages.map((entry: {framework: string}) => entry.framework), ['fastapi', 'django']);
+});
+
+test('workflow-gate CLI denies missing facts and reports host attestation enforcement', () => {
+  const io = memoryIo({env});
+  assert.equal(runKernel(['workflow-gate', '--facts', '{}'], io), 0);
+  const result = JSON.parse(io.stdout.join(''));
+  assert.equal(result.productionAllowed, false);
+  assert.equal(result.validationAllowed, false);
+  assert.equal(result.enforcement, 'host-attestation-only');
+  assert.equal(runKernel(['workflow-gate', '--facts', '{"environmentApproval":true}'], memoryIo({env})), 0);
 });

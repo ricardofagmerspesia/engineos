@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { KernelError } from '../lib/json';
+import { readFileSync } from 'node:fs';
+import { KernelError, isRecord } from '../lib/json';
 import { resolveRoot } from '../registry/paths';
 import { lazyRegistries, type KernelContext, type RiskTier } from './context';
 import { resolve } from './resolve';
@@ -79,7 +80,17 @@ test('a declared but empty path is refused, never routed', () => {
 });
 
 test('every intent matches on its own first signal', () => {
+  const raw: unknown = JSON.parse(readFileSync(join(root, 'registries/intents.json'), 'utf8'));
+  assert.ok(isRecord(raw) && Array.isArray(raw['intents']));
+  const rows = raw['intents'];
   for (const intent of ctx.registries.intents.intents) {
+    const row = rows.find((candidate: unknown) => isRecord(candidate) && candidate['id'] === intent.id);
+    assert.ok(isRecord(row));
+    if (row['enabled'] === false) {
+      assert.deepEqual(intent.signals, [], `${intent.id} must not advertise active signals`);
+      assert.equal(routeIntent('FastAPI Django Pydantic Python').matches.some(match => match.id === intent.id), false);
+      continue;
+    }
     const [signal] = intent.signals;
     if (signal === undefined) throw new Error(`intent ${intent.id} carries no signal`);
     const ids = routeIntent(signal).matches.map((m) => m.id);
