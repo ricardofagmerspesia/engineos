@@ -26,9 +26,10 @@ floor, autonomy ceiling, agents, skills, gates). Load its rules and classify fin
 risk/autonomy BEFORE writing. Supervisor resolves residue; read-only `router`
 plans unresolved cases. `/engineos:route` remains plan-only.
 
-Apply `rules/subagents.md` and `rules/parallelism.md`: flat scoped workers for
-every implementation unit; fill useful policy/host capacity and refill slots.
-One indivisible unit needs one worker; pure explanations need none. Brief workers
+Apply `rules/subagents.md` and `rules/parallelism.md`: outside eligible direct
+execution, use flat scoped workers for every implementation unit; fill useful
+policy/host capacity and refill slots. One indivisible delegated unit needs one
+worker; pure explanations need none. Brief workers
 with roles, rules/skills/patterns, exclusive paths, frozen contracts, dependencies,
 risk/autonomy, branch/PR and return expectations. Reroute scope changes, preserve
 current branch/PR and final approval-only tests. Routing adds no approval gate to
@@ -37,7 +38,8 @@ authorized work.
 Rules for routing:
 - Multi-match: load applicable table rows in order. Unknown intent gets a suitable
   available worker, always-on rules and exclusive scope; never bypass/stall routing.
-  Pure questions need no routing. Named agents MUST be dispatched.
+  Pure questions need no routing. Named agents MUST be dispatched unless the
+  complete kernel-resolved eligible direct execution contract applies.
 - **Closed loads:** every non-always-on rule reference must be loaded in the same
   row. Always-on `base.md`, `security.md`, `git.md`, `context.md` may reference
   only always-on rules, templates or `registries/*.json`. Non-always-on rules may
@@ -58,6 +60,24 @@ Rules for routing:
   Validator rejects table/registry drift; remaining rows are request-driven.
 - Hook routing emits ONE first-match route, in this precedence chain: security → test → backend → dba → backend-python → ios-release → android-release → devops → mobile → frontend → llm. When you route from the table, load every applicable row.
   The backend-python slot is inactive compatibility; table routing remains multi-match.
+- **Stack rows follow the repository's stack.** The kernel uses
+  `scripts/kernel.sh resolve-stack` evidence to rebind a stack-bearing intent to
+  its active `stack_sibling` when only the sibling's stack is present. Framework
+  evidence precedes language evidence; within each level, the package holding
+  the working directory precedes the whole repository. It reports swaps as
+  `rebound`. Disabled/deprecated compatibility rows never match or become rebind
+  targets; the Python row stays dormant. Existing non-Nest backends require
+  deviation reporting and migration scoping under `rules/base.md`.
+- **A switch, never a model, picks who decides intents.** `ENGINEOS_ROUTER` =
+  `keyword` | `llm` | `jev` | `auto` (personal env), capped by `.engineos/config.json`
+  `router.mode`; the more restrictive wins. Unset, `registries/policy.json`
+  `router_decision.default` applies (`jev`, a recorded developer decision a
+  golden-set run may overwrite), with the keyword answer logged beside it (shadow).
+  The contract line shows `router=<mode>[/<confidence>]`; a fallback is announced as
+  `[engineos] router: llm (<mode> unavailable: <reason>)` and degrades to the
+  in-session `router` agent, never silently to keyword. The keyword floor decides
+  alone only when a setting names it. When the router could not decide, dispatch
+  the `router` agent before any write.
 - Hooks require node >= 18; shell shims call `dist/engineos.cjs`, without jq.
   Missing/old node: route-before-change, mark-unrecorded, record-verify and
   prompt-advisor silently exit 0; others emit skipped messages. Missing router
@@ -131,9 +151,15 @@ Each item names the file that owns it. That file is the single source of truth �
 read it there, not here.
 
 1. **Spec before code** — any change touching >2 files or any new feature outside the complete kernel-resolved simple-task direct exception. Eligible simple tasks ask the clickable spec choice before creating artifacts; a direct choice needs no spec. A selected lightweight spec uses bounded tickets; a non-simple from-scratch feature carries PRD, ADR, SPEC and TASKS from `/engineos:new-feature`.
-2. **The final gate before "done"** — `rules/verification.md`. The automated Stop-gate
-   half covers JS/TS packages (npm/pnpm/yarn/Nx scripts). Active development is JavaScript/TypeScript only; application backends use NestJS, frontends Next.js/React, mobile React Native, and Node.js supplies runtime/tooling. Tests require explicit approval after integration. This is
-   the Validation gate of `rules/gates.md`, never the Release gate.
+2. **The final gate before "done"** — `rules/verification.md`. Automatic Stop
+   executes no package checks. Final manual checks require fresh scoped consent
+   after ALL implementation tickets and corrections integrate; earlier broad
+   requests are insufficient. Existing JS/TS scripts use npm/pnpm/yarn/Nx;
+   deprecated Python declarations remain compatibility data without active runners.
+   Active development uses JavaScript/TypeScript: NestJS application backends,
+   Mastra LLM applications/agents/chatbots, Next.js/React frontends and React Native
+   mobile; Node.js supplies runtime/tooling. This is the Validation gate of
+   `rules/gates.md`, never the Release gate.
 3. **No secrets** in code, config, or commits. Ever — `rules/security.md`.
 4. **Project conventions win** over these rules when they conflict:
    project `CLAUDE.md` > EngineOS > defaults.

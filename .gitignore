@@ -13,3 +13,7 @@ dist-release/
 # seja sobrescrito).
 .claude/worktrees/
 .claude/settings.local.json
+
+# Router golden-set candidates: real prompts from session transcripts, may
+# carry client data. Curated and redacted into evals/router-golden/cases.jsonl.
+evals/router-golden/candidates.local.jsonl

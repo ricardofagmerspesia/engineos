@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { KernelError, isRecord } from '../lib/json';
@@ -105,7 +107,7 @@ test('a prompt carrying several intents matches all of them, in registry order',
 });
 
 test('a prompt matching no signal is ambiguous, not an error', () => {
-  assert.deepEqual(routeIntent('zzz qqq'), { matches: [], ambiguous: true });
+  assert.deepEqual(routeIntent('zzz qqq'), { matches: [], ambiguous: true, rebound: [], generic_only: false });
 });
 
 test('a signal inside a longer word does not match', () => {
@@ -311,6 +313,7 @@ test('the escalate modifier selects the escalate form of the route section', () 
   const section = escalateRoute('add a paginated orders endpoint to the API and mirror the screen to mobile');
   assert.deepEqual(Object.keys(section), [
     'escalate', 'reasons', 'intents', 'suppressed', 'agents', 'model_tier', 'risk_floor', 'scale', 'ambiguous',
+    'rebound', 'generic_only',
   ]);
   assert.deepEqual(section.intents, ['backend', 'mobile']);
   assert.deepEqual(section.suppressed, [{ id: 'new-feature', by: 'more-specific-match' }]);
@@ -318,7 +321,7 @@ test('the escalate modifier selects the escalate form of the route section', () 
 
 test('without the modifier the same prompt still answers the intent form', () => {
   const section = routeIntent('add a paginated orders endpoint to the API and mirror the screen to mobile');
-  assert.deepEqual(Object.keys(section), ['matches', 'ambiguous']);
+  assert.deepEqual(Object.keys(section), ['matches', 'ambiguous', 'rebound', 'generic_only']);
 });
 
 test('a modifier without a prompt fact is refused rather than ignored', () => {
@@ -444,3 +447,83 @@ function escalateRoute(prompt: string): EscalateRouteSection {
   if (!('escalate' in section)) throw new Error(`the escalate modifier answered another form for ${prompt}`);
   return section;
 }
+
+// --- the routing floor's stack rebind (contracts §2) -------------------------
+
+// A throwaway repository holding the given files, removed after `use`.
+function withProject(files: Record<string, string>, use: (project: string) => void): void {
+  const project = mkdtempSync(join(tmpdir(), 'engineos-project-'));
+  try {
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(join(project, path, '..'), { recursive: true });
+      writeFileSync(join(project, path), contents, 'utf8');
+    }
+    use(project);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+}
+
+const PROMPT = 'add an endpoint that lists invoices';
+
+test('without a project the prompt routes on keywords alone', () => {
+  const route = resolve({ prompt: PROMPT, escalate: true }, ctx).route;
+  if (route === undefined || !('escalate' in route)) throw new Error('no escalate route section');
+  assert.deepEqual(route.intents, ['backend']);
+  assert.deepEqual(route.rebound, []);
+});
+
+test('a detected python repository rebinds the task contract to the python row', () => {
+  withProject({ 'pyproject.toml': '[project]\nname = "x"\ndependencies = ["fastapi"]\n' }, (project) => {
+    const answer = resolve({ prompt: PROMPT, taskContract: true }, { ...ctx, project });
+    const route = answer.route;
+    if (route === undefined || !('escalate' in route)) throw new Error('no escalate route section');
+    // FastAPI is named in the manifest, so framework evidence decides.
+    assert.deepEqual(route.rebound, [{ from: 'backend', to: 'backend-python', reason: 'framework', scope: 'repo' }]);
+    assert.equal(route.generic_only, true);
+    assert.deepEqual(answer.task_contract?.intents, ['backend-python']);
+    assert.ok(answer.task_contract?.rules.includes('backend-python'));
+    assert.ok(answer.task_contract?.skills.includes('python-patterns'));
+  });
+});
+
+test('the intent form reads the same project stack', () => {
+  withProject({ 'pyproject.toml': '[project]\nname = "x"\n' }, (project) => {
+    const route = resolve({ prompt: PROMPT }, { ...ctx, project }).route;
+    if (route === undefined || !('matches' in route)) throw new Error('no intent route section');
+    assert.deepEqual(route.matches.map((m) => m.id), ['new-feature', 'backend-python']);
+  });
+});
+
+test('a declared config wins over detection', () => {
+  const config = JSON.stringify({ version: 1, stack: { packages: [{ dir: 'api', language: 'node', framework: 'nestjs', compose_service: null }] } });
+  withProject({ 'pyproject.toml': '[project]\nname = "x"\n', '.engineos/config.json': config }, (project) => {
+    const route = resolve({ prompt: PROMPT, escalate: true }, { ...ctx, project }).route;
+    if (route === undefined || !('escalate' in route)) throw new Error('no escalate route section');
+    assert.deepEqual(route.intents, ['backend']);
+    assert.deepEqual(route.rebound, []);
+  });
+});
+
+test('a malformed config degrades to detection, never to a refusal', () => {
+  withProject({ 'pyproject.toml': '[project]\nname = "x"\n', '.engineos/config.json': '{ not json' }, (project) => {
+    const route = resolve({ prompt: PROMPT, escalate: true }, { ...ctx, project }).route;
+    if (route === undefined || !('escalate' in route)) throw new Error('no escalate route section');
+    assert.deepEqual(route.intents, ['backend-python']);
+  });
+});
+
+test('a project with no package marker knows no stack and rebinds nothing', () => {
+  withProject({ 'README.txt': 'nothing here' }, (project) => {
+    const route = resolve({ prompt: PROMPT, escalate: true }, { ...ctx, project }).route;
+    if (route === undefined || !('escalate' in route)) throw new Error('no escalate route section');
+    assert.deepEqual(route.intents, ['backend']);
+    assert.deepEqual(route.rebound, []);
+  });
+});
+
+test('a project that does not exist degrades to no stack', () => {
+  const route = resolve({ prompt: PROMPT, escalate: true }, { ...ctx, project: '/nonexistent/engineos-project' }).route;
+  if (route === undefined || !('escalate' in route)) throw new Error('no escalate route section');
+  assert.deepEqual(route.intents, ['backend']);
+});

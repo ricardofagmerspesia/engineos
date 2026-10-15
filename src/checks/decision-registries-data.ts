@@ -48,11 +48,19 @@ export interface RawIntent {
   // Kept unreduced: the assertion is whether the value on disk is one of three
   // words, so narrowing it to a tier here would answer the question by fiat.
   readonly riskFloor: unknown;
+  // Kept unreduced for the same reason: the stack assertions ask whether the
+  // value on disk is one of two words and whether the pair is present at all,
+  // so absent (undefined) and a non-string must stay distinguishable.
+  readonly stack: unknown;
+  readonly stackSibling: unknown;
+  readonly genericSignals: readonly string[];
+  readonly stackFrameworks: readonly string[];
 }
 
 export interface RawDomain {
   readonly id: string;
   readonly rules: readonly string[];
+  readonly samplePath: string | null;
 }
 
 export interface RawPolicy {
@@ -104,6 +112,10 @@ export function readIntents(root: string): readonly RawIntent[] {
     hookMirrored: intent['hook_mirrored'] === true,
     modelTier: optional(intent['model_tier']),
     riskFloor: intent['risk_floor'],
+    stack: intent['stack'],
+    stackSibling: intent['stack_sibling'],
+    genericSignals: stringArray(intent['generic_signals']),
+    stackFrameworks: stringArray(intent['stack_frameworks']),
   }));
 }
 
@@ -119,7 +131,11 @@ export function readRoutingDomains(root: string): readonly RawDomain[] {
   } catch {
     return [];
   }
-  return rows(raw['domains']).map((domain) => ({ id: text(domain['id']), rules: stringArray(domain['rules']) }));
+  return rows(raw['domains']).map((domain) => ({
+    id: text(domain['id']),
+    rules: stringArray(domain['rules']),
+    samplePath: optional(domain['sample_path']),
+  }));
 }
 
 export function readPolicy(root: string): RawPolicy {

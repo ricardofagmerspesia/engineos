@@ -21,6 +21,17 @@ smallest evidence sufficient for the scoped change.
 When budget binds, drop from the bottom; never drop layer 1. If it cannot fit,
 decompose into waves using loaded parallel-work policy.
 
+## What the decision layer may decide
+
+The prompt hook's decision layer (`keyword`, `llm` or `jev`, configured in
+`registries/policy.json` `router_decision`) decides one thing: which intents
+apply, chosen among those the repository's stack allows. It never decides which
+rules an intent loads, the risk tier, the autonomy ceiling or the gates — those
+stay deterministic kernel answers, and a decision-layer pick that seems to
+contradict them loses. A repository whose `.engineos/config.json` caps
+`router.mode` at `keyword` or `llm` sends no prompt to TypeSafe, whatever the
+personal setting says.
+
 ## Rules
 
 - Distinguish facts from hypotheses; retain source and date for retrieved evidence

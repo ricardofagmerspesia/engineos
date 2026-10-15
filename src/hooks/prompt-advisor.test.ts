@@ -18,7 +18,9 @@ const checkout = resolveRoot({}, __dirname);
 
 // The operator's machine-wide bypass must never decide a case (the bash suite
 // exports the same isolation before it runs).
-const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass' };
+// ENGINEOS_ROUTER pinned: the shipped default is jev, which without a key adds a
+// visible fallback line; these tests are about the kernel's own output.
+const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_ROUTER: 'llm' };
 
 // The bypass announcement, restated rather than imported: it is the one thing a
 // bypassed session is told, and a test that imported the constant would pass
@@ -43,8 +45,8 @@ function promptOf(prompt: string, cwd: string = '', sid: string = 'test'): HookE
   return decoded;
 }
 
-function guidance(prompt: string): string {
-  const decision = run(promptOf(prompt), hookCtx());
+async function guidance(prompt: string): Promise<string> {
+  const decision = await run(promptOf(prompt), hookCtx());
   assert.equal(decision.kind, 'context');
   if (decision.kind !== 'context') throw new Error('unreachable');
   assert.equal(decision.event, 'UserPromptSubmit');
@@ -53,8 +55,8 @@ function guidance(prompt: string): string {
 
 // The lenient form, for the cases that assert a phrase is ABSENT: silence is a
 // legitimate way to not say something, so those must not also require a payload.
-function advice(prompt: string): string {
-  const decision = run(promptOf(prompt), hookCtx());
+async function advice(prompt: string): Promise<string> {
+  const decision = await run(promptOf(prompt), hookCtx());
   return decision.kind === 'context' ? decision.text : '';
 }
 
@@ -83,46 +85,64 @@ function jsonLines(file: string): Record<string, unknown>[] {
 
 // ------------------------------------------------------------------- silence
 
-test('a bypassed session is told so, and nothing else happens', () => {
+test('a bypassed session is told so, and nothing else happens', async () => {
   const env: NodeJS.ProcessEnv = { ...ISOLATED, ENGINEOS_BYPASS: '1' };
-  assert.deepEqual(run(promptOf('deploy to production'), hookCtx(env)), {
+  assert.deepEqual(await run(promptOf('deploy to production'), hookCtx(env)), {
     kind: 'context',
     event: 'UserPromptSubmit',
     text: BYPASS_NOTICE,
   });
 });
 
-test('an empty prompt resolves nothing and stays silent', () => {
-  assert.deepEqual(run(promptOf(''), hookCtx()), silent);
+test('an empty prompt resolves nothing and stays silent', async () => {
+  assert.deepEqual(await run(promptOf(''), hookCtx()), silent);
 });
 
-test('a pure question stays silent', () => {
-  assert.deepEqual(run(promptOf('what does this function return?'), hookCtx()), silent);
+test('a subagent hand-back is not a request and stays silent', async () => {
+  const handback = 'Another Claude session sent a message:\n<agent-message from="a1">\n[Subagent hand-back] add an endpoint that lists invoices — done\n</agent-message>';
+  assert.deepEqual(await run(promptOf(handback), hookCtx()), silent);
 });
 
-test('a bare design word in ordinary prose claims no tier', () => {
-  assert.deepEqual(run(promptOf('the button design looks good to me'), hookCtx()), silent);
+test('a task notification wrapped in a system reminder stays silent', async () => {
+  const notice = '<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification><task-id>x</task-id><summary>Agent finished: add an endpoint</summary></task-notification>\n</system-reminder>';
+  assert.deepEqual(await run(promptOf(notice), hookCtx()), silent);
 });
 
-test('a bare architecture word in ordinary prose claims no tier', () => {
-  assert.deepEqual(run(promptOf('the architecture diagram in the doc is outdated'), hookCtx()), silent);
+test('a prompt behind a leading reminder block is routed by its human part only', async () => {
+  const mixed = '<system-reminder>\nfiles were re-read\n</system-reminder>\nadd a NestJS endpoint that lists invoices';
+  const decision = await run(promptOf(mixed), hookCtx());
+  assert.equal(decision.kind, 'context');
+  const text = decision.kind === 'context' ? decision.text : '';
+  assert.match(text, /intents=[^ ]*backend/);
 });
 
-test('a question about the rules themselves stays silent', () => {
-  assert.deepEqual(run(promptOf('what does base.md say about naming'), hookCtx()), silent);
+test('a pure question stays silent', async () => {
+  assert.deepEqual(await run(promptOf('what does this function return?'), hookCtx()), silent);
+});
+
+test('a bare design word in ordinary prose claims no tier', async () => {
+  assert.deepEqual(await run(promptOf('the button design looks good to me'), hookCtx()), silent);
+});
+
+test('a bare architecture word in ordinary prose claims no tier', async () => {
+  assert.deepEqual(await run(promptOf('the architecture diagram in the doc is outdated'), hookCtx()), silent);
+});
+
+test('a question about the rules themselves stays silent', async () => {
+  assert.deepEqual(await run(promptOf('what does base.md say about naming'), hookCtx()), silent);
 });
 
 // ------------------------------------------------------------------ guidance
 
-test('scale guidance precedes route guidance in one context payload', () => {
-  const text = guidance('Implement the notifications feature across all services');
+test('scale guidance precedes route guidance in one context payload', async () => {
+  const text = await guidance('Implement the notifications feature across all services');
   const big = text.indexOf('big-task signal');
   const route = text.indexOf('route escalation');
   assert.ok(big >= 0 && route > big, `want big-task before route escalation in: ${text}`);
 });
 
-test('spec authoring names the most-capable tier', () => {
-  assert.match(guidance('Write the PRD for the billing rework'), /model: fable/);
+test('spec authoring names the most-capable tier', async () => {
+  assert.match(await guidance('Write the PRD for the billing rework'), /model: fable/);
 });
 
 // The scale rows of src/hooks/prompt-advisor.e2e.test.ts, prompt for prompt. Which of
@@ -136,30 +156,30 @@ const SCALE_CASES: readonly (readonly [string, string])[] = [
 ];
 
 for (const [prompt, phrase] of SCALE_CASES) {
-  test(`scale guidance on "${prompt}" names "${phrase}"`, () => {
-    const text = guidance(prompt);
+  test(`scale guidance on "${prompt}" names "${phrase}"`, async () => {
+    const text = await guidance(prompt);
     assert.ok(text.includes(phrase), `want '${phrase}' in: ${text}`);
   });
 }
 
-test('a single service is not a fan-out either', () => {
-  const text = advice('create a service to send the welcome email');
+test('a single service is not a fan-out either', async () => {
+  const text = await advice('create a service to send the welcome email');
   assert.ok(!text.includes('big-task signal'), `a single service is not a fan-out: ${text}`);
 });
 
-test('an escalation names its reason and the agent that resolves it', () => {
-  const text = guidance('add a paginated orders endpoint to the API and mirror the screen to mobile');
+test('an escalation names its reason and the agent that resolves it', async () => {
+  const text = await guidance('add a paginated orders endpoint to the API and mirror the screen to mobile');
   assert.match(text, /route escalation/);
   assert.match(text, /multi-agent-dispatch/);
   assert.match(text, /`router` agent/);
 });
 
-test('an unrouted scale signal escalates with its own reason', () => {
-  assert.match(guidance("let's decompose this into smaller pieces"), /unrouted-scale/);
+test('an unrouted scale signal escalates with its own reason', async () => {
+  assert.match(await guidance("let's decompose this into smaller pieces"), /unrouted-scale/);
 });
 
-test('a dispatch-plan intent escalates with its own reason', () => {
-  assert.match(guidance('backfill the tenant column'), /requires-dispatch-plan/);
+test('a dispatch-plan intent escalates with its own reason', async () => {
+  assert.match(await guidance('backfill the tenant column'), /requires-dispatch-plan/);
 });
 
 // The decision-rule rows of the bash suite. A matched rule reaching the payload
@@ -180,14 +200,14 @@ const RULE_CASES: readonly (readonly [string, string])[] = [
 ];
 
 for (const [prompt, phrase] of RULE_CASES) {
-  test(`the decision rule on "${prompt}" reaches the payload as "${phrase}"`, () => {
-    const text = guidance(prompt);
+  test(`the decision rule on "${prompt}" reaches the payload as "${phrase}"`, async () => {
+    const text = await guidance(prompt);
     assert.ok(text.includes(phrase), `want '${phrase}' in: ${text}`);
   });
 }
 
-test('a rule with a risk and no gate of its own labels neither a preference', () => {
-  const text = guidance('drop the legacy_id column from users');
+test('a rule with a risk and no gate of its own labels neither a preference', async () => {
+  const text = await guidance('drop the legacy_id column from users');
   assert.ok(
     text.includes(
       'rule-destructive-ddl — require: two-phase-deploy, explicit-confirmation, down-path-or-documented-irreversibility [risk: high]',
@@ -197,23 +217,23 @@ test('a rule with a risk and no gate of its own labels neither a preference', ()
   assert.ok(!text.includes('prefer:'), `a rule with no prefer must not print one: ${text}`);
 });
 
-test('reading code and a typo fix match no decision rule', () => {
+test('reading code and a typo fix match no decision rule', async () => {
   for (const prompt of ['show me the order service', 'fix the typo in the readme']) {
-    const text = advice(prompt);
+    const text = await advice(prompt);
     assert.ok(!text.includes('decision rules matched'), `${prompt} matched a rule: ${text}`);
   }
 });
 
-test('every optional decision-rule field keeps its own label', () => {
-  const text = guidance('should we fine-tune a model for this?');
+test('every optional decision-rule field keeps its own label', async () => {
+  const text = await guidance('should we fine-tune a model for this?');
   assert.ok(
     text.includes('rule-volatile-knowledge — require: retrieval-evaluation, freshness-policy — prefer: retrieval-over-fine-tuning'),
     `want the full field line in: ${text}`,
   );
 });
 
-test('a rule with a gate and a risk labels neither of them a preference', () => {
-  const text = guidance('deploy the billing service to production');
+test('a rule with a gate and a risk labels neither of them a preference', async () => {
+  const text = await guidance('deploy the billing service to production');
   assert.ok(text.includes('rule-production-write'), `want the rule id in: ${text}`);
   assert.ok(text.includes('[gate: release] [risk: high]'), `want gate and risk in their own slots in: ${text}`);
   assert.match(text, /autonomy ceiling A3/);
@@ -222,8 +242,8 @@ test('a rule with a gate and a risk labels neither of them a preference', () => 
 
 // ------------------------------------------------- floor, gate and the mirror
 
-test('a high risk floor with no classified tier is told to classify, not gated', () => {
-  const text = guidance('fix the auth guard bug');
+test('a high risk floor with no classified tier is told to classify, not gated', async () => {
+  const text = await guidance('fix the auth guard bug');
   assert.match(text, /task contract \(kernel, deterministic\)/);
   assert.match(text, /intents=security-files/);
   assert.match(text, /risk_floor=high/);
@@ -238,14 +258,14 @@ test('a high risk floor with no classified tier is told to classify, not gated',
 // Secret rotation is a shortcut floor rules/risk-autonomy.md calls high
 // outright, and it is the reason the compensating instruction exists at all: a
 // bare contract line here would leave the highest floor in the registry silent.
-test('a secret-rotation floor is told to classify and still gets no gate', () => {
-  const text = guidance('rotate the stripe secret key');
+test('a secret-rotation floor is told to classify and still gets no gate', async () => {
+  const text = await guidance('rotate the stripe secret key');
   assert.match(text, /no tier has been classified/);
   assert.ok(!text.includes('human-in-the-loop'), `a floor alone announces no gate: ${text}`);
 });
 
-test('a matched high-risk rule announces the gate and does not also ask for a classification', () => {
-  const text = guidance('drop the users table in production');
+test('a matched high-risk rule announces the gate and does not also ask for a classification', async () => {
+  const text = await guidance('drop the users table in production');
   assert.ok(
     text.includes('human-in-the-loop required — reasons: high-risk'),
     `want the gate with its reason id in: ${text}`,
@@ -253,8 +273,8 @@ test('a matched high-risk rule announces the gate and does not also ask for a cl
   assert.ok(!text.includes('no tier has been classified'), `a classified prompt is not told to classify: ${text}`);
 });
 
-test('a low floor gets its contract and neither of the two risk lines', () => {
-  const text = guidance('add a component for the user avatar');
+test('a low floor gets its contract and neither of the two risk lines', async () => {
+  const text = await guidance('add a component for the user avatar');
   assert.match(text, /task contract \(kernel, deterministic\)/);
   assert.ok(!text.includes('big-task signal'), `a single component is not a fan-out: ${text}`);
   assert.ok(!text.includes('no tier has been classified'), `a low floor is not told to classify: ${text}`);
@@ -269,13 +289,13 @@ function adoptedRepo(t: TestContext): string {
   return repo;
 }
 
-test('an adopted repo receives the route denominator, the two conditional events and one router span', (t) => {
+test('an adopted repo receives the route denominator, the two conditional events and one router span', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
-  assert.equal(run(promptOf('deploy the billing service to production', repo, 'unified1'), hookCtx()).kind, 'context');
+  assert.equal((await run(promptOf('deploy the billing service to production', repo, 'unified1'), hookCtx())).kind, 'context');
   const telemetry = join(repo, '.git', 'engineos-telemetry');
   assert.deepEqual(
     jsonLines(join(telemetry, 'unified1.jsonl')).map((line) => line['event']),
@@ -296,13 +316,13 @@ test('an adopted repo receives the route denominator, the two conditional events
   assert.equal(typeof span['duration_ms'], 'number');
 });
 
-test('a prompt that resolves nothing still writes the route denominator and its span', (t) => {
+test('a prompt that resolves nothing still writes the route denominator and its span', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
-  assert.deepEqual(run(promptOf('what does this function return?', repo, 'unified2'), hookCtx()), silent);
+  assert.deepEqual(await run(promptOf('what does this function return?', repo, 'unified2'), hookCtx()), silent);
   const telemetry = join(repo, '.git', 'engineos-telemetry');
   assert.deepEqual(
     jsonLines(join(telemetry, 'unified2.jsonl')).map((line) => line['event']),
@@ -311,13 +331,13 @@ test('a prompt that resolves nothing still writes the route denominator and its 
   assert.equal(jsonLines(join(telemetry, 'unified2.exec.jsonl')).length, 1);
 });
 
-test('the router span records the routed intent and the risk floor as ids', (t) => {
+test('the router span records the routed intent and the risk floor as ids', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
-  run(promptOf('add a paginated orders endpoint to the API', repo, 'spans1'), hookCtx());
+  await run(promptOf('add a paginated orders endpoint to the API', repo, 'spans1'), hookCtx());
   const span = first(jsonLines(join(repo, '.git', 'engineos-telemetry', 'spans1.exec.jsonl')));
   assert.equal(span['route'], 'backend');
   // Asserted in both directions so the field cannot be a hardcoded tier: the
@@ -325,52 +345,52 @@ test('the router span records the routed intent and the risk floor as ids', (t) 
   assert.equal(span['risk'], 'medium');
 });
 
-test('no span field carries prompt text', (t) => {
+test('no span field carries prompt text', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
-  run(promptOf('add a paginated orders endpoint to the API zqxjkw', repo, 'spans3'), hookCtx());
+  await run(promptOf('add a paginated orders endpoint to the API zqxjkw', repo, 'spans3'), hookCtx());
   // Asserted on the FILE, not on the fields we happen to set: the slug class is
   // the whole guarantee, so a future field that leaked the prompt fails here.
   const raw = readFileSync(join(repo, '.git', 'engineos-telemetry', 'spans3.exec.jsonl'), 'utf8');
   assert.ok(!raw.includes('zqxjkw'), `the router span leaked prompt text: ${raw}`);
 });
 
-test('ENGINEOS_TELEMETRY=0 leaves no trace at all', (t) => {
+test('ENGINEOS_TELEMETRY=0 leaves no trace at all', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
   const env: NodeJS.ProcessEnv = { ...ISOLATED, ENGINEOS_TELEMETRY: '0' };
-  run(promptOf('deploy the billing service to production', repo, 'spans5'), hookCtx(env));
+  await run(promptOf('deploy the billing service to production', repo, 'spans5'), hookCtx(env));
   // The whole directory, not just the file: resolving it is what CREATES it, so
   // the switch has to be read before anything touches the repo.
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
 });
 
-test('a bypassed session writes no telemetry at all', (t) => {
+test('a bypassed session writes no telemetry at all', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
   const env: NodeJS.ProcessEnv = { ...ISOLATED, ENGINEOS_BYPASS: '1' };
-  run(promptOf('deploy the billing service to production', repo, 'spans7'), hookCtx(env));
+  await run(promptOf('deploy the billing service to production', repo, 'spans7'), hookCtx(env));
   // EngineOS being off is not a decision worth recording, and recording it in
   // the project's git dir would be the one write a bypassed session still made.
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
 });
 
-test('a project that never adopted EngineOS is never written to', (t) => {
+test('a project that never adopted EngineOS is never written to', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t));
-  run(promptOf('deploy the billing service to production', repo, 'spans6'), hookCtx());
+  await run(promptOf('deploy the billing service to production', repo, 'spans6'), hookCtx());
   assert.equal(existsSync(join(repo, '.git', 'engineos-telemetry')), false);
 });
 
@@ -391,61 +411,61 @@ const STACK_QUESTION_NOTE =
 
 const BUILD_PROMPT = 'add a paginated orders endpoint to the API';
 
-function contextIn(prompt: string, cwd: string, env: NodeJS.ProcessEnv = ISOLATED): string {
-  const decision = run(promptOf(prompt, cwd), hookCtx(env));
+async function contextIn(prompt: string, cwd: string, env: NodeJS.ProcessEnv = ISOLATED): Promise<string> {
+  const decision = await run(promptOf(prompt, cwd), hookCtx(env));
   return decision.kind === 'context' ? decision.text : '';
 }
 
-test('a stack-dependent prompt in a stackless repo ends with the stack question', (t) => {
+test('a stack-dependent prompt in a stackless repo ends with the stack question', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t));
-  const text = contextIn(BUILD_PROMPT, repo);
+  const text = await contextIn(BUILD_PROMPT, repo);
   assert.ok(text.endsWith(`\n${STACK_QUESTION_NOTE}`) || text === STACK_QUESTION_NOTE, text);
   assert.equal(text.split(STACK_QUESTION_NOTE).length, 2, 'the note appears exactly once');
 });
 
-test('a stack-dependent prompt in an empty directory outside git is asked too', (t) => {
+test('a stack-dependent prompt in an empty directory outside git is asked too', async (t) => {
   const scratch = tempRoot(t);
-  assert.ok(contextIn(BUILD_PROMPT, scratch).includes(STACK_QUESTION_NOTE));
+  assert.ok((await contextIn(BUILD_PROMPT, scratch)).includes(STACK_QUESTION_NOTE));
 });
 
-test('a pure question in a stackless repo is not asked for a stack', (t) => {
+test('a pure question in a stackless repo is not asked for a stack', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t));
-  assert.deepEqual(run(promptOf('what does this function return?', repo), hookCtx()), silent);
+  assert.deepEqual(await run(promptOf('what does this function return?', repo), hookCtx()), silent);
 });
 
-test('a repo with a manifest is not asked for a stack', (t) => {
+test('a repo with a manifest is not asked for a stack', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t), { files: { 'services/api/pyproject.toml': '[project]\nname = "api"\n' } });
-  assert.ok(!contextIn(BUILD_PROMPT, repo).includes('no stack declared'));
+  assert.ok(!(await contextIn(BUILD_PROMPT, repo)).includes('no stack declared'));
 });
 
-test('a repo with a declared config is not asked for a stack', (t) => {
+test('a repo with a declared config is not asked for a stack', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t), { files: { '.engineos/config.json': '{}' } });
-  assert.ok(!contextIn(BUILD_PROMPT, repo).includes('no stack declared'));
+  assert.ok(!(await contextIn(BUILD_PROMPT, repo)).includes('no stack declared'));
 });
 
-test('a bypassed stackless session hears only the bypass notice', (t) => {
+test('a bypassed stackless session hears only the bypass notice', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = fixtureRepo(tempRoot(t));
-  assert.deepEqual(run(promptOf(BUILD_PROMPT, repo), hookCtx({ ...ISOLATED, ENGINEOS_BYPASS: '1' })), {
+  assert.deepEqual(await run(promptOf(BUILD_PROMPT, repo), hookCtx({ ...ISOLATED, ENGINEOS_BYPASS: '1' })), {
     kind: 'context',
     event: 'UserPromptSubmit',
     text: BYPASS_NOTICE,
@@ -458,7 +478,7 @@ test('resolved simple-task guidance asks clickable planning choice and avoids au
     const answer = resolve({prompt: 'add a short note', taskContract: true, execution: {...execution, specChoice, specChoiceScopeRevision: 'scope'}}, {root: checkout, registries: lazyRegistries(checkout)});
     const route = answer.route; const decisions = answer.decision_rules; const contract = answer.task_contract;
     if (!route || !('escalate' in route) || !decisions || !contract) throw new Error('missing task answer');
-    const text = guidanceNotes({route, decisions, contract, hitl: answer.hitl ?? null}).join('\n');
+    const text = guidanceNotes({route, decisions, contract, hitl: answer.hitl ?? null, router: null}).join('\n');
     if (specChoice === 'pending') assert.match(text, /clickable Implement directly \/ Create a lightweight spec/);
     else assert.match(text, /No mandatory prototype, spec or ticket workflow/);
     assert.doesNotMatch(text, /decision rules matched/);

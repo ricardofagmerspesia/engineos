@@ -16,7 +16,8 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "note": "Resolve execution facts before artifacts. Eligible simple tasks ask a clickable Implement directly / Create a lightweight spec choice; direct needs only stack guidance and security/Git safeguards, with no mandatory prototype or PRD/ADR/tickets. Outside that exception >2 files or any new feature requires design. Accepted specs use Matt Pocock upstream-to-tickets for multiple bounded slices and a dependency graph; launch all independent ready workers within capacity. Tests and executable checks wait for entire implementation integration and fresh final user consent.",
-      "suppressible": true
+      "suppressible": true,
+      "generic_signals": ["add", "build", "create", "implement"]
     },
     {
       "id": "big-sweep",
@@ -45,7 +46,8 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Tier is design per registries/models.json work type hard-debugging."
+      "note": "Tier is design per registries/models.json work type hard-debugging.",
+      "generic_signals": []
     },
     {
       "id": "backend",
@@ -60,7 +62,12 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "backend",
-      "note": "Application backends require NestJS, including API services, workers and LLM service hosts. Express/plain Node backend requests route to backend-coordinator for NestJS guidance; identify existing non-Nest backends truthfully and scope migration before extension. Express is allowed only as Nest's HTTP adapter. Node.js remains the runtime for tooling and libraries, not a backend framework choice. Rules follow routing.json; active frameworks are JavaScript/TypeScript only."
+      "note": "Application backends require NestJS, including API services, workers and LLM service hosts. Express/plain Node backend requests route to backend-coordinator for NestJS guidance; identify existing non-Nest backends truthfully and scope migration before extension. Express is allowed only as Nest's HTTP adapter. Node.js remains the runtime for tooling and libraries, not a backend framework choice. Rules follow routing.json; active frameworks are JavaScript/TypeScript only.",
+      "suppressed_by": ["backend-python"],
+      "stack": "node",
+      "stack_sibling": "backend-python",
+      "stack_frameworks": ["nestjs"],
+      "generic_signals": ["API", "service", "controller", "migration", "queue", "router", "endpoint"]
     },
     {
       "id": "backend-python",
@@ -77,7 +84,11 @@
       "domain": "backend-python",
       "note": "Inactive compatibility entry, retained until the next major release no earlier than one minor release after deprecation. No automatic routing; explain unsupported Python requests and ask for a supported Node.js stack.",
       "enabled": false,
-      "deprecated": true
+      "deprecated": true,
+      "stack": "python",
+      "stack_sibling": "backend",
+      "stack_frameworks": ["fastapi", "django", "flask"],
+      "generic_signals": []
     },
     {
       "id": "frontend",

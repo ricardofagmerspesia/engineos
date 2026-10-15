@@ -224,6 +224,75 @@ Feature scaffolding, test-agent dispatch, a release gate, or
 typecheck; see `rules/verification.md`. Python declarations/paths are retained
 compatibility history, not an active development stack or automatic runner.
 
+**Python projects.** For a package the stack resolves to Python (`.engineos/config.json`,
+else a `pyproject.toml`/`requirements.txt`), the Stop gate runs `ruff` and `pyright`
+(plus `pytest` when tests are on) through the first environment it finds:
+`.venv/bin` (package, then repo root) → `uv run` when a `uv.lock` exists → `docker compose
+exec -T <compose_service>` when `.engineos/config.json` names one. It never installs
+anything. With no environment it says so and moves on —
+`[engineos] stop-verify skipped for <pkg>: no Python environment found (venv, uv or compose)` —
+so a skipped package is visible, never silent. `ENGINEOS_VERIFY_TESTS=1` adds `pytest`;
+`ENGINEOS_VERIFY_BUDGET_S=<seconds>` raises every target's timeout (default 90s, 180s for
+tests) when pyright's first run over a large repo needs it. Pin `ruff`, `pyright` and
+`pytest` to exact versions in the project's dev dependencies: an unpinned tool gets an
+advisory line (`… not pinned to exact versions (rules/verification.md)`), not a block.
+
+### Routing modes
+
+The `prompt-advisor` picks the intents for your prompt in one of these ways. A
+setting chooses the mode, never a model, and every mode starts from the same
+keyword floor (signals plus the stack rebind). Only the intents are decided
+here; rules, risk, autonomy and gates stay deterministic.
+
+| `ENGINEOS_ROUTER` | Who decides the intents | What leaves the machine |
+|---|---|---|
+| `keyword` | the keyword floor alone | nothing |
+| `llm` | the keyword floor; a prompt that matched only generic words, or nothing, escalates to the in-session `router` agent | the prompt, to Anthropic, as any Claude turn already does |
+| `jev` | TypeSafe System One (Jev), one call within a 1000 ms budget, choosing among the intents your stack allows | the prompt, languages, frameworks and file names mentioned in the prompt, to TypeSafe — no file contents, no diff |
+| `auto` | `jev` when `TYPESAFE_API_KEY` is set, else `llm` — never `keyword`, which runs only when a setting names it | whatever the resolved mode sends |
+
+Where to set it:
+
+- **Personal**, in `~/.claude/settings.local.json` — never in a repo:
+  ```json
+  {"env": {"ENGINEOS_ROUTER": "auto", "TYPESAFE_API_KEY": "<your key>"}}
+  ```
+- **Per repo**, in `.engineos/config.json`: `"router": {"mode": "keyword"}`, written
+  by `engineos init --router <mode>` (default `auto`). Commit it so the whole team
+  inherits it. The more restrictive of the personal and the repo setting wins
+  (`keyword` < `llm` < `jev` < `auto`), so a client repo that declares `keyword` or
+  `llm` sends nothing to TypeSafe whatever your personal setting says.
+
+With neither set, the hook reads `registries/policy.json` `router_decision.default`,
+which ships as `jev` (a developer decision recorded in `default_written_by` after the
+first live run on 2026-10-13). Without `TYPESAFE_API_KEY` that degrades to `llm` and
+says so on every prompt — the loud way to notice a missing key. Whatever the
+default, the hook also computes the keyword answer and logs both to the `router`
+span (**shadow**), so real disagreements keep becoming the golden set. A
+golden-set run may overwrite the default with a measured winner.
+
+How the default gets written: `scripts/router-golden.sh collect [<repo>...]` turns
+each repo's shadow `router` spans, joined to the prompt in your local session
+transcript, into candidates in `evals/router-golden/candidates.local.jsonl`
+(gitignored — it may hold client data). You label `expect_intents`, redact, and
+move the cases you keep into `evals/router-golden/cases.jsonl`. Then
+`scripts/router-golden.sh run` grades `keyword`, `llm` and `jev` on that set and
+writes `evals/router-golden/RESULTS.md`; `run --write-default` overwrites
+`router_decision.default` only when one mode has a strictly highest intent
+accuracy with full stack correctness — otherwise a developer decision stands, an
+earlier golden-set winner is retired to `null`, and the run says why. Grading `jev` sends the curated prompts to TypeSafe, so curate first. See
+`evals/router-golden/README.md`.
+
+What you will see: the contract line carries `router=<mode>` (plus `/<confidence>`
+for `jev`). Any `jev` failure (no key, timeout, HTTP 429/529, an answer outside the
+offered intents) falls back to `llm` — the keyword floor plus the in-session `router`
+agent on whatever the floor could not settle — and says so on its own line,
+`[engineos] router: llm (<mode> unavailable: <reason>)`, never silently. `llm` itself
+needs nothing on your machine and never falls back. The keyword floor decides alone
+only when `ENGINEOS_ROUTER` or the repo's `router.mode` says `keyword`. When the line
+says the router could not decide, dispatch the `router` agent before any write.
+
+---
 
 ## 6. Specs — where plans live
 

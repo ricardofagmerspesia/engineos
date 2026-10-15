@@ -1,5 +1,6 @@
 import { globMatch } from '../lib/glob';
 import type { IntentRow } from '../registry/intents';
+import type { Language, PackageStack } from '../registry/project-config';
 import type { RoutingDomain } from '../registry/routing';
 import type { Registries, RiskTier } from './context';
 import { scaleSection, type ScaleSection } from './scale';
@@ -41,7 +42,35 @@ export interface IntentMatch {
 export interface IntentRouteSection {
   matches: IntentMatch[];
   ambiguous: boolean;
+  rebound: Rebound[];
+  generic_only: boolean;
 }
+
+// One stack-bearing intent the keyword floor matched and the repository could
+// not hold, replaced by its sibling (contracts §2, amended 2026-10-07). `reason`
+// names the evidence level that decided: `framework` when only the sibling's
+// framework is present (a FastAPI backend beside a React frontend), `language`
+// when no framework of either row is present and only the sibling's language
+// is. `scope` says whether the package holding the working directory decided
+// or the whole repository did.
+export interface Rebound {
+  from: string;
+  to: string;
+  reason: 'framework' | 'language';
+  scope: 'package' | 'repo';
+}
+
+// What the router knows about the caller's repository. `focus` is the package
+// that contains the working directory, when there is one; it is consulted
+// before the repository as a whole. A bare language list is accepted for
+// callers that know only languages: each language becomes one framework-less
+// package and there is no focus.
+export interface StackFacts {
+  packages: readonly PackageStack[];
+  focus: PackageStack | null;
+}
+
+export type StackInput = readonly Language[] | StackFacts;
 
 // The one guidance renderer, shared by the hook and the CLI, so the registry
 // keeps a single form of the fact (design "Route guidance"). The hint is placed
@@ -111,29 +140,157 @@ export function routeByPath(file: string, regs: Registries, root: string): PathR
 // Case-insensitive boundary match of each intent's literal signal phrases
 // against the prompt. Multi-match by design (CLAUDE.md: load all that apply);
 // ambiguity handling beyond zero-match belongs to the router agent, which reads
-// each intent's note.
-export function routeByIntent(text: string, regs: Registries): IntentRouteSection {
+// each intent's note. `stack` is the repository's resolved stack; absent or
+// empty, no stack is known and no match is rebound.
+export function routeByIntent(
+  text: string,
+  regs: Registries,
+  stack?: StackInput,
+): IntentRouteSection {
+  const matched = matchIntents(text, regs, stack);
+  const matches: IntentMatch[] = matched.rows.map((intent) => ({
+    id: intent.id,
+    title: intent.title,
+    rules: intent.rules,
+    // Per match, not once for the answer: a disabled skill is never
+    // recommended, and never disappears from a match without saying why.
+    skills: enabledSkills(intent.skills, regs.skillState),
+    skills_suppressed: suppressedSkills(intent.skills, regs.skillState),
+    agents: intent.agents,
+    commands: intent.commands,
+    mcp: intent.mcp,
+    model_tier: intent.model_tier,
+    risk_floor: intent.risk_floor,
+    note: intent.note,
+  }));
+  return {
+    matches,
+    ambiguous: matches.length === 0,
+    rebound: matched.rebound,
+    generic_only: genericOnly(matched.rows, matched.specific),
+  };
+}
+
+// The keyword floor's raw answer, before any suppression: the matched rows in
+// registry order, whether each was reached through a signal that is not one of
+// its row's generic_signals, and the stack rebinds applied on the way.
+interface MatchedIntents {
+  rows: IntentRow[];
+  specific: ReadonlyMap<string, boolean>;
+  rebound: Rebound[];
+}
+
+function matchIntents(text: string, regs: Registries, stack?: StackInput): MatchedIntents {
+  const facts = stackFacts(stack);
   const lower = asciiDowncase(text);
-  const matches: IntentMatch[] = [];
-  for (const intent of regs.intents.intents) {
-    if (!intent.signals.some((signal) => boundedContains(lower, asciiDowncase(signal)))) continue;
-    matches.push({
-      id: intent.id,
-      title: intent.title,
-      rules: intent.rules,
-      // Per match, not once for the answer: a disabled skill is never
-      // recommended, and never disappears from a match without saying why.
-      skills: enabledSkills(intent.skills, regs.skillState),
-      skills_suppressed: suppressedSkills(intent.skills, regs.skillState),
-      agents: intent.agents,
-      commands: intent.commands,
-      mcp: intent.mcp,
-      model_tier: intent.model_tier,
-      risk_floor: intent.risk_floor,
-      note: intent.note,
-    });
+  const all = regs.intents.intents;
+  const direct = new Map<string, boolean>();
+  for (const intent of all) {
+    const hits = intent.signals.filter((signal) => boundedContains(lower, asciiDowncase(signal)));
+    if (hits.length === 0) continue;
+    direct.set(intent.id, hits.some((signal) => !intent.generic_signals.includes(signal)));
   }
-  return { matches, ambiguous: matches.length === 0 };
+  const rebound: Rebound[] = [];
+  const specific = new Map<string, boolean>();
+  for (const intent of all) {
+    const isSpecific = direct.get(intent.id);
+    if (isSpecific === undefined) continue;
+    const swap = rebindTarget(intent, all, facts);
+    if (swap === null) {
+      merge(specific, intent.id, isSpecific);
+      continue;
+    }
+    rebound.push({ from: intent.id, to: swap.target.id, reason: swap.reason, scope: swap.scope });
+    // The sibling inherits what made the original specific: "FastAPI" rebound
+    // to the node row is still a prompt that named its stack, and "endpoint"
+    // rebound is still one that did not.
+    merge(specific, swap.target.id, isSpecific);
+  }
+  // Registry order, which every reader of the raw set relies on (routeEscalate
+  // and the task contract both select rows out of intents.json in that order).
+  return { rows: all.filter((intent) => specific.has(intent.id)), specific, rebound };
+}
+
+// Whether the floor would keep this intent for the given stack: true unless
+// the rebind below swaps it for its sibling. The decision layer offers a model
+// only the intents this answers true for, so a model can never choose a row the
+// floor itself would have rebound away (contracts §2, "Wave 2a as built").
+export function stackEligible(intent: IntentRow, all: readonly IntentRow[], stack?: StackInput): boolean {
+  return rebindTarget(intent, all, stackFacts(stack)) === null;
+}
+
+interface Swap {
+  target: IntentRow;
+  reason: Rebound['reason'];
+  scope: Rebound['scope'];
+}
+
+// Applied to RAW matches, before suppression (contracts §2, amended). The
+// evidence is read in a fixed order, strongest first, and the first place that
+// holds either row decides:
+//   1. frameworks, in the package holding the working directory
+//   2. frameworks, anywhere in the repository
+//   3. languages, in that package
+//   4. languages, anywhere in the repository
+// The row itself holding wins over its sibling (a repository with both a NestJS
+// and a FastAPI backend keeps the keyword result); only the sibling holding is a
+// swap; nothing holding anywhere leaves the keyword result alone. A React
+// frontend has a language but not a backend framework, so it never makes a
+// FastAPI repository look like a NestJS one: that is what level 1-2 is for.
+function rebindTarget(intent: IntentRow, all: readonly IntentRow[], facts: StackFacts | null): Swap | null {
+  if (facts === null || facts.packages.length === 0) return null;
+  if (intent.stack === null) return null;
+  const sibling = all.find((other) => other.id === intent.stack_sibling);
+  if (sibling === undefined || sibling.stack === null) return null;
+  const pools: { scope: Rebound['scope']; packages: readonly PackageStack[] }[] = [];
+  if (facts.focus !== null) pools.push({ scope: 'package', packages: [facts.focus] });
+  pools.push({ scope: 'repo', packages: facts.packages });
+  for (const reason of ['framework', 'language'] as const) {
+    for (const pool of pools) {
+      const own = holds(intent, pool.packages, reason);
+      const other = holds(sibling, pool.packages, reason);
+      if (own) return null;
+      if (other) return { target: sibling, reason, scope: pool.scope };
+    }
+  }
+  return null;
+}
+
+// Whether some package carries this row's stack, at the given evidence level. A
+// row with no stack_frameworks has no framework evidence to offer, so at the
+// framework level it counts by language — the field is opt-in, not required.
+function holds(intent: IntentRow, packages: readonly PackageStack[], level: Rebound['reason']): boolean {
+  return packages.some((pkg) => {
+    if (pkg.language !== intent.stack) return false;
+    if (level === 'language' || intent.stack_frameworks.length === 0) return true;
+    return pkg.framework !== null && intent.stack_frameworks.includes(pkg.framework);
+  });
+}
+
+function stackFacts(stack: StackInput | undefined): StackFacts | null {
+  if (stack === undefined) return null;
+  if (isStackFacts(stack)) return stack;
+  return {
+    packages: stack.map((language) => ({ dir: language, language, framework: null, compose_service: null })),
+    focus: null,
+  };
+}
+
+function isStackFacts(stack: StackInput): stack is StackFacts {
+  return !Array.isArray(stack);
+}
+
+// A row reached twice — matched directly and rebound onto — is specific when
+// either path was.
+function merge(into: Map<string, boolean>, id: string, isSpecific: boolean): void {
+  into.set(id, (into.get(id) ?? false) || isSpecific);
+}
+
+// The prompts the keywords cannot disambiguate: every surviving match was hit
+// only through generic signals. No survivors is not "generic" — it is unrouted,
+// which `ambiguous` already says.
+function genericOnly(surviving: readonly IntentRow[], specific: ReadonlyMap<string, boolean>): boolean {
+  return surviving.length > 0 && surviving.every((intent) => specific.get(intent.id) === false);
 }
 
 // The verdict for one raw-matched intent that did not survive. `by` names what
@@ -157,6 +314,8 @@ export interface EscalateRouteSection {
   risk_floor: RiskTier | null;
   scale: ScaleSection;
   ambiguous: boolean;
+  rebound: Rebound[];
+  generic_only: boolean;
 }
 
 // The bash arm spells this ordering inline rather than reading policy.json, and
@@ -166,12 +325,17 @@ export interface EscalateRouteSection {
 const RISK_ORDER: readonly RiskTier[] = ['low', 'medium', 'high'];
 
 // Whether a dispatch plan is needed: the condition of frozen contract 1 of
-// docs/specs/2026-08-06-decision-kernel-p3-router-agent.md. Reuses routeByIntent
-// and scaleSection rather than reimplementing either, resolves suppression in a
+// docs/specs/2026-08-06-decision-kernel-p3-router-agent.md. Reuses the keyword
+// floor routeByIntent answers from (stack rebind included) and scaleSection
+// rather than reimplementing either, resolves suppression in a
 // single deterministic pass, then aggregates model_tier and risk_floor (max by
 // lookup — never a reason to escalate on their own) and checks the three
 // trigger reasons.
-export function routeEscalate(text: string, regs: Registries): EscalateRouteSection {
+export function routeEscalate(
+  text: string,
+  regs: Registries,
+  stack?: StackInput,
+): EscalateRouteSection {
   // Read the policy block FIRST, so a policy.json without it stops the answer
   // rather than shaping it: the typed loader refuses such a file naming
   // `.router`, exactly where the bash arm's `jq -e '.router'` guard refused. A
@@ -179,14 +343,14 @@ export function routeEscalate(text: string, regs: Registries): EscalateRouteSect
   // that stops.
   const router = regs.policy.router;
 
-  const raw = routeByIntent(text, regs);
+  const raw = matchIntents(text, regs, stack);
   const scale = scaleSection({ prompt: text }, regs);
 
-  // route-intent's answer is P2 public surface and never carries the three
-  // P3-only fields, so the suppression inputs are re-read from the registry —
-  // in registry order, which is also the order routeByIntent matched in.
-  const rawIds = new Set(raw.matches.map((m) => m.id));
-  const matched = regs.intents.intents.filter((i) => rawIds.has(i.id));
+  // The raw set is AFTER the stack rebind and BEFORE suppression, so a sibling
+  // the rebind put in place is suppressed or kept exactly as if the prompt had
+  // matched it directly. Rows come back in registry order.
+  const matched = raw.rows;
+  const rawIds = new Set(matched.map((i) => i.id));
   const hasNonSuppressible = matched.some((i) => !i.suppressible);
 
   // One pass, never transitive: both tests below read the RAW matched set, so a
@@ -245,7 +409,9 @@ export function routeEscalate(text: string, regs: Registries): EscalateRouteSect
       RISK_ORDER,
     ),
     scale,
-    ambiguous: raw.ambiguous,
+    ambiguous: matched.length === 0,
+    rebound: raw.rebound,
+    generic_only: genericOnly(surviving, raw.specific),
   };
 }
 

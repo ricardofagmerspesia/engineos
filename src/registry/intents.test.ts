@@ -134,6 +134,72 @@ test('a minimal row loads with every optional field defaulted', () => {
   assert.deepEqual(loaded?.rules, []);
 });
 
+test('the shipped backend pair carries reciprocal stacks and generic signals', () => {
+  const rows = loadIntents(root).intents;
+  const backend = rows.find((i) => i.id === 'backend');
+  const python = rows.find((i) => i.id === 'backend-python');
+  if (backend === undefined || python === undefined) throw new Error('the backend pair is missing from the registry');
+  assert.equal(backend.stack, 'node');
+  assert.equal(backend.stack_sibling, 'backend-python');
+  assert.equal(python.stack, 'python');
+  assert.equal(python.stack_sibling, 'backend');
+  assert.deepEqual(backend.stack_frameworks, ['nestjs']);
+  assert.deepEqual(python.stack_frameworks, ['fastapi', 'django', 'flask']);
+  assert.ok(backend.generic_signals.includes('endpoint'));
+  assert.deepEqual(python.generic_signals, []);
+  for (const intent of rows) {
+    for (const signal of intent.generic_signals) assert.ok(intent.signals.includes(signal), `${intent.id}:${signal}`);
+  }
+});
+
+test('a row without the stack fields answers stack-neutral', () => {
+  const loaded = loadIntents(rootWith({ version: '1.0.0', intents: [row()] })).intents[0];
+  assert.equal(loaded?.stack, null);
+  assert.equal(loaded?.stack_sibling, null);
+  assert.deepEqual(loaded?.generic_signals, []);
+});
+
+// JSON.stringify drops an undefined key, so `{ stack: undefined }` writes a row
+// without that field.
+function pairRows(over: Record<string, unknown> = {}, sibling: Record<string, unknown> = {}): Record<string, unknown>[] {
+  return [
+    row({ id: 'node-row', signals: ['nest'], stack: 'node', stack_sibling: 'py-row', ...over }),
+    row({ id: 'py-row', signals: ['fastapi'], stack: 'python', stack_sibling: 'node-row', ...sibling }),
+  ];
+}
+
+function pair(over: Record<string, unknown> = {}, sibling: Record<string, unknown> = {}): unknown {
+  return { version: '1.0.0', intents: pairRows(over, sibling) };
+}
+
+test('a valid reciprocal pair loads', () => {
+  const rows = loadIntents(rootWith(pair())).intents;
+  assert.deepEqual(rows.map((r) => [r.stack, r.stack_sibling]), [['node', 'py-row'], ['python', 'node-row']]);
+});
+
+test('a stack outside node and python is refused', () => {
+  assert.match(refusal(rootWith(pair({ stack: 'go' }))), /\.intents\[0\]\.stack must be node or python/);
+});
+
+test('a stack without a sibling, or a sibling without a stack, is refused', () => {
+  assert.match(refusal(rootWith(pair({ stack_sibling: undefined }))), /\.intents\[0\]\.stack requires/);
+  assert.match(refusal(rootWith(pair({ stack: undefined }))), /\.intents\[0\]\.stack_sibling requires/);
+});
+
+test('a sibling that is not an intent, shares the stack, or does not name the row back is refused', () => {
+  assert.match(refusal(rootWith(pair({ stack_sibling: 'ghost' }))), /names ghost, which is not an intent/);
+  assert.match(refusal(rootWith(pair({}, { stack: 'node' }))), /which does not carry the other stack/);
+  assert.match(
+    refusal(rootWith({ version: '1.0.0', intents: [...pairRows(), row({ id: 'third', stack: 'python', stack_sibling: 'node-row' })] })),
+    /\.intents\[2\]\.stack_sibling names node-row, which does not name third back/,
+  );
+});
+
+test('a generic signal that is not one of the row signals is refused', () => {
+  const dir = rootWith({ version: '1.0.0', intents: [row({ generic_signals: ['endpoint'] })] });
+  assert.match(refusal(dir), /\.intents\[0\]\.generic_signals entry "endpoint" is not one of its signals/);
+});
+
 function row(over: Record<string, unknown> = {}): Record<string, unknown> {
   return { id: 'backend', title: 'Backend work', signals: ['NestJS'], ...over };
 }
@@ -154,3 +220,17 @@ function refusal(dir: string): string {
   }
   throw new Error('expected a KernelError, the loader accepted the registry');
 }
+
+test('stack_frameworks must belong to the row\'s own stack and need a stack', () => {
+  assert.match(refusal(rootWith(pair({ stack_frameworks: ['fastapi'] }))), /stack_frameworks entry "fastapi" is a python framework, not node/);
+  assert.match(refusal(rootWith(pair({ stack_frameworks: ['rails'] }))), /stack_frameworks entry "rails" is not a known framework/);
+  assert.match(
+    refusal(rootWith({ version: '1.0.0', intents: [row({ id: 'plain', signals: ['plain'], stack_frameworks: ['react'] })] })),
+    /\.intents\[0\]\.stack_frameworks requires \.intents\[0\]\.stack/,
+  );
+});
+
+test('a row without stack_frameworks answers an empty list, which counts by language', () => {
+  const rows = loadIntents(rootWith(pair({}))).intents;
+  assert.deepEqual(rows.map((r) => r.stack_frameworks), [[], []]);
+});

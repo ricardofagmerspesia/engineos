@@ -1,4 +1,6 @@
+import { isAbsolute, relative, sep } from 'node:path';
 import { KernelError } from '../lib/json';
+import { loadProjectConfig, type PackageStack, type ProjectConfig } from '../registry/project-config';
 import { admitSection, type AdmitFacts, type AdmitSection } from './admit';
 import { breakerSection, type BreakerFacts, type BreakerSection } from './breaker';
 import type { KernelContext, Registries, RiskTier } from './context';
@@ -8,9 +10,10 @@ import { hitlSection, type HitlFacts, type HitlSection } from './hitl';
 import { modelSection, type ModelSection } from './model';
 import { repairSection, type RepairFacts, type RepairSection } from './repair';
 import { riskSection, type RiskSection } from './risk';
-import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type SuppressedIntent } from './route';
+import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type StackFacts, type SuppressedIntent } from './route';
 import { asciiDowncase, compilePromptRegex, scaleSection, type ScaleFacts, type ScaleSection } from './scale';
 import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
+import { resolveStack } from './stack';
 import { wavesSection, type WavesFacts, type WavesSection } from './waves';
 
 // Declared facts, sparse by design: a section is answered iff the facts it needs
@@ -103,6 +106,7 @@ export interface TaskContractSection {
 export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   const answer: Answer = {};
   const { prompt } = facts;
+  let stack: StackFacts | undefined;
   // Both forms answer the same `route` key, so one of them would have to win
   // silently. resolve-task, the composite Wave 1(d) landed, takes a prompt and
   // nothing else — it has no path form to reconcile a path fact with — so the
@@ -133,10 +137,13 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     // answering "ambiguous" would report absence of a request as absence of an
     // intent.
     if (prompt === '') throw new KernelError('a declared prompt fact must not be empty');
+    // Once per resolve, and only for a prompt: a path fact never reads the
+    // stack, so it never pays for the tree walk.
+    stack = ctx.stack ?? repositoryStack(ctx.project, ctx.projectCwd);
     answer.route =
       facts.escalate === true || facts.taskContract === true
-        ? routeEscalate(prompt, ctx.registries)
-        : routeByIntent(prompt, ctx.registries);
+        ? routeEscalate(prompt, ctx.registries, stack)
+        : routeByIntent(prompt, ctx.registries, stack);
   }
   if (facts.workType !== undefined) {
     answer.model = modelSection({ workType: facts.workType }, ctx.registries);
@@ -174,7 +181,7 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   if (facts.waves !== undefined) {
     answer.waves = wavesSection(facts.waves, ctx.registries);
   }
-  if (facts.execution !== undefined) answer.execution = resolvedExecution(facts, answer, ctx.registries);
+  if (facts.execution !== undefined) answer.execution = resolvedExecution(facts, answer, { regs: ctx.registries, stack });
   // Composed last, out of the sections above rather than beside them: the task
   // contract is the one answer that reads another section's answer.
   if (facts.taskContract === true) {
@@ -250,7 +257,12 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   return answer;
 }
 
-function resolvedExecution(facts: DeclaredFacts, answer: Answer, regs: Registries): ExecutionSection {
+function resolvedExecution(
+  facts: DeclaredFacts,
+  answer: Answer,
+  routing: { regs: Registries; stack: StackFacts | undefined },
+): ExecutionSection {
+  const { regs, stack } = routing;
   const execution = parseExecutionFacts(facts.execution);
   if (answer.risk !== undefined) {
     if (execution.riskTier !== undefined && execution.riskTier !== answer.risk.risk) {
@@ -260,7 +272,7 @@ function resolvedExecution(facts: DeclaredFacts, answer: Answer, regs: Registrie
   }
   // Routine domain routing does not require a second worker. Risk and design
   // obligations still constrain the lane even when callers omit taskContract.
-  const route = facts.prompt === undefined ? answer.route : routeEscalate(facts.prompt, regs);
+  const route = facts.prompt === undefined ? answer.route : routeEscalate(facts.prompt, regs, stack);
   const decisions = answer.decision_rules ?? (facts.prompt === undefined ? undefined : decisionsSection({ prompt: facts.prompt }, regs));
   const pathRoutes = (execution.files ?? []).map((file) => routeByPath(file, regs, ''));
   if (regs.policy.workflow.simple_spec_choice === true && execution.domains !== undefined) {
@@ -305,6 +317,57 @@ function genericSpecThreshold(id: string, regs: Registries): boolean {
     rule.then.risk === null && rule.then.require.length === 1 && rule.then.require[0] === 'design-doc' &&
     rule.when['files_changed'] === '>2' && rule.when['or_new_feature'] === true &&
     Object.keys(rule.when).every((key) => key === 'files_changed' || key === 'or_new_feature');
+}
+
+// The repository's packages, and the one holding the working directory, or
+// none when no project was named or its stack cannot be read. Routing is
+// advisory: a broken .engineos/config.json or an unreadable tree degrades to
+// the plain keyword result, never to a refusal — the same leniency
+// src/hooks/verify-targets.ts projectConfig() applies.
+//
+// Exported so the prompt advisor reads the stack exactly the way resolve does.
+// `known` is a package list the caller already holds (the advisor's session
+// cache): the tree walk is skipped and only the focus, which depends on the
+// working directory, is recomputed.
+export function repositoryStack(
+  project: string | undefined,
+  cwd: string | undefined,
+  known?: readonly PackageStack[],
+): StackFacts | undefined {
+  if (project === undefined) return undefined;
+  try {
+    const packages = known ?? resolveStack(project, safeConfig(project)).packages;
+    return { packages, focus: focusPackage(project, cwd, packages) };
+  } catch {
+    return undefined;
+  }
+}
+
+// The deepest package whose directory contains the working directory. The root
+// package (`.`) counts only when nothing deeper does.
+function focusPackage(project: string, cwd: string | undefined, packages: readonly PackageStack[]): PackageStack | null {
+  if (cwd === undefined) return null;
+  const rel = relative(project, cwd).split(sep).join('/');
+  if (rel.startsWith('..') || isAbsolute(rel)) return null;
+  let best: PackageStack | null = null;
+  for (const pkg of packages) {
+    const inside = pkg.dir === '.' || rel === pkg.dir || rel.startsWith(`${pkg.dir}/`);
+    if (!inside) continue;
+    if (best === null || depth(pkg.dir) > depth(best.dir)) best = pkg;
+  }
+  return best;
+}
+
+function depth(dir: string): number {
+  return dir === '.' ? 0 : dir.split('/').length;
+}
+
+function safeConfig(project: string): ProjectConfig | null {
+  try {
+    return loadProjectConfig(project);
+  } catch {
+    return null;
+  }
 }
 
 // The closed policy bundle for substantive work. gates references
