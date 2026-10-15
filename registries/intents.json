@@ -8,14 +8,14 @@
       "title": "New feature / multi-file change",
       "signals": ["add", "build", "create", "implement"],
       "rules": [],
-      "skills": ["tlc-spec-lean"],
+      "skills": ["engineos-spec", "engineos-implement-spec"],
       "agents": [],
       "commands": ["new-feature"],
       "mcp": [],
       "model_tier": null,
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "New behavior with no more-specific row below; a more specific matching row suppresses this one. The from-scratch flow runs through the new-feature command: PRD + ADR + SPEC + TASKS before code, then whichever stack rows also match — so this row names no rules of its own. EXTERNAL skill: tlc-spec-lean is pinned from tech-leads-club/agent-skills in skills-lock.json and installed unchanged, not shipped under skills/; Matt Pocock's grill-with-docs, to-spec and to-tickets are human-invoked (disable-model-invocation) and run through the command, so they are not listed here. The flow applies at non-negotiable #1's threshold (>2 files or any new feature); a small single-file tweak skips straight to the stack rules. Once tasks exist, always-on rules/parallelism.md dispatches independent tasks as parallel agents. model_tier is null because the tier is delegated to the command's stages and to the matched stack rows. Acceptance criteria precede code. Test/check implementation and execution are deferred until all code is integrated and the user explicitly approves current-task final tests; an external skill cannot authorize earlier tests.",
+      "note": "Resolve execution facts before artifacts. Eligible simple tasks ask a clickable Implement directly / Create a lightweight spec choice; direct needs only stack guidance and security/Git safeguards, with no mandatory prototype or PRD/ADR/tickets. Outside that exception >2 files or any new feature requires design. Accepted specs use Matt Pocock upstream-to-tickets for multiple bounded slices and a dependency graph; launch all independent ready workers within capacity. Tests and executable checks wait for entire implementation integration and fresh final user consent.",
       "suppressible": true,
       "phrases": [
         { "text": "add", "weight": 1 },
@@ -48,8 +48,9 @@
       "threshold": 0.5,
       "router_row": {
         "intent": "New feature / multi-file change (\"add\", \"build\", \"create\", \"implement\") — new behavior with no more-specific row below; a more specific matching row suppresses this one",
-        "load": "`/engineos:new-feature` — PRD + ADR + SPEC + TASKS before code: Matt Pocock skills `grill-with-docs` (ADRs → `docs/adr/`, glossary `CONTEXT.md`) → `to-spec` (PRD → `docs/prds/`) → skill `tlc-spec-lean` plan and acceptance criteria, then implementation (SPEC → `.specs/features/<feature>/`, indexed from `docs/specs/`) → `to-tickets` (TASKS → `docs/specs/<feature>/tickets/`, each naming the acceptance criteria it closes) → parallel build and integration → final non-test validation → test authoring/execution only with explicit current-task user approval; then stack rules below. Applies at non-negotiable #1's threshold — a small single-file tweak skips straight to the stack rules. Once tasks exist, apply `rules/parallelism.md`: independent tasks dispatch concurrently within min(policy cap, available host slots), refilling completed slots as dependencies become ready"
-      }
+        "load": "`/engineos:new-feature` — resolve the kernel planning lane first; eligible simple tasks ask clickable direct/spec choices before artifacts. Direct uses stack rules and security/Git safeguards; selected specs use native `engineos-spec` with Matt Pocock `to-tickets` and a consolidated dependency graph. Non-simple feature design produces PRD + ADR + SPEC + TASKS; `engineos-implement-spec` consumes every independent ready ticket. Preserve artifact paths and design review gates. External Matt Pocock/tlc-spec-lean skills are optional upstream references. Apply rules/parallelism.md task-budget guidance, then routed stack rules. A small single-file non-feature change resolves the execution lane and may use direct execution only when the complete kernel contract permits it"
+      },
+      "generic_signals": ["add", "build", "create", "implement"]
     },
     {
       "id": "big-sweep",
@@ -141,7 +142,8 @@
       "router_row": {
         "intent": "Bug / unexpected behavior (\"broken\", \"fails\", error pasted, \"why does X happen\")",
         "load": "`superpowers:systematic-debugging`"
-      }
+      },
+      "generic_signals": []
     },
     {
       "id": "backend",
@@ -201,13 +203,18 @@
       "router_row": {
         "intent": "Backend work (NestJS, Express, Node backend, Node.js backend, plain Node, pure Node, API, service, controller, migration, queue, router, endpoint)",
         "load": "`rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator`"
-      }
+      },
+      "suppressed_by": ["backend-python"],
+      "stack": "node",
+      "stack_sibling": "backend-python",
+      "stack_frameworks": ["nestjs"],
+      "generic_signals": ["API", "service", "controller", "migration", "queue", "router", "endpoint"]
     },
     {
       "id": "backend-python",
       "title": "Backend work (FastAPI)",
       "signals": [],
-      "rules": ["backend-python", "architecture", "data", "testing", "observability"],
+      "rules": ["backend-python", "backend", "architecture", "data", "testing", "observability"],
       "skills": ["python-patterns"],
       "agents": ["backend-coordinator"],
       "commands": [],
@@ -221,8 +228,12 @@
       "deprecated": true,
       "router_row": {
         "intent": "Deprecated inactive Python backend compatibility (no automatic matching or dispatch)",
-        "load": "`rules/architecture.md` + `rules/backend-python.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator`"
-      }
+        "load": "`rules/architecture.md` + `rules/backend-python.md` + `rules/backend.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator`"
+      },
+      "stack": "python",
+      "stack_sibling": "backend",
+      "stack_frameworks": ["fastapi", "django", "flask"],
+      "generic_signals": []
     },
     {
       "id": "frontend",
@@ -650,7 +661,7 @@
       "risk_floor": "high",
       "hook_mirrored": true,
       "domain": "security",
-      "note": "First in the hook precedence chain — cross-cutting, checked before every other domain, and delimiter-bounded so authors/ does not collide with auth/. security.md is already always-on; this row's real contribution is the security-reviewer dispatch (alias leo-ely), which is design tier per registries/models.json work type adversarial-review.",
+      "note": "First in the hook precedence chain — cross-cutting, checked before every other domain, and delimiter-bounded so authors/ does not collide with auth/. security.md is already always-on; this row records a required security-reviewer pass (alias leo-ely), queued until final integrated scoped consent under rules/verification.md, which is design tier per registries/models.json work type adversarial-review.",
       "phrases": [
         { "text": "auth", "weight": 1 },
         { "text": "guard", "weight": 1 },
@@ -694,7 +705,7 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Docs and onboarding output only — defect and health findings go to the audit row. architecture-analyst (alias analyst) runs patterns/1-Analysis.md and produces code-grounded architecture and onboarding docs.",
+      "note": "Docs and onboarding output only — defect and health findings go to the audit row. architecture-analyst (alias ricardo-fagmer) runs patterns/1-Analysis.md and produces code-grounded architecture and onboarding docs.",
       "phrases": [
         { "text": "document the system", "weight": 1 },
         { "text": "architecture docs", "weight": 1 },
@@ -767,7 +778,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "qa-tester (alias qa): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Dispatch only after implementation/integration and explicit current-task user approval; preserve configured non-interactive execution once approved.",
+      "note": "qa-tester (alias ameer): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Dispatch only after implementation/integration and explicit current-task user approval; preserve configured non-interactive execution once approved.",
       "phrases": [
         { "text": "test all endpoints", "weight": 1 },
         { "text": "run the API test suite", "weight": 1 },
@@ -806,7 +817,7 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Read-only. Defect and health findings only; docs and onboarding output go to the system-comprehension row. The row names the command, not the agents: /engineos:audit <domain|all> fans out to the domain coordinators in AUDIT mode plus the read-only MCP leaf specialists, then consolidates via audit-consolidator (alias corradin) into a status report. agents is empty on purpose so this entry stays a faithful mirror of the table cell.",
+      "note": "Read-only. Defect and health findings only; docs and onboarding output go to the system-comprehension row. The row names the command, not the agents: /engineos:audit <domain|all> fans out to the domain coordinators in AUDIT mode plus the read-only MCP leaf specialists, then consolidates via audit-consolidator (alias danilo) into a status report. agents is empty on purpose so this entry stays a faithful mirror of the table cell.",
       "phrases": [
         { "text": "audit", "weight": 1 },
         { "text": "analyze the system", "weight": 1 },
@@ -1007,7 +1018,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "The code-review skill is EXTERNAL — provided by the Claude Code environment, not this repo — so there is no skills/code-review/ directory and unqualified-name resolution must exempt it. It is listed unqualified because that is the name the router table and the Skill tool use. If the diff touches auth, input handling, data or LLM surfaces, also dispatch the security-reviewer subagent via the Agent tool; that pass is design tier per registries/models.json work type adversarial-review, while the standards/spec review itself is the build-tier code-review work type.",
+      "note": "The code-review skill is EXTERNAL — provided by the Claude Code environment, not this repo — so there is no skills/code-review/ directory and unqualified-name resolution must exempt it. It is listed unqualified because that is the name the router table and the Skill tool use. If the diff touches auth, input handling, data or LLM surfaces, also record the security-reviewer requirement and queue Agent-tool dispatch until final integrated scoped consent under rules/verification.md; that pass is design tier per registries/models.json work type adversarial-review, while the standards/spec review itself is the build-tier code-review work type.",
       "phrases": [
         { "text": "review", "weight": 1 },
         { "text": "is this safe", "weight": 1 },
@@ -1050,7 +1061,7 @@
       "risk_floor": "low",
       "hook_mirrored": true,
       "domain": "test",
-      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias ameer) for well-scoped targets. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing.",
+      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias sameer) for well-scoped targets. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing. Queue test-writer until ALL implementation tickets/corrections integrate and the user answers a fresh final clickable check prompt; earlier broad test requests are insufficient.",
       "phrases": [
         { "text": "write tests", "weight": 1 },
         { "text": "add coverage", "weight": 1 },
@@ -1122,7 +1133,7 @@
       "model_tier": "design",
       "risk_floor": "high",
       "hook_mirrored": false,
-      "note": "critic (alias vera): adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by rules/gates.md at risk=high; security-reviewer still owns the security lens. risk_floor high is the tier of the work under review — the row's own stated trigger — not of the review pass, which writes nothing. Tier design per registries/models.json work type adversarial-review.",
+      "note": "critic (alias rogerio): adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by rules/gates.md at risk=high; security-reviewer still owns the security lens. risk_floor high is the tier of the work under review — the row's own stated trigger — not of the review pass, which writes nothing. Tier design per registries/models.json work type adversarial-review.",
       "phrases": [
         { "text": "is this actually right", "weight": 1 },
         { "text": "pre-release check on risk=high", "weight": 1 },
@@ -1144,7 +1155,7 @@
       "threshold": 0.5,
       "router_row": {
         "intent": "Independent verification of high-risk work (\"is this actually right\", pre-release check on risk=high, release gate needs an independent pass)",
-        "load": "`critic` agent (alias `vera`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens"
+        "load": "`critic` agent (alias `rogerio`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens"
       }
     },
     {
@@ -1372,7 +1383,7 @@
       "threshold": 0.5,
       "router_row": {
         "intent": "Ambiguous or multi-agent request needing a dispatch plan (\"route this\", \"who should do this\", \"which agents\", request spans several domains with no obvious owner)",
-        "load": "`/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no router planner agent is needed; the supervisor still dispatches workers for implementation. An explicit route-only request returns the plan without dispatching implementation"
+        "load": "`/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no router planner agent is needed; the supervisor consumes the resolved execution lane: eligible direct work needs no worker; other work dispatches scoped workers. An explicit route-only request returns the plan without dispatching implementation"
       }
     },
     {
@@ -1387,7 +1398,7 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Evidence before assertion, always. For spec-archive and ship cases: lint, typecheck, build and an API/Web startup check, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. The Stop hooks stop-verify.sh and record-verify.sh are the automated half — they gate on scoped lint/typecheck and on an unrecorded change record; approved final tests run separately after integration — and they cover the Validation gate only, never the Release gate.",
+      "note": "Evidence before assertion, always. For spec-archive and ship cases: all executable lint/typecheck/build/startup/tests/integrity checks require final integration and explicit current-task scope/revision approval, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. Automatic stop-verify.sh runs no checks and reports approval pending; record-verify.sh reports an unrecorded change record. Manual user-approved final checks supply Validation evidence, never Release permission.",
       "phrases": [
         { "text": "archiving", "weight": 1 },
         { "text": "spec done", "weight": 1 },
@@ -1411,7 +1422,7 @@
       "threshold": 0.5,
       "router_row": {
         "intent": "Claiming done / complete / fixed; spec archived / feature shipped (\"archiving\", \"spec done\", \"moving to archive\", spec moved to `.engineos/archived/` or the project's spec archive)",
-        "load": "`superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. The `Stop` hooks (`stop-verify.sh` + `record-verify.sh`) are the automated half; they gate on scoped lint/typecheck and an unrecorded change record; separately approved final tests run after integration"
+        "load": "`superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. Automatic `stop-verify.sh` executes no checks; explicit approved final validation supplies evidence. `record-verify.sh` reports an unrecorded change record"
       }
     }
   ]

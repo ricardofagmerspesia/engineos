@@ -5,6 +5,7 @@ import { loadIntents, type IntentsRegistry } from '../registry/intents';
 import { loadModels, type ModelsRegistry } from '../registry/models';
 import { loadPolicy, type PolicyRegistry } from '../registry/policy';
 import { loadRouting, type RoutingRegistry } from '../registry/routing';
+import type { StackFacts } from './route';
 import { readSkillState, type SkillState } from './skill-state';
 
 // The risk vocabulary is defined beside the first loader that validates it
@@ -43,8 +44,23 @@ export interface Registries extends RegistryFiles {
 }
 
 export interface KernelContext {
+  // The EngineOS checkout the registries are read from.
   root: string;
   registries: Registries;
+  // The caller's repository, whose resolved stack rebinds stack-bearing intents
+  // (contracts §2). Optional and never defaulted to `root`: the EngineOS
+  // checkout's own stack says nothing about the repository a prompt is about,
+  // and absent means "no stack known", which leaves the keyword result alone.
+  project?: string;
+  // The caller's working directory inside `project`. The package that holds it
+  // is consulted first when rebinding, so a prompt typed from `backend/` is
+  // decided by the backend package before the repository as a whole.
+  projectCwd?: string;
+  // The caller's stack, already resolved. A caller that resolves it anyway (the
+  // prompt advisor, which caches it per session and hands the same facts to
+  // the decision layer) passes it here so resolve neither walks the tree a
+  // second time nor answers from a different reading of it.
+  stack?: StackFacts;
 }
 
 export function lazyRegistries(root: string): Registries {

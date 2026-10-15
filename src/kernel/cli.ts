@@ -10,14 +10,18 @@ import type { AdmitFacts } from './admit';
 import type { BreakerFacts } from './breaker';
 import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from './context';
 import type { HitlFacts } from './hitl';
+import { parseExecutionFacts } from './execution';
 import type { RepairFacts } from './repair';
 import { resolve, type DeclaredFacts } from './resolve';
 import { skillLookupSection, skillStateSection } from './skill-state';
 import { resolveStack } from './stack';
+import { evaluateWorkflowGate } from '../workflow/gates';
+import { skillReference } from './skill-reference';
 
-// `io` is the third argument for the one arm whose answer is about the caller's
-// tree rather than the registries: resolve-stack defaults its directory to the
-// repo root of cwd. Every other arm reads only ctx and args.
+// `io` is the third argument for the arms whose answer is about the caller's
+// tree rather than the registries alone: resolve-stack defaults its directory to
+// the repo root of cwd, and the prompt arms read that same repository's stack to
+// rebind stack-bearing intents. Every other arm reads only ctx and args.
 type Sub = (ctx: KernelContext, args: string[], io: Io) => unknown;
 
 // bash bound "--prompt" to $1 and discarded the real argument, so route-intent
@@ -51,7 +55,8 @@ export function parseFlags(cmd: string, args: string[], allowed: readonly string
 // arm with no legacy counterpart: it emits the sparse Answer itself.
 const SUBCOMMANDS: Record<string, Sub> = {
   'route-path': (ctx, args) => routePathSection(ctx, requirePositional('route-path', 'a file path', args)),
-  'route-intent': (ctx, args) => routeIntentSection(ctx, requirePositional('route-intent', 'the request text', args)),
+  'route-intent': (ctx, args, io) =>
+    routeIntentSection(withProject(ctx, io), requirePositional('route-intent', 'the request text', args)),
   model: modelProjection,
   risk: riskProjection,
   gates: gatesProjection,
@@ -60,11 +65,24 @@ const SUBCOMMANDS: Record<string, Sub> = {
   breaker: breakerProjection,
   hitl: hitlProjection,
   waves: wavesProjection,
+  execution: executionProjection,
+  'skill-reference': (ctx, args) => {
+    const flags = parseFlags('skill-reference', args, ['--id']);
+    return skillReference(ctx.root, flags.get('--id') ?? '');
+  },
+  'workflow-gate': (_ctx, args) => {
+    const flags = parseFlags('workflow-gate', args, ['--facts']);
+    const raw = flags.get('--facts');
+    if (raw !== undefined && raw.length > 65536) throw new KernelError('workflow-gate facts exceed 64 KiB');
+    let facts: unknown = {};
+    try { if (raw !== undefined) facts = JSON.parse(raw); } catch { throw new KernelError('workflow-gate --facts must be a JSON object'); }
+    return {...evaluateWorkflowGate(facts), enforcement: 'host-attestation-only'};
+  },
   'decision-rules': decisionRulesProjection,
   scale: scaleProjection,
-  'route-escalate': routeEscalateProjection,
-  'resolve-task': resolveTaskProjection,
-  resolve: resolveProjection,
+  'route-escalate': (ctx, args, io) => routeEscalateProjection(withProject(ctx, io), args),
+  'resolve-task': (ctx, args, io) => resolveTaskProjection(withProject(ctx, io), args),
+  resolve: (ctx, args, io) => resolveProjection(withProject(ctx, io), args),
   'skill-state': skillStateProjection,
   'resolve-stack': resolveStackProjection,
 };
@@ -85,6 +103,20 @@ export function runKernel(argv: string[], io: Io): number {
     }
     throw e;
   }
+}
+
+// The caller's repository for the prompt arms: the repo root of cwd — the
+// directory resolve-stack answers for by default, so `resolve-stack` and the
+// rebind a prompt arm applies read one stack. Unlike resolve-stack there is no
+// fallback to cwd outside a work tree: the rebind walks the tree, and walking an
+// arbitrary directory ($HOME, `/`) on every prompt would cost more than the
+// floor is worth, so outside a repository no stack is known and nothing is
+// rebound. Resolved per prompt arm only: route-path and the policy arms never
+// read the stack and never pay for the git call.
+function withProject(ctx: KernelContext, io: Io): KernelContext {
+  const cwd = io.cwd();
+  const project = repoRoot(cwd, spawnSync);
+  return project === null ? ctx : { ...ctx, project, projectCwd: cwd };
 }
 
 function routePathSection(ctx: KernelContext, file: string): unknown {
@@ -224,6 +256,16 @@ function wavesProjection(ctx: KernelContext, args: string[]): unknown {
   const section = resolve({ waves: { units: parseUnitsJson(units) } }, ctx).waves;
   if (section === undefined) throw new KernelError('waves: the kernel answered no waves section');
   return section;
+}
+
+function executionProjection(ctx: KernelContext, args: string[]): unknown {
+  const flags = parseFlags('execution', args, ['--facts']);
+  const raw = flags.get('--facts');
+  let value: unknown = {};
+  if (raw !== undefined) {
+    try { value = JSON.parse(raw); } catch { throw new KernelError('execution --facts must be a JSON object'); }
+  }
+  return resolve({ execution: parseExecutionFacts(value) }, ctx).execution;
 }
 
 // The four prompt arms bound their flag with ${2:-} and then checked it with
@@ -382,6 +424,7 @@ function parseFacts(raw: string): DeclaredFacts {
       // Unread for the same reason: tiebreak-facts.ts validates it against the
       // registries and the ranking, and resolve refuses it without taskContract.
       case 'tiebreak': facts.tiebreak = value; break;
+      case 'execution': facts.execution = parseExecutionFacts(value); break;
       default: throw new KernelError(`resolve --facts: unknown fact ${key}`);
     }
   }

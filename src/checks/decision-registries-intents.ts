@@ -3,7 +3,9 @@
 // the drift alarm against the CLAUDE.md router table. None of these are mirror
 // rows — every one either joins two registries or counts prose rows, and a
 // MIRRORS row resolves one registry field into one document passage.
+import { FRAMEWORK_LANGUAGE, isFramework } from '../registry/project-config';
 import { finding, result, type CheckResult, type Finding } from './findings';
+import { kernelAnswer } from './kernel-lib';
 import type { CheckContext } from './lib';
 import {
   duplicates,
@@ -50,6 +52,9 @@ export function intentsResults(ctx: CheckContext): CheckResult[] {
     result('C16', 'every intent model_tier resolves in models.json', modelTiers(ctx, intents)),
     result('C16', 'every intent risk_floor is a valid tier', riskFloors(intents)),
     result('C16', 'intent count matches the CLAUDE.md router table', drift(ctx, intents)),
+    result('C16', 'every intent stack is node or python, pairs with a reciprocal stack_sibling, and lists only frameworks of its own stack', stacks(intents)),
+    result('C16', 'every intent generic_signals entry is one of its signals', genericSignals(intents)),
+    result('C16', "every active stack-bearing intent's domain sample_path routes to it", stackSamples(ctx, intents, domains)),
   ];
 }
 
@@ -166,6 +171,82 @@ function riskFloors(intents: readonly RawIntent[]): Finding[] {
     .filter((intent) => intent.riskFloor !== null && intent.riskFloor !== undefined)
     .filter((intent) => typeof intent.riskFloor !== 'string' || !RISK_TIER.test(intent.riskFloor))
     .map((intent) => finding('C16', 'intent-invalid-risk-floor', intent.id));
+}
+
+// The loader's four stack rules (src/registry/intents.ts), restated over the raw
+// file so the validator names WHICH row broke instead of reporting the whole
+// registry unreadable. The subject's suffix is the defect kind.
+const STACKS: readonly string[] = ['node', 'python'];
+
+function stacks(intents: readonly RawIntent[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const intent of intents) {
+    const declared = intent.stack !== undefined && intent.stack !== null;
+    const paired = intent.stackSibling !== undefined && intent.stackSibling !== null;
+    // A framework list names what counts as this row's stack; on a stack-neutral
+    // row it would claim a rebind that can never happen, and a framework of the
+    // other stack would make the wrong repositories eligible for the row.
+    for (const framework of intent.stackFrameworks) {
+      const ok = declared && isFramework(framework) && FRAMEWORK_LANGUAGE[framework] === intent.stack;
+      if (!ok) findings.push(finding('C16', 'intent-stack-invalid', `${intent.id}:framework=${subjectText(framework)}`));
+    }
+    if (!declared && !paired) continue;
+    if (declared && (typeof intent.stack !== 'string' || !STACKS.includes(intent.stack))) {
+      findings.push(finding('C16', 'intent-stack-invalid', `${intent.id}:stack=${subjectText(intent.stack)}`));
+      continue;
+    }
+    if (declared !== paired || typeof intent.stackSibling !== 'string') {
+      findings.push(finding('C16', 'intent-stack-invalid', `${intent.id}:unpaired`));
+      continue;
+    }
+    const sibling = intents.find((other) => other.id === intent.stackSibling);
+    if (sibling === undefined) {
+      findings.push(finding('C16', 'intent-stack-invalid', `${intent.id}->${subjectText(intent.stackSibling)}:missing`));
+    } else if (typeof sibling.stack !== 'string' || sibling.stack === intent.stack) {
+      findings.push(finding('C16', 'intent-stack-invalid', `${intent.id}->${sibling.id}:wrong-stack`));
+    } else if (sibling.stackSibling !== intent.id) {
+      findings.push(finding('C16', 'intent-stack-invalid', `${intent.id}->${sibling.id}:not-reciprocal`));
+    }
+  }
+  return findings;
+}
+
+function genericSignals(intents: readonly RawIntent[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const intent of intents) {
+    for (const signal of intent.genericSignals) {
+      if (intent.signals.includes(signal)) continue;
+      findings.push(finding('C16', 'intent-generic-signal-unknown', `${intent.id}:${subjectText(signal)}`));
+    }
+  }
+  return findings;
+}
+
+// The rebind replaces an intent by its sibling on the strength of the
+// repository's stack, so every stack-bearing intent must be reachable by path
+// too: its domain carries a sample_path, and the kernel routes that sample back
+// to the domain (C17b's machinery, asked for these rows by name, so a stack row
+// whose domain was renamed or shadowed fails here rather than routing a prompt
+// to a domain no path can reach).
+function stackSamples(ctx: CheckContext, intents: readonly RawIntent[], domains: readonly RawDomain[]): Finding[] {
+  const findings: Finding[] = [];
+  for (const intent of intents) {
+    if (intent.stack === undefined || intent.stack === null) continue;
+    // An inactive deprecated compatibility row keeps its stack for the sibling
+    // pairing but routes nothing, so it owes no sample path.
+    if (intent.enabled === false && intent.deprecated === true) continue;
+    const domain = intent.domain === null ? undefined : domains.find((row) => row.id === intent.domain);
+    if (domain === undefined || domain.samplePath === null || domain.samplePath === '') {
+      findings.push(finding('C16', 'stack-intent-sample-unrouted', `${intent.id}->${intent.domain ?? 'null'}:no-sample`));
+      continue;
+    }
+    const got = kernelAnswer(ctx, ['route-path', domain.samplePath])?.['domain'];
+    const routed = typeof got === 'string' ? got : 'null';
+    if (routed !== domain.id) {
+      findings.push(finding('C16', 'stack-intent-sample-unrouted', `${intent.id}->${domain.id}:routes-to-${routed}`));
+    }
+  }
+  return findings;
 }
 
 // Exact on purpose: a prose row added or removed without a registry update

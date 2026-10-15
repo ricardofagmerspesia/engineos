@@ -12,6 +12,195 @@ evidence retain their dated contracts; consult the matching version section
 is owned by `rules/`; search historical tables on demand, never import this whole
 file into every task.
 
+## 2026-10-15 — One-line agent announcements (unreleased)
+
+Lifecycle announcements are one line per agent per event:
+`+ [<short role>] <model> <AUDIT|IMPLEMENT> starting — <scope> — <task>`, then
+`returned — <summary>` or `FAILED — <reason>`. The separate instance field becomes a
+`#<instance>` role suffix (`[qa#1]`); both hook banners' instruction text changes
+accordingly. Hook envelopes, quoted type/description bounding, telemetry spans,
+canonical IDs, aliases and responsibilities are unchanged: presentation only.
+
+## 2026-10-14 — Progressive scheduler frontiers (unreleased)
+
+Additive scheduler interfaces allow the first accepted bounded task to implement
+while later task specs are drafted. Shared contracts, known dependencies and
+exclusive scope reservations are recorded before launch; every frontier retains
+its planning/design/preview decisions. Existing canonical agents and responsibilities
+retain their contracts, including the role-only display policy below.
+
+`scheduler plan --planning-open` creates an open run. `scheduler append --state
+<json> --units <json> --revision <expected> --time-ms <epoch-ms>` atomically admits
+new units, preserving existing contracts/states/handles; duplicate IDs, unknown
+dependencies, cycles and stale revision/time fail. `scheduler seal --state <json>
+--revision <expected> --time-ms <epoch-ms>` closes planning without integrating
+unfinished units. Optional state/fact `planningOpen` defaults false for legacy
+callers. Appending changes the existing graph fingerprint and requires refreshed
+exact-scope host admission before further launches. Whole-run completion and final
+validation require sealed planning and all actual deliveries/corrections integrated;
+an all-integrated open frontier emits progress without terminal completion.
+
+Plan/step/append/seal accept opt-in `--stream`: newline-delimited tagged `event`
+records preserve event order, followed by one `snapshot` with state/actions/
+enforcement. Failures emit a tagged `error` and the existing nonzero exit status.
+Default plan/step JSON remains unchanged. Transport records are not journal lines;
+the host extracts event payloads and assigns persistent global sequences. Each CLI
+call computes one transition; it launches no agents or background watcher. These
+interfaces are conventional attestations, never authentication of human consent.
+
+## 2026-10-14 — Agent labels, clickable decisions and maintenance safety (unreleased)
+
+Agent announcement instructions now show the role-only `[<short role>]` label and
+the actual configured model on every launch, status, return and failure. The full
+display-role mapping lives in `rules/subagents.md`. Canonical agent IDs, registered
+aliases, responsibilities, hook event envelopes and telemetry fields retain their
+existing contracts; this presentation update renames no public identifier.
+Workers sharing a visible role use separate instance fields; unavailable model
+identity is reported explicitly. Hosts render these lifecycle labels from hook
+guidance.
+
+All decisions use the host's permitted clickable controls when available.
+Selecting specific final checks opens individual Run/Skip choices and a final
+confirmation of the exact selected commands. Text fallback remains explicit when
+the host cannot display controls; the kernel neither renders UI nor authenticates
+submitted consent.
+
+Security review traces injection paths and records confirmed locations and related
+occurrences. The reviewer remains read-only; routed implementation workers own
+remediation. Database maintenance defaults to authored migrations. Execution of
+migrations and any direct live database mutation require separate scoped human
+confirmation. These are host/executor policies, not a database proxy or a universal
+tool interceptor; use read-only credentials for inspection and enforce database
+permissions in the deployment. Ordinary application runtime operations retain
+their existing authorization boundaries.
+
+## 2026-10-13 — Simple planning and complete-implementation validation (unreleased)
+
+Eligible simple tasks now expose a scope-bound clickable direct/spec choice before
+artifacts. Additive execution facts are `scopeRevision`, `specChoice` and
+`specChoiceScopeRevision`; the planning envelope reports eligibility, choices,
+rule-loading mode and preview requirement. A current direct choice loads relevant
+stack guidance and security/Git safeguards, without mandatory prototype or spec.
+Unknown, stale, sensitive, multi-domain or independent design/review facts do not
+grant that lane. Existing commands, rule paths and agent identifiers are preserved.
+
+Registry workflow preferences `simple_spec_choice` and `final_validation_prompt`
+are enabled; missing flags in older registries default false, malformed flags fail
+closed. Validation is always protected by the strengthened gate, not disabled by
+an environment or registry flag. The generic size/feature spec rule remains the
+fallback outside the resolved simple-task exception.
+
+The final workflow gate additionally requires exact current `completion` scope
+and source, the exact complete `requiredTicketIds` set from the approved graph,
+every IMPLEMENTATION ticket integrated, no unfinished corrections and
+`validation.requestedAtPhase: final`. Earlier generic approval is insufficient.
+Old validation attestations without these fields are denied; hosts must adapt.
+The separate final-proof ticket is not an implementation-completion prerequisite.
+Hosts enumerate the actual entire implementation graph; these are attestations,
+not authentication or universal tool interception. Actual clickable choices remain
+the host's responsibility, with honest text fallback when controls are unavailable.
+
+`upstream-to-tickets` is an additive bounded skill reference to Matt Pocock's
+installed `.agents/skills/to-tickets/SKILL.md`. Accepted specs use multiple bounded
+tracer-bullet tickets and a single dependency graph; independent ready workers fill
+available capacity without colliding ownership. Executable checks remain outside
+per-unit integration prerequisites and wait for fresh final consent.
+
+## 2026-10-11 — Final security consent and visible agent startup (unreleased)
+
+Routing retains security-reviewer identifiers and obligation detection, but queues
+reviewer dispatch and automated security scans until every scoped implementation
+unit is integrated and corrections are finished. `rules/verification.md` owns the
+separate final scoped decision: run the displayed reviewer and existing scan
+commands, defer, or decline. Required security evidence remains pending on defer,
+refusal or missing consent; reviewable implementation delivery grants no verified
+completion or release clearance. Secure coding and installer secret gates remain
+active. Ordinary integration inspection may overlap implementation.
+
+Host adapters use available permitted approval-capable clickable input, with an
+explicit labeled-text fallback where unavailable. Startup announcements now carry
+a bold label and a standalone diff block showing agent/canonical role, status,
+plain-English task, actual host model, mode and scope. Existing banner fields,
+agent names, routing matches, return envelopes and runtime interfaces are unchanged.
+These are instruction-policy conventions; the generic scheduler and kernel do not
+provide security-specific dispatch enforcement or authenticate human consent.
+
+## 2026-10-08 — Final approved checks and approval evaluator (unreleased)
+
+Automatic Stop no longer executes package commands, runner probes or checks.
+It reports pending approval; prior successful Stop results are not evidence for
+this behavior. Final integrated lint/typecheck/build/startup/integrity/tests/evals
+require explicit exact-scope/current-task consent under rules/verification.md.
+Distinct commands run once per immutable revision; changed inputs invalidate
+only affected evidence. Refusal leaves validation pending without blocking delivery
+of a reviewable implementation or pretending validation passed.
+
+Additive `kernel workflow-gate --facts <json>` evaluates declared task/scope/source,
+preview choice/artifact approval and final check consent. Missing/stale facts deny;
+output distinguishes `productionAllowed` and `validationAllowed`, with reasons and
+`enforcement: host-attestation-only`. Facts never authenticate human consent or intercept
+all host tools. `launchReady` now requires host approval matching task/run and
+immutable scheduler graph fingerprint before any launcher call; absence denies.
+Hosts must adapt before invoking it; this is an unreleased default-deny tightening
+of the launch library contract. Manual Stop verification likewise needs approved
+final integrated context plus canonical `files[]`, tied to a SHA-256 exact-file-list
+`validationScopeRevision(files)` fingerprint; transcript scope is intersected
+before runner probes. No environment/file flag grants approval.
+
+Additive `kernel skill-reference --id <id>` reads bounded
+`registries/skill-references.json`: `upstream-session-retro`,
+`engineos-recurring-retro`, `upstream-prototype`. Answers expose actual local path,
+origin, purpose and availability; no automatic installation or ambiguous `/retro`
+substitution. Session retro remains opt-in; native retro mines recurring evidence.
+
+CI PR/push runs execute no package validation. A manual integrated-ref run needs
+`approve_checks`; test/eval/smoke jobs also need `approve_tests`. Inputs attest
+that run only, not future tasks or host-wide consent. User decisions are separate
+sequential questions; unchanged scoped responses/context are reused on resume.
+These changes require consumer review/release notes; no rollout is authorized.
+
+## 2026-10-08 — Prototype preview and completion retro (unreleased)
+
+Existing command names, artifact paths and output-artifact timing remain stable.
+`rules/parallelism.md` owns an instruction-based pre-implementation preview choice
+for direct, delegated and resumed execution. Production work waits for a scoped
+decline or approval of the actual preview artifact/revision; unchanged-scope
+decisions persist and material changes reopen approval. Selected preview creation
+uses the installed Matt Pocock prototype skill, with independent test/Git consent.
+Missing selected-preview prerequisites block that branch, not silently substitute.
+
+Completion separately offers the installed Matt Pocock session `/retro`, running
+only on opt-in. Decline/missing response leaves delivery complete; an unavailable
+upstream skill may prompt an explicitly selected native alternative. Recommendations
+grant no automatic edits, commits or promotion. A completed retro does not offer
+itself recursively. The workflow-gate evaluator above now checks declared preview facts; host
+user-decision authentication and direct-tool application remain conventional. No release or consumer rollout is authorized by this patch.
+
+## 2026-10-07 — Workflow optimization (unreleased)
+
+Existing command/rule/agent names and legacy kernel projections are retained.
+No migration or release has been performed. Additions are MINOR surfaces;
+direct execution and capacity/default workflow changes need explicit release
+notes and consumer review before rollout.
+
+| Surface | Contract |
+|---|---|
+| `kernel execution --facts <json>` | Declared complexity/risk/scope facts return `unresolved`, `direct`, `delegate` or `parallel`, reasons, budget guidance and policy capacity. Unknown facts never authorize writes. Ordinary route ownership is distinct from risk-mandated agents; risk/security/design obligations remain binding. |
+| `kernel resolve --facts` | Optional `execution` fact adds `execution` to the answer and requested task contract. Calls omitting execution retain their previous output shape. `scale` and `waves` retain legacy schemas. |
+| `registries/policy.json` | Adds strict `workflow.task_budgets` and `workflow.direct_max_files`; the single existing worker cap changes from 6 to 3. Existing policy projections/loaders continue to validate their own fields. |
+| `scheduler plan` | `--units <json> --run-id <id> --host-capacity <worker-slots> [--time-ms <epoch-ms>]`; emits version-1 state, legal actions, local-batch events and `enforcement: conventional`. Computes decisions, never launches native agent tools. |
+| `scheduler step` | `--state <json> --event <json>`; validates expected state revision, monotonic timestamp, state transitions and accepted evidence before dependency release. Rejects malformed data, stale events, unsafe scopes and missing required checks. |
+| Scheduler launch library | `launchReady` accepts a concrete `AgentLauncher`; host owns exclusive persistence, permission/resource-breaker checks and uncertain-launch reconciliation. No built-in Codex/Claude launcher or durable crash-recovery guarantee is implied. |
+| `workflow-report [--file <local-jsonl>]` | Reads bounded JSON/JSONL or stdin, validates one ordered run and reports TTFR/waits/duration/concurrency/retries/observed usage. Unobserved values stay null. Evidence is revision-bound producer attestation; no checks are executed by the report. |
+| Workflow events | Version 1; journal owner offsets local batch sequences into globally increasing sequence ids. Metadata excludes prompt bodies. Failed/blocked/cancelled events attest that the host stopped any active worker before ownership release. |
+| Native workflows | New `engineos-spec`, `engineos-implement-spec`, `pr` skills and `/engineos:implement-spec`, `/engineos:pr` commands. `/engineos:new-feature` preserves artifact paths/design gates and runs native procedures; external skills become optional references. No upstream name is removed. |
+| Validation | Superseded by the 2026-10-08 final-approved-checks contract above: no intermediate executable checks by default; all final checks require exact-scope user consent. |
+
+Rollback before release: restore previous execution selection/worker cap and
+native-command routing in consumer config/revision. Legacy entry points remain;
+do not give new scheduler snapshots to a legacy executor. No existing journal
+schema is replaced; lifecycle events use their own versioned format.
+
 ## What is public surface
 
 Changing any of these is a **breaking change**:
@@ -591,6 +780,10 @@ the golden set at the approved final stage.
 | Python stack and agent-system design gate (`docs/specs/2026-09-28-python-stack-and-agent-design-design.md`), registry and prose half | additive surface, all MINOR: routing domain `backend-python` (precedence `security, test, backend, dba, backend-python, ios-release, android-release, devops, mobile, frontend, llm` — `dba` now precedes it so `*/alembic/versions/*` and `*.sql` never land there; `test`, `dba`, `llm` and `security` gain Python globs; `uv.lock`/`poetry.lock` excluded); intents `backend-python` (hook-mirrored, suppresses `backend` when both match) and `agent-system` (command `design-agents`, skill `agent-system-design`, agent `llm-coordinator`); rule file `rules/backend-python.md`, skills `python-patterns` and `agent-system-design`, command `/engineos:design-agents` (stubs then; filled by the waves in the next row); decision rule `rule-multi-agent-design`; hitl reason `topology-approval` appended last to `policy.json` `hitl.reasons` — every existing reason keeps its emission position — with a `topology` fact on the `hitl` section (`resolve --facts`; `resolve-task` sets it from the matched rule; the legacy `kernel.sh hitl` flag arm does not expose it yet); capability `design-agent-topology`; non-negotiable #12 and the per-developer `ENGINEOS_GIT_WRITES` setting (`ask` default, `auto`; the PreToolUse guard itself is in the next row); C16 additionally resolves every `intents.json` command to `commands/<name>.md` (MINOR: new failing finding). ADR: `docs/adr/2026-09-28-topology-approval-hitl-reason.md` | added |
 | Python stack and agent-system design gate, runtime and prose half (same design, waves 1–3) | all MINOR, additive unless marked. **Kernel**: new verb `scripts/kernel.sh resolve-stack [dir]` (`engineos kernel resolve-stack`) answering `{ packages: [{ dir, language, framework, compose_service, python_env }], source: "config" \| "detected" }` — `.engineos/config.json` when present (`src/registry/project-config.ts`, strict: unknown key or wrong type exits 1 with the JSON path; an absent file means detect), else `pyproject.toml`/`requirements.txt`/`package.json` per package dir; a flag or a second argument is refused. **Init**: `engineos init --stack auto\|<framework>[@dir],...` (`init-project.sh`, `/engineos:init`) writes `.engineos/config.json` once (never overwritten; not written when nothing is detected — stdout says `not written — no package detected; declare one with --stack <framework>[@dir]`), prints a `stack (config\|detected):` table, and seeds `CLAUDE.md` from `templates/project-claude-python.md` when every package is Python — the new stdout line is `CLAUDE.md: created from templates/project-claude-python.md — fill in the Stack and Commands sections`; `templates/project-claude.md` now carries a Node and a Python block. **Hooks**: `hooks/hooks.json` gains a `PreToolUse` entry with matcher `Bash` running `hook git-write-guard` (`hooks/git-write-guard.sh` shim), which answers `hookSpecificOutput.permissionDecision: "ask"` with reason `[engineos] git write: <subcommand> — ENGINEOS_GIT_WRITES=ask` on any git/forge write segment unless `ENGINEOS_GIT_WRITES=auto`; it never denies, and it ignores bypass — a consumer merging `hooks.json` gets prompted on writes from then on (**tightened** for consumers who relied on unprompted writes; set `auto`). `src/hooks/output.ts` gains the `ask` decision kind. `SessionStart` (`ensure-project-layout`) prints one `[engineos] stack: …` context line. **Stop gate**: `stop-verify` now verifies Python packages too — `ruff` and `pyright` (`pytest` under `ENGINEOS_VERIFY_TESTS=1`) through `.venv` → `uv run` → `docker compose exec -T <compose_service>`, never installing; a package with no environment is announced as `[engineos] stop-verify skipped for <pkg>: no Python environment found (venv, uv or compose)`; an unpinned tool gets an advisory line. A Python package that previously passed the gate untouched can now **block** on a genuine red (**tightened**). New environment variable `ENGINEOS_VERIFY_BUDGET_S=<positive integer>` raises every target's timeout (defaults stay 90s / 180s; a non-positive or non-integer value is ignored). **Prose surface**: rule `rules/backend-python.md` (loaded by the FastAPI router row; routing domain `backend-python` sits after `dba` in the precedence chain, so `security → test → backend → dba → backend-python → ios-release → android-release → devops → mobile → frontend → llm`); skills `python-patterns`, `langgraph-patterns` and `agent-system-design` (with `references/form.md`, `references/patterns/*.md`, `references/context-enriched-tools.md`, `references/tenant-profiles.md`) filled; command `commands/design-agents.md` (`/engineos:design-agents [resume]`); pattern `patterns/3-Agent-topology-interview.md`; templates `templates/agent-topology.md` and `templates/project-claude-python.md`; `rules/llm-apps.md` states that any system with more than one agent starts at `/engineos:design-agents`; `rules/git.md` gains "Who may write"; `rules/verification.md` gains the Python runner cascade; `rules/risk-autonomy.md` names `topology-approval`. Test fixture `test/fixtures/py-fastapi/` is not public surface | added |
 | `rules/production-backend-standards.md` | deprecated 2026-09-28 (D5 of the same design). A company-specific NestJS/TypeORM overlay (`@coresoft-sas/*`, `DefaultTypeOrmRepository`, "no snake_case" — which conflicts with PEP 8 for Python packages) that the `CLAUDE.md`/`AGENTS.md` backend row loaded while `registries/routing.json` and `registries/intents.json` never did. The file stays on disk with a deprecation header, is loaded by no router row, and its replacement is the consuming project's own `CLAUDE.md` / `docs/rules/` (project conventions already win, non-negotiable #4). Removed in the next MAJOR, not before; `docs/release-notes/` names the removal version when the release is cut | deprecated |
+| `registries/policy.json` `router_decision`, `.engineos/config.json` `router.mode`, `engineos init --router`, eval case `stack` (`docs/specs/2026-10-06-routing-decision-layer-contracts.md`, wave 1b) | all MINOR, additive. **Policy**: new block `router_decision` (`modes`, `restrictiveness`, `default`, `default_written_by`, `min_confidence`, `tie_margin`, `jev`, `state_fields`), sibling of the untouched `router` block, read by its own strict loader (`src/registry/policy-router-decision.ts`, never by the kernel's `loadPolicy`, so risk, gate and escalation answers do not depend on it) — a mode outside `keyword|llm|jev`, a `restrictiveness` that is not a permutation of the modes plus `auto`, or a `default` set without a `default_written_by` golden-set record is refused there (policy.json 1.8.0). **Config**: optional `router: { "mode": "keyword" \| "llm" \| "jev" \| "auto" }`; absent means no repo cap, an unknown key or mode is a refusal like the rest of the file. **Init**: `--router <mode>` (default `auto`) writes `router` next to `stack` whenever init writes the config; USAGE gains the flag. **Evals**: an intent case may carry `stack: ["python"] \| ["node"] \| ["python","node"]`; the deterministic tier routes such cases through the kernel under that stack and prints two new lines (`every stack field names ...`, `every stack-tagged case routes ...`) only when at least one case is tagged, so an untagged set grades byte-identically | added |
+| `ENGINEOS_ROUTER`, `TYPESAFE_API_KEY`, the contract line's `router=` token, the router fallback line, `agents/router.md` "When the decision layer sends you a prompt" (`docs/specs/2026-10-06-routing-decision-layer-contracts.md`, wave 2c) | all MINOR, additive. **Environment**: `ENGINEOS_ROUTER` = `keyword` \| `llm` \| `jev` \| `auto`, a personal setting (`~/.claude/settings.local.json` env) capped by the repo's `.engineos/config.json` `router.mode`, the more restrictive winning (`keyword` < `llm` < `jev` < `auto`); unset falls to `policy.json` `router_decision.default`, and while that is `null` the hook runs in shadow. `TYPESAFE_API_KEY` is read only from the personal environment or CI secrets, never from a committed file; without it `jev` is unavailable and `auto` resolves to `llm` (never `keyword`, which runs only when a setting names it; `llm` needs nothing on the machine). **Prompt-advisor output**: the contract line gains ` router=<mode>` and, when a confidence exists, `/<confidence to 2 decimals>`; a new line `[engineos] router: <mode> (<requested> unavailable: <reason>)` whenever the requested mode fell back — `<mode>` is `llm` after any `jev` failure or a thrown decision path, `keyword` only under an explicit `keyword` setting; a new escalation line `[engineos] router: <mode> could not decide (<reason>) — dispatch the router agent …` when the decision layer escalates and the route did not already. Consumers parsing the contract line must tolerate the extra token. **Prose**: `agents/router.md` gains an input section (`languages`, `frameworks`, `offered`, `candidates`, `generic_only`, `decision.mode`, `confidence`; it may choose only among `offered`) — its frontmatter, tools, tier, return envelope and `dispatch_plan` shape are unchanged; `CLAUDE.md`/`AGENTS.md` gain one "Rules for routing" bullet, and the always-on context rule a "What the decision layer may decide" section | added |
+| `scripts/router-golden.sh` / `engineos router-golden collect \| run`, `evals/router-golden/candidates.local.jsonl`, `evals/router-golden/cases.jsonl`, `evals/router-golden/RESULTS.md` (`docs/specs/2026-10-06-routing-decision-layer-contracts.md` §5, wave 3) | all MINOR, additive. **CLI**: `collect [<repo>...]` (default: the cwd repo) reads router spans and appends candidate cases (contracts §5 shape, `expect_intents: null`, `source: "real"`, plus a `shadow` block) to the gitignored candidates file, de-duplicated by prompt and repo, and prints one count line per repo (spans read, no decision, joined, unjoined, non-human, duplicates, appended, disagreements) — never prompt text; `run [--mode keyword\|llm\|jev]... [--cases <file>] [--write-default]` grades each mode on `cases.jsonl` (intent accuracy, stack correctness, p95 ms, fallback rate), always rewrites `RESULTS.md`, prints `no cases in <path>` and exits 0 when the set is absent or empty, exits 1 on a malformed or uncurated case and 2 on a usage error. **Policy**: `run --write-default` is the only writer of `registries/policy.json` `router_decision.default` and `default_written_by`; it rewrites those two values in place (rest of the file byte-identical), writes the winner only when one mode has a strictly highest intent accuracy and stack correctness 1.0 over every policy mode, and writes `null`/`null` otherwise; a rewrite the strict loader refuses is restored | added |
+| Python stack re-enabled (2026-10-13, developer decision with the maintainer) | reversal, MINOR. `main` commit `0b2e442` (2026-10-06) had set the `backend-python` intent and routing domain to `enabled: false, deprecated: true`, emptied their signals and globs, replaced `rules/backend-python.md`, `skills/python-patterns`, `skills/langgraph-patterns` and `templates/project-claude-python.md` with deprecation stubs, and made the Stop gate, `post-edit-check` and `init --stack` refuse Python — none of it recorded here. This merge restores every one of those surfaces to their 2026-09-29 (#115) behaviour, keeps the additive work of the same commits (stack-first question, `docs/agents/` seeding, `STACK_MANIFESTS`/`hasStackSignal`, Mastra skill, new-feature flow, test-approval policy), and rewords `rules/base.md` "Active ecosystem" and the stack question to name both stacks. `ENGINEOS_VERIFY_TESTS` stays deprecated as `main` made it. |
 | Stack-first greenfield question and from-scratch feature artifacts (`docs/specs/2026-10-06-stack-first-and-feature-artifacts-design.md`, C1–C12) | all MINOR, additive unless marked. **Kernel**: `src/kernel/stack.ts` exports `STACK_MANIFESTS` (`package.json`, `pyproject.toml`, `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`, `Gemfile`, `composer.json`, `pubspec.yaml`, `mix.exs`, `deno.json`), `STACK_MANIFEST_SUFFIXES` (`.csproj`, `.sln`), `STACK_SIGNAL_MAX_DEPTH = 3` (root = depth 0) and `hasStackSignal(root, deps?)` — true when `.engineos/config.json` exists at the root or any manifest exists within depth 3, dot-directories and `SKIPPED_DIRS` excluded, never throwing; no new `kernel.sh` verb. **Hooks**: new module `src/hooks/stack-question.ts` (`STACK_QUESTION_NOTE`, `STACK_DEPENDENT_INTENTS` = `new-feature`, `backend`, `backend-python`, `frontend`, `mobile`, `llm`, `agent-system`). `SessionStart` (`ensure-project-layout`) adds the note to its context in a greenfield repo — after the opt-in hint when the project is not opted in, as one more line when it is; outside a git repo the check runs against the session cwd with no scaffolding and returns the note alone; never when the cwd is the home directory; `ENGINEOS_SCAFFOLD=0` stays silent. `UserPromptSubmit` (`prompt-advisor`) appends the same note after the guidance notes when a stack-dependent intent matches in a greenfield repo; bypass still short-circuits first. Both are advisory — nothing blocks. The note, verbatim: `` [engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. Before writing any code, your FIRST reply must ask the developer which stack to use for each tier the work touches (backend, frontend, mobile, LLM/agent runtime) — never pick one yourself (rules/base.md "New projects — stack first"). Persist the answer with `engineos init --stack <framework>[@dir],...` and record it as the project's first ADR. ``. **Prose surface**: `rules/base.md` gains the section `## New projects — stack first`; `CLAUDE.md`/`AGENTS.md` non-negotiable #1 adds "A from-scratch feature carries four artifacts before code — PRD, ADR, SPEC, TASKS — produced by `/engineos:new-feature`" and new non-negotiable #13 "Stack first on a greenfield repo"; the new-feature router row loads `/engineos:new-feature` (Matt Pocock `grill-with-docs` → `to-spec` → skill `tlc-spec-lean` plan and checks → `to-tickets` → build → the `tlc-spec-lean` Verifier) instead of `superpowers:brainstorming` → `superpowers:writing-plans`, — Matt's skills appear there without a leading slash, because C36 resolves a backticked `/name` in a router row to `commands/<name>.md` and they are not EngineOS commands — and `registries/intents.json` intent `new-feature` becomes `skills: ["tlc-spec-lean"]`, `commands: ["new-feature"]`, with an `EXTERNAL` note (every other superpowers row is unchanged); `rules/verification.md` "Tests are ON" gains a bullet — work that runs `/engineos:new-feature` writes the proofs in `.specs/features/<feature>/checks.md` as its tests (**tightened**: tests are no longer opt-in for that flow). **Command**: `commands/new-feature.md` (`/engineos:new-feature <feature-slug> [resume]`), in-session, stages Stack → Preconditions → ADR (`docs/adr/`, glossary `CONTEXT.md`) → PRD (`docs/prds/`) → SPEC (`.specs/features/<feature>/plan.md` and `checks.md`, index `docs/specs/<date>-<feature>.md`) → TASKS (`docs/specs/<feature>/tickets/NN-<slug>.md`) → Build + verify (`.specs/features/<feature>/verification.md`), each ending at a developer review gate; in stage 6 `tlc-spec-lean`'s `## Handoff` arithmetic (one builder, or sequential batches only on green) overrides `rules/parallelism.md`'s fan-out default for that stage only, builders are routed coordinators, and the Verifier is a fresh general-purpose `opus` agent. **Init**: `engineos init` copies `templates/agent-skills/issue-tracker.md` and `templates/agent-skills/domain.md` to `docs/agents/` when absent, never overwriting, printing `docs/agents/<name>: created from templates/agent-skills/<name>` per file; `templates/project-claude.md` and `templates/project-claude-python.md` gain `## Agent skills` and `## tlc-spec-lean` (`profile: light`, `budget: 150k`) blocks. **Installer**: `install.sh` step `4a2` links every `skills-lock.json` entry whose `source` is `mattpocock/skills` or `tech-leads-club/agent-skills` from `.agents/skills/<name>` to `~/.claude/skills/<name>`, warning and skipping when the target exists and is not a symlink or the source directory is missing; `install.ps1` carries the same step with junctions (same allowlist, name check and EngineOS-name guard). **Release zip** (`scripts/package-release.sh`): the default artifact now ships `skills-lock.json` and the `.agents/skills/<name>` directories of those two sources (previously `.agents/` shipped only with `WITH_IDE_MIRRORS=1`), and packaging **fails** when a pinned skill is not vendored at the commit (**tightened**). **Agents**: `backend-coordinator`, `frontend-coordinator`, `mobile-coordinator` and `llm-coordinator` return `status: BLOCKED` with `missing: stack undeclared — …` when `resolve-stack` finds no package and there is no `.engineos/config.json`, instead of picking a stack (**tightened** for a caller that relied on `backend-coordinator` falling back to the files in scope). ADR: `docs/adr/2026-10-06-from-scratch-artifacts-matt-pocock-and-tlc-spec-lean.md` | added |
 | `registries/intents.json` | `version` `"1.5.0"` -> `"2.0.0"` (informational: the loader reads v2 fields on any row whatever the version, so a v1 file loads unchanged). Per-row additive fields, appended after the existing keys: `phrases` (`{ text, weight }[]`), `verb_object` (`{ verbs, objects, weight }`), `negative` (weights subtracted), `exemplars` (strings; 3 to 10 per active row, enforced by C38b), `threshold` (the judge cut for `intent.<id>`, in `(0, 1]`) and `router_row` (`{ intent, load }`, the generated router-table cells). The loader now refuses a row `threshold` of `0` (an absent id reads as `0` and would qualify) and an `enabled` value that is present but not a boolean; an absent `enabled` still means active. Row order changes once: `route-planning` now precedes `verify-done`, matching the router table. **Deprecation window opened**: `signals` stays a non-empty string array on every active row of the shipped registry and is still read; it becomes optional on a row that declares non-empty `phrases` and is removed in 2.0 | added, one window opened |
 | `kernel route-intent` / `resolve --facts {prompt}` | trailing keys `ranked` (`{ id, score, confidence, features }[]`, score descending, at most `router.scoring.top_k`) and `margin` (`number \| null`); `matches` keeps its eleven-field shape and registry order, capped at `router.scoring.max_intents`; the cap trims only exemplar-assisted admissions: an intent whose risk floor is `high` and an intent whose declared evidence alone (phrases, pair, path, minus negatives) clears `min_score` are always kept, so a route may exceed `max_intents` and a v1 registry, which has no exemplars, never hits the cap (contracts rev 4 §1.5). `ambiguous` may now be true on weak confidence or margin, not only on zero matches (inert under the shipped placeholders `threshold: 0`, `margin: 0`) | changed (tightening) |

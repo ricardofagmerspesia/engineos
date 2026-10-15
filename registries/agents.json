@@ -20,8 +20,8 @@
     },
     {
       "name": "architecture-analyst",
-      "alias": "analyst",
-      "description": "System-comprehension and onboarding-docs specialist. Branches: `/analyze-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: analyst.",
+      "alias": "ricardo-fagmer",
+      "description": "System-comprehension and onboarding-docs specialist. Branches: `/analyze-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: ricardo-fagmer.",
       "tools": [
         "Read",
         "Grep",
@@ -36,8 +36,8 @@
     },
     {
       "name": "audit-consolidator",
-      "alias": "corradin",
-      "description": "Merges specialist reports into one consolidated status report — top-line verdict, root cause, ordered remediation plan. Read-only; may read Jira via the atlassian MCP but never writes to it. Dispatched last by the audit orchestrator. Alias: corradin.",
+      "alias": "danilo",
+      "description": "Merges specialist reports into one consolidated status report — top-line verdict, root cause, ordered remediation plan. Read-only; may read Jira via the atlassian MCP but never writes to it. Dispatched last by the audit orchestrator. Alias: danilo.",
       "tools": [
         "Read",
         "Grep",
@@ -86,8 +86,8 @@
     },
     {
       "name": "critic",
-      "alias": "vera",
-      "description": "Adversarial correctness review of work that is about to be called done. Dispatched when risk=high per rules/risk-autonomy.md, when the release gate requires an independent pass per rules/gates.md, or on explicit request. Tries to refute the claim that the work is correct and complete — the general-correctness counterpart to security-reviewer's security-only lens. Read-only, never edits. Alias: vera.",
+      "alias": "rogerio",
+      "description": "Adversarial correctness review of work that is about to be called done. Dispatched when risk=high per rules/risk-autonomy.md, when the release gate requires an independent pass per rules/gates.md, or on explicit request. Tries to refute the claim that the work is correct and complete — the general-correctness counterpart to security-reviewer's security-only lens. Read-only, never edits. Alias: rogerio.",
       "tools": [
         "Read",
         "Grep",
@@ -132,8 +132,8 @@
     },
     {
       "name": "docs-writer",
-      "alias": "tomasz",
-      "description": "Writes and updates documentation for work that already landed — READMEs, usage docs, endpoint and config references. Use when a delivered change leaves documentation stale, or when a headless workflow needs documentation as its own step rather than an afterthought. Documents what the code actually does, never what it was supposed to do. Alias: tomasz.",
+      "alias": "dalollio",
+      "description": "Writes and updates documentation for work that already landed — READMEs, usage docs, endpoint and config references. Use when a delivered change leaves documentation stale, or when a headless workflow needs documentation as its own step rather than an afterthought. Documents what the code actually does, never what it was supposed to do. Alias: dalollio.",
       "tools": [
         "Read",
         "Grep",
@@ -166,8 +166,8 @@
     },
     {
       "name": "gcp-specialist",
-      "alias": "nakamura",
-      "description": "Read-only Google Cloud specialist — compute, storage, IAM, networking, billing signals, via the gcp MCP. Never mutates cloud resources. Dispatched by the audit orchestrator. Alias: nakamura.",
+      "alias": "gcp",
+      "description": "Read-only Google Cloud specialist — compute, storage, IAM, networking, billing signals, via the gcp MCP. Never mutates cloud resources. Dispatched by the audit orchestrator. Alias: gcp.",
       "tools": [
         "Read",
         "Grep",
@@ -197,8 +197,8 @@
     },
     {
       "name": "kubernetes-specialist",
-      "alias": "kovac",
-      "description": "Read-only Kubernetes specialist — workloads, events, resource usage, config, via the kubernetes MCP. Never mutates the cluster. Dispatched by the audit orchestrator. Alias: kovac.",
+      "alias": "corradin",
+      "description": "Read-only Kubernetes specialist — workloads, events, resource usage, config, via the kubernetes MCP. Never mutates the cluster. Dispatched by the audit orchestrator. Alias: corradin.",
       "tools": [
         "Read",
         "Grep",
@@ -278,8 +278,8 @@
     },
     {
       "name": "product-spec",
-      "alias": "mariana",
-      "description": "Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: mariana.",
+      "alias": "caio-badu",
+      "description": "Turns an objective into a spec with a problem statement, solution and testable acceptance criteria. Use when a feature-shaped objective needs a spec artifact before implementation starts — the dispatchable form of non-negotiable #1 (spec before code), for callers that need it as an agent rather than main-loop discipline. Alias: caio-badu.",
       "tools": [
         "Read",
         "Grep",
@@ -294,8 +294,8 @@
     },
     {
       "name": "qa-tester",
-      "alias": "qa",
-      "description": "Autonomous end-to-end API QA — brings the stack up from clean, discovers every endpoint, emits an inventory plus Postman collection, then exercises happy paths, negatives and chained flows headlessly via Newman and reports pass/fail. Never waits for user input (skips MFA and email-sending steps). Alias: qa.",
+      "alias": "ameer",
+      "description": "Autonomous end-to-end API QA — brings the stack up from clean, discovers every endpoint, emits an inventory plus Postman collection, then exercises happy paths, negatives and chained flows headlessly via Newman and reports pass/fail. Never waits for user input (skips MFA and email-sending steps). Alias: ameer.",
       "tools": [
         "Read",
         "Grep",
@@ -342,8 +342,8 @@
     },
     {
       "name": "test-writer",
-      "alias": "ameer",
-      "description": "Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature needs coverage, a bug fix needs a regression test, or tests are being backfilled. Dispatched deliberately, never automatically after ordinary changes. Alias: ameer.",
+      "alias": "sameer",
+      "description": "Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature needs coverage, a bug fix needs a regression test, or tests are being backfilled. Dispatched deliberately, never automatically after ordinary changes. Alias: sameer.",
       "tools": [
         "Read",
         "Grep",

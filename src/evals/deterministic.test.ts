@@ -198,3 +198,31 @@ test('a set below the coverage floor is called decorative', (t) => {
   assert.ok(out.includes('FAIL intent set has only 1 cases — below the floor of 25, the set is decorative\n'), out);
   assert.equal(result.intentCount, 1);
 });
+
+test('stack-tagged cases add the two stack-routing lines, routed through the injected router', (t) => {
+  const tagged = JSON.stringify({
+    id: 'intent-026',
+    input: 'add an endpoint that lists invoices',
+    expect_intents: ['backend-python'],
+    must_load: [],
+    must_not_load: [],
+    stack: ['python'],
+    notes: 'stack rebind',
+  });
+  const io = memoryIo();
+  const routed: string[] = [];
+  const result = runDeterministicTier(evalTree(t, { intents: [...conformingIntents(25), tagged] }), io, {
+    stackRouter: () => ({
+      route: (prompt, packages) => {
+        routed.push(`${prompt}|${packages.map((pkg) => pkg.language).join('+')}`);
+        return ['backend-python'];
+      },
+      dispose: () => undefined,
+    }),
+  });
+  const out = io.stdout.join('');
+  assert.ok(out.includes('ok   every stack field lists python/node packages, optionally :framework, each at most once\n'), out);
+  assert.ok(out.includes('ok   every stack-tagged case routes to its expect_intents under its stack (1 cases)\n'), out);
+  assert.deepEqual(routed, ['add an endpoint that lists invoices|python']);
+  assert.deepEqual(result, { pass: 13, fail: 0, intentCount: 26 });
+});

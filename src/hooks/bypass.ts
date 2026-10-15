@@ -14,7 +14,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { spawnSync } from 'node:child_process';
-import { gitDir } from '../lib/git';
+import { gitDir, gitDirOnDisk } from '../lib/git';
 
 // The per-repo marker's file name inside the git dir.
 const MARKER = 'ENGINEOS_BYPASS';
@@ -57,4 +57,11 @@ export function bypassMarker(cwd: string, spawn: typeof spawnSync): string | nul
 export function bypassActive(cwd: string, env: NodeJS.ProcessEnv, spawn: typeof spawnSync): boolean {
   if (bypassSwitchedOn(env)) return true;
   return bypassMarkedAt(gitDir(cwd === '' ? process.cwd() : cwd, spawn));
+}
+
+// The same answer with no subprocess: for a hook path that must spawn nothing
+// (the automatic Stop), the marker is looked up by walking the filesystem.
+export function bypassActiveOnDisk(cwd: string, env: NodeJS.ProcessEnv): boolean {
+  if (bypassSwitchedOn(env)) return true;
+  return bypassMarkedAt(gitDirOnDisk(cwd === '' ? process.cwd() : cwd));
 }

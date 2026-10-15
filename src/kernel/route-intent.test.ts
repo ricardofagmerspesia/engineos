@@ -69,7 +69,7 @@ test('top_k truncates ranked while the margin still reads the untruncated rankin
 
 test('a prompt nothing scores answers no matches, ambiguous, an empty ranking and a null margin', () => {
   const regs = registriesWith([row('a', 'alpha', 1)]);
-  assert.deepEqual(routeByIntent('nothing relevant here', regs), { matches: [], ambiguous: true, ranked: [], margin: null });
+  assert.deepEqual(routeByIntent('nothing relevant here', regs), { matches: [], ambiguous: true, ranked: [], margin: null, rebound: [], generic_only: false });
 });
 
 test('a lone candidate has margin 1 and is not ambiguous under open cuts', () => {
@@ -102,7 +102,7 @@ test('ranked candidates with no match over min_score are still ambiguous', () =>
 
 test('the route-intent answer keeps its key order with the ranking siblings last', () => {
   const answer = routeByIntent('alpha', registriesWith([row('a', 'alpha', 1)]));
-  assert.deepEqual(Object.keys(answer), ['matches', 'ambiguous', 'ranked', 'margin']);
+  assert.deepEqual(Object.keys(answer), ['matches', 'ambiguous', 'ranked', 'margin', 'rebound', 'generic_only']);
 });
 
 // --- routeEscalate ----------------------------------------------------------------
@@ -157,6 +157,8 @@ test('the route-escalate answer keeps its key order with the ranking siblings la
     'ambiguous',
     'ranked',
     'margin',
+    'rebound',
+    'generic_only',
   ]);
 });
 
@@ -212,6 +214,10 @@ function row(id: string, text: string, weight: number, over: Partial<IntentRow> 
     exemplars: [],
     threshold: null,
     router_row: null,
+    stack: null,
+    stack_sibling: null,
+    stack_frameworks: [],
+    generic_signals: [],
     ...over,
   };
 }

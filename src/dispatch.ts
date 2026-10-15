@@ -4,9 +4,13 @@ import { writeJson, type Io } from './io';
 
 export type Command = (argv: string[], io: Io) => number;
 // A command that may await before answering its exit code. Only the hook
-// adapter is one today (the prompt advisor awaits the judge); every other
-// command stays synchronous, and a Command is assignable to this type.
-export type MaybeAsyncCommand = (argv: string[], io: Io) => number | Promise<number>;
+// adapter is one today (the prompt advisor awaits the judge and the routing
+// decision layer); every other command stays synchronous, and a Command is
+// assignable to this type. `ExitCode` and `AsyncCommand` are the same contract
+// under the names the hook CLI's tests use.
+export type ExitCode = number | Promise<number>;
+export type MaybeAsyncCommand = (argv: string[], io: Io) => ExitCode;
+export type AsyncCommand = MaybeAsyncCommand;
 export interface SyncCommandTable { [name: string]: Command }
 export interface CommandTable { [name: string]: MaybeAsyncCommand }
 

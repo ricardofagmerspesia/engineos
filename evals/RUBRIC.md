@@ -40,6 +40,19 @@ Checks case/schema drift against current policy.
    `ok   v2 case fields are well-formed and name active intents` or
    `FAIL v2 field problems: <id>(<problem>) ...`.
 
+9. A case MAY carry `stack`: a non-empty list of packages, each `<language>` or
+   `<language>:<framework>` (`["python"]`, `["python:fastapi", "node:react"]`) —
+   the packages of the repository the prompt is typed in. A stack-tagged case is
+   routed through the real kernel (`resolve` with `taskContract`, the prompt
+   advisor's own call) with a throwaway project holding one directory per entry
+   and only that package's manifest, naming the framework as a dependency when
+   one is given. It passes when every `expect_intents` id survives and no
+   surviving intent declares a stack the case lacks. This is the guard on the
+   keyword floor's stack rebind (`registries/intents.json` `stack` /
+   `stack_sibling` / `stack_frameworks`: framework evidence first, language
+   second). An entry whose language is not `python` / `node`, whose framework is
+   unknown or belongs to the other language, or a repeated entry, is malformed.
+
 The coverage floor (25 intent cases) is a separate size line, not a numbered check.
 
 ## Case schema v2
@@ -168,6 +181,10 @@ announcement CLAUDE.md mandates:
 - **Fail** — a missing required rule, or a forbidden one present.
 - Cases with `expect_intents: []` pass when **no** `[router]` line is emitted:
   pure questions are exempt from routing, and emitting one is over-routing.
+
+The live tier runs in the session's own working directory and does not honour
+`stack`; a stack-tagged case is graded on the stack there, so the deterministic
+check 8 is the authoritative grade for those cases.
 
 Agent cases are graded by an independent judge session against the `must` /
 `must_not` lists, using the dimensions below.

@@ -1,6 +1,6 @@
 ---
 name: architecture-analyst
-description: System-comprehension and onboarding-docs specialist. Branches: `/analyze-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: analyst.
+description: System-comprehension and onboarding-docs specialist. Branches: `/analyze-architecture` (autonomous analysis of modules, dependencies and patterns into code-grounded docs for new developers) | `/talk-about-the-system` (interviews the human to fill the gaps code can't answer). Alias: ricardo-fagmer.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 tier: design

@@ -10,12 +10,17 @@ import { fixtureRepo, tempRoot } from '../testing/harness';
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { silent, type HookContext } from './output';
 import { run } from './prompt-advisor';
+import { guidanceLookups, guidanceNotes } from './prompt-advisor-guidance';
+import { resolve } from '../kernel/resolve';
+import { lazyRegistries } from '../kernel/context';
 
 const checkout = resolveRoot({}, __dirname);
 
 // The operator's machine-wide bypass must never decide a case (the bash suite
 // exports the same isolation before it runs).
-const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass' };
+// ENGINEOS_ROUTER pinned: the shipped default is jev, which without a key adds a
+// visible fallback line; these tests are about the kernel's own output.
+const ISOLATED: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_ROUTER: 'llm' };
 
 // The bypass announcement, restated rather than imported: it is the one thing a
 // bypassed session is told, and a test that imported the constant would pass
@@ -91,6 +96,24 @@ test('a bypassed session is told so, and nothing else happens', async () => {
 
 test('an empty prompt resolves nothing and stays silent', async () => {
   assert.deepEqual(await run(promptOf(''), hookCtx()), silent);
+});
+
+test('a subagent hand-back is not a request and stays silent', async () => {
+  const handback = 'Another Claude session sent a message:\n<agent-message from="a1">\n[Subagent hand-back] add an endpoint that lists invoices — done\n</agent-message>';
+  assert.deepEqual(await run(promptOf(handback), hookCtx()), silent);
+});
+
+test('a task notification wrapped in a system reminder stays silent', async () => {
+  const notice = '<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification><task-id>x</task-id><summary>Agent finished: add an endpoint</summary></task-notification>\n</system-reminder>';
+  assert.deepEqual(await run(promptOf(notice), hookCtx()), silent);
+});
+
+test('a prompt behind a leading reminder block is routed by its human part only', async () => {
+  const mixed = '<system-reminder>\nfiles were re-read\n</system-reminder>\nadd a NestJS endpoint that lists invoices';
+  const decision = await run(promptOf(mixed), hookCtx());
+  assert.equal(decision.kind, 'context');
+  const text = decision.kind === 'context' ? decision.text : '';
+  assert.match(text, /intents=[^ ]*backend/);
 });
 
 test('a pure question stays silent', async () => {
@@ -379,11 +402,16 @@ test('a project that never adopted EngineOS is never written to', async (t) => {
 
 // Restated rather than imported, like BYPASS_NOTICE above.
 const STACK_QUESTION_NOTE =
-  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. '
-  + 'Before writing any code, your FIRST reply must ask the developer which stack to use for each tier '
-  + 'the work touches (backend, frontend, mobile, LLM/agent runtime) — never pick one yourself '
-  + '(rules/base.md "New projects — stack first"). Persist the answer with '
-  + '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
+  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. ' +
+  'Before writing any code, state the mandatory NestJS application backend policy within the JavaScript/TypeScript ecosystem. ' +
+  'Application backends (including API, worker ' +
+  'and LLM service hosts) require NestJS; Node.js is the runtime and tooling environment, not a backend framework choice. ' +
+  'Ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), ' +
+  'and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers; ' +
+  'do not ask the developer to reconfirm NestJS or Mastra. ' +
+  'never offer plain Node.js or standalone Express application backends ' +
+  '(rules/base.md "New projects — stack first"). Persist the answer with ' +
+  '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
 
 const BUILD_PROMPT = 'add a paginated orders endpoint to the API';
 
@@ -680,4 +708,17 @@ test('a switched-on tie-break still leaves exactly one router span and no model 
   await run(promptOf('add a paginated orders endpoint to the API and mirror the screen to mobile', repo, 'tie1'), hookCtx(env));
   const spans = jsonLines(join(telemetryOf(repo), 'tie1.exec.jsonl'));
   assert.deepEqual(spans.map((span) => span['span_kind']), ['router']);
+});
+
+test('resolved simple-task guidance asks clickable planning choice and avoids automatic spec instructions', () => {
+  const execution = {complexity: 'small' as const, riskTier: 'low' as const, reversible: true, files: ['notes.md'], domains: ['docs'], unitCount: 1, newFeature: true, securitySensitive: false, requiredAgents: [], designRequired: false, scopeRevision: 'scope'};
+  for (const specChoice of ['pending', 'direct'] as const) {
+    const answer = resolve({prompt: 'add a short note', taskContract: true, execution: {...execution, specChoice, specChoiceScopeRevision: 'scope'}}, {root: checkout, registries: lazyRegistries(checkout)});
+    const route = answer.route; const decisions = answer.decision_rules; const contract = answer.task_contract;
+    if (!route || !('escalate' in route) || !decisions || !contract) throw new Error('missing task answer');
+    const text = guidanceNotes({route, decisions, contract, hitl: answer.hitl ?? null, router: null}, guidanceLookups(lazyRegistries(checkout))).join('\n');
+    if (specChoice === 'pending') assert.match(text, /clickable Implement directly \/ Create a lightweight spec/);
+    else assert.match(text, /No mandatory prototype, spec or ticket workflow/);
+    assert.doesNotMatch(text, /decision rules matched/);
+  }
 });

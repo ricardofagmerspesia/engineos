@@ -458,8 +458,8 @@ test('resolve answers each section identically to the legacy projection that own
 // holds on the legacy keys: each additive list must trail the section exactly,
 // in this order, and is removed before the comparison. Anything else that
 // differs, including a legacy key moved behind an additive one, stays red.
-const INTENT_ADDITIVE: readonly string[] = ['ranked', 'margin'];
-const ESCALATE_ADDITIVE: readonly string[] = ['ranked', 'margin', 'judge'];
+const INTENT_ADDITIVE: readonly string[] = ['ranked', 'margin', 'rebound', 'generic_only'];
+const ESCALATE_ADDITIVE: readonly string[] = ['ranked', 'margin', 'rebound', 'generic_only', 'judge'];
 const TASK_CONTRACT_ADDITIVE: readonly string[] = ['judge', 'risk_proposal', 'tiebreak'];
 const COMPOSED_DECISIONS_ADDITIVE: readonly string[] = ['judge_added'];
 

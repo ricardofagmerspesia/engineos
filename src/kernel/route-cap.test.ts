@@ -73,6 +73,10 @@ function baseRow(id: string, over: Partial<IntentRow>): IntentRow {
     exemplars: [],
     threshold: null,
     router_row: null,
+    stack: null,
+    stack_sibling: null,
+    stack_frameworks: [],
+    generic_signals: [],
     ...over,
   };
 }

@@ -4,7 +4,8 @@
 // body never sees stdin, never writes stdout and never picks an exit code, so
 // the hooks are functions of (envelope, context) and their tests deepEqual a
 // HookDecision instead of parsing JSON.
-import type { MaybeAsyncCommand } from '../dispatch';
+import type { ExitCode, MaybeAsyncCommand } from '../dispatch';
+import type { Io } from '../io';
 import { runHookWith, type HookTable } from './adapter';
 import { run as ensureProjectLayout } from './ensure-project-layout';
 import { run as markUnrecorded } from './mark-unrecorded';
@@ -16,6 +17,11 @@ import { run as announceAgentReturn } from './announce-agent-return';
 import { run as stopVerify } from './stop-verify';
 import { run as postEditCheck } from './post-edit-check';
 import { run as gitWriteGuard } from './git-write-guard';
+
+// A hook may answer after an await (the prompt advisor waits on the judge and
+// on the routing decision layer); every other hook answers synchronously and
+// is rendered synchronously, byte for byte as before.
+export type { HookRun } from './adapter';
 
 // Keys are the names hooks.json registers (`engineos hook <name>`) and the shim
 // file names under hooks/. Adding a hook is one import and one row.
@@ -33,3 +39,9 @@ export const HOOKS: HookTable = {
 };
 
 export const runHook: MaybeAsyncCommand = runHookWith(HOOKS);
+
+// The adapter over an explicit table, so a test can drive a synchronous and an
+// asynchronous hook through the same path the registered ones take.
+export function runHookFrom(table: HookTable, argv: string[], io: Io): ExitCode {
+  return runHookWith(table)(argv, io);
+}

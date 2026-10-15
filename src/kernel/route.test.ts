@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KernelError, isRecord } from '../lib/json';
 import type { IntentRow } from '../registry/intents';
+import type { PackageStack } from '../registry/project-config';
 import { loadRegistry } from '../registry/load';
 import type { ScoringPolicy } from '../registry/policy-router';
 import { resolveRoot } from '../registry/paths';
 import { lazyRegistries, type Registries } from './context';
-import { floorOf, renderGuidance, routeEscalate, type EscalateRouteSection } from './route';
+import { floorOf, renderGuidance, routeByIntent, routeEscalate, type EscalateRouteSection } from './route';
 
 const root = resolveRoot(process.env, __dirname);
 const regs = lazyRegistries(root);
@@ -76,6 +77,8 @@ test('the answer carries cmd_route_escalate key order', () => {
     // contracts.md@rev1 §2.3: the ranking siblings trail the legacy keys (MINOR).
     'ranked',
     'margin',
+    'rebound',
+    'generic_only',
   ]);
 });
 
@@ -306,6 +309,128 @@ test('a policy.json without a router block refuses to answer', () => {
   }
 });
 
+// --- stack rebind and generic_only (contracts §2) ----------------------------
+
+test('the intent form appends rebound and generic_only after its existing keys', () => {
+  assert.deepEqual(Object.keys(routeByIntent('add an endpoint', regs)), ['matches', 'ambiguous', 'ranked', 'margin', 'rebound', 'generic_only']);
+});
+
+test('no stack known leaves the keyword result untouched', () => {
+  for (const languages of [undefined, []] as const) {
+    const answer = routeEscalate('add an endpoint that lists invoices', regs, languages);
+    assert.deepEqual(answer.intents, ['backend']);
+    assert.deepEqual(answer.rebound, []);
+  }
+});
+
+test('a python-only repository rebinds the node backend row to its python sibling', () => {
+  const answer = routeEscalate('add an endpoint that lists invoices', regs, ['python']);
+  assert.deepEqual(answer.intents, ['backend-python']);
+  assert.deepEqual(answer.rebound, [{ from: 'backend', to: 'backend-python', reason: 'language', scope: 'repo' }]);
+  assert.equal(answer.generic_only, true);
+});
+
+test('a node-only repository rebinds a named python framework to the node row', () => {
+  const answer = routeEscalate('build it with FastAPI', regs, ['node']);
+  assert.deepEqual(answer.intents, ['backend']);
+  assert.deepEqual(answer.rebound, [{ from: 'backend-python', to: 'backend', reason: 'language', scope: 'repo' }]);
+  // FastAPI is a specific signal, and the sibling inherits that.
+  assert.equal(answer.generic_only, false);
+});
+
+test('a mixed repository keeps the keyword result, suppression included', () => {
+  const answer = routeEscalate('add a FastAPI endpoint', regs, ['node', 'python']);
+  assert.deepEqual(answer.intents, ['backend-python']);
+  assert.equal(byOf(answer, 'backend'), 'backend-python');
+  assert.deepEqual(answer.rebound, []);
+});
+
+test('the rebind runs before suppression and dedupes onto a sibling that matched directly', () => {
+  // Both rows match; in a python repo backend is replaced by backend-python,
+  // which already matched, so one row survives and nothing is left to suppress.
+  const answer = routeEscalate('add a FastAPI endpoint', regs, ['python']);
+  assert.deepEqual(answer.intents, ['backend-python']);
+  assert.deepEqual(answer.suppressed, [{ id: 'new-feature', by: 'more-specific-match' }]);
+  assert.deepEqual(answer.rebound, [{ from: 'backend', to: 'backend-python', reason: 'language', scope: 'repo' }]);
+});
+
+test('the intent form rebinds the same way and keeps registry order', () => {
+  const answer = routeByIntent('add a controller for refunds', regs, ['python']);
+  assert.deepEqual(answer.matches.map((m) => m.id), ['new-feature', 'backend-python']);
+  assert.deepEqual(answer.rebound, [{ from: 'backend', to: 'backend-python', reason: 'language', scope: 'repo' }]);
+  assert.equal(answer.generic_only, true);
+});
+
+test('a stack-bearing match whose sibling is missing keeps the keyword result', () => {
+  // Unreachable through a valid registry (the loader refuses a dangling
+  // sibling); a fixture bypassing the loader proves the router never drops a
+  // match on missing evidence — it leaves the keyword answer alone.
+  const rows = [row('alpha', { stack: 'node', stack_sibling: 'ghost' })];
+  const fixture: Registries = { ...regs, intents: { version: regs.intents.version, intents: rows } };
+  const answer = routeByIntent('alpha', fixture, ['python']);
+  assert.deepEqual(answer.matches.map((m) => m.id), ['alpha']);
+  assert.deepEqual(answer.rebound, []);
+});
+
+// --- framework-first rebind (contracts §2, amended 2026-10-07) ----------------
+
+const FASTAPI_BACKEND: PackageStack = { dir: 'backend', language: 'python', framework: 'fastapi', compose_service: null };
+const REACT_FRONTEND: PackageStack = { dir: 'frontend', language: 'node', framework: 'react', compose_service: null };
+const NEST_API: PackageStack = { dir: 'api', language: 'node', framework: 'nestjs', compose_service: null };
+const PLAIN_NODE: PackageStack = { dir: '.', language: 'node', framework: null, compose_service: null };
+
+test('a FastAPI backend beside a React frontend rebinds to the python row by framework', () => {
+  const answer = routeEscalate('add an endpoint that lists invoices', regs, { packages: [FASTAPI_BACKEND, REACT_FRONTEND], focus: null });
+  assert.deepEqual(answer.intents, ['backend-python']);
+  assert.deepEqual(answer.rebound, [{ from: 'backend', to: 'backend-python', reason: 'framework', scope: 'repo' }]);
+});
+
+test('the same repository opened in the frontend package still rebinds, by the repository', () => {
+  const answer = routeEscalate('add an endpoint that lists invoices', regs, { packages: [FASTAPI_BACKEND, REACT_FRONTEND], focus: REACT_FRONTEND });
+  assert.deepEqual(answer.rebound, [{ from: 'backend', to: 'backend-python', reason: 'framework', scope: 'repo' }]);
+});
+
+test('the package holding the working directory decides before the repository', () => {
+  // A repository with both backends keeps the keyword result from its root...
+  const both = [FASTAPI_BACKEND, NEST_API];
+  assert.deepEqual(routeEscalate('add an endpoint', regs, { packages: both, focus: null }).intents, ['backend']);
+  // ...but opened inside the FastAPI package, that package decides.
+  const inside = routeEscalate('add an endpoint', regs, { packages: both, focus: FASTAPI_BACKEND });
+  assert.deepEqual(inside.intents, ['backend-python']);
+  assert.deepEqual(inside.rebound, [{ from: 'backend', to: 'backend-python', reason: 'framework', scope: 'package' }]);
+});
+
+test('a NestJS api beside plain node packages keeps the node row', () => {
+  const answer = routeEscalate('add an endpoint', regs, { packages: [PLAIN_NODE, NEST_API], focus: PLAIN_NODE });
+  assert.deepEqual(answer.intents, ['backend']);
+  assert.deepEqual(answer.rebound, []);
+});
+
+test('with no backend framework anywhere, the language decides', () => {
+  const plainPython: PackageStack = { dir: '.', language: 'python', framework: null, compose_service: null };
+  const answer = routeEscalate('add an endpoint', regs, { packages: [plainPython], focus: null });
+  assert.deepEqual(answer.rebound, [{ from: 'backend', to: 'backend-python', reason: 'language', scope: 'repo' }]);
+});
+
+test('a React-only repository keeps the node row: a frontend is node by language', () => {
+  const answer = routeEscalate('add an endpoint', regs, { packages: [REACT_FRONTEND], focus: null });
+  assert.deepEqual(answer.intents, ['backend']);
+  assert.deepEqual(answer.rebound, []);
+});
+
+test('generic_only is true only when every surviving match hit generic signals alone', () => {
+  assert.equal(routeEscalate('add an endpoint', regs).generic_only, true);
+  assert.equal(routeEscalate('add a NestJS endpoint', regs).generic_only, false);
+  // No match at all is unrouted, not generic.
+  assert.equal(routeEscalate('hello there', regs).generic_only, false);
+  // The intent form has no suppression: new-feature ("add") and backend
+  // ("endpoint") both survive, and both hit generic signals only.
+  assert.equal(routeByIntent('add an endpoint', regs).generic_only, true);
+  // The escalate form reads survivors only: backend-python suppresses backend,
+  // so the specific "FastAPI" hit decides.
+  assert.equal(routeEscalate('add a FastAPI endpoint', regs).generic_only, false);
+});
+
 // --- helpers -----------------------------------------------------------------
 
 function byOf(section: EscalateRouteSection, id: string): string | null {
@@ -368,6 +493,10 @@ function row(id: string, over: Partial<IntentRow> = {}): IntentRow {
     exemplars: [],
     threshold: null,
     router_row: null,
+    stack: null,
+    stack_sibling: null,
+    stack_frameworks: [],
+    generic_signals: [],
     ...over,
   };
 }

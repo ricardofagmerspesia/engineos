@@ -131,3 +131,28 @@ tie-break unreachable (plan §4); single common words still route alone at
 weight 1 (plan §2 problem 1); authoritative mode runs the judge and tie-break
 serially (400 + 150 ms of the 600 ms hook budget). Files over ~300 lines left
 for later: kernel/cli.ts, git-write-guard.ts, report/usage.ts, registry/policy.ts.
+
+### Merge of main a84f7ad (2026-10-15)
+
+Brought `main` (PRs #135 stack-aware floor and #139 advisor router) into this
+branch. Resolution strategy was union: both sides' behaviour survives where they
+touched the same code. The three-tier scored router (`ranked`/`margin`, judge,
+tie-break) and the stack-aware floor (`rebound`/`generic_only`, `stackFacts`)
+now compose in one `routeByIntent` / `routeEscalate` answer; the escalate
+answer's `ambiguous` field is score-based again (`ambiguityOf`), which the
+merge had reduced to an empty-match test. `IntentRow` carries both sides'
+fields; `intents.json` is v2.0.0 with the stack columns and the phrase columns.
+The prompt advisor applies S0 (`typedByUser`) to the whole envelope before
+`humanPrompt` strips harness framing, so a host-declared notification still
+writes its `route {skipped}` event.
+
+Two behaviours existed only in main's committed `dist/engineos.cjs`, not in
+main's source, and were ported into source so the rebuilt bundle keeps them:
+the C16 exemption for an inactive deprecated stack-bearing intent
+(`backend-python`), and the bypass short-circuit in stop-verify's `run()`.
+Both Jev mechanisms stay behind their own gates (`policy.judge` /
+`ENGINEOS_JUDGE` from this branch, `policy.router_decision` / `ENGINEOS_ROUTER`
+from main); unifying them is a follow-up, as is main's dist/source divergence
+and main's own red tests (stack rebind in python repos, `--router` flag,
+archive-record frontmatter under `.engineos/archived/2026/10/llm/`, wave cap
+`6` vs policy `3`), which this merge neither fixes nor masks.

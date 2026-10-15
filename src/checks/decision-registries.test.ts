@@ -313,6 +313,70 @@ test('an intent risk_floor outside the three tiers is caught', (t) => {
   assert.ok(hasFinding(findings, 'intent-invalid-risk-floor', 'new-feature'));
 });
 
+function intentRow(doc: Record<string, unknown>, id: string): Record<string, unknown> {
+  const found = arrayAt(doc, 'intents').find((row) => isRecord(row) && row['id'] === id);
+  if (!isRecord(found)) throw new Error(`intent ${id} is not in the registry`);
+  return found;
+}
+
+test('an intent stack outside node and python is caught', (t) => {
+  const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      intentRow(doc, 'backend')['stack'] = 'go';
+    });
+  });
+  assert.ok(hasFinding(findings, 'intent-stack-invalid', 'backend:stack=go'));
+});
+
+test('a stack_sibling that does not name the row back is caught', (t) => {
+  const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      intentRow(doc, 'backend-python')['stack_sibling'] = 'frontend';
+    });
+  });
+  // backend still names backend-python, which now names frontend; frontend is
+  // stack-neutral, so the python row's pair is the wrong-stack defect.
+  assert.ok(hasFinding(findings, 'intent-stack-invalid', 'backend->backend-python:not-reciprocal'));
+  assert.ok(hasFinding(findings, 'intent-stack-invalid', 'backend-python->frontend:wrong-stack'));
+});
+
+test('a stack without a sibling is caught', (t) => {
+  const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      delete intentRow(doc, 'backend')['stack_sibling'];
+    });
+  });
+  assert.ok(hasFinding(findings, 'intent-stack-invalid', 'backend:unpaired'));
+});
+
+test('a generic signal that is not one of the row signals is caught', (t) => {
+  const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      intentRow(doc, 'new-feature')['generic_signals'] = ['add', 'refactor'];
+    });
+  });
+  assert.ok(hasFinding(findings, 'intent-generic-signal-unknown', 'new-feature:refactor'));
+});
+
+test("a stack-bearing intent whose domain sample routes elsewhere is caught", (t) => {
+  const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      intentRow(doc, 'backend-python')['enabled'] = true;
+    });
+    editJson(root, 'registries/routing.json', (doc) => {
+      const domain = arrayAt(doc, 'domains').find((row) => isRecord(row) && row['id'] === 'backend-python');
+      if (!isRecord(domain)) throw new Error('the backend-python domain is not in routing.json');
+      domain['sample_path'] = '/tmp/app/web/components/Button.tsx';
+    });
+  });
+  assert.ok(findings.some((f) => f.code === 'stack-intent-sample-unrouted' && f.subject?.startsWith('backend-python->backend-python:routes-to-') === true));
+});
+
+test('an inactive deprecated stack-bearing intent owes no sample path', (t) => {
+  const findings = run(t);
+  assert.ok(!findings.some((f) => f.code === 'stack-intent-sample-unrouted' && f.subject?.startsWith('backend-python->') === true));
+});
+
 test('policy.json risk aggregation other than max is caught', (t) => {
   const findings = run(t, (root) => {
     editJson(root, 'registries/policy.json', (doc) => {

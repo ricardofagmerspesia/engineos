@@ -1,5 +1,11 @@
 # Base Rules — always on
 
+## Awaiting user input
+- Present every user decision through available, permitted clickable input controls: clarification, planning, preview, approvals, final checks, security, and completion offers. Use concise meaningful options, including **Provide details** when free text is needed; accept details through the host text field. Required decisions remain pending until submitted.
+- State the decision and what each choice permits. For approvals, identify the concrete scope, revision and action; use only a host tool that permits approval requests.
+- If interactive input is unavailable or disallowed, ask the question in text with labelled alternatives and explain the fallback. Keep the pending decision visible instead of ending with only a waiting notice.
+- Resume dependent work only after the required answer is submitted. Preselection, silence and timeouts are not consent. Continue independent authorized work while awaiting a reply, and reuse valid same-task answers on resume.
+
 ## Naming
 - DO name by intent, not implementation: `retryFailedJobs()` not `loopArray()`.
 - DO use full words: `userRepository` not `usrRepo`. Abbreviations only when industry-standard (id, url, dto).

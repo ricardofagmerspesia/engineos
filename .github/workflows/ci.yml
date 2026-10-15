@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      approve_checks:
+        description: "Approve final lint/typecheck/build/integrity checks for this integrated ref and run"
+        type: boolean
+        required: true
+        default: false
       approve_tests:
         description: "Approve final tests, behavioral evals, benchmarks and smoke checks for this run"
         type: boolean
@@ -23,12 +28,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  approval-pending:
+    if: github.event_name != 'workflow_dispatch' || inputs.approve_checks != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Final approval pending
+        run: echo "Validation pending — manually dispatch the integrated ref with explicit approve_checks (and approve_tests for tests). This is not passed validation." >> "$GITHUB_STEP_SUMMARY"
+
   verify:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
           cache: npm
@@ -102,8 +115,9 @@ jobs:
           fi
           echo "ok: registries/agents.json matches scripts/gen-agent-registry.sh output"
 
-  # Source and console integration validation run concurrently on every event.
+  # Explicit manual final approval only; PR/push never authorize package checks.
   console:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true
     runs-on: ubuntu-latest
     # Next builds are the slowest step here; 15 minutes is well above the observed
     # runtime and still far below the six-hour default.
@@ -116,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22" # better-sqlite3 >= 13 requires node >= 22 (engines)
           cache: npm
@@ -135,10 +149,10 @@ jobs:
         run: npm run build
 
   # Tests are a final stage with explicit human approval for this workflow run.
-  # Push and pull_request events validate integration without authorizing tests.
+  # Push and pull_request events leave validation pending, never implicitly green.
   final-tests:
     needs: [verify, console]
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true && inputs.approve_tests == true
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -150,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
           cache: npm
@@ -205,7 +219,7 @@ jobs:
 
   console-tests:
     needs: [verify, console]
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true && inputs.approve_tests == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -214,7 +228,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -233,7 +247,7 @@ jobs:
     # Packaging includes installer and runtime smoke tests, so the whole job
     # belongs to the approved final stage after all integration validation.
     needs: [verify, console]
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true && inputs.approve_tests == true
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -248,7 +262,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
           cache: npm
@@ -374,7 +388,7 @@ jobs:
           }
           Write-Host "ok: install.ps1 registered the EngineOS hooks in $scratch"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.os == 'ubuntu-latest'
         with:
           name: engineos-release

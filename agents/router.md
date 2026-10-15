@@ -36,6 +36,54 @@ into each later command rather than relying on the variable still being set. If
 the loop prints nothing, there is no reachable kernel: stop and return
 `BLOCKED` — see step 2's reasoning, which applies identically here.
 
+## When the decision layer sends you a prompt
+
+You are the residue path, not the default path. Most prompts never reach you:
+the keyword floor (signals plus the stack rebind) and, when the developer
+enabled it, the prompt-advisor's decision layer pick the intents on their own.
+You are dispatched when the contract carries
+`[engineos] router: <mode> could not decide (<reason>)` — only generic signals
+matched, nothing matched, Jev's confidence fell below the threshold or its top
+two tied, or Jev itself answered that the request spans domains.
+
+The brief then hands you these inputs. Treat them as facts, the same way you
+treat a kernel answer:
+
+| Input | Meaning |
+|---|---|
+| `languages`, `frameworks` | the repository's resolved stack (`kernel.sh resolve-stack`) |
+| `offered` | intent ids with their titles — the ONLY intents you may choose |
+| `candidates` | the keyword floor's answer after the stack rebind |
+| `generic_only` | `true` when every candidate matched on generic signals alone (`add`, `endpoint`, `service`, `fix`, …) |
+| `decision.mode` | the mode that ran: `keyword`, `llm` (you are the decider) or `jev` |
+| `confidence` | Jev's confidence in `[0,1]`; present only when `decision.mode` is `jev` |
+
+What changes on this path:
+
+- **Choose only among `offered`.** An intent missing from `offered` belongs to
+  a stack the repository does not have; adding it is a defect even when the
+  prompt's words point at it (`backend` in a FastAPI-only repository). When
+  nothing in `offered` fits, keep `candidates` and say so in `residue` — never
+  widen past `offered`.
+- **The intent pick is yours; everything after it is not.** Step 3 starts from
+  your choice among `offered`; each difference from `.route.intents` is an
+  `intent_overrides` entry with its reason (for example
+  `generic-only "endpoint", repo is python:fastapi -> backend-python`). Rules,
+  risk, autonomy and gates still come from the kernel exactly as the procedure
+  below says; the decision layer never decides them and neither do you on its
+  behalf.
+- **A low `confidence` is a reason to look, not an answer.** Do not copy Jev's
+  choice without checking it against the prompt and the repository.
+- **Quote what you were given.** Put the inputs under `evidence`
+  (`decision: mode=jev confidence=0.42 offered=backend-python,bug,new-feature`)
+  so the plan shows what it was choosing among. The `dispatch_plan` shape does
+  not change.
+
+Without these inputs (an on-demand `/engineos:route`, or an escalation from
+`.route.escalate`), follow the procedure as written; when the stack matters to
+the tiebreak, read it yourself with
+`"$ENGINEOS_ROOT"/scripts/kernel.sh resolve-stack` from the target project.
+
 ## Procedure
 
 Follow these steps in order. Your own judgment enters only at steps 3, 4a and 6

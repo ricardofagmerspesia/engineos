@@ -90,7 +90,7 @@ test('route-intent requires exactly one argument', () => {
 test('route-intent answers a zero-match prompt as ambiguous with exit 0', () => {
   const io = memoryIo({ env });
   assert.equal(runKernel(['route-intent', 'zzz qqq'], io), 0);
-  assert.deepEqual(JSON.parse(io.stdout.join('')), { matches: [], ambiguous: true, ranked: [], margin: null });
+  assert.deepEqual(JSON.parse(io.stdout.join('')), { matches: [], ambiguous: true, ranked: [], margin: null, rebound: [], generic_only: false });
 });
 
 test('route-intent emits the section and its matches in the legacy key order', () => {
@@ -98,8 +98,9 @@ test('route-intent emits the section and its matches in the legacy key order', (
   assert.equal(runKernel(['route-intent', 'run a retro'], io), 0);
   const answer: unknown = JSON.parse(io.stdout.join(''));
   if (!isRecord(answer)) throw new Error('route-intent did not answer an object');
-  // contracts.md@rev1 §2.2: the ranking siblings trail the two legacy keys.
-  assert.deepEqual(Object.keys(answer), ['matches', 'ambiguous', 'ranked', 'margin']);
+  // contracts.md@rev1 §2.2: the ranking siblings trail the two legacy keys; the
+  // stack-floor fields follow them.
+  assert.deepEqual(Object.keys(answer), ['matches', 'ambiguous', 'ranked', 'margin', 'rebound', 'generic_only']);
   const matches = answer['matches'];
   if (!Array.isArray(matches)) throw new Error('route-intent did not answer a matches array');
   const first: unknown = matches[0];
@@ -492,7 +493,7 @@ test('route-escalate answers the escalate composite in the legacy key order', ()
   const argv = ['route-escalate', '--prompt', 'add a paginated orders endpoint to the API and mirror the screen to mobile'];
   assert.deepEqual(keysOf(argv), [
     'escalate', 'reasons', 'intents', 'suppressed', 'agents', 'model_tier', 'risk_floor', 'scale', 'ambiguous',
-    'ranked', 'margin', 'judge',
+    'ranked', 'margin', 'rebound', 'generic_only', 'judge',
   ]);
   const answer = answerOf(argv, 0);
   if (!isRecord(answer)) throw new Error('route-escalate did not answer an object');
@@ -688,7 +689,6 @@ test('resolve-stack detects the tree at the given directory', (t) => {
   assert.deepEqual(JSON.parse(io.stdout.join('')), {
     packages: [
       { dir: '.', language: 'node', framework: 'react', compose_service: null },
-      { dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto' },
     ],
     source: 'detected',
   });
@@ -717,12 +717,12 @@ test('resolve-stack defaults to cwd outside a work tree and resolves a relative 
   const io = memoryIo({ env, cwd: dir });
   assert.equal(runKernel(['resolve-stack'], io), 0);
   assert.deepEqual(JSON.parse(io.stdout.join('')), {
-    packages: [{ dir: 'svc', language: 'python', framework: 'django', compose_service: null, python_env: 'auto' }],
+    packages: [],
     source: 'detected',
   });
   const io2 = memoryIo({ env, cwd: dir });
   assert.equal(runKernel(['resolve-stack', 'svc'], io2), 0);
-  assert.equal(JSON.parse(io2.stdout.join('')).packages[0].dir, '.');
+  assert.deepEqual(JSON.parse(io2.stdout.join('')).packages, []);
 });
 
 test('resolve-stack refuses a flag, a second argument, a missing directory and a malformed config', (t) => {
@@ -741,4 +741,29 @@ test('resolve-stack refuses a flag, a second argument, a missing directory and a
   const io4 = memoryIo({ env, cwd: dir });
   assert.equal(runKernel(['resolve-stack', dir], io4), 1);
   assert.deepEqual(JSON.parse(io4.stdout.join('')), { error: `${join(dir, '.engineos', 'config.json')}: the document has an unknown key "x"` });
+});
+
+
+test('explicit deprecated Python stack declarations retain compatibility without autodetection', (t) => {
+  const dir = tempRoot(t);
+  mkdirSync(join(dir, '.engineos'));
+  writeFileSync(join(dir, '.engineos/config.json'), JSON.stringify({version: 1, stack: {packages: [
+    {dir: 'api', language: 'python', framework: 'fastapi', compose_service: null, python_env: 'auto'},
+    {dir: 'svc', language: 'python', framework: 'django', compose_service: null, python_env: 'auto'},
+  ]}}));
+  const io = memoryIo({env});
+  assert.equal(runKernel(['resolve-stack', dir], io), 0);
+  const result = JSON.parse(io.stdout.join(''));
+  assert.equal(result.source, 'config');
+  assert.deepEqual(result.packages.map((entry: {framework: string}) => entry.framework), ['fastapi', 'django']);
+});
+
+test('workflow-gate CLI denies missing facts and reports host attestation enforcement', () => {
+  const io = memoryIo({env});
+  assert.equal(runKernel(['workflow-gate', '--facts', '{}'], io), 0);
+  const result = JSON.parse(io.stdout.join(''));
+  assert.equal(result.productionAllowed, false);
+  assert.equal(result.validationAllowed, false);
+  assert.equal(result.enforcement, 'host-attestation-only');
+  assert.equal(runKernel(['workflow-gate', '--facts', '{"environmentApproval":true}'], memoryIo({env})), 0);
 });

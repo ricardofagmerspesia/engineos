@@ -1,0 +1,131 @@
+{
+  "taskId": "fast-workflow",
+  "scopeRevision": "sha256:eac865676f0089dfe493d7858dc88ee69aaf8a9882242fc947430c8a12bc170a",
+  "sourceRevision": "sha256:3b68c60edf680e82ce3a62792650d4a8ce3a6656c084b33c0d745541dd2d35b6",
+  "hashMethod": "sha256 of compact JSON path/hash manifest in sorted path order",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "3322562dee1d52a214e07f8f3a60643a2dab0d1f45e3934ea58a3eb845327eaa"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "a1c647aaa4299a170f8708b50b27f2fb7f2670356b5866c8385e5e05b75996a1"
+    },
+    {
+      "path": "commands/implement-spec.md",
+      "sha256": "00d2ee16b3e6f369cba2e4c4888812c641ffa731b61a00fe47c771b0b0ef0393"
+    },
+    {
+      "path": "commands/implement.md",
+      "sha256": "e1c00d6eae209fbd963ffbed1215662bd83a2c650aa9d24002e48235f86fc4b9"
+    },
+    {
+      "path": "commands/new-feature.md",
+      "sha256": "18dab0c2e6558275f7a7d492b2208e868344e7e87d87f88ff5a03e68e7174729"
+    },
+    {
+      "path": "docs/COMPATIBILITY.md",
+      "sha256": "5954e573f8d54b5a9becbb4e59050064e80e30f4f933ef167741f90a993ab121"
+    },
+    {
+      "path": "docs/specs/fast-workflow/TASKS.md",
+      "sha256": "00788936bf12d6d9c389f53afdeb66ec62c7fbcd4df7525a60ed2cec5c27a38e"
+    },
+    {
+      "path": "docs/specs/fast-workflow/contracts.md",
+      "sha256": "372fdf65a5bf185ab9759d660532df8718fd7c30c464238695c3116500b410c1"
+    },
+    {
+      "path": "docs/specs/fast-workflow/units.json",
+      "sha256": "ffabdb96cefa4c0a225b0dcc60cb27f92993d0449ad296f3cfd7659a8c3a07bf"
+    },
+    {
+      "path": "registries/intents.json",
+      "sha256": "1c427b68264b10d8dc668ec34a140a9151e9696b550ce802183cc53ef97a501c"
+    },
+    {
+      "path": "registries/policy.json",
+      "sha256": "00fc4b820a7a900db69f9004a28dd267c7aecea40ee4784b937e47318a75e0d0"
+    },
+    {
+      "path": "registries/skill-references.json",
+      "sha256": "8aed2e156e17f7a64b6c842884273392024d00d1b77bac27e14c6b68c6352325"
+    },
+    {
+      "path": "rules/gates.md",
+      "sha256": "a51a05342e8cbd16db843034702ab7127ed69d6924cf85215893a3397aa58a96"
+    },
+    {
+      "path": "rules/parallelism.md",
+      "sha256": "631ecbb200affe74ce3829e9f0576e69852d5439fa18c8a17c65437530186554"
+    },
+    {
+      "path": "rules/subagents.md",
+      "sha256": "f1d2434e39b2965fa3c68f6d3d6b0adef372f49a77a0056fb17b75d2c0241028"
+    },
+    {
+      "path": "rules/testing.md",
+      "sha256": "375921e840cce16490fe5ff9fd16c7290e5fe35d6fad896f242849b4c5e85d58"
+    },
+    {
+      "path": "rules/verification.md",
+      "sha256": "ecb3f0c416d3b6d0dcb2c2ceaa83ef80f1bb78eadc3d66aecfc896e6d3c64b63"
+    },
+    {
+      "path": "skills/engineos-implement-spec/SKILL.md",
+      "sha256": "172b9d8c678074985b3041c4f585ddefc88f8e3028d847684009712d95aecbaf"
+    },
+    {
+      "path": "skills/engineos-spec/SKILL.md",
+      "sha256": "f1e63ec9d37991f29d22f0a549cbec7db8dd317230f3c1a4e30a75df7253085d"
+    },
+    {
+      "path": "src/hooks/prompt-advisor-guidance.ts",
+      "sha256": "31e8482deef996a464146f890a815ce82c12dabba5d156cc9e057f8e1b0b9aea"
+    },
+    {
+      "path": "src/kernel/execution.ts",
+      "sha256": "686adaf0d35f55456cb6e23d7269ff0375db64bcc3e27b7e2212bfe9acbe8395"
+    },
+    {
+      "path": "src/kernel/resolve.ts",
+      "sha256": "9c5d2ca0bf46820d059de519844eaea2bf6f78e57c23398ee5ad9ea7358ff4c9"
+    },
+    {
+      "path": "src/kernel/skill-reference.ts",
+      "sha256": "fda1551bcda75dbe2cb4765577b2a0f5761a4d0e96bb4791a47882cf8845e3c8"
+    },
+    {
+      "path": "src/registry/policy.ts",
+      "sha256": "c18fd553f734e88eabf089798c4d2f5f9c54873d09f01705f52fd67a13c456e7"
+    },
+    {
+      "path": "src/workflow/contracts.ts",
+      "sha256": "2dbe97cd8663088f5f0c99a111869dd11126559017a57dd14d680b6d60501a4c"
+    },
+    {
+      "path": "src/workflow/gates.ts",
+      "sha256": "233154c7093264d8d62a1e89e341db8c05e2f146adbd6a58d4046599469b4094"
+    },
+    {
+      "path": "templates/adapters/claude-code.md",
+      "sha256": "025b91bc5de832c93feed2d6e74d468e53375e0ca754685d40b3d13b0c311580"
+    },
+    {
+      "path": "templates/adapters/codex.md",
+      "sha256": "f7605f5868a20a64c2f99e4ebd370f200fb9a42693e18131a679b6126a4990fa"
+    },
+    {
+      "path": "templates/adapters/cursor.md",
+      "sha256": "b3ed60c25547bcabda08a76a133ed92b7e42c4b2e32c5b198e4423c4e697acde"
+    },
+    {
+      "path": "templates/cursor/commands/implement.md",
+      "sha256": "bc33b146641fec91fda7464847e51b9abf5f6d6ff170e6ca9896cf29e3268a99"
+    }
+  ],
+  "baseline": "/var/folders/1v/g7nv72wj1ss4h0z3v90yc4k00000gn/T/engineos-fast-workflow-baseline-ilqfcbc6",
+  "runtimeBundle": "pending rebuild; excluded generated output",
+  "executableValidation": "pending human choice"
+}

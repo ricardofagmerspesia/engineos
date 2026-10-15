@@ -1,6 +1,6 @@
 ---
 name: kubernetes-specialist
-description: Read-only Kubernetes specialist — workloads, events, resource usage, config, via the kubernetes MCP. Never mutates the cluster. Dispatched by the audit orchestrator. Alias: kovac.
+description: Read-only Kubernetes specialist — workloads, events, resource usage, config, via the kubernetes MCP. Never mutates the cluster. Dispatched by the audit orchestrator. Alias: corradin.
 tools: Read, Grep, Glob, Bash, mcp__kubernetes
 model: opus
 tier: build

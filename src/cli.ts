@@ -14,9 +14,12 @@ import { runSettingsMerge } from './install/cli';
 import { runBypass } from './bypass/cli';
 import { runGen } from './gen/cli';
 import { runEvals } from './evals/run';
+import { runRouterGolden } from './evals/router-golden';
 import { runBench } from './bench/run';
 import { runUsageReport } from './report/usage';
 import { runValidate } from './validate/cli';
+import { runScheduler } from './scheduler/cli';
+import { runWorkflowReport } from './report/workflow-cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -80,8 +83,11 @@ const table: CommandTable = {
   bypass: runBypass,
   gen: runGen,
   evals: runEvals,
+  'router-golden': runRouterGolden,
   bench: runBench,
   'usage-report': runUsageReport,
   validate: runValidate,
+  scheduler: runScheduler,
+  'workflow-report': runWorkflowReport,
 };
 exitWith(dispatch(table, argv, io), (code) => process.exit(code));

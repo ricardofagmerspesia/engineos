@@ -2,6 +2,7 @@ import { KernelError } from '../lib/json';
 import { combine, type CombineOutput } from './combine';
 import type { Registries, RiskTier } from './context';
 import { decisionsSection, type ComposedDecisionsSection, type DecisionMatch } from './decisions';
+import type { ExecutionSection } from './execution';
 import { hitlSection, type HitlSection } from './hitl';
 import type { JudgeFact, JudgeMode, JudgeSummary } from './judge-facts';
 import type { EscalateRouteSection, SuppressedIntent } from './route';
@@ -40,6 +41,9 @@ export interface TaskContractSection {
   judge: JudgeSummary;
   risk_proposal: RiskTier | null;
   tiebreak: string | null;
+  // Present only when execution facts were declared (resolve.ts fills it after
+  // composition), so a contract without them keeps the twenty-three keys above.
+  execution?: ExecutionSection;
 }
 
 interface TaskContractFacts {
@@ -48,6 +52,10 @@ interface TaskContractFacts {
   judge: JudgeFact | null;
   // Validated against the registries; absent when no tie-break fact was declared.
   tiebreak: TiebreakFact | null;
+  // A simple task executed directly (execution.planning): the generic
+  // spec-threshold rule is replaced by the recorded scoped choice, so it is
+  // left out of the matched decisions. Every other rule stays.
+  simple?: boolean;
 }
 
 // The three keys the block answers, in the order resolve assigns them.
@@ -62,9 +70,13 @@ export function composeTaskContract(facts: TaskContractFacts, regs: Registries):
   // Checked after routing because the ranking is the reference: a score for a
   // candidate this prompt never ranked is a broken caller (contracts §3.1).
   if (tiebreak !== null) refuseUnrankedTiebreak(tiebreak, route.ranked);
+  const declaredDecisions = decisionsSection({ prompt }, regs);
+  const decisions = facts.simple === true
+    ? { ...declaredDecisions, matches: declaredDecisions.matches.filter((match) => !genericSpecThreshold(match.id, regs)) }
+    : declaredDecisions;
   const combined = combine({
     route,
-    decisions: decisionsSection({ prompt }, regs),
+    decisions,
     scale: route.scale,
     judge,
     mode: judgeMode(judge, regs),
@@ -203,6 +215,17 @@ function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSec
     risk_proposal: combined.riskProposal,
     tiebreak: combined.tiebreakWinner,
   };
+}
+
+// Only the generic size/new-feature obligation is replaceable by a scoped
+// choice: the rule is recognised by its declared shape, not by its id alone, so
+// a rule that grows another condition stops being replaceable.
+export function genericSpecThreshold(id: string, regs: Registries): boolean {
+  const rule = regs.decisionRules.rules.find((entry) => entry.id === id);
+  return id === 'rule-spec-threshold' && rule !== undefined && rule.then.gate === 'design' &&
+    rule.then.risk === null && rule.then.require.length === 1 && rule.then.require[0] === 'design-doc' &&
+    rule.when['files_changed'] === '>2' && rule.when['or_new_feature'] === true &&
+    Object.keys(rule.when).every((key) => key === 'files_changed' || key === 'or_new_feature');
 }
 
 // The `when` key that names a multi-agent topology in decision-rules.json. The

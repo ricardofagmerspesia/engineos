@@ -24,7 +24,7 @@ const checkout = resolveRoot({}, __dirname);
 
 // The operator's machine-wide bypass must never decide a case; the bash suite
 // exported the same isolation before its first assertion.
-const ISOLATED: Record<string, string> = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass' };
+const ISOLATED: Record<string, string> = { ENGINEOS_BYPASS_FLAG: '/nonexistent/engineos.bypass', ENGINEOS_ROUTER: 'llm' };
 
 // The harness envelope() carries no prompt field, so a UserPromptSubmit payload
 // is built here. Suite-local by the wave brief: the harness is another agent's
@@ -57,7 +57,7 @@ function guidance(prompt: string, env: Record<string, string> = {}): string {
   const key = JSON.stringify([prompt, env]);
   const cached = contexts.get(key);
   if (cached !== undefined) return cached;
-  const result = runAdvisor({ prompt, cwd: '', session_id: 'test' }, { ENGINEOS_TELEMETRY: '0', ...env });
+  const result = runAdvisor({ prompt, cwd: '', session_id: 'test' }, { ENGINEOS_TELEMETRY: '0', ENGINEOS_ROUTER: 'llm', ...env });
   const text = additionalContext(result.stdout);
   contexts.set(key, text);
   return text;

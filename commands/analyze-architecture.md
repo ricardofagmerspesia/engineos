@@ -4,7 +4,7 @@ argument-hint: [optional path/scope to focus the analysis]
 allowed-tools: Task
 ---
 
-Dispatch the `architecture-analyst` agent (alias `analyst`) via the Task tool with
+Dispatch the `architecture-analyst` agent (alias `ricardo-fagmer`) via the Task tool with
 `MODE: ANALYZE`, passing `$ARGUMENTS` as the scope (if empty, analyze the whole
 repository).
 

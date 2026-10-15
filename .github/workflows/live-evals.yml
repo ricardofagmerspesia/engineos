@@ -6,6 +6,11 @@ name: live-evals
 on:
   workflow_dispatch:
     inputs:
+      approve_checks:
+        description: "Approve final lint/typecheck/build/integrity checks for this integrated ref and run"
+        type: boolean
+        required: true
+        default: false
       approve_tests:
         description: "Approve final live behavioral evals and model token spend for this run"
         type: boolean
@@ -17,12 +22,13 @@ permissions:
 
 jobs:
   verify:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
           cache: npm
@@ -35,6 +41,7 @@ jobs:
           git diff --exit-code -- dist/engineos.cjs
 
   console:
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -45,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -60,13 +67,13 @@ jobs:
 
   live-eval:
     needs: [verify, console]
-    if: github.event_name == 'workflow_dispatch' && inputs.approve_tests == true
+    if: github.event_name == 'workflow_dispatch' && inputs.approve_checks == true && inputs.approve_tests == true
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
 

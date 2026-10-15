@@ -17,7 +17,23 @@ import type {
   TaskContractSection,
 } from '../kernel';
 import type { RiskTier } from '../kernel/context';
+import type { EscalateReason } from '../kernel/decision-layer';
+import type { Rebound } from '../kernel/route';
 import { KernelError } from '../lib/json';
+import type { RouterMode, RouterSetting } from '../registry/policy-router-decision';
+
+// What the routing decision layer contributes to the guidance: which mode
+// decided, any downgrade to say out loud, and any residue to hand the router
+// agent. Null when the layer did not run (a pure question, or a kernel answer
+// with nothing substantive to route).
+export interface RouterView {
+  mode: RouterMode;
+  confidence: number | null;
+  // Rendered as `<requested> unavailable: <reason>`; `reason` is the decision's
+  // own fallback reason, or `repo-cap` / `error`, which only the advisor sees.
+  fallback: { requested: RouterSetting; reason: string } | null;
+  escalation: { reason: EscalateReason; candidates: string[] } | null;
+}
 
 // One prompt's kernel answer, narrowed to the four sections the guidance reads.
 // `hitl` is null rather than absent for the same reason the resolve-task
@@ -28,6 +44,7 @@ export interface TaskAnswer {
   decisions: DecisionsSection;
   contract: TaskContractSection;
   hitl: HitlSection | null;
+  router: RouterView | null;
 }
 
 // The registry values the notes quote. They were literals (`fable`, `opus`,
@@ -73,10 +90,20 @@ function tierModel(regs: Registries, tier: string): string {
 // The order is asserted by the suite (a big-task prompt reads "big-task
 // signal ... route escalation"), so it is the contract, not a preference.
 export function guidanceNotes(task: TaskAnswer, lookups: GuidanceLookups): string[] {
+  const planning = task.contract.execution?.planning;
+  if (planning?.simple === true && planning.rulesMode === 'stack') {
+    return [
+      planning.decision === 'direct'
+        ? '[engineos] simple direct task — use returned stack guidance and security/Git safeguards. No mandatory prototype, spec or ticket workflow. Ask fresh final check consent only after implementation is integrated.'
+        : '[engineos] simple task planning pending — ask permitted clickable Implement directly / Create a lightweight spec choices before creating documents. Record the actual scope-bound answer; load only stack guidance and security/Git safeguards. No checks during implementation.',
+      ...classifyNote(task),
+    ];
+  }
   return [
     ...scaleNotes(task.contract, lookups),
     ...decisionNote(task.decisions, lookups),
     ...routeNote(task, lookups),
+    ...routerNotes(task),
     ...hitlNote(task.hitl),
     ...classifyNote(task),
   ];
@@ -109,7 +136,7 @@ function decisionNote(decisions: DecisionsSection, lookups: GuidanceLookups): st
     ? `\n[engineos] a matched rule sets risk=high — autonomy ceiling ${lookups.highRiskCeiling} per rules/risk-autonomy.md: human approval before any external effect, and a rollback path before release.`
     : '';
   return [
-    `[engineos] decision rules matched this prompt (registries/decision-rules.json).\n${lines}\nConfirm each requirement is met or explicitly waived with a reason before claiming done. These are keyword matches on the prompt only — apply the full registry per rules/gates.md, and classify risk per rules/risk-autonomy.md.${high}`,
+    `[engineos] decision rules matched this prompt (registries/decision-rules.json).\n${lines}\nConfirm each requirement is met or explicitly waived with a reason before claiming done. These are keyword matches on the prompt only — resolve complete execution facts before artifacts; eligible simple tasks ask a scope-bound clickable direct/spec choice rather than automatically creating a spec. Independent security/design obligations remain. Apply the full registry per rules/gates.md, and classify risk per rules/risk-autonomy.md.${high}`,
   ];
 }
 
@@ -138,7 +165,7 @@ function routeNote(task: TaskAnswer, lookups: GuidanceLookups): string[] {
   }
   if (contract.substantive) {
     return [
-      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)}${tiebreakField(contract.tiebreak)} — load these before acting; the risk floor is a floor, not the final tier. No router dispatch needed.`,
+      `[engineos] task contract (kernel, deterministic): intents=${csv(contract.intents)} agents=${csv(contract.agents)} rules=${csv(contract.rules)} policy_rules=${csv(contract.policy_rules)} skills=${csv(contract.skills)} commands=${csv(contract.commands)} mcp=${csv(contract.mcp)} model_tier=${orDash(contract.model_tier)} risk_floor=${orDash(contract.risk_floor)} autonomy_ceiling_at_floor=${orDash(contract.autonomy_ceiling_at_floor)}${tiebreakField(contract.tiebreak)}${routerField(task.router)}${reboundField(route.rebound)} — load these before acting; the risk floor is a floor, not the final tier. ${dispatchClause(task.router)}`,
     ];
   }
   return [];
@@ -148,6 +175,43 @@ function routeNote(task: TaskAnswer, lookups: GuidanceLookups): string[] {
 // rev3 §16.6), so every line without a winner renders byte for byte as before.
 function tiebreakField(winner: string | null): string {
   return winner === null ? '' : ` tiebreak=${winner}`;
+}
+
+// The contract line used to end "No router dispatch needed." unconditionally;
+// when the decision layer hands the request on (the line after this one), that
+// sentence would contradict the instruction that follows it.
+function dispatchClause(router: RouterView | null): string {
+  return router === null || router.escalation === null ? 'No router dispatch needed.' : 'Router dispatch needed — see the router line below.';
+}
+
+// ` router=<mode>` plus `/<confidence>` when the mode measured one.
+function routerField(router: RouterView | null): string {
+  if (router === null) return '';
+  return ` router=${router.mode}${router.confidence === null ? '' : `/${router.confidence.toFixed(2)}`}`;
+}
+
+function reboundField(rebound: readonly Rebound[]): string {
+  if (rebound.length === 0) return '';
+  return ` rebound=${rebound.map((swap) => `${swap.from}->${swap.to}(${swap.reason}/${swap.scope})`).join(',')}`;
+}
+
+// The two lines the decision layer adds. A downgrade is always said out loud —
+// a silent one is the failure this layer must never have. The residue line is
+// left out when the kernel already escalated: its own notice names the same
+// agent, and two dispatch instructions for one request read as two dispatches.
+function routerNotes(task: TaskAnswer): string[] {
+  const { router } = task;
+  if (router === null) return [];
+  const notes: string[] = [];
+  if (router.fallback !== null) {
+    notes.push(`[engineos] router: ${router.mode} (${router.fallback.requested} unavailable: ${router.fallback.reason})`);
+  }
+  if (router.escalation !== null && !task.route.escalate) {
+    notes.push(
+      `[engineos] router: ${router.mode} could not decide (${router.escalation.reason}) — dispatch the router agent (agents/router.md, model opus) via the Task tool with the request text, the repository languages/frameworks and these candidates before any write: ${csv(router.escalation.candidates)}. A hook cannot dispatch an agent — you must invoke it.`,
+    );
+  }
+  return notes;
 }
 
 function hitlNote(hitl: HitlSection | null): string[] {

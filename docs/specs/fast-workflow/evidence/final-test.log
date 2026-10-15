@@ -1,0 +1,819 @@
+
+> engineos@1.7.0 test
+> tsc -p tsconfig.json && cd build && node --test
+
+✔ a baseline round-trips through the host-named file (1.007667ms)
+✔ a missing baseline reads as null rather than an invented zero (0.067625ms)
+✔ compare reports a scenario past both the tolerance and the floor (0.070375ms)
+✔ compare accepts a scenario inside the tolerance (0.042167ms)
+✔ compare accepts a ratio breach too small to be told from noise (0.042917ms)
+✔ compare accepts an absolute breach inside the tolerance (0.038042ms)
+✔ compare reports a scenario the baseline does not contain as unmeasured (0.038708ms)
+✔ collectHost reports the host a baseline belongs to (1.031708ms)
+✔ collectHost reports an unknown cpu rather than crashing on an empty list (0.082416ms)
+✔ hostId is stable for the same hardware and ignores the engineos version (0.409666ms)
+✔ hostId separates different hardware (0.074083ms)
+✔ percentile uses nearest-rank on the sorted values (0.364833ms)
+✔ percentile of a single value is that value (0.052125ms)
+✔ percentile refuses an empty series rather than inventing a zero (0.147708ms)
+✔ summarize reports both percentiles and carries the inputs it was given (0.070625ms)
+✔ an unset or empty multiplier is the bash default of 1 (0.956459ms)
+✔ the multiplier accepts what python float() accepted (0.130125ms)
+✔ a non-numeric multiplier is refused with the python message (0.277708ms)
+✔ a multiplier at or below zero is refused with the python message (0.060625ms)
+✔ medianMs runs the command once per sample and takes the middle duration (0.340541ms)
+✔ a command with no stdin or env is spawned with an empty input and an inherited environment (0.056666ms)
+✔ a non-zero exit is a loud failure naming the command, not a fast median (0.073291ms)
+✔ a command killed by a signal fails with the signal name (0.057958ms)
+✔ a command that could not be spawned fails with the spawn error (0.057333ms)
+✔ alwaysOnBytes sums CLAUDE.md and the files it imports with @rules/ lines (2.93825ms)
+✔ an ok millisecond line pads the status to four columns (0.071375ms)
+✔ a median equal to the budget fails, because python asked for strictly less (0.041958ms)
+✔ a byte line truncates rather than rounding (0.033583ms)
+✔ the multiplier scales the budget, not the measurement (0.03175ms)
+✔ the report is the header and the five budgets, in order (3.765833ms)
+✔ one budget over its bound turns the run red without hiding the other four (2.480792ms)
+✔ the multiplier raises every budget and can turn a red run green (1.226875ms)
+✔ a bad multiplier is refused before anything is spawned (0.953875ms)
+✔ the cache-hit budget gets one warm run before its seven samples (1.056083ms)
+✔ the timed hooks run with the bypass flag and telemetry pinned (0.973292ms)
+✔ a failing hot path reports red and still removes its throwaway repo (3.126875ms)
+✔ the command binding is the one src/cli.ts registers (1.487917ms)
+✔ a bare bench invocation still prints the five budget lines (1.302541ms)
+✔ bench lifecycle prints a scenario line per measured scenario (1.080625ms)
+✔ bench baseline refuses to compare when no baseline exists for this host (4.092333ms)
+✔ bench baseline reports drift without failing, because the host noise is larger than the effect (3.938375ms)
+✔ bench baseline --strict fails on the same drift (2.696959ms)
+✔ an unknown bench subcommand is refused rather than silently running the budgets (0.639875ms)
+✔ every scenario declares a phase and a stable name (0.387542ms)
+✔ the warm edit scenario spawns the route hook and records a routing sample (0.300792ms)
+✔ scenarios record unobserved usage as null, never as zero (0.370416ms)
+✔ routing fires on a code edit when no switch is on (324.031083ms)
+✔ the dispatch banner fires when no switch is on (245.7905ms)
+✔ the return banner fires when no switch is on (188.172458ms)
+✔ the prompt advisor speaks when no switch is on (203.055625ms)
+✔ a code edit raises the unrecorded flag when no switch is on (212.093833ms)
+✔ the record gate blocks on an unrecorded change when no switch is on (260.951292ms)
+✔ routing stays silent under the repo marker (166.404291ms)
+✔ the dispatch banner stays silent under the repo marker (154.390667ms)
+✔ the return banner stays silent under the repo marker (168.739417ms)
+✔ the record gate stops blocking under the repo marker (250.874583ms)
+✖ stop-verify emits nothing at all under the repo marker (157.938083ms)
+✔ a code edit raises no new unrecorded flag under the repo marker (147.129458ms)
+✔ the prompt advisor announces the active bypass (179.044333ms)
+✔ SessionStart expires the repo marker (222.625542ms)
+✔ the CLI answers active when every switch is off (189.269209ms)
+✔ the CLI on creates the repo marker and status names it (213.012667ms)
+✔ the CLI off clears the repo marker and status answers active (409.102584ms)
+✔ routing stays silent under ENGINEOS_BYPASS=1 (112.961625ms)
+✔ the prompt advisor announces ENGINEOS_BYPASS=1 (145.443125ms)
+✔ the CLI status names ENGINEOS_BYPASS=1 (160.444917ms)
+✔ routing stays silent under the machine-wide flag (170.154916ms)
+✔ the prompt advisor announces the machine-wide flag (171.302167ms)
+✔ the CLI status names the machine-wide flag by path (257.519ms)
+✔ the CLI off warns that the machine-wide flag still holds (170.651833ms)
+✔ the CLI off leaves the machine-wide flag in place (144.898708ms)
+✔ the CLI off clears the repo marker even when a sticky switch holds (191.471958ms)
+✔ the CLI refuses a directory outside any git repo (100.157708ms)
+✔ status answers active when every switch is off (166.188917ms)
+✔ on creates the marker in the git dir and says the gates are off (176.373292ms)
+✔ off removes the marker and says the gates are back (176.04175ms)
+✔ status names ENGINEOS_BYPASS=1 (131.719917ms)
+✔ status names the machine-wide flag by path (118.72425ms)
+✔ status reports env over flag over marker (172.154917ms)
+✔ off warns when ENGINEOS_BYPASS=1 still holds the bypass (134.081459ms)
+✔ off warns naming the machine-wide flag and leaves the flag alone (120.367ms)
+✔ a directory outside any git repo is refused with 1 (79.231708ms)
+✔ an unknown action answers 2 with the usage line (82.4045ms)
+✔ no arguments is status for the current directory (127.909167ms)
+
+Interrupted while running:
+
+⚠ checks/agents-skills.test.js (checks/agents-skills.test.js:1:1)
+⚠ checks/contracts.test.js (checks/contracts.test.js:1:1)
+⚠ checks/decision-registries.test.js (checks/decision-registries.test.js:1:1)
+⚠ checks/findings.test.js (checks/findings.test.js:1:1)
+⚠ checks/index.test.js (checks/index.test.js:1:1)
+⚠ checks/kernel.test.js (checks/kernel.test.js:1:1)
+⚠ checks/lib.test.js (checks/lib.test.js:1:1)
+⚠ checks/mirror.test.js (checks/mirror.test.js:1:1)
+⚠ checks/mirrors.test.js (checks/mirrors.test.js:1:1)
+⚠ checks/portability.test.js (checks/portability.test.js:1:1)
+⚠ checks/prose-truth.test.js (checks/prose-truth.test.js:1:1)
+⚠ checks/registries.test.js (checks/registries.test.js:1:1)
+⚠ checks/rules.test.js (checks/rules.test.js:1:1)
+⚠ checks/runtime-governance-breaker.test.js (checks/runtime-governance-breaker.test.js:1:1)
+⚠ checks/runtime-governance-constitution.test.js (checks/runtime-governance-constitution.test.js:1:1)
+✖ checks/agents-skills.test.js (180325.105375ms)
+✖ checks/contracts.test.js (180256.388542ms)
+✖ checks/decision-registries.test.js (180255.000667ms)
+✔ CHECK_IDS carries the 68 check ids with no duplicate (2.4385ms)
+✔ every check id is a C-number with at most a one-letter suffix (0.161916ms)
+✔ isCheckId accepts a declared id (0.047625ms)
+✔ isCheckId rejects an id no family declares (0.035542ms)
+✔ isCheckId rejects a lookalike that is not in the list (0.046875ms)
+✔ finding omits subject entirely when none is given (0.316209ms)
+✔ finding carries the subject when one is given (0.072375ms)
+✔ finding accepts every harness code for any check (0.041291ms)
+✔ finding rejects a code outside the slug pattern (0.150625ms)
+✔ finding rejects a code that fails CODE_PATTERN at its first character (0.108542ms)
+✔ finding rejects a code no augmentation declared (0.054209ms)
+✔ isHarnessCode tells a harness code from a family code (0.041417ms)
+✔ result reports ok when the check produced no finding (0.043166ms)
+✔ result reports fail when the check produced a finding (0.030917ms)
+✔ result reports skip when a pending check produced a finding (0.0265ms)
+✔ result reports ok for a pending check with nothing to report (0.029916ms)
+✔ result keeps the check and title it was given (0.02275ms)
+✔ result copies the findings so later accumulation cannot rewrite it (0.03175ms)
+✔ render pads ok to five columns and prints the title alone (0.035125ms)
+✔ render prints every finding of a failing check, subject-less first (0.037875ms)
+✔ render keeps a colon inside a subject (1.304125ms)
+✔ render prints a skip line with the same tail shape (0.052791ms)
+✔ every declared check id is registered exactly once (2.252208ms)
+✔ every check declares a non-empty code list of valid, unique codes (0.65825ms)
+✔ no family redeclares a harness code as its own (0.385333ms)
+✔ every mirror row id is declared in its check code list (0.280167ms)
+✖ checks/kernel.test.js (180237.029875ms)
+✔ makeContext exposes the root it was built on (2.504459ms)
+✔ readText answers with the file contents under the root (0.870416ms)
+✔ readText answers undefined for a missing file (0.419709ms)
+✔ readText answers undefined for an unreadable path rather than throwing (1.694667ms)
+✔ exists distinguishes a present path from an absent one (1.045041ms)
+✔ list answers with sorted basenames (4.695959ms)
+✔ list answers with nothing when the directory is missing (0.626375ms)
+✔ skipOnce reports one counted failure and dedupes every later call (0.4285ms)
+✔ skipPending reports a skip line and dedupes every later call (1.054833ms)
+✔ a skipOnce token and a skipPending path spelled the same do not collide (0.606916ms)
+✔ each context carries its own dedupe set (1.762625ms)
+✔ deferralsOf prunes the always-on rules CLAUDE.md imports (1.57ms)
+✔ deferralsOf answers with nothing for a rule that defers to no one (1.7485ms)
+✔ deferralsOf treats a missing CLAUDE.md as no always-on rules (1.983292ms)
+✔ a row whose document is absent reports the document, not its elements (8.88775ms)
+✔ a missing anchor and an empty section are each their own finding (1.781625ms)
+✔ an empty or unresolvable registry list is a finding, never a silent pass (4.548167ms)
+✔ a row with no placeholder is a table bug and throws rather than passing (11.00875ms)
+✔ a row with neither an anchor nor scope: file is a table bug and throws (1.437875ms)
+✔ every registry element the section does not name is a finding, subject the element (2.345667ms)
+✔ both directions: a row the registry does not declare is reported as undeclared (2.698375ms)
+✔ a quoted number must match once and equal the registry scalar (2.659375ms)
+✔ scope: 'file' searches the whole document, anchors do not (1.230334ms)
+✔ a case-insensitive row reads prose that renders the ids differently (1.661208ms)
+✔ sliceSection ends at the next heading and distinguishes absent from empty (0.045125ms)
+✔ resolveRegistryPath walks arrays, id selectors and scalar leaves (1.003375ms)
+✔ every row carries a finding code that is well formed and unique within its check (0.588209ms)
+✔ every row names a document that exists and a section that is in it (3.5145ms)
+✔ every row resolves against the shipped registries to a non-empty list (3.964ms)
+✔ every ported mirror check has at least one row (0.125834ms)
+✔ the whole table holds against the shipped documents and registries (8.412958ms)
+✖ checks/portability.test.js (180053.761708ms)
+✔ C36 and C37 are both clean on an unmutated checkout (102431.692542ms)
+✔ C36 is clean when every row token resolves (7.714291ms)
+✔ a router row naming a command with no file under commands/ is caught (5.6065ms)
+✔ the engineos: prefix resolves against the same commands/ directory (8.506542ms)
+✔ a patterns/ reference resolving to no file is caught (6.945417ms)
+✔ a patterns/ reference resolves with or without the .md extension (4.962917ms)
+✔ a patterns/ token that walks out of the directory names no pattern (6.809792ms)
+✔ the same broken token repeated across rows is reported once (6.738083ms)
+✔ a command named outside the table is prose, not a routing reference (7.873708ms)
+✔ a row token carrying argument metasyntax is not a file reference (7.785583ms)
+✔ a table that resolves nothing at all fails rather than passing vacuously (4.8695ms)
+✔ an absent router file is a broken tree, counted as a precondition failure (4.963334ms)
+✔ C37 is clean when every document states the registered count (4.924125ms)
+✔ a README claiming a count the registry does not carry is caught (6.307417ms)
+✔ the hyphenated spelling is read as the same claim (4.504417ms)
+✔ one wrong number written three times in a file is one finding (6.541666ms)
+✔ a count claim in a file the family does not read is left alone (4.419125ms)
+✔ claimedCounts reads every spelling the documents use and nothing else (0.223708ms)
+✔ every code these checks declare is produced by a case above (0.134708ms)
+✖ checks/registries.test.js (180011.814542ms)
+✖ checks/rules.test.js (178781.352708ms)
+✖ checks/runtime-governance-breaker.test.js (174932.216042ms)
+✖ checks/runtime-governance-constitution.test.js (77399.190291ms)
+✖ checks/runtime-governance-hitl-canary.test.js
+✖ checks/runtime-governance-hitl.test.js
+✖ checks/runtime-governance-repair.test.js
+✖ checks/runtime-governance-telemetry.test.js
+✖ checks/runtime-governance.test.js
+✖ checks/runtime-surface-adoption.test.js
+✖ checks/runtime-surface-fs.test.js
+✖ checks/runtime-surface-journal.test.js
+✖ checks/runtime-surface-prose.test.js
+✖ checks/runtime-surface.test.js
+✖ checks/skill-enablement.test.js
+✖ dispatch.test.js
+✖ docs/prose-layer.e2e.test.js
+✖ evals/deterministic.test.js
+✖ evals/live.test.js
+✖ evals/run.test.js
+✖ gen/agent-commands.test.js
+✖ gen/agent-registry.test.js
+✖ gen/frontmatter.test.js
+✖ gen/gen-agent-registry.e2e.test.js
+✖ hooks/announce-agent-dispatch.test.js
+✖ hooks/announce-agent-return.test.js
+✖ hooks/announce-agent.e2e.test.js
+✖ hooks/bypass.test.js
+✖ hooks/cache.test.js
+✖ hooks/classify-failure.test.js
+✖ hooks/ensure-project-layout.e2e.test.js
+✖ hooks/ensure-project-layout.test.js
+✖ hooks/envelope.test.js
+✖ hooks/git-write-guard.test.js
+✖ hooks/governance.e2e.test.js
+✖ hooks/mark-unrecorded.test.js
+✖ hooks/output.test.js
+✖ hooks/post-edit-check.e2e.test.js
+✖ hooks/post-edit-check.test.js
+✖ hooks/prompt-advisor.e2e.test.js
+✖ hooks/prompt-advisor.test.js
+✖ hooks/record-verify.test.js
+✖ hooks/route-before-change.e2e.test.js
+✖ hooks/route-before-change.test.js
+✖ hooks/runner-python.test.js
+✖ hooks/runner.test.js
+✖ hooks/scaffold-equivalence.test.js
+✖ hooks/scaffold.test.js
+✖ hooks/stop-verify-python.e2e.test.js
+✖ hooks/stop-verify.e2e.test.js
+✖ hooks/stop-verify.test.js
+✖ hooks/telemetry.test.js
+✖ hooks/verify-targets.test.js
+✖ init/project.test.js
+✖ install/install-hooks.e2e.test.js
+✖ install/settings-merge.test.js
+✖ io.test.js
+✖ journal/cli.test.js
+✖ journal/exec-journal.test.js
+✖ journal/journal.e2e.test.js
+✖ journal/parity.test.js
+✖ journal/schema.test.js
+✖ journal/telemetry-cli.test.js
+✖ journal/telemetry-parity.test.js
+✖ journal/telemetry.e2e.test.js
+✖ journal/telemetry.test.js
+✖ journal/workflow.test.js
+✖ kernel/admit.test.js
+✖ kernel/breaker.test.js
+✖ kernel/cli.test.js
+✖ kernel/decisions.test.js
+✖ kernel/execution.test.js
+✖ kernel/hitl.test.js
+✖ kernel/kernel-backpressure.e2e.test.js
+✖ kernel/kernel-hitl.e2e.test.js
+✖ kernel/kernel-policy-arms.e2e.test.js
+✖ kernel/kernel-route-escalate.e2e.test.js
+✖ kernel/kernel-skill-state.e2e.test.js
+✖ kernel/kernel.e2e.test.js
+✖ kernel/model.test.js
+✖ kernel/parity.test.js
+✖ kernel/repair.test.js
+✖ kernel/resolve.test.js
+✖ kernel/risk.test.js
+✖ kernel/route.test.js
+✖ kernel/scale.test.js
+✖ kernel/skill-reference.test.js
+✖ kernel/skill-state.test.js
+✖ kernel/stack.test.js
+✖ kernel/waves.test.js
+✖ lib/deferrals.test.js
+✖ lib/git.test.js
+✖ lib/glob.test.js
+✖ lib/json.test.js
+✖ lib/slug.test.js
+✖ lib/time.test.js
+✖ node-guard.test.js
+✖ registry/agents.test.js
+✖ registry/capabilities.test.js
+✖ registry/decision-rules.test.js
+✖ registry/intents.test.js
+✖ registry/models.test.js
+✖ registry/paths.test.js
+✖ registry/policy-exec-journal.test.js
+✖ registry/policy-telemetry.test.js
+✖ registry/policy.test.js
+✖ registry/project-config.test.js
+✖ registry/routing.test.js
+✖ report/usage.test.js
+✖ report/workflow.test.js
+✖ scheduler/state.test.js
+✖ testing/harness.test.js
+✖ validate/cli.test.js
+✖ validate/validate.e2e.test.js
+✖ workflow/gates.test.js
+ℹ tests 280
+ℹ suites 0
+ℹ pass 159
+ℹ fail 1
+ℹ cancelled 120
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 180344.954625
+
+✖ failing tests:
+
+test at bypass/bypass.e2e.test.js:216:22
+✖ stop-verify emits nothing at all under the repo marker (157.938083ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+      status: 0,
+  +   stdout: '{"systemMessage":"[engineos] Final validation pending explicit user approval after integration; automatic Stop ran no checks."}\n'
+  -   stdout: ''
+    }
+  
+      at assertSilent (/Users/ricardofagmer/projects/engineer-spec-ia-pattern/build/bypass/bypass.e2e.test.js:105:22)
+      at TestContext.<anonymous> (/Users/ricardofagmer/projects/engineer-spec-ia-pattern/build/bypass/bypass.e2e.test.js:224:5)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { status: 0, stdout: '{"systemMessage":"[engineos] Final validation pending explicit user approval after integration; automatic Stop ran no checks."}\n' },
+    expected: { status: 0, stdout: '' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at checks/agents-skills.test.js:1:1
+✖ checks/agents-skills.test.js (180325.105375ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/contracts.test.js:1:1
+✖ checks/contracts.test.js (180256.388542ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/decision-registries.test.js:1:1
+✖ checks/decision-registries.test.js (180255.000667ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/kernel.test.js:1:1
+✖ checks/kernel.test.js (180237.029875ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/portability.test.js:1:1
+✖ checks/portability.test.js (180053.761708ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/registries.test.js:1:1
+✖ checks/registries.test.js (180011.814542ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/rules.test.js:1:1
+✖ checks/rules.test.js (178781.352708ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance-breaker.test.js:1:1
+✖ checks/runtime-governance-breaker.test.js (174932.216042ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance-constitution.test.js:1:1
+✖ checks/runtime-governance-constitution.test.js (77399.190291ms)
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance-hitl-canary.test.js:1:1
+✖ checks/runtime-governance-hitl-canary.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance-hitl.test.js:1:1
+✖ checks/runtime-governance-hitl.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance-repair.test.js:1:1
+✖ checks/runtime-governance-repair.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance-telemetry.test.js:1:1
+✖ checks/runtime-governance-telemetry.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-governance.test.js:1:1
+✖ checks/runtime-governance.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-surface-adoption.test.js:1:1
+✖ checks/runtime-surface-adoption.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-surface-fs.test.js:1:1
+✖ checks/runtime-surface-fs.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-surface-journal.test.js:1:1
+✖ checks/runtime-surface-journal.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-surface-prose.test.js:1:1
+✖ checks/runtime-surface-prose.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/runtime-surface.test.js:1:1
+✖ checks/runtime-surface.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at checks/skill-enablement.test.js:1:1
+✖ checks/skill-enablement.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at dispatch.test.js:1:1
+✖ dispatch.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at docs/prose-layer.e2e.test.js:1:1
+✖ docs/prose-layer.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at evals/deterministic.test.js:1:1
+✖ evals/deterministic.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at evals/live.test.js:1:1
+✖ evals/live.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at evals/run.test.js:1:1
+✖ evals/run.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at gen/agent-commands.test.js:1:1
+✖ gen/agent-commands.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at gen/agent-registry.test.js:1:1
+✖ gen/agent-registry.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at gen/frontmatter.test.js:1:1
+✖ gen/frontmatter.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at gen/gen-agent-registry.e2e.test.js:1:1
+✖ gen/gen-agent-registry.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/announce-agent-dispatch.test.js:1:1
+✖ hooks/announce-agent-dispatch.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/announce-agent-return.test.js:1:1
+✖ hooks/announce-agent-return.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/announce-agent.e2e.test.js:1:1
+✖ hooks/announce-agent.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/bypass.test.js:1:1
+✖ hooks/bypass.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/cache.test.js:1:1
+✖ hooks/cache.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/classify-failure.test.js:1:1
+✖ hooks/classify-failure.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/ensure-project-layout.e2e.test.js:1:1
+✖ hooks/ensure-project-layout.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/ensure-project-layout.test.js:1:1
+✖ hooks/ensure-project-layout.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/envelope.test.js:1:1
+✖ hooks/envelope.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/git-write-guard.test.js:1:1
+✖ hooks/git-write-guard.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/governance.e2e.test.js:1:1
+✖ hooks/governance.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/mark-unrecorded.test.js:1:1
+✖ hooks/mark-unrecorded.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/output.test.js:1:1
+✖ hooks/output.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/post-edit-check.e2e.test.js:1:1
+✖ hooks/post-edit-check.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/post-edit-check.test.js:1:1
+✖ hooks/post-edit-check.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/prompt-advisor.e2e.test.js:1:1
+✖ hooks/prompt-advisor.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/prompt-advisor.test.js:1:1
+✖ hooks/prompt-advisor.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/record-verify.test.js:1:1
+✖ hooks/record-verify.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/route-before-change.e2e.test.js:1:1
+✖ hooks/route-before-change.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/route-before-change.test.js:1:1
+✖ hooks/route-before-change.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/runner-python.test.js:1:1
+✖ hooks/runner-python.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/runner.test.js:1:1
+✖ hooks/runner.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/scaffold-equivalence.test.js:1:1
+✖ hooks/scaffold-equivalence.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/scaffold.test.js:1:1
+✖ hooks/scaffold.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/stop-verify-python.e2e.test.js:1:1
+✖ hooks/stop-verify-python.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/stop-verify.e2e.test.js:1:1
+✖ hooks/stop-verify.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/stop-verify.test.js:1:1
+✖ hooks/stop-verify.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/telemetry.test.js:1:1
+✖ hooks/telemetry.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at hooks/verify-targets.test.js:1:1
+✖ hooks/verify-targets.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at init/project.test.js:1:1
+✖ init/project.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at install/install-hooks.e2e.test.js:1:1
+✖ install/install-hooks.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at install/settings-merge.test.js:1:1
+✖ install/settings-merge.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at io.test.js:1:1
+✖ io.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/cli.test.js:1:1
+✖ journal/cli.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/exec-journal.test.js:1:1
+✖ journal/exec-journal.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/journal.e2e.test.js:1:1
+✖ journal/journal.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/parity.test.js:1:1
+✖ journal/parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/schema.test.js:1:1
+✖ journal/schema.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/telemetry-cli.test.js:1:1
+✖ journal/telemetry-cli.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/telemetry-parity.test.js:1:1
+✖ journal/telemetry-parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/telemetry.e2e.test.js:1:1
+✖ journal/telemetry.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/telemetry.test.js:1:1
+✖ journal/telemetry.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at journal/workflow.test.js:1:1
+✖ journal/workflow.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/admit.test.js:1:1
+✖ kernel/admit.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/breaker.test.js:1:1
+✖ kernel/breaker.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/cli.test.js:1:1
+✖ kernel/cli.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/decisions.test.js:1:1
+✖ kernel/decisions.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/execution.test.js:1:1
+✖ kernel/execution.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/hitl.test.js:1:1
+✖ kernel/hitl.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/kernel-backpressure.e2e.test.js:1:1
+✖ kernel/kernel-backpressure.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/kernel-hitl.e2e.test.js:1:1
+✖ kernel/kernel-hitl.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/kernel-policy-arms.e2e.test.js:1:1
+✖ kernel/kernel-policy-arms.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/kernel-route-escalate.e2e.test.js:1:1
+✖ kernel/kernel-route-escalate.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/kernel-skill-state.e2e.test.js:1:1
+✖ kernel/kernel-skill-state.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/kernel.e2e.test.js:1:1
+✖ kernel/kernel.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/model.test.js:1:1
+✖ kernel/model.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/parity.test.js:1:1
+✖ kernel/parity.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/repair.test.js:1:1
+✖ kernel/repair.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/resolve.test.js:1:1
+✖ kernel/resolve.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/risk.test.js:1:1
+✖ kernel/risk.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/route.test.js:1:1
+✖ kernel/route.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/scale.test.js:1:1
+✖ kernel/scale.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/skill-reference.test.js:1:1
+✖ kernel/skill-reference.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/skill-state.test.js:1:1
+✖ kernel/skill-state.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/stack.test.js:1:1
+✖ kernel/stack.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at kernel/waves.test.js:1:1
+✖ kernel/waves.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at lib/deferrals.test.js:1:1
+✖ lib/deferrals.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at lib/git.test.js:1:1
+✖ lib/git.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at lib/glob.test.js:1:1
+✖ lib/glob.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at lib/json.test.js:1:1
+✖ lib/json.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at lib/slug.test.js:1:1
+✖ lib/slug.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at lib/time.test.js:1:1
+✖ lib/time.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at node-guard.test.js:1:1
+✖ node-guard.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/agents.test.js:1:1
+✖ registry/agents.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/capabilities.test.js:1:1
+✖ registry/capabilities.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/decision-rules.test.js:1:1
+✖ registry/decision-rules.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/intents.test.js:1:1
+✖ registry/intents.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/models.test.js:1:1
+✖ registry/models.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/paths.test.js:1:1
+✖ registry/paths.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/policy-exec-journal.test.js:1:1
+✖ registry/policy-exec-journal.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/policy-telemetry.test.js:1:1
+✖ registry/policy-telemetry.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/policy.test.js:1:1
+✖ registry/policy.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/project-config.test.js:1:1
+✖ registry/project-config.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at registry/routing.test.js:1:1
+✖ registry/routing.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at report/usage.test.js:1:1
+✖ report/usage.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at report/workflow.test.js:1:1
+✖ report/workflow.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at scheduler/state.test.js:1:1
+✖ scheduler/state.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at testing/harness.test.js:1:1
+✖ testing/harness.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at validate/cli.test.js:1:1
+✖ validate/cli.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at validate/validate.e2e.test.js:1:1
+✖ validate/validate.e2e.test.js
+  'Promise resolution is still pending but the event loop has already resolved'
+
+test at workflow/gates.test.js:1:1
+✖ workflow/gates.test.js
+  'Promise resolution is still pending but the event loop has already resolved'

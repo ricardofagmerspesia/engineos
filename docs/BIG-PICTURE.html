@@ -343,7 +343,7 @@ footer{margin-top:56px;font-family:var(--mono);font-size:12px;color:var(--ink-2)
   <figure class="diagram"><pre class="mermaid">flowchart TB
     subgraph PLAN["Plan / specify"]
         router["router"]
-        mariana["product-spec (mariana)"]
+        mariana["product-spec (caio-badu)"]
     end
 
     subgraph COORD["Domain coordinators — AUDIT | IMPLEMENT"]
@@ -358,22 +358,22 @@ footer{margin-top:56px;font-family:var(--mono);font-size:12px;color:var(--ink-2)
     subgraph LEAF["Read-only MCP leaf specialists"]
         pereira["postgres-specialist (pereira)"]
         leo["oracle-specialist (leo)"]
-        kovac["kubernetes-specialist (kovac)"]
-        nakamura["gcp-specialist (nakamura)"]
+        kovac["kubernetes-specialist (corradin)"]
+        nakamura["gcp-specialist (gcp)"]
         gustavo["cicd-specialist (gustavo)"]
     end
 
     subgraph REVIEW["Review / verify — read-only"]
         leoely["security-reviewer (leo-ely)"]
-        vera["critic (vera)"]
-        corradin["audit-consolidator (corradin)"]
+        vera["critic (rogerio)"]
+        corradin["audit-consolidator (danilo)"]
     end
 
     subgraph BUILD["Build / test / document"]
-        ameer["test-writer (ameer)"]
-        qa["qa-tester (qa)"]
-        tomasz["docs-writer (tomasz)"]
-        analyst["architecture-analyst (analyst)"]
+        sameer["test-writer (sameer)"]
+        qa["qa-tester (ameer)"]
+        tomasz["docs-writer (dalollio)"]
+        analyst["architecture-analyst (ricardo-fagmer)"]
         ios["ios-builder"]
         android["android-builder"]
     end

@@ -1,6 +1,6 @@
 ---
 name: qa-tester
-description: Autonomous end-to-end API QA — brings the stack up from clean, discovers every endpoint, emits an inventory plus Postman collection, then exercises happy paths, negatives and chained flows headlessly via Newman and reports pass/fail. Never waits for user input (skips MFA and email-sending steps). Alias: qa.
+description: Autonomous end-to-end API QA — brings the stack up from clean, discovers every endpoint, emits an inventory plus Postman collection, then exercises happy paths, negatives and chained flows headlessly via Newman and reports pass/fail. Never waits for user input (skips MFA and email-sending steps). Alias: ameer.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 tier: build

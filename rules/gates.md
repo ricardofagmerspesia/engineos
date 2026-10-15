@@ -11,7 +11,7 @@ on executor/human.
 | Discovery | Is this the right problem, stated testably? | `superpowers:brainstorming`; `docs/prds/` | conventional procedure |
 | Design | Do we know how, and did we record why? | `docs/specs/`; `adr`; decision rules; `/implement` spec gate | blocking in `/implement` when triggered; otherwise advisory |
 | Implementation | Is the change being built correctly, in bounded scope? | `hooks/route-before-change.sh`; routed stack rules | advisory |
-| Validation | Is there evidence it works? | `rules/verification.md`; `hooks/stop-verify.sh` | blocking once in Claude Code; checked in CI elsewhere |
+| Validation | Is there evidence it works? | `rules/verification.md`; `hooks/stop-verify.sh` | pending until explicit final approval; manual checks after integration |
 | Release | Can it be operated, and undone? | `skills/release-notes`; this file's release checklist | human gate; otherwise conventional |
 
 ## Which gates apply
@@ -22,8 +22,11 @@ on executor/human.
 | medium | if the problem is vague | required when non-negotiable #1's threshold is met, or a decision rule demands it | required | required | required if it ships |
 | high | required | required, always | required | required, plus an independent `critic` pass | required, plus human approval |
 
-Spec threshold remains non-negotiable #1: >2 files or any new feature. High risk
-always requires design, regardless of size.
+Outside the complete kernel-resolved simple direct exception, the spec threshold
+remains non-negotiable #1: >2 files or any new feature. Eligible simple tasks ask a
+clickable direct/spec choice before artifacts. High risk always requires design,
+regardless of size. Every selected spec is decomposed into bounded tickets; all
+implementation tickets integrate before any executable validation or final consent.
 
 ## Design gate — exit criteria
 
@@ -37,10 +40,12 @@ always requires design, regardless of size.
 
 ## Validation ladder
 
-`rules/verification.md` owns check scope. Complete applicable rungs in order:
+`rules/verification.md` owns which checks are in scope and approved timing.
+Complete applicable rungs in order:
 
-1. **Local** — typecheck and lint; unit tests only with explicit current-task final-stage user approval. Run once at
-   the final gate, not after every edit.
+1. **Local** — scoped lint/typecheck/build and unit tests only after final
+   integration and explicit current-task approval. Deduplicate commands and run
+   once at the approved revision under rules/verification.md.
 2. **Integration** — plan boundary coverage; after integration and explicit
    current-task final-stage user approval, run the module
    against a real dependency (DB via testcontainers, API with mocked externals).
@@ -74,5 +79,5 @@ diff looks like. Classify it that way.
   gate, exit criteria 2 of 4 met" resumes; "in progress" does not.
 - Report failed gates explicitly; never lower their bar.
 - Run only applicable gates.
-- DON'T treat a green Stop hook as the Release gate. It is the Validation gate;
-  it knows nothing about owners or rollback.
+- DON'T treat an advisory Stop hook as validation evidence or the Release gate.
+  It executes no checks and knows nothing about owners or rollback.

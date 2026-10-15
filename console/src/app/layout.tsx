@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 const NAV_LINKS = [
+  { href: '/decisions', label: 'Decisions' },
   { href: '/skills', label: 'Skills' },
   { href: '/publish', label: 'Publish' },
   { href: '/history', label: 'History' },

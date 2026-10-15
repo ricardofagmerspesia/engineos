@@ -1,28 +1,12 @@
-// EngineOS Stop hook: runs scoped lint + typecheck for the packages changed this
-// session and blocks finishing if any fail. No-op when there is nothing to run.
-// Never blocks on infra quirks — only on genuine red (a real lint/type/test
-// failure). Automatic hooks run lint/typecheck only. Approved tests are a
-// separate orchestrator command after implementation is fully integrated
-// (rules/verification.md); environment flags cannot provide user consent.
-// It runs ONLY in projects that have adopted EngineOS — a working tree carrying
-// `.engineos/` — because the checks it runs are the target repo's own scripts.
-//
-// Port of hooks/stop-verify.sh. The ladder below runs once for every runner: Nx,
-// pnpm/yarn/npm and the Python environment are adapters behind ./runner.ts, so
-// the timeout table is written here exactly once, and every infra-vs-red
-// judgment goes through ./classify-failure.ts. The runner is selected PER
-// PACKAGE (design §A1): a repo can hold a FastAPI service beside a React app,
-// and one directory can even be both.
-//
-// The fix-loop bound is NOT restated here. The block reason comes from the
-// kernel's repair section (../kernel/repair), which is the one reader of
-// registries/policy.json .repair.max_fix_attempts_per_check — this hook is a
-// shim over that answer, never a private copy of the numbers.
-import { join } from 'node:path';
+// Automatic Stop is advisory only: no runner discovery, probes or commands.
+// The retained manual verification ladder requires explicit host-sourced human
+// approval for a final integrated task/scope/source/check revision before I/O.
+// Repository adoption and environment variables are never user consent.
+import { basename, dirname, join, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
-import { bypassActive } from './bypass';
+import { bypassActive, bypassActiveOnDisk } from './bypass';
 import { classify, type InfraReason } from './classify-failure';
 import { PYTHON_UNAVAILABLE_REASON, runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
 import { unpinnedTools } from './runner-python';
@@ -32,14 +16,17 @@ import type { ProjectConfig } from '../registry/project-config';
 import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasPythonExtension, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
 import { lazyRegistries, type Registries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
-import { isRecord } from '../lib/json';
+import { isRecord, KernelError } from '../lib/json';
+import { requireHostValidation, type HostValidationApproval } from '../workflow/gates';
 import { repoRoot } from '../lib/git';
 
 // Edit/Write/NotebookEdit only, so merely READING a file does not pull its
 // package into the gate.
 const EDIT_TOOLS: readonly string[] = ['Edit', 'Write', 'NotebookEdit'];
 
-const DEFAULT_TARGETS: readonly string[] = ['lint', 'typecheck'];
+const ALLOWED_TARGETS: readonly string[] = ['lint', 'typecheck', 'test'];
+// Process-local reuse only; hosts persist evidence per immutable source revision.
+const completedChecks = new Map<string, true>();
 const TEST_TARGET = 'test';
 
 // The attempt this gate speaks for: it is the FIRST red of a check, and the
@@ -95,7 +82,12 @@ interface Plan {
 }
 
 export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
-  return verify(env, ctx, ctx.spawn);
+  if (env.stopHookActive || env.cwd === '') return silent;
+  // Bypass short-circuits every gate (CLAUDE.md), the pending-approval notice
+  // included: under the marker the Stop hook says nothing at all. Looked up on
+  // disk because the automatic Stop may not spawn a single subprocess.
+  if (bypassActiveOnDisk(env.cwd, ctx.io.env)) return silent;
+  return message('[engineos] Final validation pending explicit user approval after integration; automatic Stop ran no checks.');
 }
 
 // `spawn` and `nodeVersion` are parameters so a unit test drives the whole ladder
@@ -105,7 +97,15 @@ export function verify(
   ctx: HookContext,
   spawn: SpawnSyncLike,
   nodeVersion: string = process.versions.node,
+  hostApproval?: HostValidationApproval,
 ): HookDecision {
+  let approved: ReturnType<typeof requireHostValidation>;
+  try { approved = requireHostValidation(hostApproval); } catch (error) {
+    if (!(error instanceof KernelError)) throw error;
+    return message(`[engineos] Final validation pending: ${error.message}. No checks ran.`);
+  }
+  const targets = approved.validation?.checks ?? [];
+  if (targets.some(target => !ALLOWED_TARGETS.includes(target))) return message('[engineos] Unsupported approved verification target; no checks ran.');
   if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
   // Already blocked once this stop cycle -> let it through, and log nothing: one
   // stop cycle writes one verify event, never two.
@@ -114,22 +114,19 @@ export function verify(
   if (env.cwd === '') return silent;
   const root = repoRoot(env.cwd, ctx.spawn);
   if (root === null) return silent;
-  // Adoption is consent. Hooks run outside the tool-permission prompt, so every
-  // `npm run <target>` below would execute whatever the nearest package.json
-  // declares with nothing asking the user first — a repository that has not
-  // adopted EngineOS must never have its scripts run by this gate. The marker is
-  // the same one the telemetry sink reads: `.engineos/` at the working tree root,
-  // as ensure-project-layout.ts defines it. No env override.
+  // Adoption selects supported project layout, never grants execution consent.
   if (!isDirectory(join(root, '.engineos'))) return silent;
 
-  const files = changedFiles(env.transcriptPath);
+  // A session transcript may contain unrelated tasks. Only files named by the
+  // host's exact approved canonical scope contribute packages to this run.
+  const approvedFiles = new Set((hostApproval?.files ?? []).map(file => fileIdentity(root, file)));
+  const files = changedFiles(env.transcriptPath).filter(file => approvedFiles.has(fileIdentity(root, file)));
   if (files.length === 0) return silent;
 
   const skippedFiles = files.filter(hasPythonExtension).map((file) => `[engineos] skipped ${file}: ${PYTHON_UNAVAILABLE_REASON}`);
   const packages = packageDirs(files.filter((file) => !hasPythonExtension(file)), root);
   if (packages.length === 0) return skippedFiles.length === 0 ? silent : message(skippedFiles.join('\n'));
 
-  const targets = DEFAULT_TARGETS;
   // The nvm default is tried first; a node still too old is judged per Node
   // package in planRuns, so a Python package in the same repo is verified
   // regardless — its toolchain never ran on node.
@@ -144,7 +141,7 @@ export function verify(
   // The span measures the CHECKS, not the transcript parsing that decided which
   // packages to check, which is why it opens here and not at the top.
   const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
-    const result = runLadder(plan.runs, targets, environment.env, spawn, root, lazyRegistries(ctx.root));
+    const result = runLadder(plan.runs, targets, environment.env, spawn, root, JSON.stringify([approved.taskId, approved.scopeRevision, approved.sourceRevision]), lazyRegistries(ctx.root));
     return { result, status: ladderStatus(result) };
   });
   // Written red or green: a green run is half the base rate usage-report.sh has
@@ -167,6 +164,19 @@ export function verify(
 }
 
 // ------------------------------------------------------------------ internals
+
+// Transcripts may name a symlinked checkout while repoRoot names its physical
+// directory. Compare existing files by physical identity, retaining the lexical
+// identity for deleted files. packageDirs still independently enforces physical
+// repository containment before any runner selection or probe.
+function fileIdentity(root: string, file: string): string {
+  const lexical = resolve(root, file);
+  try { return realpathSync(lexical); } catch {
+    // A deleted/new file can still have an existing symlinked parent; resolving
+    // that parent preserves checkout identity without requiring the file.
+    try { return join(realpathSync(dirname(lexical)), basename(lexical)); } catch { return lexical; }
+  }
+}
 
 // The one timeout table, applied to whichever runner was selected. The budget
 // is a setting, not a new constant (design §A1.5): pyright's first run over a
@@ -227,7 +237,7 @@ function filePathOf(entry: Record<string, unknown>): string {
   return typeof fallback === 'string' ? fallback : '';
 }
 
-// Adoption is consent, and it was given for THIS working tree only: the marker
+// Host approval is limited to THIS working tree: the project marker
 // the gate reads is `.engineos/` at `root`, so a package.json ABOVE the root or
 // beside it never consented to having its scripts run. Unbounded, the ascent
 // reached them — a second, non-adopted checkout touched in the same session, or
@@ -335,6 +345,7 @@ function runLadder(
   env: NodeJS.ProcessEnv,
   spawn: SpawnSyncLike,
   root: string,
+  approvalRevision: string,
   // The EngineOS checkout's registries (ctx.root), not the project's: the
   // "target was never there" patterns are policy, read from the same root as
   // every other policy answer this hook gives.
@@ -343,6 +354,7 @@ function runLadder(
   const failures: Failure[] = [];
   const infra: Infra[] = [];
   const advisories: string[] = [];
+  const enteredCommands = new Set<string>();
   for (const { packageDir, selection } of runs) {
     if (!isDirectory(packageDir)) continue;
     if (selection.kind === 'python') {
@@ -352,6 +364,15 @@ function runLadder(
     const handle = runnerHandle(selection, packageDir);
     if (handle === null) continue;
     for (const target of targets) {
+      if (!scriptChecksApproved(selection, packageDir, target, targets)) {
+        failures.push({target, handle, output: 'Script includes unapproved test/eval or unresolved dynamic/nested commands; request exact final check scope.'});
+        continue;
+      }
+      const command = packageScriptIdentity(selection, packageDir, target);
+      const key = JSON.stringify([root, approvalRevision, packageDir, selection.kind, command]);
+      if (enteredCommands.has(key)) continue;
+      enteredCommands.add(key);
+      if (completedChecks.has(key)) { advisories.push(`[engineos] ${handle}: ${target} reuses successful evidence for this approved revision.`); continue; }
       if (!runnerHasTarget(selection, handle, target, undefined, spawn, root)) continue;
       const seconds = budgetFor(target, env);
       const result = runnerRun(selection, handle, target, seconds, env, spawn, root);
@@ -359,7 +380,11 @@ function runLadder(
         { kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut },
         registries.policy.repair.infra_patterns,
       );
-      if (verdict === null) continue;
+      if (verdict === null) {
+        if (completedChecks.size >= 4096) completedChecks.delete(completedChecks.keys().next().value ?? '');
+        completedChecks.set(key, true);
+        continue;
+      }
       if (verdict.situation === 'red') {
         failures.push({ target, handle, output: result.output });
         continue;
@@ -373,6 +398,51 @@ function runLadder(
     }
   }
   return { failures, infra, advisories };
+}
+
+// Inspect bounded npm-family script references before target probes/execution.
+// A shell script remains repository code; the host must present its commands
+// for review. This guard prevents known nested test/eval consent laundering.
+function scriptChecksApproved(selection: RunnerSelection, packageDir: string, target: string, approved: readonly string[]): boolean {
+  if (selection.kind !== 'npm-family') return true;
+  try {
+    const path = join(packageDir, 'package.json');
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    const scripts = isRecord(parsed) ? parsed['scripts'] : undefined;
+    if (!isRecord(scripts) || typeof scripts[target] !== 'string') return true;
+    const visiting = new Set<string>();
+    let inspected = 0;
+    const inspect = (name: string): boolean => {
+      if (visiting.has(name) || ++inspected > 64) return false;
+      const text = scripts[name];
+      if (typeof text !== 'string' || text.length > 16384) return false;
+      if (/[`$]|\b(?:eval|bash|sh)\b/.test(text)) return false;
+      if (/\bevals?\b/i.test(text)) return false;
+      if (/\b(?:vitest|jest|mocha|pytest|newman|playwright|cypress)\b|--test\b|\btests?\b/i.test(text) && !approved.includes('test')) return false;
+      visiting.add(name);
+      for (const match of text.matchAll(/\b(?:npm|pnpm|yarn)\s+(?:run\s+)?([A-Za-z0-9:_-]+)/g)) {
+        const child = match[1];
+        if (child === undefined || ['exec', 'dlx', 'install', 'add'].includes(child)) return false;
+        if (/^eval(?:s|:|-|$)/i.test(child) || (/^test(?:s|:|-|$)/i.test(child) && !approved.includes('test')) || !inspect(child)) return false;
+      }
+      for (const lifecycle of [`pre${name}`, `post${name}`]) if (typeof scripts[lifecycle] === 'string' && !inspect(lifecycle)) return false;
+      visiting.delete(name);
+      return true;
+    };
+    return inspect(target);
+  } catch { return false; }
+}
+
+// Equal npm-family scripts execute once, including lifecycle hooks in identity.
+// Nx/Python commands retain target identity because their targets can differ.
+function packageScriptIdentity(selection: RunnerSelection, packageDir: string, target: string): string {
+  if (selection.kind !== 'npm-family') return target;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'));
+    const scripts = isRecord(parsed) ? parsed['scripts'] : undefined;
+    if (!isRecord(scripts) || typeof scripts[target] !== 'string') return target;
+    return JSON.stringify([scripts[`pre${target}`] ?? null, scripts[target], scripts[`post${target}`] ?? null]);
+  } catch { return target; }
 }
 
 // The line the classifier matched on, so the operator reads "No module named

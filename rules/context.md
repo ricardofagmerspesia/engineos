@@ -21,13 +21,28 @@ smallest evidence sufficient for the scoped change.
 When budget binds, drop from the bottom; never drop layer 1. If it cannot fit,
 decompose into waves using loaded parallel-work policy.
 
+## What the decision layer may decide
+
+The prompt hook's decision layer (`keyword`, `llm` or `jev`, configured in
+`registries/policy.json` `router_decision`) decides one thing: which intents
+apply, chosen among those the repository's stack allows. It never decides which
+rules an intent loads, the risk tier, the autonomy ceiling or the gates — those
+stay deterministic kernel answers, and a decision-layer pick that seems to
+contradict them loses. A repository whose `.engineos/config.json` caps
+`router.mode` at `keyword` or `llm` sends no prompt to TypeSafe, whatever the
+personal setting says.
+
 ## Rules
 
 - Distinguish facts from hypotheses; retain source and date for retrieved evidence
   (path, command/output, URL and access date).
 - Summarize history into decisions/reasons; discard unproductive searches.
-- Re-read old evidence before relying on it; summaries become stale when sources
-  change and never replace their authority.
+- Reuse already-loaded unchanged sources with their exact path/revision. Re-read
+  only changed or uncertain ranges; summaries never replace source authority.
+- Resolve known skill ids via `engineos kernel skill-reference --id <id>` and its
+  bounded registry, not repeated broad discovery. Check origin/availability once,
+  report missing prerequisites once, and install nothing implicitly. Consult
+  existing CLI usage before calls; never invent kernel flags.
 - Follow the router's closed load list (`CLAUDE.md`); no just-in-case rule loading.
 - Keep secrets/tokens/PII out of summarized, logged or handed-off context;
   `rules/security.md` owns that guardrail.

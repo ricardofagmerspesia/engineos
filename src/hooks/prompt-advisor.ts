@@ -12,6 +12,10 @@
 // ambiguous deterministic route, passed the same way as a fact. Both semantic
 // consultations live in ./prompt-judge, the guidance strings in
 // ./prompt-advisor-guidance.
+//
+// Since the routing decision layer (contracts §3, async amendment) the kernel
+// call is followed by one awaited decision — ./prompt-advisor-router — so the
+// hook answers a promise. resolve() itself stays synchronous.
 import { resolve, type Answer, type DeclaredFacts, type Registries } from '../kernel';
 import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from '../kernel/context';
 import type { JudgeFact } from '../judge';
@@ -21,10 +25,12 @@ import { bypassActive } from './bypass';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
 import { guidanceLookups, guidanceNotes, judgeNote, type TaskAnswer } from './prompt-advisor-guidance';
+import { advisorProject, routeDecision, type AdvisorProject, type RouterDeps } from './prompt-advisor-router';
 import { consultSemantics, judgeEventData, NOT_USER_INPUT, type Consultation, type TiebreakScores } from './prompt-judge';
 import { classifyPromptSource, sourceMarkersOf } from './prompt-source';
 import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
-import { event, recordSpan, telemetrySink, withSpan, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
+import { event, recordSpan, telemetrySink, withSpanAsync, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
+import { humanPrompt } from '../lib/harness-prompt';
 
 // The only thing a bypassed session is told, and the only reason this hook still
 // speaks when EngineOS is off: a silent bypass is the failure mode
@@ -59,10 +65,19 @@ interface TaskRequest {
   prompt: string;
   declared: Attempt;
   kernel: KernelContext;
+  project: AdvisorProject;
+  ctx: HookContext;
   sink: Sink | null;
+  deps: RouterDeps;
 }
 
-export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDecision> {
+export function run(env: HookEnvelope, ctx: HookContext): Promise<HookDecision> {
+  return runWith(env, ctx, {});
+}
+
+// `deps` is the test seam for the decision layer's network, CLI probe and
+// clocks; production passes none and gets the real ones.
+export async function runWith(env: HookEnvelope, ctx: HookContext, deps: RouterDeps): Promise<HookDecision> {
   if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return context('UserPromptSubmit', BYPASS_NOTICE);
   // An empty prompt resolves nothing and is not evidence of anything, so it is
   // refused before the sink is built — building it would create the telemetry
@@ -70,19 +85,32 @@ export async function run(env: HookEnvelope, ctx: HookContext): Promise<HookDeci
   if (env.prompt === '') return silent;
   // bypassed is false by construction: the bypass branch above already returned.
   const sink = telemetrySink(env, ctx, { bypassed: false });
-  const kernel: KernelContext = { root: ctx.root, registries: lazyRegistries(ctx.root) };
+  const registries = lazyRegistries(ctx.root);
   // S0: text the user did not type gets no kernel call, no judge call and no
-  // note — one route event says it was seen and skipped.
-  if (!typedByUser(env, kernel.registries)) {
+  // note — one route event says it was seen and skipped. It reads the whole
+  // envelope, framing included, so a host-declared notification is believed
+  // before any text is stripped.
+  if (!typedByUser(env, registries)) {
     event(sink, 'route', { skipped: NOT_USER_INPUT });
     return silent;
   }
-  const { consultation, tiebreak } = await consultSemantics(env, ctx, kernel);
+  // Hand-backs, reminders and command echoes the source markers do not frame
+  // still arrive through the same event as a typed request; only the human part
+  // is routed, and a prompt that is harness text from end to end is no request
+  // at all (src/lib/harness-prompt.ts).
+  const prompt = humanPrompt(env.prompt);
+  if (prompt === '') return silent;
+  // The caller's project is resolved once and handed to the semantic
+  // consultations, resolve and the decision layer, so none can read it differently.
+  const project = advisorProject(env, ctx);
+  const kernel = kernelContext(ctx.root, registries, project);
+  // The judge and the tie-break see the human part only, like the kernel.
+  const { consultation, tiebreak } = await consultSemantics({ ...env, prompt }, ctx, kernel);
   // The judge's span, before the router span, exactly when a call was attempted.
   if (consultation.span !== null && consultation.latencyMs !== null) {
     recordSpan(sink, { ...JUDGE_SPAN, ...consultation.span }, consultation.latencyMs);
   }
-  const resolved = resolveTask({ prompt: env.prompt, declared: [consultation.fact, tiebreak], kernel, sink });
+  const resolved = await resolveTask({ prompt, declared: [consultation.fact, tiebreak], kernel, project, ctx, sink, deps });
   if (resolved === null) return silent;
   const { task } = resolved;
   const judged: Consultation = { ...consultation, fact: resolved.fact };
@@ -121,17 +149,22 @@ function typedByUser(env: HookEnvelope, regs: Registries): boolean {
 // the registries, a tie-break score it will not read) must not cost the user
 // their routing: the call is repeated without the tie-break, then with the
 // fallback that names the judge failure. Null when every attempt fails, which
-// is bash's `|| exit 0`. A failed attempt writes NO span: withSpan records an
-// outcome, and a kernel that did not answer has none.
-function resolveTask({ prompt, declared, kernel, sink }: TaskRequest): ResolvedTask | null {
+// is bash's `|| exit 0`. A failed attempt writes NO span: withSpanAsync records
+// an outcome, and a kernel that did not answer has none.
+//
+// The caller's project rides along (contracts §2 amendment): the floor's stack
+// rebind applies in a real session, and the awaited routing decision layer
+// (./prompt-advisor-router) runs over the kernel answer inside the same span.
+async function resolveTask({ prompt, declared, kernel, project, ctx, sink, deps }: TaskRequest): Promise<ResolvedTask | null> {
   for (const [fact, scores] of attemptsFor(declared)) {
     try {
-      return withSpan(sink, ROUTER_SPAN, () => {
+      return await withSpanAsync(sink, ROUTER_SPAN, async () => {
         const facts: DeclaredFacts = { prompt, taskContract: true };
         if (fact !== null) facts.judge = fact;
         if (scores !== null) facts.tiebreak = scores;
         const task = narrow(resolve(facts, kernel));
-        return { result: { task, fact }, status: 'OK', fields: spanFields(task) };
+        const routed = await routeDecision({ prompt, task, project, ctx, regs: kernel.registries, deps });
+        return { result: { task: routed.task, fact }, status: 'OK', fields: { ...spanFields(routed.task), ...routed.fields } };
       });
     } catch {
       continue;
@@ -148,12 +181,22 @@ function attemptsFor([fact, scores]: Attempt): Attempt[] {
   return judgeFacts.flatMap((judgeFact) => tiebreaks.map((tiebreak): Attempt => [judgeFact, tiebreak]));
 }
 
+function kernelContext(root: string, registries: Registries, project: AdvisorProject): KernelContext {
+  const kernel: KernelContext = { root, registries };
+  if (project.root !== null) {
+    kernel.project = project.root;
+    kernel.projectCwd = project.cwd;
+  }
+  if (project.stack !== undefined) kernel.stack = project.stack;
+  return kernel;
+}
+
 function narrow(answer: Answer): TaskAnswer {
   const { route, decision_rules: decisions, task_contract: contract } = answer;
   if (contract === undefined || decisions === undefined || route === undefined || !('escalate' in route)) {
     throw new KernelError('resolve-task: the kernel answered no task contract');
   }
-  return { route, decisions, contract, hitl: answer.hitl ?? null };
+  return { route, decisions, contract, hitl: answer.hitl ?? null, router: null };
 }
 
 // Null when a registry cannot answer the values the notes quote: silent, like
@@ -182,9 +225,11 @@ function notesFor(task: TaskAnswer, consultation: Consultation, regs: Registries
 }
 
 // Ids only, exactly like the events below: the first routed intent and the risk
-// FLOOR, never the prompt.
+// FLOOR, never the prompt. The contract's intents come first because they are
+// the ones the session is told to load — the decision layer's choice when it
+// made one, the floor's otherwise.
 function spanFields(task: TaskAnswer): SpanFields {
-  const first = task.route.intents[0] ?? task.contract.intents[0] ?? NO_ROUTE;
+  const first = task.contract.intents[0] ?? task.route.intents[0] ?? NO_ROUTE;
   const route = hookSlug(first);
   const floor: RiskTier | null = task.contract.risk_floor;
   return {

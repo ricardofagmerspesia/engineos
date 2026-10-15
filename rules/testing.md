@@ -36,7 +36,8 @@ definition of **the final gate** they run at, live in `rules/verification.md`
 ## Process
 - Author and run tests only after integrated implementation and explicit current-task
   final-stage user approval (rules/verification.md). A test agent does not grant approval.
-- TDD requires the user's explicit exception to final-only ordering before the first test.
+- TDD may inform acceptance planning; test authoring/execution still waits for
+  ALL implementation tickets and fresh final clickable consent.
 - Use the project's JavaScript runner (Node test runner, Jest, Vitest or Playwright).
 - Keep coverage scoped to the approved behavior. Run one bounded final covering suite;
   repeat affected tests only after a repair. Never retry until green.

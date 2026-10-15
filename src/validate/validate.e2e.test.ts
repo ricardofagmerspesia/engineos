@@ -77,10 +77,11 @@ test('--only C17 runs its letter-suffixed sub-checks, --only C17c runs only C17c
 // The exact result count IS the point, not just `failed 0`. A family that stops
 // emitting a result — a guard that returns [] where it used to report, a check
 // silently dropped from a registry — keeps every other assertion green and the
-// lost evidence is invisible. 117 is the registered checks' result count on this
+// lost evidence is invisible. 120 is the registered checks' result count on this
 // tree (113 before the router-v2 family C38, C38b, C38c and C38d, one result
-// each); changing it is a deliberate edit here, never a side effect elsewhere.
-const RESULT_COUNT = 117;
+// each, plus the three stack-floor results C16 gained alongside them); changing
+// it is a deliberate edit here, never a side effect elsewhere.
+const RESULT_COUNT = 120;
 
 test('a clean tree validates green with the header and the exact result count', () => {
   const clean = validate([], checkoutRoot());

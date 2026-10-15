@@ -102,6 +102,9 @@ test('an active row with its signals dropped is caught even though phrases keep 
   const findings = findingsFor(t, 'C38', (root) => {
     editIntent(root, 'backend', (row) => {
       row['signals'] = [];
+      // A generic signal must be one of the row's signals, so the loader would
+      // otherwise refuse the row for that reason rather than this check seeing it.
+      row['generic_signals'] = [];
     });
   });
   assert.ok(hasFinding(findings, 'signals-dropped', 'backend'));

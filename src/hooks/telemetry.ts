@@ -118,6 +118,27 @@ export function recordSpan(sink: Sink | null, facts: SpanFacts, durationMs: numb
   writeSpan(sink, facts, clampMs(durationMs), null);
 }
 
+// withSpan for work that awaits (the prompt advisor's routing decision, which
+// may make one network call). Same contract: fn's rejection propagates and
+// writes no span; the span's duration covers the whole awaited work.
+export async function withSpanAsync<T>(
+  sink: Sink | null,
+  facts: SpanFacts,
+  fn: () => Promise<{ result: T; status: SpanStatus; fields?: SpanFields }>,
+): Promise<T> {
+  if (sink === null) return (await fn()).result;
+  const start = sink.now();
+  const outcome = await fn();
+  const duration = clampMs(sink.now() - start);
+  const merged: SpanFacts = {
+    ...facts,
+    status: outcome.status,
+    fields: { ...(facts.fields ?? {}), ...(outcome.fields ?? {}) },
+  };
+  writeSpan(sink, merged, duration, null);
+  return outcome.result;
+}
+
 // The ONE id derivation both announce hooks call. The harness's tool-use id when
 // there is one; otherwise a hash of the brief, which is still joinable by
 // trace_id and collapses only when the same agent is dispatched twice
