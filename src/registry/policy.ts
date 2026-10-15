@@ -1,13 +1,14 @@
 import type { RiskTier } from './intents';
+import type { WorkflowPolicy } from '../workflow/contracts';
 import { loadRegistry } from './load';
 import { strictReader } from './strict';
 
 // registries/policy.json is the registry whose answers ARE gates: a risk tier,
 // an autonomy ceiling, a repair action. A lenient loader that defaulted a
 // missing field would answer for a file that says nothing, which is the
-// fail-open hole cmd_risk was fixed to close (kernel.sh:200-206). So every
-// field this loader reads is required, and a malformed one is a KernelError
-// rather than a fabricated answer.
+// fail-open hole cmd_risk was fixed to close (kernel.sh:200-206). Gate-bearing
+// fields are required; additive workflow opt-ins default to false when absent.
+// An explicitly malformed field is a KernelError rather than a fabricated answer.
 //
 // Fields no kernel arm reads are not loaded at all — the same closure
 // routing.ts and intents.ts keep. The prose fields (`note`, each input's tier
@@ -49,6 +50,8 @@ export interface AutonomyPolicy {
 
 export interface RetryPolicy {
   never_retry: string[];
+  max_attempts_per_unit: number;
+  escalations: number;
 }
 
 // One gate id to its status for a single tier, in the registry's own key order:
@@ -132,9 +135,10 @@ export interface PolicyRegistry {
   breaker: BreakerPolicy;
   hitl: HitlPolicy;
   router: RouterPolicy;
+  workflow: WorkflowPolicy;
 }
 
-const { requireRecord, requireString, requireNumber, requireBoolean, requireStrings, requireRows } =
+const { requireRecord, requireString, requireNumber, requireBoolean, requireStrings, requireRows, malformed } =
   strictReader('policy.json');
 
 export function loadPolicy(root: string): PolicyRegistry {
@@ -191,6 +195,8 @@ export function loadPolicy(root: string): PolicyRegistry {
     },
     retry: {
       never_retry: requireStrings(retry['never_retry'], '.retry.never_retry'),
+      max_attempts_per_unit: boundedInteger(retry['max_attempts_per_unit'], '.retry.max_attempts_per_unit', 1),
+      escalations: boundedInteger(retry['escalations'], '.retry.escalations', 0),
     },
     gates: {
       by_risk: requireTierMap(gates['by_risk'], '.gates.by_risk', requireStringMap),
@@ -272,6 +278,38 @@ export function loadPolicy(root: string): PolicyRegistry {
         intents: requireStrings(row['intents'], `.router.fixtures[${i}].intents`),
       })),
     },
+    workflow: workflowPolicy(p['workflow']),
+  };
+}
+
+function boundedInteger(value: unknown, path: string, min: number): number {
+  const number = requireNumber(value, path);
+  if (!Number.isSafeInteger(number) || number < min) malformed(`${path} must be an integer >= ${min}`);
+  return number;
+}
+
+function workflowPolicy(value: unknown): WorkflowPolicy {
+  const row = requireRecord(value, '.workflow');
+  for (const key of Object.keys(row)) {
+    if (!['task_budgets', 'direct_max_files', 'simple_spec_choice', 'final_validation_prompt', 'note'].includes(key)) malformed(`.workflow unknown field ${key}`);
+  }
+  const budgets = requireRecord(row['task_budgets'], '.workflow.task_budgets');
+  for (const key of Object.keys(budgets)) {
+    if (!['small', 'medium', 'large'].includes(key)) malformed(`.workflow.task_budgets unknown complexity ${key}`);
+  }
+  function budget(key: string): { min: number; max: number } {
+    const path = `.workflow.task_budgets.${key}`;
+    const item = requireRecord(budgets[key], path);
+    if (Object.keys(item).some((field) => field !== 'min' && field !== 'max')) malformed(`${path} only accepts min and max`);
+    const min = boundedInteger(item['min'], `${path}.min`, 1);
+    const max = boundedInteger(item['max'], `${path}.max`, min);
+    return { min, max };
+  }
+  return {
+    task_budgets: { small: budget('small'), medium: budget('medium'), large: budget('large') },
+    direct_max_files: boundedInteger(row['direct_max_files'], '.workflow.direct_max_files', 1),
+    simple_spec_choice: Object.hasOwn(row, 'simple_spec_choice') ? requireBoolean(row['simple_spec_choice'], '.workflow.simple_spec_choice') : false,
+    final_validation_prompt: Object.hasOwn(row, 'final_validation_prompt') ? requireBoolean(row['final_validation_prompt'], '.workflow.final_validation_prompt') : false,
   };
 }
 

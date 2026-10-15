@@ -194,14 +194,16 @@ test('a red ruff check stops lint before the format check, and both ruff argvs a
   assert.deepEqual(argvOf(calls).filter((line) => line.includes('ruff')), [`${join(bin, 'ruff')} check .`]);
 });
 
-test('ENGINEOS_VERIFY_TESTS=1 is deprecated: pytest never runs and the notice says so', (t) => {
+test('ENGINEOS_VERIFY_TESTS=1 folds pytest -q in under the test budget', (t) => {
   if (skipWithoutGit(t)) return;
   const repo = pythonRepo(t, { venv: true });
+  const bin = venvBinDir(join(repo, '.venv'));
   const path = transcriptOf(repo, edits(repo, 'app/main.py'));
   const { spawn, calls } = spawnWith((command) => (command.endsWith('pytest') ? { status: 1, stdout: '1 failed\n' } : {}));
   const decision = verify(stopOf(repo, 'PY4', path), context({ ...ISOLATED, ENGINEOS_VERIFY_TESTS: '1' }), spawn, MODERN);
-  assert.deepEqual(decision, message('[engineos] ENGINEOS_VERIFY_TESTS is deprecated and ignored: tests require explicit user approval and a separate final command after integration.'));
-  assert.equal(calls.find((c) => c.command.endsWith('pytest')), undefined);
+  assert.equal(decision.kind, 'block');
+  const pytest = calls.find((c) => c.command.endsWith('pytest'));
+  assert.deepEqual([pytest?.command, pytest?.args, pytest?.timeout], [join(bin, 'pytest'), ['-q'], 180_000]);
 });
 
 test('ENGINEOS_VERIFY_BUDGET_S raises every target budget, and a bad value is ignored', (t) => {
@@ -209,9 +211,9 @@ test('ENGINEOS_VERIFY_BUDGET_S raises every target budget, and a bad value is ig
   const repo = pythonRepo(t, { venv: true });
   const path = transcriptOf(repo, edits(repo, 'app/main.py'));
   const raised = spawnWith(GREEN);
-  verify(stopOf(repo, 'PY5', path), context({ ...ISOLATED, ENGINEOS_VERIFY_BUDGET_S: '300' }), raised.spawn, MODERN);
-  const firstOfEachTarget = raised.calls.filter((c) => c.args[0] === 'check' || c.command.endsWith('pyright'));
-  assert.deepEqual(firstOfEachTarget.map((c) => c.timeout), [300_000, 300_000]);
+  verify(stopOf(repo, 'PY5', path), context({ ...ISOLATED, ENGINEOS_VERIFY_TESTS: '1', ENGINEOS_VERIFY_BUDGET_S: '300' }), raised.spawn, MODERN);
+  const firstOfEachTarget = raised.calls.filter((c) => c.args[0] === 'check' || c.command.endsWith('pyright') || c.command.endsWith('pytest'));
+  assert.deepEqual(firstOfEachTarget.map((c) => c.timeout), [300_000, 300_000, 300_000]);
   const ignored = spawnWith(GREEN);
   verify(stopOf(repo, 'PY5b', path), context({ ...ISOLATED, ENGINEOS_VERIFY_BUDGET_S: 'soon' }), ignored.spawn, MODERN);
   assert.equal(ignored.calls.find((c) => c.args[0] === 'check')?.timeout, 90_000);

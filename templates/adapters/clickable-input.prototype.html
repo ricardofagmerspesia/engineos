@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>THROWAWAY — Clickable input pauses</title>
+<style>
+  :root { font-family: system-ui, sans-serif; color: #20312e; background: #f5f7f6; }
+  body { max-width: 980px; margin: 36px auto; padding: 0 20px; }
+  h1 { font-size: 1.8rem; margin-bottom: 10px; } h2 { font-size: 1.1rem; }
+  p { line-height: 1.5; } .notice { color: #386053; font-weight: 700; }
+  section { background: white; border: 1px solid #cbd8d2; border-radius: 10px; padding: 20px; margin: 18px 0; }
+  button, input, select { font: inherit; } button, select { padding: 9px 12px; }
+  button { background: #eef5f1; border: 1px solid #91afa1; border-radius: 5px; cursor: pointer; }
+  button:hover { background: #dcece3; } button:disabled { opacity: .55; cursor: default; }
+  :focus-visible { outline: 3px solid #157e5d; outline-offset: 3px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  dl { display: grid; grid-template-columns: minmax(130px, 1fr) 3fr; gap: 8px 14px; margin-bottom: 0; }
+  dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; }
+  fieldset { border: 0; padding: 0; margin: 14px 0; } fieldset label { display: block; padding: 6px; }
+  #reply { width: min(95%, 540px); padding: 10px; margin: 8px 0; }
+  [role="tab"][aria-selected="true"] { background: #237451; color: white; }
+  code { font-size: .92em; } .subtle { color: #546660; font-size: .94rem; }
+  @media (max-width: 600px) { dl { grid-template-columns: 1fr; } dd { margin-bottom: 8px; } }
+</style>
+<main>
+  <div class="notice">THROWAWAY • Simulation only • Nothing is saved</div>
+  <h1>When work pauses, make the next answer actionable</h1>
+  <p>Question: can each pause present clear choices and resume dependent work only after an actual answer?
+    Explore clarification, preview choice, and scoped validation approval. Selecting a choice is separate from submitting it.</p>
+  <p class="subtle">All buttons simulate a conversation. They never run commands, authorize checks, or approve a real framework edit.
+    Native tools are capability-dependent; the fallback shown here is a labelled text reply.</p>
+  <section aria-labelledby="state-title">
+    <h2 id="state-title">Current state</h2>
+    <p id="message" role="status" aria-live="polite"></p>
+    <dl id="state"></dl>
+  </section>
+  <section aria-labelledby="play-title">
+    <h2 id="play-title">Free play</h2>
+    <div class="row">
+      <label for="kind">Decision</label>
+      <select id="kind"><option value="clarification">Clarification</option><option value="preview">Preview choice</option><option value="validation">Validation approval</option></select>
+      <button id="open">Open this pause</button>
+      <button id="fallback">Native tool unavailable</button>
+      <button id="timeout">Simulate timeout</button>
+      <button id="silence">Simulate silence</button>
+      <button id="reset">Reset</button>
+    </div>
+    <h3 id="question"></h3>
+    <p id="scope" class="subtle"></p>
+    <p id="presentation"></p>
+    <fieldset id="choices"><legend>Select one simulated answer</legend></fieldset>
+    <label for="reply">Free-text reply (or labelled fallback answer)</label><br>
+    <input id="reply" placeholder="Enter an answer; typing alone does not submit" autocomplete="off">
+    <div class="row"><button id="submit-choice">Submit selected choice</button><button id="submit-text">Submit text reply</button></div>
+  </section>
+  <section aria-labelledby="guide-title">
+    <h2 id="guide-title">Guided walkthroughs</h2>
+    <div id="tabs" class="row" role="tablist" aria-label="Scenarios"></div>
+    <div id="walkthrough" role="tabpanel" aria-labelledby="tab-0">
+      <p id="description"></p><button id="step"></button>
+    </div>
+  </section>
+</main>
+<script>
+// Pure simulation model: no DOM, tools, storage, or command execution.
+const decisions = {
+  clarification: { question: 'Which pause should the framework improve?', scope: 'Example: shared guidance and the Codex adapter.', options: ['Shared guidance and adapter', 'Shared guidance only'] },
+  preview: { question: 'Would you like a throwaway preview first?', scope: 'Preview creation and production implementation remain separate decisions.', options: ['Create a throwaway preview first', 'Proceed without a preview'] },
+  validation: { question: 'Approve these exact final checks for this sample revision?', scope: 'SIMULATED scope: rules/parallelism.md + templates/adapters/codex.md; revision: demo-r1; commands: npm run lint; npm run typecheck. No commands execute.', options: ['Approve listed checks for demo-r1', 'Do not run these checks'] }
+};
+const initial = () => ({ kind: 'clarification', channel: 'native', selected: '', draft: '', answer: '', status: 'awaiting answer', dependentWork: 'paused', approval: 'none', last: 'Pause opened. No answer has been submitted.' });
+function reduce(state, action) {
+  if (action.type === 'reset') return initial();
+  if (action.type === 'open') return { ...initial(), kind: action.kind };
+  if (action.type === 'fallback') return { ...state, channel: 'text fallback', selected: '', last: 'Native tool unavailable. Show numbered choices and accept an explicit text reply.' };
+  if (action.type === 'select' && state.status === 'awaiting answer') return { ...state, selected: action.value, draft: '', last: 'Choice selected only. Dependent work stays paused until Submit.' };
+  if (action.type === 'draft' && state.status === 'awaiting answer') return { ...state, draft: action.value, selected: '', last: 'Text drafted only. Dependent work stays paused until Submit.' };
+  if (action.type === 'timeout' || action.type === 'silence') return { ...state, last: state.status === 'awaiting answer' ? 'No answer received. No approval inferred; dependent work remains paused.' : 'No new answer received. The previously submitted decision stays unchanged.' };
+  if (action.type !== 'submit' || state.status !== 'awaiting answer') return state;
+  const answer = action.source === 'choice' && state.channel === 'native' ? state.selected : state.draft.trim();
+  if (!answer) return { ...state, last: 'Submit requires an actual answer.' };
+  const options = decisions[state.kind].options;
+  const matched = options.includes(answer) ? answer : /^[12]$/.test(answer) ? options[Number(answer) - 1] : answer;
+  if (state.kind === 'clarification') return { ...state, answer: matched, status: 'answered', dependentWork: 'may continue using this clarification', last: 'Explicit clarification received.' };
+  if (!options.includes(matched)) return { ...state, answer: matched, last: 'Reply needs clarification. Use an exact choice or its number; no approval inferred.' };
+  if (state.kind === 'preview') return { ...state, answer: matched, status: 'answered', dependentWork: matched === options[0] ? 'production paused; preview may be created' : 'may proceed through remaining gates', last: 'Preview choice received. Creating a preview does not approve production edits.' };
+  const approved = matched === options[0];
+  return { ...state, answer: matched, status: approved ? 'approved (simulation)' : 'declined', dependentWork: approved ? 'listed sample checks only may proceed (simulation)' : 'paused', approval: approved ? 'sample demo-r1; listed scope and commands only' : 'refused', last: approved ? 'Explicit scoped sample approval received. No real check runs.' : 'Checks refused. Dependent validation stays paused.' };
+}
+</script>
+<script>
+let current = initial(), activeScenario = 0, stepIndex = 0;
+const byId = id => document.getElementById(id);
+const scenarios = [
+  { name: 'Answer happy path', description: 'Select an answer, observe that work stays paused, then explicitly submit.', steps: [
+    ['Open clarification', { type: 'open', kind: 'clarification' }], ['Select shared guidance and adapter', { type: 'select', value: decisions.clarification.options[0] }], ['Submit answer', { type: 'submit', source: 'choice' }]] },
+  { name: 'Default / timeout safety', description: 'A selected approval, timeout, and silence never grant consent. Only the explicit final submit does.', steps: [
+    ['Open scoped validation approval', { type: 'open', kind: 'validation' }], ['Select sample approval only', { type: 'select', value: decisions.validation.options[0] }], ['Simulate timeout', { type: 'timeout' }], ['Simulate silence', { type: 'silence' }], ['Submit sample approval explicitly', { type: 'submit', source: 'choice' }]] },
+  { name: 'Refusal / fallback', description: 'With no native input tool, show text choices honestly. A submitted refusal keeps dependent work paused.', steps: [
+    ['Open validation approval', { type: 'open', kind: 'validation' }], ['Mark native tool unavailable', { type: 'fallback' }], ['Draft fallback answer 2 (refuse)', { type: 'draft', value: '2' }], ['Submit refusal', { type: 'submit', source: 'text' }]] }
+];
+function dispatch(action) { current = reduce(current, action); render(); }
+function render() {
+  const decision = decisions[current.kind];
+  byId('message').textContent = current.last;
+  const fields = { 'Decision': current.kind, 'Presentation': current.channel, 'Status': current.status, 'Selected only': current.selected || 'none', 'Text draft': current.draft || 'none', 'Submitted answer': current.answer || 'none', 'Dependent work': current.dependentWork, 'Approval scope': current.approval, 'Revision': current.kind === 'validation' ? 'demo-r1 (sample)' : 'not applicable', 'Choices': decision.options.join(' / '), 'Scope / commands': decision.scope };
+  byId('state').replaceChildren();
+  for (const [label, value] of Object.entries(fields)) {
+    const term = document.createElement('dt'), detail = document.createElement('dd');
+    term.textContent = label; detail.textContent = value; byId('state').append(term, detail);
+  }
+  byId('question').textContent = decision.question;
+  byId('scope').textContent = decision.scope;
+  byId('presentation').textContent = current.channel === 'native' ? 'Illustrative native choice surface. Host availability and permission rules determine which actual tool may be used.' : 'TEXT FALLBACK — reply with an exact choice or its number. This is not a native clickable tool.';
+  byId('choices').replaceChildren();
+  const legend = document.createElement('legend'); legend.textContent = 'Simulated choices'; byId('choices').append(legend);
+  decision.options.forEach((option, index) => {
+    const label = document.createElement('label');
+    if (current.channel === 'native') {
+      const input = document.createElement('input'); input.type = 'radio'; input.name = 'answer'; input.checked = current.selected === option; input.disabled = current.status !== 'awaiting answer';
+      input.addEventListener('change', () => { dispatch({ type: 'select', value: option }); byId('choices').querySelectorAll('input')[index].focus(); }); label.append(input);
+    }
+    label.append(document.createTextNode(`${index + 1}. ${option}`)); byId('choices').append(label);
+  });
+  byId('reply').value = current.draft;
+  byId('reply').disabled = current.status !== 'awaiting answer';
+  byId('submit-choice').disabled = current.channel !== 'native' || current.status !== 'awaiting answer';
+  byId('submit-text').disabled = current.status !== 'awaiting answer';
+  byId('kind').value = current.kind;
+  byId('description').textContent = scenarios[activeScenario].description;
+  byId('step').textContent = scenarios[activeScenario].steps[stepIndex]?.[0] || 'Walkthrough finished — select a tab to restart';
+  byId('step').disabled = stepIndex >= scenarios[activeScenario].steps.length;
+}
+scenarios.forEach((scenario, index) => {
+  const tab = document.createElement('button'); tab.id = `tab-${index}`; tab.textContent = scenario.name; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', 'walkthrough');
+  tab.setAttribute('aria-selected', String(index === 0));
+  tab.onclick = () => { activeScenario = index; stepIndex = 0; current = initial(); byId('walkthrough').setAttribute('aria-labelledby', tab.id); for (const button of byId('tabs').children) button.setAttribute('aria-selected', String(button === tab)); render(); };
+  byId('tabs').append(tab);
+});
+byId('open').onclick = () => dispatch({ type: 'open', kind: byId('kind').value });
+for (const type of ['fallback', 'timeout', 'silence', 'reset']) byId(type).onclick = () => dispatch({ type });
+byId('reply').oninput = event => dispatch({ type: 'draft', value: event.target.value });
+byId('submit-choice').onclick = () => dispatch({ type: 'submit', source: 'choice' });
+byId('submit-text').onclick = () => dispatch({ type: 'submit', source: 'text' });
+byId('step').onclick = () => { const action = scenarios[activeScenario].steps[stepIndex][1]; stepIndex++; dispatch(action); };
+render();
+</script>
+</html>

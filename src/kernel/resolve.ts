@@ -1,10 +1,11 @@
 import { isAbsolute, relative, sep } from 'node:path';
 import { KernelError } from '../lib/json';
-import { loadProjectConfig, type Language, type PackageStack, type ProjectConfig } from '../registry/project-config';
+import { loadProjectConfig, type PackageStack, type ProjectConfig } from '../registry/project-config';
 import { admitSection, type AdmitFacts, type AdmitSection } from './admit';
 import { breakerSection, type BreakerFacts, type BreakerSection } from './breaker';
 import type { KernelContext, Registries, RiskTier } from './context';
 import { decisionsSection, type DecisionsFacts, type DecisionsSection } from './decisions';
+import { executionSection, isSimpleTaskEligible, parseExecutionFacts, type ExecutionFacts, type ExecutionSection } from './execution';
 import { hitlSection, type HitlFacts, type HitlSection } from './hitl';
 import { modelSection, type ModelSection } from './model';
 import { repairSection, type RepairFacts, type RepairSection } from './repair';
@@ -53,6 +54,7 @@ export interface DeclaredFacts {
   breaker?: BreakerFacts;
   hitl?: HitlFacts;
   waves?: WavesFacts;
+  execution?: ExecutionFacts;
 }
 
 // Keys appear in the order resolve fills them, which is the order below for
@@ -73,6 +75,7 @@ export interface Answer {
   hitl?: HitlSection;
   waves?: WavesSection;
   task_contract?: TaskContractSection;
+  execution?: ExecutionSection;
 }
 
 // cmd_resolve_task's task_contract key order, which is the answer's contract.
@@ -97,11 +100,13 @@ export interface TaskContractSection {
   required: string[];
   gates: string[];
   preferences: string[];
+  execution?: ExecutionSection;
 }
 
 export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   const answer: Answer = {};
   const { prompt } = facts;
+  let stack: StackFacts | undefined;
   // Both forms answer the same `route` key, so one of them would have to win
   // silently. resolve-task, the composite Wave 1(d) landed, takes a prompt and
   // nothing else — it has no path form to reconcile a path fact with — so the
@@ -134,7 +139,7 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     if (prompt === '') throw new KernelError('a declared prompt fact must not be empty');
     // Once per resolve, and only for a prompt: a path fact never reads the
     // stack, so it never pays for the tree walk.
-    const stack = ctx.stack ?? repositoryStack(ctx.project, ctx.projectCwd);
+    stack = ctx.stack ?? repositoryStack(ctx.project, ctx.projectCwd);
     answer.route =
       facts.escalate === true || facts.taskContract === true
         ? routeEscalate(prompt, ctx.registries, stack)
@@ -176,6 +181,7 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   if (facts.waves !== undefined) {
     answer.waves = wavesSection(facts.waves, ctx.registries);
   }
+  if (facts.execution !== undefined) answer.execution = resolvedExecution(facts, answer, { regs: ctx.registries, stack });
   // Composed last, out of the sections above rather than beside them: the task
   // contract is the one answer that reads another section's answer.
   if (facts.taskContract === true) {
@@ -186,7 +192,12 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     if (route === undefined || !('escalate' in route)) {
       throw new KernelError('a task-contract fact answered no escalate route section');
     }
-    const decisions = decisionsSection({ prompt }, ctx.registries);
+    const declaredDecisions = decisionsSection({ prompt }, ctx.registries);
+    const simple = answer.execution?.planning?.simple === true && answer.execution.planning.decision !== 'spec';
+    const decisions = simple ? {
+      ...declaredDecisions,
+      matches: declaredDecisions.matches.filter((match) => !genericSpecThreshold(match.id, ctx.registries)),
+    } : declaredDecisions;
     answer.decision_rules = decisions;
     const floor = decisions.any_high ? 'high' : route.risk_floor;
     // The ceiling lookup runs for any floor, classified or not: a floor with no
@@ -220,8 +231,92 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
       answer.hitl = hitlSection({ riskTier: floor, autonomy: ceiling, topology }, ctx.registries);
     }
     answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
+    if (answer.execution !== undefined) {
+      answer.task_contract.execution = answer.execution;
+      if (answer.execution.planning?.simple === true && answer.execution.planning.rulesMode === 'stack') {
+        const stackIntents = ctx.registries.intents.intents.filter((intent) =>
+          intent.domain !== null && facts.execution?.domains?.includes(intent.domain));
+        const stackSkills = unique(stackIntents.flatMap((intent) => intent.skills));
+        answer.task_contract.rules = unique(stackIntents.flatMap((intent) => intent.rules));
+        answer.task_contract.policy_rules = ['git', 'security'];
+        answer.task_contract.skills = enabledSkills(stackSkills, ctx.registries.skillState);
+        answer.task_contract.skills_suppressed = suppressedSkills(stackSkills, ctx.registries.skillState);
+        answer.task_contract.commands = [];
+      } else if (answer.execution.planning?.decision === 'spec') {
+        const specSkills = unique([...answer.task_contract.skills, 'engineos-spec', 'engineos-implement-spec']);
+        answer.task_contract.skills = enabledSkills(specSkills, ctx.registries.skillState);
+        answer.task_contract.skills_suppressed = uniqueSuppressed([
+          ...answer.task_contract.skills_suppressed, ...suppressedSkills(specSkills, ctx.registries.skillState),
+        ]);
+        answer.task_contract.commands = unique([...answer.task_contract.commands, 'new-feature']);
+        answer.task_contract.required = unique([...answer.task_contract.required, 'design-doc']);
+        answer.task_contract.gates = unique([...answer.task_contract.gates, 'design']);
+      }
+    }
   }
   return answer;
+}
+
+function resolvedExecution(
+  facts: DeclaredFacts,
+  answer: Answer,
+  routing: { regs: Registries; stack: StackFacts | undefined },
+): ExecutionSection {
+  const { regs, stack } = routing;
+  const execution = parseExecutionFacts(facts.execution);
+  if (answer.risk !== undefined) {
+    if (execution.riskTier !== undefined && execution.riskTier !== answer.risk.risk) {
+      throw new KernelError('execution riskTier conflicts with the classified risk section');
+    }
+    execution.riskTier = answer.risk.risk;
+  }
+  // Routine domain routing does not require a second worker. Risk and design
+  // obligations still constrain the lane even when callers omit taskContract.
+  const route = facts.prompt === undefined ? answer.route : routeEscalate(facts.prompt, regs, stack);
+  const decisions = answer.decision_rules ?? (facts.prompt === undefined ? undefined : decisionsSection({ prompt: facts.prompt }, regs));
+  const pathRoutes = (execution.files ?? []).map((file) => routeByPath(file, regs, ''));
+  if (regs.policy.workflow.simple_spec_choice === true && execution.domains !== undefined) {
+    const routedDomains = pathRoutes.flatMap((entry) => entry.domain === null ? [] : [entry.domain]);
+    if (route !== undefined && 'intents' in route) {
+      routedDomains.push(...regs.intents.intents.flatMap((intent) =>
+        route.intents.includes(intent.id) && intent.domain !== null ? [intent.domain] : []));
+    }
+    execution.domains = unique([...execution.domains, ...routedDomains]);
+  }
+  const floors = [route, ...pathRoutes].flatMap((entry) => entry !== undefined && 'risk_floor' in entry && entry.risk_floor !== null ? [entry.risk_floor] : []);
+  for (const match of decisions?.matches ?? []) {
+    if (match.risk === 'low' || match.risk === 'medium' || match.risk === 'high') floors.push(match.risk);
+  }
+  for (const floor of floors) {
+    const ranks = { low: 0, medium: 1, high: 2 };
+    if (execution.riskTier !== undefined && ranks[floor] > ranks[execution.riskTier]) execution.riskTier = floor;
+  }
+  const independent = new Set(execution.requiredAgents ?? []);
+  if (route !== undefined && 'agents' in route && route.agents.includes('security-reviewer')) {
+    independent.add('security-reviewer');
+    execution.securitySensitive = true;
+  }
+  if ([route, ...pathRoutes].some((entry) => entry !== undefined && 'domain' in entry && entry.domain === 'security')) {
+    independent.add('security-reviewer');
+    execution.securitySensitive = true;
+  }
+  if (decisions?.matches.some((match) => match.require.includes('security-review')) === true) independent.add('security-reviewer');
+  if (execution.riskTier === 'high') independent.add('critic');
+  if (execution.requiredAgents !== undefined || independent.size > 0) execution.requiredAgents = [...independent];
+  const independentDesign = decisions?.matches.some((match) => match.gate === 'design' && !genericSpecThreshold(match.id, regs)) === true;
+  if (independentDesign || execution.riskTier === 'high') execution.designRequired = true;
+  const simple = regs.policy.workflow.simple_spec_choice === true && isSimpleTaskEligible(execution, regs.policy.workflow.direct_max_files);
+  if (!simple && decisions?.matches.some((match) => match.gate === 'design') === true) execution.designRequired = true;
+  return executionSection(execution, regs);
+}
+
+// Only the generic size/new-feature obligation is replaceable by a scoped choice.
+function genericSpecThreshold(id: string, regs: Registries): boolean {
+  const rule = regs.decisionRules.rules.find((entry) => entry.id === id);
+  return id === 'rule-spec-threshold' && rule !== undefined && rule.then.gate === 'design' &&
+    rule.then.risk === null && rule.then.require.length === 1 && rule.then.require[0] === 'design-doc' &&
+    rule.when['files_changed'] === '>2' && rule.when['or_new_feature'] === true &&
+    Object.keys(rule.when).every((key) => key === 'files_changed' || key === 'or_new_feature');
 }
 
 // The repository's packages, and the one holding the working directory, or
@@ -388,4 +483,8 @@ function declared(values: readonly (string | null)[]): string[] {
 // wanted for policy_rules above.
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function uniqueSuppressed(values: readonly SuppressedSkill[]): SuppressedSkill[] {
+  return values.filter((entry, index) => values.findIndex((candidate) => candidate.id === entry.id) === index);
 }

@@ -35,7 +35,10 @@ test('the shipped policy registry loads with every field the kernel reads', () =
   assert.ok(policy.retry.never_retry.includes('security-risk'));
   assert.equal(policy.gates.by_risk.high['validation'], 'required-plus-critic');
   assert.deepEqual(policy.gates.spec_threshold, { files_greater_than: 2, or_any_new_feature: true });
-  assert.equal(policy.parallelism.wave_concurrency_cap, 6);
+  assert.equal(policy.parallelism.wave_concurrency_cap, 3);
+  assert.equal(policy.retry.max_attempts_per_unit, 2);
+  assert.equal(policy.retry.escalations, 1);
+  assert.deepEqual(policy.workflow.task_budgets, {small: {min: 1, max: 3}, medium: {min: 3, max: 6}, large: {min: 5, max: 10}});
   assert.deepEqual(policy.parallelism.backpressure, {
     max_queued_units: 12,
     overload_action: 'defer',
@@ -158,7 +161,8 @@ function basePolicy(): Record<string, unknown> {
       ceiling_by_risk: { low: 'A2', medium: 'A3', high: 'A3' },
       high_with_thin_evidence: 'A1',
     },
-    retry: { never_retry: ['security-risk'] },
+    retry: { never_retry: ['security-risk'], max_attempts_per_unit: 2, escalations: 1 },
+    workflow: {task_budgets: {small: {min: 1, max: 3}, medium: {min: 3, max: 6}, large: {min: 5, max: 10}}, direct_max_files: 2},
     gates: {
       by_risk: {
         low: { validation: 'required' },
@@ -223,3 +227,19 @@ function kernelError(message: string): (error: unknown) => boolean {
     return true;
   };
 }
+
+test('workflow flags are strict when present and default false for legacy policy', () => {
+  const policy = basePolicy(); const workflow = record(policy, 'workflow');
+  const legacy = rootWith(policy);
+  try { assert.equal(loadPolicy(legacy).workflow.simple_spec_choice, false); assert.equal(loadPolicy(legacy).workflow.final_validation_prompt, false); }
+  finally { rmSync(legacy, {recursive: true, force: true}); }
+  for (const flag of ['simple_spec_choice', 'final_validation_prompt']) {
+    workflow[flag] = true; const valid = rootWith(policy);
+    try { assert.equal(loadPolicy(valid).workflow[flag as 'simple_spec_choice' | 'final_validation_prompt'], true); }
+    finally { rmSync(valid, {recursive: true, force: true}); }
+    workflow[flag] = 'true'; const invalid = rootWith(policy);
+    try { assert.throws(() => loadPolicy(invalid), /must be a boolean/); }
+    finally { rmSync(invalid, {recursive: true, force: true}); }
+    delete workflow[flag];
+  }
+});

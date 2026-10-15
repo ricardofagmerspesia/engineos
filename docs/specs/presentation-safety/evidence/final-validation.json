@@ -1,0 +1,118 @@
+{
+  "sourceRevision": "sha256:1ace6755faa621c4930aa20bd5170347d878fe93f6b4a4053646572def2fe7e2",
+  "approvedInitialRevision": "sha256:f2a1a07ca95132effd5d3ac25c3a93df0642f6a314a1ddb3f2577be58473f7ad",
+  "steering": "Explicit user requested punctuation removal and conditional purple styling; approved check and review scope retained.",
+  "files": [
+    {
+      "path": "agents/dba-coordinator.md",
+      "sha256": "4f5613217c4025b0cbd785ad07f169c2cb6f663d73e997e28424caef808e174a"
+    },
+    {
+      "path": "agents/security-reviewer.md",
+      "sha256": "66d0dca5ef593b65a0e2daa95c62515925f4f54a3e55b16576046f199233409e"
+    },
+    {
+      "path": "docs/COMPATIBILITY.md",
+      "sha256": "278f040239deea193295aa1b9412d231c6638231e080f9833894f30d7b15fb14"
+    },
+    {
+      "path": "rules/base.md",
+      "sha256": "d4850dd222a8f0cebe4760c349a34352aa7982eee0d5d559662edef22f4c1a30"
+    },
+    {
+      "path": "rules/data.md",
+      "sha256": "aae17b255c58c15c1c8cdf9cfc352adff42fb1cad1168f6571eb51783877740d"
+    },
+    {
+      "path": "rules/security.md",
+      "sha256": "a795947b0873d06c5ae73d77f638b3deb9498eab4d1ced794e7323e8ea9323e3"
+    },
+    {
+      "path": "rules/subagents.md",
+      "sha256": "a37706061ade9d5924df359db955b03d53f6da09e9fe1be9e6c60585f6511c08"
+    },
+    {
+      "path": "rules/verification.md",
+      "sha256": "f1632014984929da471531eaacd68246b7fd4bee2f9995f7904a5d36ea31b821"
+    },
+    {
+      "path": "skills/engineos-implement-spec/SKILL.md",
+      "sha256": "0b095fc808460e7c18c4534bdf23b20fb6c83c07e90f84ce37d4f55dbeb17e1b"
+    },
+    {
+      "path": "src/hooks/announce-agent-dispatch.ts",
+      "sha256": "bdb162f7edfe4b81f89b08625af80f4533392d425a59b965db92a351a452aae3"
+    },
+    {
+      "path": "src/hooks/announce-agent-return.ts",
+      "sha256": "cdf8b655de0d683dabc3b2ae89de204edbcc06352bc26a5d8fcb6966b03b879b"
+    },
+    {
+      "path": "templates/adapters/claude-code.md",
+      "sha256": "53a53810a2bea137388450ddc598a94308514dd5949e7c41009ed965821eddf1"
+    },
+    {
+      "path": "templates/adapters/codex.md",
+      "sha256": "0580f0c60a11f4abb0d504d2cb2eb504c8fee3b65d561a5847c2ae04649e776e"
+    },
+    {
+      "path": "templates/adapters/cursor.md",
+      "sha256": "e856632ad986a1bfa5a74ba3a9117c2d770f13af835ffceb6173fee72993efec"
+    },
+    {
+      "path": "src/hooks/announce-agent-dispatch.test.ts",
+      "sha256": "9b4afdbdec727f2a5a0334362a174800eb4ff0f20d1a3a737f8687bfc8bdf842"
+    },
+    {
+      "path": "src/hooks/announce-agent-return.test.ts",
+      "sha256": "364ef5f9636d5632c4877a84abdf5bbebb011bee65d253d618435f635513fc6f"
+    },
+    {
+      "path": "src/hooks/announce-agent.e2e.test.ts",
+      "sha256": "70c39dbbce5ebf83083fb772d64e55d1c4df8048218106cac740ecba420b50e2"
+    },
+    {
+      "path": "dist/engineos.cjs",
+      "sha256": "90e98aa98ac8e6cd131635ca5be253ba91605926835e3f424b86b289c1aab3e1"
+    }
+  ],
+  "checks": [
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm test -- hooks/announce-agent-dispatch.test.js hooks/announce-agent-return.test.js hooks/announce-agent.e2e.test.js",
+      "exitCode": 0,
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    {
+      "command": "bash scripts/validate-engineos.sh",
+      "exitCode": 0,
+      "passed": 113,
+      "failed": 0
+    }
+  ],
+  "securityReview": {
+    "agent": "security-reviewer",
+    "alias": "leo-ely",
+    "model": "inherited (exact model unknown)",
+    "verdict": "CLEAR within approved source scope and user-requested cosmetic delta",
+    "confirmedFindings": [],
+    "limits": [
+      "No repository-wide absence assertion",
+      "Prompt handling depends on host",
+      "DB guardrails are executor policy plus DB permissions; no universal interceptor"
+    ]
+  },
+  "automatedSecurityScans": "not included or run",
+  "databaseOperations": "none",
+  "gitWrites": "none"
+}

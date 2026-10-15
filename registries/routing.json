@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "description": "Machine-readable source of truth for EngineOS domain routing, including the path-pattern -> domain matching itself (match/excluded globs, resolved by scripts/kernel.sh route-path). CLAUDE.md's stack/domain table is the human mirror. Precedence order MUST list every domain exactly once, in match order — first match wins. Each domain's sample_path is a self-validating fixture: scripts/validate-engineos.sh (C17) routes it through kernel.sh and fails if it does not resolve to this domain.",
+  "version": "1.3.0",
+  "description": "Machine-readable source of truth for EngineOS domain routing, including the path-pattern -> domain matching itself (match/excluded globs, resolved by scripts/kernel.sh route-path). CLAUDE.md's stack/domain table is the human mirror. Precedence order MUST list every domain exactly once, in match order \u2014 first match wins. Each domain's sample_path is a self-validating fixture: scripts/validate-engineos.sh (C17) routes it through kernel.sh and fails if it does not resolve to this domain. Deprecated inactive domains retain their identifiers but have no match globs or sample; C17 validates this explicit compatibility state.",
   "precedence": [
     "security",
     "test",
@@ -46,10 +46,7 @@
           "*.secrets.*",
           "credential.*",
           "*.credential.*",
-          "*.credentials.*",
-          "auth.py",
-          "guardrails.py",
-          "*_credentials.py"
+          "*.credentials.*"
         ]
       },
       "sample_path": "/tmp/api/src/auth/login.service.ts"
@@ -67,13 +64,11 @@
         "basenames": [
           "*.spec.*",
           "*.test.*",
-          "*.e2e-spec.*",
-          "test_*.py",
-          "*_test.py",
-          "conftest.py"
+          "*.e2e-spec.*"
         ]
       },
-      "sample_path": "/tmp/api/user.service.spec.ts"
+      "sample_path": "/tmp/api/user.service.spec.ts",
+      "note": "Test routing identifies ownership only; authoring and execution require explicit current-task user approval and completed implementation/integration."
     },
     {
       "id": "backend",
@@ -89,7 +84,7 @@
         "nestjs-patterns"
       ],
       "agent": "backend-coordinator",
-      "note": "architecture and observability are closure targets of backend.md; data.md because the row's signals include migrations.",
+      "note": "Application backends require NestJS; Node.js is the runtime and Express is permitted only as Nest's HTTP adapter. Identify existing non-Nest application backends truthfully and scope migration before extension. architecture and observability are closure targets of backend.md; data.md because the row's signals include migrations.",
       "match": {
         "paths": [],
         "basenames": [
@@ -121,12 +116,11 @@
       "skills": [],
       "agent": "dba-coordinator",
       "hint": "postgres/oracle",
-      "note": "High floor: migrations are the canonical irreversible change. The live-introspection specialists are read-only leaves. Precedes backend-python so */alembic/versions/* and *.sql are claimed before any backend-python path glob.",
+      "note": "JavaScript/TypeScript migration tooling and SQL data contracts. Live introspection specialists remain read-only.",
       "match": {
         "paths": [
           "*/migrations/*",
-          "*/migration/*",
-          "*/alembic/versions/*"
+          "*/migration/*"
         ],
         "basenames": [
           "*.sql"
@@ -139,6 +133,7 @@
       "title": "Backend (FastAPI shapes)",
       "rules": [
         "backend-python",
+        "backend",
         "architecture",
         "data",
         "testing",
@@ -148,27 +143,14 @@
         "python-patterns"
       ],
       "agent": "backend-coordinator",
-      "note": "Same closure as backend: architecture/observability are closure targets of backend-python.md, data because the row's signals include migrations. Follows dba in precedence, so alembic/ and *.sql never land here.",
+      "note": "Inactive compatibility entry. Python frameworks are outside the active JavaScript/TypeScript ecosystem. Public id and references remain until the next major release, no earlier than one minor release after deprecation; no automatic routing or dispatch.",
       "match": {
-        "paths": [
-          "*/routers/*.py",
-          "*/api/*.py",
-          "*/services/*.py",
-          "*/use_cases/*.py",
-          "*/adapters/*.py",
-          "*/domain/*.py",
-          "*/repositories/*.py"
-        ],
-        "basenames": [
-          "schemas.py",
-          "models.py",
-          "ports.py",
-          "main.py",
-          "dependencies.py",
-          "settings.py"
-        ]
+        "paths": [],
+        "basenames": []
       },
-      "sample_path": "/tmp/api/app/routers/users.py"
+      "sample_path": null,
+      "enabled": false,
+      "deprecated": true
     },
     {
       "id": "ios-release",
@@ -304,12 +286,13 @@
     },
     {
       "id": "llm",
-      "title": "LLM and agent work",
+      "title": "LLM, agent and chatbot work",
       "rules": [
         "llm-apps"
       ],
       "skills": [
-        "llm-engineering"
+        "llm-engineering",
+        "mastra-patterns"
       ],
       "agent": "llm-coordinator",
       "match": {
@@ -321,6 +304,7 @@
           "*/eval/*",
           "*/embeddings/*",
           "*/llm/*",
+          "*/mastra/*",
           "*/graph/*",
           "*/agents/*",
           "*/tools/*"
@@ -337,16 +321,11 @@
           "*.embedding*",
           "*.llm.*",
           "*.eval.*",
-          "*.evals.*",
-          "*_agent.py",
-          "workflow.py",
-          "state.py",
-          "nodes.py",
-          "prompts_*.py"
+          "*.evals.*"
         ]
       },
       "sample_path": "/tmp/api/src/llm/client.ts",
-      "note": "Last in precedence. The Python globs (*/graph/*, */agents/*, */tools/*, *_agent.py, workflow.py, state.py, nodes.py, prompts_*.py) cover LangGraph-style agent projects; since llm is last, a */services/*.py file under an agent project still routes backend-python — accepted, the agent-specific files carry the agent-specific names."
+      "note": "JavaScript/TypeScript LLM/chatbot orchestration uses Mastra in NestJS providers; Node.js is the runtime. graph/* remains a legacy ownership signal for scoped LangGraph/LangChain migration, not an active framework default. Python paths are excluded from automatic routing. First-match precedence stays unchanged."
     }
   ],
   "excluded": {
@@ -360,12 +339,16 @@
       "pnpm-lock.yaml",
       "yarn.lock",
       "uv.lock",
-      "poetry.lock"
+      "poetry.lock",
+      "*.py",
+      "*.pyi",
+      "pyproject.toml",
+      "requirements*.txt"
     ],
     "self_dirs": [
       "hooks",
       "docs"
     ],
-    "note": "Meta/non-code files get no routing. self_dirs is the EngineOS-self exclusion: root-relative directories of the EngineOS checkout itself (this repo's own hooks/ and docs/ trees), resolved by scripts/kernel.sh against its own root, so a consumer project's src/hooks/ or product docs/ still route normally."
+    "note": "Meta/non-code files get no routing. self_dirs is the EngineOS-self exclusion: root-relative directories of the EngineOS checkout itself (this repo's own hooks/ and docs/ trees), resolved by scripts/kernel.sh against its own root, so a consumer project's src/hooks/ or product docs/ still route normally. Legacy Python sources and manifests are unsupported and excluded from automatic routing."
   }
 }

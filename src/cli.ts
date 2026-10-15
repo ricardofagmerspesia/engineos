@@ -18,6 +18,8 @@ import { runRouterGolden } from './evals/router-golden';
 import { runBench } from './bench/run';
 import { runUsageReport } from './report/usage';
 import { runValidate } from './validate/cli';
+import { runScheduler } from './scheduler/cli';
+import { runWorkflowReport } from './report/workflow-cli';
 
 const io = processIo();
 const argv = process.argv.slice(2);
@@ -78,6 +80,8 @@ const table: CommandTable = {
   bench: runBench,
   'usage-report': runUsageReport,
   validate: runValidate,
+  scheduler: runScheduler,
+  'workflow-report': runWorkflowReport,
 };
 const code = dispatch(table, argv, io);
 if (typeof code === 'number') {

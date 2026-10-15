@@ -12,12 +12,23 @@ and convention-only gaps.
 | File routing | route-before-change.sh | glob rules | convention | path instructions |
 | Decision advisory | prompt-advisor.sh | convention | convention | convention |
 | Post-edit checks | post-edit-check.sh (opt-in/unregistered) | convention | convention | convention |
-| Block unverified done | stop-verify.sh | none | none | none |
+| Pending validation notice | stop-verify.sh (no commands) | convention | convention | convention |
 | Block unrecorded change | record-verify.sh | none | none | none |
 | Integrity/evals | approval-gated CI scripts | same | same | same |
+| Native DAG decisions | scheduler CLI | scheduler CLI | scheduler CLI | scheduler CLI |
+| Native agent launch/state persistence | host supervisor convention | convention | convention | convention |
 
-CI supplies portable executable enforcement; gaps stay explicit. Final
-lint/typecheck/build is separate from final approval-only tests/evals.
+CI checks run only on explicitly approved manual final runs; gaps stay explicit.
+All executable lint/typecheck/build/tests/evals/integrity checks require final
+integration and scoped user approval under rules/verification.md.
+
+Scheduler commands compute legal actions, not native launches. A concrete
+AgentLauncher can execute the admitted frontier; current instruction adapters
+must map actions to their authorized tools, persist snapshots/events and
+reconcile active handles on resume. Unknown host capacity remains unresolved.
+The policy cap bounds workers; subtract the supervisor only when the host's
+reported capacity includes it. See native engineos-implement-spec for the
+action/evidence protocol and rules/verification.md for approved timing.
 
 ## Writing a new adapter
 

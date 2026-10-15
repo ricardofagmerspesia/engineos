@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "references": [
+    {
+      "id": "upstream-session-retro",
+      "command": "/retro",
+      "origin": "Matt Pocock upstream",
+      "purpose": "completed-session retrospective",
+      "path": ".agents/skills/retro/SKILL.md"
+    },
+    {
+      "id": "engineos-recurring-retro",
+      "command": "/engineos:retro",
+      "origin": "EngineOS native",
+      "purpose": "recurring evidence patterns across archived changes",
+      "path": "skills/retro/SKILL.md"
+    },
+    {
+      "id": "upstream-to-tickets",
+      "command": "/to-tickets",
+      "origin": "Matt Pocock upstream",
+      "purpose": "spec decomposition into dependency-aware tracer-bullet tickets",
+      "path": ".agents/skills/to-tickets/SKILL.md"
+    },
+    {
+      "id": "upstream-prototype",
+      "command": "/prototype",
+      "origin": "Matt Pocock upstream",
+      "purpose": "throwaway behavior or UI preview",
+      "path": ".agents/skills/prototype/SKILL.md"
+    }
+  ]
+}

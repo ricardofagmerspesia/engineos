@@ -3,14 +3,14 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { delimiter, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { isRecord } from '../lib/json';
 import type { ProjectConfig } from '../registry/project-config';
-import { isPythonTarget, pythonHasTarget, pythonRun, resolvePythonEnvironment, type PythonEnvironment } from './runner-python';
+import type { PythonEnvironment } from './runner-python';
 
 // Port of hooks/lib-runner.sh plus the runner half of hooks/lib-common.sh
 // (has_script, runner_detect, ensure_modern_node).
 //
 // A runner is the tool that executes a project's verification targets (lint,
-// typecheck, tests): Nx, a package-manager script runner, or a Python
-// environment driving ruff/pyright/pytest (./runner-python.ts). Callers see one
+// typecheck, approved final tests): Nx or a package-manager script runner.
+// Python selection shapes remain compatibility-only. Callers see one
 // ladder — select -> handle -> hasTarget -> run — and never branch on the runner
 // themselves. This module reports FACTS ONLY: it never decides whether a
 // non-zero run is the code's fault. That judgment is src/hooks/classify-failure.ts,
@@ -42,7 +42,7 @@ export interface RunnerUnavailable {
   reason: string;
 }
 
-export const PYTHON_UNAVAILABLE_REASON = 'no Python environment found (venv, uv or compose)';
+export const PYTHON_UNAVAILABLE_REASON = 'Python verification is deprecated and unsupported; automatic verification supports the JavaScript ecosystem only';
 
 // The exact slice of `spawnSync` this module uses, rather than `typeof spawnSync`
 // itself: the real `spawnSync` satisfies it, so callers pass it unchanged, and a
@@ -91,23 +91,23 @@ export function runnerSelect(
   return { kind, run: 'npm run', exec: 'npx --no-install' };
 }
 
-// The selection for the package that owns `pkgDir`. A pyproject.toml — or a
-// requirements.txt with no pyproject.toml above it, bounded by `root` — selects
-// the Python arm; otherwise the Node arm via runnerSelect(root). A Python
-// package whose environment does not resolve answers `python-unavailable`
-// rather than falling through to Node: `npm run lint` in a FastAPI service is
-// not a verification, and a silent Node no-op would read as coverage.
+// Select an active Node runner; legacy Python owners answer a visible
+// unsupported skip without environment discovery, probes, or tool execution.
 export function runnerSelectFor(
   pkgDir: string,
   root: string,
   config: ProjectConfig | null,
   exists: (p: string) => boolean = defaultExists,
-  spawn: SpawnSyncLike = defaultSpawn,
+  _spawn: SpawnSyncLike = defaultSpawn,
 ): RunnerSelection | RunnerUnavailable {
-  if (!isPythonPackage(pkgDir, root, exists)) return runnerSelect(root, exists);
-  const env = resolvePythonEnvironment(pkgDir, root, config, exists, spawn);
-  if (env === null) return { kind: 'python-unavailable', reason: PYTHON_UNAVAILABLE_REASON };
-  return { kind: 'python', env };
+  // A mixed directory's package.json owns JavaScript verification. Legacy
+  // configs remain readable, but cannot activate a Python environment or tools.
+  if (exists(join(pkgDir, 'package.json')) || exists(join(pkgDir, 'project.json'))) return runnerSelect(root, exists);
+  const declared = config?.stack.packages.find((pkg) => pkg.dir === (relative(root, pkgDir).split(sep).join('/') || '.'));
+  if (declared?.language === 'python' || isPythonPackage(pkgDir, root, exists)) {
+    return { kind: 'python-unavailable', reason: PYTHON_UNAVAILABLE_REASON };
+  }
+  return runnerSelect(root, exists);
 }
 
 // requirements.txt is the weaker marker (design §A1.1): a `scripts/requirements.txt`
@@ -164,9 +164,8 @@ export function runnerHasTarget(
   cwd: string = process.cwd(),
 ): boolean {
   if (sel.kind === 'python') {
-    // The three targets are the whole Python vocabulary; a name outside it has
-    // no command table to run, so it is absent rather than a run that fails.
-    return isPythonTarget(target) && pythonHasTarget(sel.env, target, readFile, spawn);
+    // Retained selection shape is compatibility-only, even for direct callers.
+    return false;
   }
   if (sel.kind === 'nx') {
     const argv = [...words(sel.exec), 'nx', 'show', 'project', handle, '--json'];
@@ -189,10 +188,7 @@ export function runnerRun(
   cwd: string = process.cwd(),
 ): RunResult {
   if (sel.kind === 'python') {
-    // hasTarget already refused a name outside the Python vocabulary; a caller
-    // that skipped it gets a loud red rather than a green it never ran.
-    if (!isPythonTarget(target)) return { code: 1, output: `no python target named ${target}`, timedOut: false };
-    return pythonRun(sel.env, target, timeoutSeconds, env, spawn);
+    return { code: 1, output: PYTHON_UNAVAILABLE_REASON, timedOut: false };
   }
   // Nx runs from the workspace root and addresses the project by name; a package
   // manager runs from the package dir, which IS its handle.

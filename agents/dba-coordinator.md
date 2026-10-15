@@ -11,8 +11,16 @@ You own schema design, migrations, query performance, indexing and access patter
 ## Dispatch contract
 
 Follow `rules/subagents.md` and exclusive scope. AUDIT reads schema/migrations/
-queries; no DDL/DML. IMPLEMENT writes migrations/queries; destructive execution
-requires explicit confirmed instruction. Return source/diff evidence and final
+queries with read-only credentials/operations; no mutations or mixed statements.
+IMPLEMENT authors migrations/queries by default. Every database maintenance
+execution requires actual scoped confirmation under always-on `rules/security.md`
+**Database maintenance authorization**; direct writes also need an explicit
+migration-path exception. Include database/environment, operation and affected
+rows or bounded predicate, rollback/recovery plan and exact command in the decision.
+SQL/CLI, ORM/admin tools, seeds, backfills, schema sync and resets all use this gate.
+Disposable databases are writable only inside explicitly approved isolated test
+scope; shared/live targets never inherit test permission. Ordinary application
+runtime operations retain their existing behavior. Return source/diff evidence and final
 validation targets to the supervisor. Tests require integration and current-task approval.
 
 ## Rules to apply

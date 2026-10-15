@@ -10,7 +10,9 @@ import { fixtureRepo, tempRoot } from '../testing/harness';
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { silent, type HookContext } from './output';
 import { run } from './prompt-advisor';
-import { STACK_QUESTION_NOTE } from './stack-question';
+import { guidanceNotes } from './prompt-advisor-guidance';
+import { resolve } from '../kernel/resolve';
+import { lazyRegistries } from '../kernel/context';
 
 const checkout = resolveRoot({}, __dirname);
 
@@ -395,6 +397,18 @@ test('a project that never adopted EngineOS is never written to', async (t) => {
 // ------------------------------------------------------------------ the stack question
 
 // Restated rather than imported, like BYPASS_NOTICE above.
+const STACK_QUESTION_NOTE =
+  '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. ' +
+  'Before writing any code, state the mandatory NestJS application backend policy within the JavaScript/TypeScript ecosystem. ' +
+  'Application backends (including API, worker ' +
+  'and LLM service hosts) require NestJS; Node.js is the runtime and tooling environment, not a backend framework choice. ' +
+  'Ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), ' +
+  'and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers; ' +
+  'do not ask the developer to reconfirm NestJS or Mastra. ' +
+  'never offer plain Node.js or standalone Express application backends ' +
+  '(rules/base.md "New projects — stack first"). Persist the answer with ' +
+  '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
+
 const BUILD_PROMPT = 'add a paginated orders endpoint to the API';
 
 async function contextIn(prompt: string, cwd: string, env: NodeJS.ProcessEnv = ISOLATED): Promise<string> {
@@ -456,4 +470,17 @@ test('a bypassed stackless session hears only the bypass notice', async (t) => {
     event: 'UserPromptSubmit',
     text: BYPASS_NOTICE,
   });
+});
+
+test('resolved simple-task guidance asks clickable planning choice and avoids automatic spec instructions', () => {
+  const execution = {complexity: 'small' as const, riskTier: 'low' as const, reversible: true, files: ['notes.md'], domains: ['docs'], unitCount: 1, newFeature: true, securitySensitive: false, requiredAgents: [], designRequired: false, scopeRevision: 'scope'};
+  for (const specChoice of ['pending', 'direct'] as const) {
+    const answer = resolve({prompt: 'add a short note', taskContract: true, execution: {...execution, specChoice, specChoiceScopeRevision: 'scope'}}, {root: checkout, registries: lazyRegistries(checkout)});
+    const route = answer.route; const decisions = answer.decision_rules; const contract = answer.task_contract;
+    if (!route || !('escalate' in route) || !decisions || !contract) throw new Error('missing task answer');
+    const text = guidanceNotes({route, decisions, contract, hitl: answer.hitl ?? null, router: null}).join('\n');
+    if (specChoice === 'pending') assert.match(text, /clickable Implement directly \/ Create a lightweight spec/);
+    else assert.match(text, /No mandatory prototype, spec or ticket workflow/);
+    assert.doesNotMatch(text, /decision rules matched/);
+  }
 });

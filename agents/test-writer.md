@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature needs coverage, a bug fix needs a regression test, or tests are being backfilled. Dispatched deliberately, never automatically after ordinary changes. Alias: ameer.
+description: Writes tests from acceptance criteria, a spec, or an untested module. Use when a feature needs coverage, a bug fix needs a regression test, or tests are being backfilled. Dispatched deliberately, never automatically after ordinary changes. Alias: sameer.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 tier: build

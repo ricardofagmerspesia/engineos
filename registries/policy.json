@@ -1,6 +1,6 @@
 {
   "version": "1.8.0",
-  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop, circuit-breaker, telemetry and routing-decision policy — twelve blocks (risk, autonomy, gates, parallelism, retry, prompt_signals, router, repair, breaker, hitl, telemetry, router_decision), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry) and the 2026-10-06 routing decision layer (router_decision). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure'); C25 checks breaker (the per-resource circuit breaker, answered by kernel.sh breaker and mirrored in rules/parallelism.md 'Circuit breaker'); C26 checks hitl (human-in-the-loop as a queryable entity, answered by kernel.sh hitl, folded into resolve-task as .hitl, and mirrored in rules/risk-autonomy.md 'Human-in-the-loop'); C27 checks telemetry.exec_journal (the agent-span journal, written by the hooks through src/hooks/telemetry.ts's span lifecycle and mirrored in rules/observability.md 'Agent traces'), C28 the retrieval-metrics reference and its RAG mirror, and C29 the adoption entrypoint wiring — so a future prose edit or block change that diverges fails CI.",
+  "description": "Machine-readable source of truth for EngineOS risk, autonomy, gates, parallelism, retry, router escalation, repair-loop, circuit-breaker, telemetry and routing-decision policy, including workflow task budgets and direct-execution bounds — thirteen blocks (risk, autonomy, gates, workflow, parallelism, retry, prompt_signals, router, repair, breaker, hitl, telemetry, router_decision), added across P1 (risk/autonomy/gates/parallelism/retry) through P7 (telemetry) and the 2026-10-06 routing decision layer (router_decision). rules/risk-autonomy.md, rules/gates.md and rules/parallelism.md stay the human-readable mirror and are not edited to match. scripts/validate-engineos.sh checks this file: C16 extracts prose numbers (wave cap, retry attempts/escalations, spec threshold) and enum tables and compares them against this file; C17 checks prompt_signals; C18 checks the router block; C20 checks repair; C22 checks telemetry; C24 checks parallelism.backpressure (the dispatch loop's admission control, answered by kernel.sh admit and mirrored in rules/parallelism.md 'Backpressure'); C25 checks breaker (the per-resource circuit breaker, answered by kernel.sh breaker and mirrored in rules/parallelism.md 'Circuit breaker'); C26 checks hitl (human-in-the-loop as a queryable entity, answered by kernel.sh hitl, folded into resolve-task as .hitl, and mirrored in rules/risk-autonomy.md 'Human-in-the-loop'); C27 checks telemetry.exec_journal (the agent-span journal, written by the hooks through src/hooks/telemetry.ts's span lifecycle and mirrored in rules/observability.md 'Agent traces'), C28 the retrieval-metrics reference and its RAG mirror, and C29 the adoption entrypoint wiring — so a future prose edit or block change that diverges fails CI.",
   "risk": {
     "aggregation": "max",
     "inputs": [
@@ -116,6 +116,17 @@
       "or_any_new_feature": true
     }
   },
+  "workflow": {
+    "task_budgets": {
+      "small": {"min": 1, "max": 3},
+      "medium": {"min": 3, "max": 6},
+      "large": {"min": 5, "max": 10}
+    },
+    "direct_max_files": 2,
+    "simple_spec_choice": true,
+    "final_validation_prompt": true,
+    "note": "Eligible small low-risk reversible one-unit/one-domain tasks ask a current scope-bound spec choice before artifacts; direct uses stack guidance and security/Git safeguards without mandatory prototype. Final validation always asks after every implementation ticket is integrated; early requests are not consent."
+  },
   "parallelism": {
     "fanout_signals": {
       "files_greater_than": 3,
@@ -130,7 +141,7 @@
       "goal-still-vague",
       "every-step-feeds-the-next"
     ],
-    "wave_concurrency_cap": 6,
+    "wave_concurrency_cap": 3,
     "subagent_depth": 1,
     "disjoint_file_scopes": true,
     "backpressure": {
@@ -148,7 +159,7 @@
       "design_strong": "\\b(decompose|trade.?off|should we use|adr)\\b",
       "design_weak": "\\b(architect|architecture|design)\\b"
     },
-    "scheduling": {"strategy": "dependency-ready", "capacity": "min(wave_concurrency_cap, available host worker slots)", "ownership": "exclusive file scopes; freeze shared contracts before dispatch", "refill": "dispatch newly ready units as soon as a worker finishes; do not wait for unrelated units", "tests": "final phase only, after integration and explicit current-task user approval"}
+    "scheduling": {"strategy": "dependency-ready", "capacity": "min(wave_concurrency_cap, available host worker slots)", "ownership": "exclusive file scopes; freeze shared contracts before dispatch", "refill": "dispatch newly ready units as soon as a worker finishes; do not wait for unrelated units", "tests": "all executable checks only after final integration and explicit scoped current-task approval; distinct commands once per immutable revision, repeat only impacted checks after bounded repairs"}
   },
   "retry": {
     "max_attempts_per_unit": 2,

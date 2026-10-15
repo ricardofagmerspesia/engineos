@@ -39,6 +39,15 @@ export interface TaskAnswer {
 // The order is asserted by the suite (a big-task prompt reads "big-task
 // signal ... route escalation"), so it is the contract, not a preference.
 export function guidanceNotes(task: TaskAnswer): string[] {
+  const planning = task.contract.execution?.planning;
+  if (planning?.simple === true && planning.rulesMode === 'stack') {
+    return [
+      planning.decision === 'direct'
+        ? '[engineos] simple direct task — use returned stack guidance and security/Git safeguards. No mandatory prototype, spec or ticket workflow. Ask fresh final check consent only after implementation is integrated.'
+        : '[engineos] simple task planning pending — ask permitted clickable Implement directly / Create a lightweight spec choices before creating documents. Record the actual scope-bound answer; load only stack guidance and security/Git safeguards. No checks during implementation.',
+      ...classifyNote(task),
+    ];
+  }
   return [
     ...scaleNotes(task.contract),
     ...decisionNote(task.decisions),
@@ -76,7 +85,7 @@ function decisionNote(decisions: DecisionsSection): string[] {
     ? '\n[engineos] a matched rule sets risk=high — autonomy ceiling A3 per rules/risk-autonomy.md: human approval before any external effect, and a rollback path before release.'
     : '';
   return [
-    `[engineos] decision rules matched this prompt (registries/decision-rules.json).\n${lines}\nConfirm each requirement is met or explicitly waived with a reason before claiming done. These are keyword matches on the prompt only — apply the full registry per rules/gates.md, and classify risk per rules/risk-autonomy.md.${high}`,
+    `[engineos] decision rules matched this prompt (registries/decision-rules.json).\n${lines}\nConfirm each requirement is met or explicitly waived with a reason before claiming done. These are keyword matches on the prompt only — resolve complete execution facts before artifacts; eligible simple tasks ask a scope-bound clickable direct/spec choice rather than automatically creating a spec. Independent security/design obligations remain. Apply the full registry per rules/gates.md, and classify risk per rules/risk-autonomy.md.${high}`,
   ];
 }
 

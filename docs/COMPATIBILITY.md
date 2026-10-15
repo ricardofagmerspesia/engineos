@@ -12,6 +12,195 @@ evidence retain their dated contracts; consult the matching version section
 is owned by `rules/`; search historical tables on demand, never import this whole
 file into every task.
 
+## 2026-10-15 — One-line agent announcements (unreleased)
+
+Lifecycle announcements are one line per agent per event:
+`+ [<short role>] <model> <AUDIT|IMPLEMENT> starting — <scope> — <task>`, then
+`returned — <summary>` or `FAILED — <reason>`. The separate instance field becomes a
+`#<instance>` role suffix (`[qa#1]`); both hook banners' instruction text changes
+accordingly. Hook envelopes, quoted type/description bounding, telemetry spans,
+canonical IDs, aliases and responsibilities are unchanged: presentation only.
+
+## 2026-10-14 — Progressive scheduler frontiers (unreleased)
+
+Additive scheduler interfaces allow the first accepted bounded task to implement
+while later task specs are drafted. Shared contracts, known dependencies and
+exclusive scope reservations are recorded before launch; every frontier retains
+its planning/design/preview decisions. Existing canonical agents and responsibilities
+retain their contracts, including the role-only display policy below.
+
+`scheduler plan --planning-open` creates an open run. `scheduler append --state
+<json> --units <json> --revision <expected> --time-ms <epoch-ms>` atomically admits
+new units, preserving existing contracts/states/handles; duplicate IDs, unknown
+dependencies, cycles and stale revision/time fail. `scheduler seal --state <json>
+--revision <expected> --time-ms <epoch-ms>` closes planning without integrating
+unfinished units. Optional state/fact `planningOpen` defaults false for legacy
+callers. Appending changes the existing graph fingerprint and requires refreshed
+exact-scope host admission before further launches. Whole-run completion and final
+validation require sealed planning and all actual deliveries/corrections integrated;
+an all-integrated open frontier emits progress without terminal completion.
+
+Plan/step/append/seal accept opt-in `--stream`: newline-delimited tagged `event`
+records preserve event order, followed by one `snapshot` with state/actions/
+enforcement. Failures emit a tagged `error` and the existing nonzero exit status.
+Default plan/step JSON remains unchanged. Transport records are not journal lines;
+the host extracts event payloads and assigns persistent global sequences. Each CLI
+call computes one transition; it launches no agents or background watcher. These
+interfaces are conventional attestations, never authentication of human consent.
+
+## 2026-10-14 — Agent labels, clickable decisions and maintenance safety (unreleased)
+
+Agent announcement instructions now show the role-only `[<short role>]` label and
+the actual configured model on every launch, status, return and failure. The full
+display-role mapping lives in `rules/subagents.md`. Canonical agent IDs, registered
+aliases, responsibilities, hook event envelopes and telemetry fields retain their
+existing contracts; this presentation update renames no public identifier.
+Workers sharing a visible role use separate instance fields; unavailable model
+identity is reported explicitly. Hosts render these lifecycle labels from hook
+guidance.
+
+All decisions use the host's permitted clickable controls when available.
+Selecting specific final checks opens individual Run/Skip choices and a final
+confirmation of the exact selected commands. Text fallback remains explicit when
+the host cannot display controls; the kernel neither renders UI nor authenticates
+submitted consent.
+
+Security review traces injection paths and records confirmed locations and related
+occurrences. The reviewer remains read-only; routed implementation workers own
+remediation. Database maintenance defaults to authored migrations. Execution of
+migrations and any direct live database mutation require separate scoped human
+confirmation. These are host/executor policies, not a database proxy or a universal
+tool interceptor; use read-only credentials for inspection and enforce database
+permissions in the deployment. Ordinary application runtime operations retain
+their existing authorization boundaries.
+
+## 2026-10-13 — Simple planning and complete-implementation validation (unreleased)
+
+Eligible simple tasks now expose a scope-bound clickable direct/spec choice before
+artifacts. Additive execution facts are `scopeRevision`, `specChoice` and
+`specChoiceScopeRevision`; the planning envelope reports eligibility, choices,
+rule-loading mode and preview requirement. A current direct choice loads relevant
+stack guidance and security/Git safeguards, without mandatory prototype or spec.
+Unknown, stale, sensitive, multi-domain or independent design/review facts do not
+grant that lane. Existing commands, rule paths and agent identifiers are preserved.
+
+Registry workflow preferences `simple_spec_choice` and `final_validation_prompt`
+are enabled; missing flags in older registries default false, malformed flags fail
+closed. Validation is always protected by the strengthened gate, not disabled by
+an environment or registry flag. The generic size/feature spec rule remains the
+fallback outside the resolved simple-task exception.
+
+The final workflow gate additionally requires exact current `completion` scope
+and source, the exact complete `requiredTicketIds` set from the approved graph,
+every IMPLEMENTATION ticket integrated, no unfinished corrections and
+`validation.requestedAtPhase: final`. Earlier generic approval is insufficient.
+Old validation attestations without these fields are denied; hosts must adapt.
+The separate final-proof ticket is not an implementation-completion prerequisite.
+Hosts enumerate the actual entire implementation graph; these are attestations,
+not authentication or universal tool interception. Actual clickable choices remain
+the host's responsibility, with honest text fallback when controls are unavailable.
+
+`upstream-to-tickets` is an additive bounded skill reference to Matt Pocock's
+installed `.agents/skills/to-tickets/SKILL.md`. Accepted specs use multiple bounded
+tracer-bullet tickets and a single dependency graph; independent ready workers fill
+available capacity without colliding ownership. Executable checks remain outside
+per-unit integration prerequisites and wait for fresh final consent.
+
+## 2026-10-11 — Final security consent and visible agent startup (unreleased)
+
+Routing retains security-reviewer identifiers and obligation detection, but queues
+reviewer dispatch and automated security scans until every scoped implementation
+unit is integrated and corrections are finished. `rules/verification.md` owns the
+separate final scoped decision: run the displayed reviewer and existing scan
+commands, defer, or decline. Required security evidence remains pending on defer,
+refusal or missing consent; reviewable implementation delivery grants no verified
+completion or release clearance. Secure coding and installer secret gates remain
+active. Ordinary integration inspection may overlap implementation.
+
+Host adapters use available permitted approval-capable clickable input, with an
+explicit labeled-text fallback where unavailable. Startup announcements now carry
+a bold label and a standalone diff block showing agent/canonical role, status,
+plain-English task, actual host model, mode and scope. Existing banner fields,
+agent names, routing matches, return envelopes and runtime interfaces are unchanged.
+These are instruction-policy conventions; the generic scheduler and kernel do not
+provide security-specific dispatch enforcement or authenticate human consent.
+
+## 2026-10-08 — Final approved checks and approval evaluator (unreleased)
+
+Automatic Stop no longer executes package commands, runner probes or checks.
+It reports pending approval; prior successful Stop results are not evidence for
+this behavior. Final integrated lint/typecheck/build/startup/integrity/tests/evals
+require explicit exact-scope/current-task consent under rules/verification.md.
+Distinct commands run once per immutable revision; changed inputs invalidate
+only affected evidence. Refusal leaves validation pending without blocking delivery
+of a reviewable implementation or pretending validation passed.
+
+Additive `kernel workflow-gate --facts <json>` evaluates declared task/scope/source,
+preview choice/artifact approval and final check consent. Missing/stale facts deny;
+output distinguishes `productionAllowed` and `validationAllowed`, with reasons and
+`enforcement: host-attestation-only`. Facts never authenticate human consent or intercept
+all host tools. `launchReady` now requires host approval matching task/run and
+immutable scheduler graph fingerprint before any launcher call; absence denies.
+Hosts must adapt before invoking it; this is an unreleased default-deny tightening
+of the launch library contract. Manual Stop verification likewise needs approved
+final integrated context plus canonical `files[]`, tied to a SHA-256 exact-file-list
+`validationScopeRevision(files)` fingerprint; transcript scope is intersected
+before runner probes. No environment/file flag grants approval.
+
+Additive `kernel skill-reference --id <id>` reads bounded
+`registries/skill-references.json`: `upstream-session-retro`,
+`engineos-recurring-retro`, `upstream-prototype`. Answers expose actual local path,
+origin, purpose and availability; no automatic installation or ambiguous `/retro`
+substitution. Session retro remains opt-in; native retro mines recurring evidence.
+
+CI PR/push runs execute no package validation. A manual integrated-ref run needs
+`approve_checks`; test/eval/smoke jobs also need `approve_tests`. Inputs attest
+that run only, not future tasks or host-wide consent. User decisions are separate
+sequential questions; unchanged scoped responses/context are reused on resume.
+These changes require consumer review/release notes; no rollout is authorized.
+
+## 2026-10-08 — Prototype preview and completion retro (unreleased)
+
+Existing command names, artifact paths and output-artifact timing remain stable.
+`rules/parallelism.md` owns an instruction-based pre-implementation preview choice
+for direct, delegated and resumed execution. Production work waits for a scoped
+decline or approval of the actual preview artifact/revision; unchanged-scope
+decisions persist and material changes reopen approval. Selected preview creation
+uses the installed Matt Pocock prototype skill, with independent test/Git consent.
+Missing selected-preview prerequisites block that branch, not silently substitute.
+
+Completion separately offers the installed Matt Pocock session `/retro`, running
+only on opt-in. Decline/missing response leaves delivery complete; an unavailable
+upstream skill may prompt an explicitly selected native alternative. Recommendations
+grant no automatic edits, commits or promotion. A completed retro does not offer
+itself recursively. The workflow-gate evaluator above now checks declared preview facts; host
+user-decision authentication and direct-tool application remain conventional. No release or consumer rollout is authorized by this patch.
+
+## 2026-10-07 — Workflow optimization (unreleased)
+
+Existing command/rule/agent names and legacy kernel projections are retained.
+No migration or release has been performed. Additions are MINOR surfaces;
+direct execution and capacity/default workflow changes need explicit release
+notes and consumer review before rollout.
+
+| Surface | Contract |
+|---|---|
+| `kernel execution --facts <json>` | Declared complexity/risk/scope facts return `unresolved`, `direct`, `delegate` or `parallel`, reasons, budget guidance and policy capacity. Unknown facts never authorize writes. Ordinary route ownership is distinct from risk-mandated agents; risk/security/design obligations remain binding. |
+| `kernel resolve --facts` | Optional `execution` fact adds `execution` to the answer and requested task contract. Calls omitting execution retain their previous output shape. `scale` and `waves` retain legacy schemas. |
+| `registries/policy.json` | Adds strict `workflow.task_budgets` and `workflow.direct_max_files`; the single existing worker cap changes from 6 to 3. Existing policy projections/loaders continue to validate their own fields. |
+| `scheduler plan` | `--units <json> --run-id <id> --host-capacity <worker-slots> [--time-ms <epoch-ms>]`; emits version-1 state, legal actions, local-batch events and `enforcement: conventional`. Computes decisions, never launches native agent tools. |
+| `scheduler step` | `--state <json> --event <json>`; validates expected state revision, monotonic timestamp, state transitions and accepted evidence before dependency release. Rejects malformed data, stale events, unsafe scopes and missing required checks. |
+| Scheduler launch library | `launchReady` accepts a concrete `AgentLauncher`; host owns exclusive persistence, permission/resource-breaker checks and uncertain-launch reconciliation. No built-in Codex/Claude launcher or durable crash-recovery guarantee is implied. |
+| `workflow-report [--file <local-jsonl>]` | Reads bounded JSON/JSONL or stdin, validates one ordered run and reports TTFR/waits/duration/concurrency/retries/observed usage. Unobserved values stay null. Evidence is revision-bound producer attestation; no checks are executed by the report. |
+| Workflow events | Version 1; journal owner offsets local batch sequences into globally increasing sequence ids. Metadata excludes prompt bodies. Failed/blocked/cancelled events attest that the host stopped any active worker before ownership release. |
+| Native workflows | New `engineos-spec`, `engineos-implement-spec`, `pr` skills and `/engineos:implement-spec`, `/engineos:pr` commands. `/engineos:new-feature` preserves artifact paths/design gates and runs native procedures; external skills become optional references. No upstream name is removed. |
+| Validation | Superseded by the 2026-10-08 final-approved-checks contract above: no intermediate executable checks by default; all final checks require exact-scope user consent. |
+
+Rollback before release: restore previous execution selection/worker cap and
+native-command routing in consumer config/revision. Legacy entry points remain;
+do not give new scheduler snapshots to a legacy executor. No existing journal
+schema is replaced; lifecycle events use their own versioned format.
+
 ## What is public surface
 
 Changing any of these is a **breaking change**:

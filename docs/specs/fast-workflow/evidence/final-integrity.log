@@ -1,0 +1,116 @@
+== EngineOS integrity ==
+ok   node >= 18 present (the runtime every entry point, hook and this validator runs on)
+ok   always-on imports resolve
+ok   all rules/*.md cross-references resolve
+ok   router load lists are closed
+ok   always-on rules reference only always-on rules
+ok   guidance agents all exist
+ok   guidance skills all exist
+ok   guidance rules all exist
+ok   agent frontmatter complete and name matches filename
+ok   every agent declares the canonical Return format envelope
+ok   every agent and alias has a slash command
+ok   every skill has SKILL.md with matching name and a description
+ok   no empty rule/agent/skill documents
+ok   registries are valid JSON
+ok   registry precedence covers every domain in map order
+ok   registry agents, skills and rules all exist
+ok   decision rule ids are unique
+ok   every decision rule requires or prefers something
+ok   every decision rule signal is a valid regex
+ok   verification policy agrees across registry, verification rule and gate
+ok   every decision rule source names a file that exists
+ok   agent capability_ids resolve to capabilities.json
+ok   capability agents exist in agents.json
+ok   every capabilities.json agent binding resolves
+ok   every capabilities.json entry declares a valid model tier
+ok   every agents.json entry declares a valid model tier
+ok   every agents.json entry resolves to a file under agents/
+ok   every capability model_tier agrees with its agent's tier
+ok   models.json escalation_order covers every tier exactly once
+ok   models.json escalates_to chain follows escalation_order
+ok   models.json work_type tiers all resolve
+ok   models.json tier ids are unique
+ok   models.json model bindings are unique or documented as shared
+ok   every models.json model appears in rules/models.md
+ok   rules/models.md ADR row binds the registry's tier model
+ok   rules/models.md code-review row binds the registry's tier model
+ok   every agent frontmatter model is bound in models.json
+ok   intent ids are unique
+ok   intents.json rules, skills, agents and commands all resolve
+ok   no intents.json signal carries placeholder metasyntax
+ok   hook_mirrored and domain agree on every intent
+ok   every hook-mirrored intent matches its routing.json domain (rules)
+ok   every routing.json domain is claimed by exactly one intent
+ok   every intent model_tier resolves in models.json
+ok   every intent risk_floor is a valid tier
+ok   intent count matches the CLAUDE.md router table
+ok   policy.json risk aggregation is max (risk never averages)
+ok   policy.json carries the five risk inputs
+ok   policy.json autonomy levels are A0..A4 in order
+ok   policy.json autonomy ceiling covers low/medium/high with valid levels
+ok   policy.json gate ladder matches rules/gates.md
+ok   policy.json gates.by_risk covers every ladder gate for every tier
+ok   policy.json never_retry list intact
+ok   wave cap agrees between policy.json and rules/parallelism.md
+ok   retry bound agrees: 2 attempts + 1 escalation in prose and policy.json
+ok   spec threshold agrees between CLAUDE.md and policy.json
+ok   fan-out threshold agrees between rules/parallelism.md and policy.json
+ok   every routing domain declares match patterns and a sample_path
+ok   every domain sample_path routes to its own domain via the kernel
+ok   kernel route-path honors the excluded patterns and self_dirs
+ok   policy.json prompt_signals present and valid EREs
+ok   route capability is bound to the router agent at its declared design-tier model
+ok   agents/router.md resolves the plan through one kernel call declaring every required fact
+ok   router must not hold Edit/Write/Task
+ok   intents.json suppression data is internally consistent
+ok   every policy.json router fixture matches the kernel route-escalate answer
+ok   hooks/prompt-advisor.sh is the single registered prompt adapter and src/hooks/prompt-advisor.ts calls resolve-task
+ok   resolve-task supplies the closed substantive policy bundle and keeps pure questions lean
+ok   handoff intent carries required_sections/required_fields as data
+ok   handoff template carries every registry-required section
+ok   handoff template carries every registry-required field line
+ok   every handoff template section is declared in the registry
+ok   CLAUDE.md handoff row mirrors every required section and field
+ok   policy.json.repair is well-formed
+ok   kernel.sh repair's ladder matches policy.json.repair's bound
+ok   the until-clean prose mirrors agree with policy.json.repair
+ok   src/hooks/stop-verify.ts asks the kernel's repair section for the bound, keeping no private copy
+ok   record-change intent carries the change-record contract as data
+ok   change template carries every registry-required section
+ok   change template carries every registry-required field line
+ok   every change template section is declared in the registry
+ok   every checked-era archived change record is a well-formed done claim
+ok   every checked-era archived record's spec link resolves (or is an explicit n/a exemption)
+ok   change-record prose mirrors agree with the registry
+ok   policy.json.telemetry is well-formed
+ok   scripts/telemetry.sh round-trips every registry sample and rejects malformed data
+ok   telemetry wiring is complete in both directions (every declared writer emits its event, every emitting module is declared), private-copy-free and prompt-text-free
+ok   CLAUDE.md's precedence sentence and always-on mirror agree with the registry
+ok   CLAUDE.md does not reintroduce the retired routing-map.sh authority claim
+ok   policy.json.parallelism.backpressure is well-formed
+ok   kernel.sh admit dispatches when idle and rejects at cap with a full queue
+ok   rules/parallelism.md mirrors backpressure: names kernel.sh admit, quotes the queue bound, one row per declared action
+ok   policy.json.breaker is well-formed: failure_threshold, cooldown_waves and half_open_probes each read as a whole number >= 1, states are exactly closed/half-open/open, scopes is a non-empty array
+ok   kernel.sh breaker answers the expected state and allow for all six transitions across the three state arms
+ok   rules/parallelism.md mirrors the breaker: a Circuit breaker section naming kernel.sh breaker, the registry's failure threshold, a row per declared state, and a scope-vocabulary sentence naming every declared scope
+ok   policy.json.hitl is well-formed: reasons is 9+ unique non-empty strings, situations is a non-empty array disjoint from retry.never_retry, record_home is set
+ok   kernel.sh hitl answers the expected required and autonomy_after for the low/high tiers, drops autonomy exactly one level on thin evidence at low and medium and to autonomy.high_with_thin_evidence at high without ever raising it, cites both flag-driven reasons and every declared situation, rejects an unknown situation, and resolve-task carries the answer for a classified tier while claiming none off a bare risk floor
+ok   rules/risk-autonomy.md mirrors hitl: a Human-in-the-loop section naming kernel.sh hitl, a row per declared reason and the record home, which the rules/gates.md release checklist and the change-record template also carry
+ok   the backpressure/hitl coupling holds: policy.json.hitl declares budget-exhausted in both reasons and situations, kernel.sh admit's reject message cites 'hitl: budget-exhausted', and kernel.sh hitl --situation reject answers with exactly that id
+ok   policy.json.telemetry.exec_journal is well-formed: home ends in .exec.jsonl, schema is executable, span_kinds/statuses are non-empty, max_value_length agrees with the port's standalone fallback, and every writer exists
+ok   scripts/exec-journal.sh round-trips a full v2 span and every declared span kind, keeps a v1 line's shape, refuses whitespace in every field but note (run_id and agent included), refuses an over-long value, refuses a status or model_tier outside its enumeration on validate as well as on append, and still accepts a free-text note
+ok   exec-journal span wiring is complete in both directions (every declared writer writes a span, every span-writing hook is declared), prompt-text-free at the sink, and reaped by src/hooks/ensure-project-layout.ts
+ok   rules/observability.md mirrors the span schema: an Agent traces section naming the registry home, the span-kind alternation in registry order, trace_id/span_kind/cost_micros, the tokens-are-null and status-is-a-floor caveats, and the all-but-note slug claim with its length bound
+ok   the retrieval-metrics pair holds: skills/eval-harness/references/retrieval-metrics.md defines Recall@K/Precision@K/MRR, skills/eval-harness/SKILL.md links it, and the RAG section of rules/llm-apps.md names all three
+ok   the adoption entrypoints are wired: scripts/init-project.sh is executable, commands/init.md invokes it, both the SessionStart hook and engineos init import src/hooks/scaffold.ts, and docs/ADOPTION.md names /engineos:init
+ok   hook modes are the honest signal install.sh treats them as: every hooks/*.sh outside install.sh's library list is executable, every library in it exists, says so in its header and is not executable, and the list — not the files' own text — is what the installer reads
+ok   every agent's tier binds the model it declares
+ok   the adapter mirrors .trae/skills and .windsurf/skills are byte-identical to .agents/skills
+ok   every text file a POSIX parser reads is stored with LF line endings, *.ps1 being the one exception .gitattributes declares
+ok   the three kernel answer sites route-path, route-intent and resolve-task each emit skills together with skills_suppressed
+ok   no routing domain is left without an enabled skill by disablement
+ok   router-table command and pattern references resolve
+ok   check-count claims equal the registered count
+
+passed 113, failed 0

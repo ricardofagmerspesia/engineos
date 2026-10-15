@@ -13,12 +13,13 @@ import { repoRoot } from '../lib/git';
 
 export const STACK_QUESTION_NOTE =
   '[engineos] no stack declared — this repo has no .engineos/config.json and no package manifest. ' +
-  'Before writing any code, ask the developer which stack this project uses: NestJS (Node.js/TypeScript) or FastAPI (Python) for application backends ' +
-  '(including API, worker and LLM service hosts); Node.js alone is a runtime and tooling environment, not a backend framework choice. ' +
-  'Then ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), ' +
-  'and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers on the Node stack ' +
-  'and LangGraph on the Python stack; do not ask the developer to reconfirm them once the backend is chosen. ' +
-  'Never offer plain Node.js or standalone Express application backends ' +
+  'Before writing any code, state the mandatory NestJS application backend policy within the JavaScript/TypeScript ecosystem. ' +
+  'Application backends (including API, worker ' +
+  'and LLM service hosts) require NestJS; Node.js is the runtime and tooling environment, not a backend framework choice. ' +
+  'Ask only about unresolved backend scope/package paths, frontend/mobile choices (Next.js, React, React Native), ' +
+  'and LLM provider/model or storage requirements. LLM applications and chatbots use Mastra inside NestJS providers; ' +
+  'do not ask the developer to reconfirm NestJS or Mastra. ' +
+  'never offer plain Node.js or standalone Express application backends ' +
   '(rules/base.md "New projects — stack first"). Persist the answer with ' +
   '`engineos init --stack <framework>[@dir],...` and record it as the project\'s first ADR.';
 

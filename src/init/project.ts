@@ -20,7 +20,7 @@ import { loadLayoutManifest, scaffoldLayout, type ManifestEntry } from '../hooks
 import { hasStackSignal, packageLabel, resolveStack, type StackSource } from '../kernel/stack';
 import { repoRoot } from '../lib/git';
 import {
-  FRAMEWORKS,
+  ACTIVE_FRAMEWORKS,
   FRAMEWORK_LANGUAGE,
   PROJECT_CONFIG_PATH,
   isFramework,
@@ -28,7 +28,6 @@ import {
   type PackageStack,
   type ProjectConfig,
 } from '../registry/project-config';
-import { ROUTER_SETTINGS, isRouterSetting, type RouterSetting } from '../registry/policy-router-decision';
 
 // The one regex install.sh writes and greps for, carried here as the same
 // literal string so the two sides cannot drift (plan Task 26). It is a POSIX
@@ -45,30 +44,20 @@ const EXIT_NOT_GIT = 2;
 const EXIT_SELF = 3;
 const EXIT_USAGE = 64;
 
-const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--router keyword|llm|jev|auto] [--dry-run]';
-
-// `auto` caps nothing: the repo leaves the choice to the personal setting and
-// the policy default, which is what a project that never thought about routing
-// should say (routing-decision-layer contracts §1).
-const DEFAULT_ROUTER: RouterSetting = 'auto';
+const USAGE = 'usage: engineos init [--dir PATH] [--stack auto|<framework>[@dir],...] [--dry-run]';
 
 // The bash halves of the scaffold stay on disk (versioned, sourced surface,
 // frozen until 2.0) and their absence still reads as a broken checkout; the JSON
 // manifest joins them because it is what this port actually reads.
 const REQUIRED_SIBLINGS = ['hooks/scaffold-layout.sh', 'hooks/layout-manifest.sh', 'registries/layout-manifest.json'];
 
-// Two starter CLAUDE.md files ship: the general one carries a Node block AND a
-// Python block (the developer deletes the one they do not use, a mixed repo keeps
-// both), the Python variant is the clean single-stack file. The pick is made from
-// the same package list the config was written from: every resolved package
-// Python → the variant; anything else, including "no package", → the general
-// one, which is what init always produced before the stack existed.
+// New projects always use the JavaScript ecosystem template. The Python path is
+// retained as a deprecated public constant for existing integrations.
 export const CLAUDE_MD_TEMPLATE = 'templates/project-claude.md';
 export const CLAUDE_MD_TEMPLATE_PYTHON = 'templates/project-claude-python.md';
 
-export function claudeMdTemplate(packages: readonly PackageStack[]): string {
-  const pythonOnly = packages.length > 0 && packages.every((pkg) => pkg.language === 'python');
-  return pythonOnly ? CLAUDE_MD_TEMPLATE_PYTHON : CLAUDE_MD_TEMPLATE;
+export function claudeMdTemplate(_packages: readonly PackageStack[]): string {
+  return CLAUDE_MD_TEMPLATE;
 }
 
 // A one-entry manifest rather than a second call into the scaffolder's guard: the
@@ -109,7 +98,6 @@ interface Options {
   dir: string;
   dryRun: boolean;
   stack: StackSpec;
-  router: RouterSetting;
 }
 
 type Parsed = { ok: true; options: Options } | { ok: false; message: string };
@@ -121,7 +109,7 @@ export function initProject(argv: string[], deps: InitDeps): number {
     io.err(`${parsed.message}\n`);
     return EXIT_USAGE;
   }
-  const { dir: target, dryRun, stack, router } = parsed.options;
+  const { dir: target, dryRun, stack } = parsed.options;
 
   const project = repoRoot(target, deps.spawn);
   if (project === null) {
@@ -173,9 +161,9 @@ export function initProject(argv: string[], deps: InitDeps): number {
   const packages = stack.kind === 'declared' ? stack.packages : resolveStack(project, null).packages;
   const source: StackSource = stack.kind === 'declared' ? 'config' : 'detected';
   if (stack.kind === 'auto' && packages.length === 0 && hasStackSignal(project)) {
-    io.out('  existing stack signal found, but no package EngineOS has a runner for (Node or Python) was detected — existing files are preserved; declare the stack with --stack\n');
+    io.out('  existing stack signal found; no supported JavaScript package detected — non-JavaScript stacks are unsupported, existing files are preserved\n');
   }
-  writeProjectConfig({ io, project, packages, source, router, dryRun });
+  writeProjectConfig({ io, project, packages, source, dryRun });
   writeProjectClaudeMd({ io, project, root, template: claudeMdTemplate(packages), dryRun });
   for (const name of AGENT_SKILLS_DOCS) writeAgentSkillsDoc({ io, project, root, name, dryRun });
   io.out(doneMessage(root));
@@ -192,10 +180,9 @@ function writeProjectConfig(opts: {
   project: string;
   packages: readonly PackageStack[];
   source: StackSource;
-  router: RouterSetting;
   dryRun: boolean;
 }): void {
-  const { io, project, packages, source, router, dryRun } = opts;
+  const { io, project, packages, source, dryRun } = opts;
   io.out(stackTable(packages, source));
   const target = join(project, PROJECT_CONFIG_PATH);
   if (lstatOk(target)) {
@@ -206,7 +193,7 @@ function writeProjectConfig(opts: {
     io.out(`  ${PROJECT_CONFIG_PATH}: not written — no package detected; declare one with --stack <framework>[@dir]\n`);
     return;
   }
-  const config: ProjectConfig = { version: 1, stack: { packages: [...packages] }, router: { mode: router } };
+  const config: ProjectConfig = { version: 1, stack: { packages: [...packages] } };
   const text = `${JSON.stringify(config, null, 2)}\n`;
   if (dryRun) {
     io.out(`  would write ${PROJECT_CONFIG_PATH}:\n${indent(text, '    ')}`);
@@ -239,7 +226,7 @@ function indent(text: string, prefix: string): string {
   return text.split('\n').map((line) => (line === '' ? line : `${prefix}${line}`)).join('\n');
 }
 
-// "fastapi@backend,react@frontend" -> two packages; "fastapi" -> one at ".".
+// "nestjs@backend,react@frontend" -> two packages; "nestjs" -> one at ".".
 // Every refusal names the item, so a comma list with one bad entry says which.
 export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | { ok: false; message: string } {
   const trimmed = spec.trim();
@@ -256,8 +243,11 @@ export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | {
     if (framework === 'node' || framework === 'express') {
       return { ok: false, message: `--stack: "${framework}" is not a supported application framework; choose nestjs for application backends, or next, react, react-native for UI. Node.js remains the runtime for tooling; use --stack auto to detect existing packages truthfully.` };
     }
+    if (isFramework(framework) && FRAMEWORK_LANGUAGE[framework] !== 'node') {
+      return { ok: false, message: `--stack: "${framework}" is deprecated and unsupported; choose ${ACTIVE_FRAMEWORKS.join(', ')} (application backends require nestjs)` };
+    }
     if (!isFramework(framework)) {
-      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${FRAMEWORKS.join(', ')})` };
+      return { ok: false, message: `--stack: unknown framework "${framework}" (one of ${ACTIVE_FRAMEWORKS.join(', ')}; application backends require nestjs)` };
     }
     if (rawDir.startsWith('/') || rawDir.split('/').includes('..')) {
       return { ok: false, message: `--stack: "${rawDir}" must be a directory relative to the repo root` };
@@ -265,9 +255,7 @@ export function parseStackSpec(spec: string): { ok: true; stack: StackSpec } | {
     const dir = normalizeDir(rawDir);
     if (seen.has(dir)) return { ok: false, message: `--stack: "${dir}" is declared twice` };
     seen.add(dir);
-    const language = FRAMEWORK_LANGUAGE[framework];
-    const pkg: PackageStack = { dir, language, framework, compose_service: null };
-    if (language === 'python') pkg.python_env = 'auto';
+    const pkg: PackageStack = { dir, language: 'node', framework, compose_service: null };
     packages.push(pkg);
   }
   return { ok: true, stack: { kind: 'declared', packages } };
@@ -335,7 +323,6 @@ function parseArgs(argv: string[], cwd: string): Parsed {
   let dir = cwd;
   let dryRun = false;
   let stack: StackSpec = { kind: 'auto' };
-  let router: RouterSetting = DEFAULT_ROUTER;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--dir') {
@@ -350,18 +337,13 @@ function parseArgs(argv: string[], cwd: string): Parsed {
       if (!parsedStack.ok) return { ok: false, message: parsedStack.message };
       stack = parsedStack.stack;
       i += 1;
-    } else if (arg === '--router') {
-      const value = argv[i + 1];
-      if (!isRouterSetting(value)) return { ok: false, message: `--router needs one of ${ROUTER_SETTINGS.join(', ')}` };
-      router = value;
-      i += 1;
     } else if (arg === '--dry-run') {
       dryRun = true;
     } else {
       return { ok: false, message: USAGE };
     }
   }
-  return { ok: true, options: { dir, dryRun, stack, router } };
+  return { ok: true, options: { dir, dryRun, stack } };
 }
 
 // Two independent signals: the repo's own marker files, or the target simply

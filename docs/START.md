@@ -96,16 +96,16 @@ Example: `use the backend-coordinator to audit src/payments for IDOR and N+1`.
 | dba-coordinator | ronaldo |
 | llm-coordinator | hermsdorff |
 | oracle-specialist | leo |
-| kubernetes-specialist | kovac |
-| gcp-specialist | nakamura |
+| kubernetes-specialist | corradin |
+| gcp-specialist | gcp |
 | postgres-specialist | pereira |
 | cicd-specialist | gustavo |
 | security-reviewer | leo-ely |
-| critic | vera |
-| test-writer | ameer |
-| audit-consolidator | corradin |
-| architecture-analyst | analyst |
-| qa-tester | qa |
+| critic | rogerio |
+| test-writer | sameer |
+| audit-consolidator | danilo |
+| architecture-analyst | ricardo-fagmer |
+| qa-tester | ameer |
 
 `ios-builder` and `android-builder` have no alias — always invoke by full name.
 
@@ -374,7 +374,7 @@ goes back through the router.
 | Design a multi-agent system | `/design-agents` — the 12-step form, approval before any graph code; `resume` picks a draft back up |
 | Record an architecture decision | `adr` skill |
 | Security-check a diff | `security-reviewer` agent |
-| Get an independent "is this actually done" check | `critic` agent (alias `vera`) — required at risk=high |
+| Get an independent "is this actually done" check | `critic` agent (alias `rogerio`) — required at risk=high |
 | Add test coverage | `test-writer` agent |
 | Hand work off mid-task | `templates/handoff.md` — never just "continue where I left off" |
 | Learn from recent work / recurring corrections | `retro` skill |
