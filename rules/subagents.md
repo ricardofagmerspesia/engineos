@@ -38,11 +38,20 @@ Naming a worker while implementing its delegated assignment inline violates owne
 
 Before each actual dispatch or follow-up that starts work, show the standalone
 bold label **Subagents starting work**, then a separate `diff` fence with blank
-lines around it. One agent per entry; one block per dispatch batch. Keep the
-model/mode/scope fields, startup status and plain-English task. Every lifecycle
-line uses `[<short role>] | model: <actual configured model>` as its role-only
-visible identity. Canonical agent IDs and registered aliases remain dispatch and
-telemetry identities; agent responsibilities remain unchanged.
+lines around it; one block per dispatch batch. Each agent gets exactly ONE line
+per lifecycle event, never wrapped onto a second line:
+
+```diff
++ [<short role>] <model> <AUDIT|IMPLEMENT> starting — <scope> — <task>
++ [<short role>] <model> returned — <result summary>
++ [<short role>] <model> FAILED — <reason>
+```
+
+Shorten scope and task to about 60 characters each: a shared directory in braces
+(`docs/specs/{05-backend,08-security}.md`), a glob (`src/orders/**`) or
+`<first path> +N`; the task is a plain-English summary. `[<short role>]` is the
+role-only visible identity. Canonical agent IDs and registered aliases remain
+dispatch and telemetry identities; agent responsibilities remain unchanged.
 
 Resolve short roles by canonical agent ID:
 
@@ -72,42 +81,31 @@ Resolve short roles by canonical agent ID:
 | test-writer | qa |
 
 For unregistered agents use their canonical role with a trailing `-coordinator`
-removed when present. When active workers share a short role, distinguish them
-with a separate `instance` field using the actual host worker identifier or a
-supervisor-assigned identifier. Reuse that instance throughout their lifecycle;
-keep the bracketed role label unchanged.
+removed when present. When active workers share a short role, add a `#<instance>`
+suffix to the role using the actual host worker identifier or a
+supervisor-assigned identifier, and keep it for their whole lifecycle.
 
 **Subagents starting work**
 
 ```diff
-+ [backend] | model: <actual configured model> | mode: IMPLEMENT | scope: src/orders/**
-+ [backend] | model: <actual configured model> | status: starting | task: Implement the approved order API changes
++ [backend] <actual configured model> IMPLEMENT starting — src/orders/** — order API changes
++ [qa#1] <actual configured model> AUDIT starting — src/orders/** — review order API diff
++ [qa#2] <actual configured model> AUDIT starting — apps/web/orders/** — review order UI diff
 ```
 
-Replace the model placeholder with the actual configured host model. If the model
-is inherited and unavailable to inspection, say `inherited (exact model unknown)`;
-never infer `opus` from an EngineOS tier or claim an unsupported override. The
-short role, status and task must remain clear without color: diff highlighting
-is renderer-dependent. When the current host has verified rich-text or role-badge
-coloring support, display the bracketed role (for example `[qa]`) in purple while
-retaining its literal readable text. Plain Markdown/diff rendering cannot promise
-per-span color; use its readable bracketed role without ANSI, HTML or CSS tokens
-to imitate styling. The host owns presentation; hook fields stay unchanged.
-A queued or pending agent has not started; announce
-`starting` immediately before the real launch and claim `running` only after the
-host confirms it. Launch failure receives an explicit FAILED announcement.
-
-Keep the short role, model and any assigned instance on every subsequent status,
-task, return and failure line. Announce each return afterwards in its own block:
-
-```diff
-+ [backend] | model: <actual configured model> | status: returned | 3 files | scoped diff inspected
-```
-
-Failures use the same visible identity and model with `status: FAILED` and a
-reason. Concurrent QA workers, for example, use `[qa]` plus distinct
-`instance: qa-1` and `instance: qa-2` fields. Never combine agents on one line or
-hide a failed unit in a wave summary.
+Write the actual configured host model; if inherited and not inspectable, say
+`inherited (exact model unknown)`, never a tier-inferred `opus` or unsupported
+override. Role, status and task stay clear without color (diff highlighting is
+renderer-dependent); a host with verified rich-text or role-badge coloring may
+show the bracketed role in purple, keeping its literal text, while plain
+Markdown/diff gets no ANSI, HTML or CSS imitation. The host owns presentation;
+hook fields stay unchanged. A queued or pending agent has not started: announce
+`starting` just before the real launch, claim `running` only after the host
+confirms it, and announce a launch failure with an explicit FAILED line. Return
+and failure lines reuse the same role, model and any `#<instance>` suffix, each in
+its own later block, e.g.
+`+ [backend] <actual configured model> returned — 3 files, scoped diff inspected`.
+Never combine agents on one line or hide a failed unit in a wave summary.
 
 ## If you are the dispatched agent
 
@@ -133,8 +131,7 @@ from questions/review/analyze and IMPLEMENT from explicit implementation tasks.
 ## Relation to the router
 
 `rules/parallelism.md` owns decomposition; `rules/models.md` owns tiers; this file
-owns dispatch and visibility, including lifecycle role/model/instance and startup
-status/task fields.
+owns dispatch and visibility, including the one-line lifecycle format.
 Hooks `hooks/announce-agent-dispatch.sh` and `announce-agent-return.sh` re-inject
 the lifecycle display contract at dispatch/return (see README); the supervisor adds
 the prominent title and supplemental fields before actual dispatch. Hosts without

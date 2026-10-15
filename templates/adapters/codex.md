@@ -77,10 +77,12 @@ permitted; the host owns the controls and actual submitted response.
 Apply rules/subagents.md **Visible subagent announcements** before actual native
 spawn/follow-up calls and after returns, including failures. Codex has no banner
 hooks: the supervisor emits the bold startup label and diff block itself, with
-the role-only `[<short role>]` label, status, task, actual host model, mode and
-exclusive scope. Resolve every agent's short role through rules/subagents.md and
-retain any separate instance field across its lifecycle. Canonical dispatch IDs,
-registered aliases and agent responsibilities retain their existing contracts.
+one line per agent carrying the role-only `[<short role>]` label (optional
+`#<instance>` suffix), actual host model, mode, status, short exclusive scope and
+task, then one line per return or failure. Resolve every agent's short role
+through rules/subagents.md and retain any instance suffix across its lifecycle.
+Canonical dispatch IDs, registered aliases and agent responsibilities retain
+their existing contracts.
 A queued security reviewer remains pending until approved dispatch; no banner
 may imply that a worker launched before the host call succeeds. Color depends on
 the renderer, so retain explicit text status and task.

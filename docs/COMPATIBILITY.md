@@ -12,6 +12,15 @@ evidence retain their dated contracts; consult the matching version section
 is owned by `rules/`; search historical tables on demand, never import this whole
 file into every task.
 
+## 2026-10-15 — One-line agent announcements (unreleased)
+
+Lifecycle announcements are one line per agent per event:
+`+ [<short role>] <model> <AUDIT|IMPLEMENT> starting — <scope> — <task>`, then
+`returned — <summary>` or `FAILED — <reason>`. The separate instance field becomes a
+`#<instance>` role suffix (`[qa#1]`); both hook banners' instruction text changes
+accordingly. Hook envelopes, quoted type/description bounding, telemetry spans,
+canonical IDs, aliases and responsibilities are unchanged: presentation only.
+
 ## 2026-10-14 — Progressive scheduler frontiers (unreleased)
 
 Additive scheduler interfaces allow the first accepted bounded task to implement
