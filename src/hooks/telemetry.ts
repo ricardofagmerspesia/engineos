@@ -110,6 +110,14 @@ export function withSpan<T>(
   return outcome.result;
 }
 
+// One span for work the caller already timed — an awaited call withSpan cannot
+// wrap, because withSpan's fn is synchronous. The duration is clamped like every
+// other span's; the write never throws.
+export function recordSpan(sink: Sink | null, facts: SpanFacts, durationMs: number): void {
+  if (sink === null) return;
+  writeSpan(sink, facts, clampMs(durationMs), null);
+}
+
 // withSpan for work that awaits (the prompt advisor's routing decision, which
 // may make one network call). Same contract: fn's rejection propagates and
 // writes no span; the span's duration covers the whole awaited work.

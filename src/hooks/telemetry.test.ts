@@ -10,7 +10,7 @@ import { fixtureRepo, relocatedRoot, tempRoot } from '../testing/harness';
 import type { HookEnvelope } from './envelope';
 import type { HookContext } from './output';
 import { memorySpanWriter, type MemorySpanWriter } from './span-writer';
-import { closeSpan, event, openSpan, sinkForTests, spanIdFrom, telemetrySink, withSpan, type SpanFacts, type Sink } from './telemetry';
+import { closeSpan, event, openSpan, recordSpan, sinkForTests, spanIdFrom, telemetrySink, withSpan, type SpanFacts, type Sink } from './telemetry';
 
 // A plausible epoch instant: parseMs holds a persisted marker to the same
 // digit bar the clock is held to, so a fake clock has to be a real one.
@@ -239,6 +239,52 @@ test('a file-backed span lands in the session exec journal and validates', (t) =
     span_id: 'toolu_01ABC',
     span_kind: 'agent',
   });
+});
+
+// ------------------------------------------------------------------ recordSpan
+
+const MODEL: SpanFacts = { kind: 'model', capability: 'route', modelTier: 'cheap' };
+
+test('recordSpan on a null sink writes nothing and does not throw', () => {
+  assert.doesNotThrow(() => recordSpan(null, MODEL, 120));
+});
+
+test('recordSpan writes one span carrying the duration the caller timed, with no span id', () => {
+  const { sink, writer } = memorySink([T0]);
+  recordSpan(sink, { ...MODEL, status: 'FAILED', fields: { provider: 'typesafe', note: 'judge=network' } }, 120);
+  assert.deepEqual(writer.spans, [
+    {
+      run_id: 'sess-1',
+      trace_id: 'sess-1',
+      span_kind: 'model',
+      capability_id: 'route',
+      model_tier: 'cheap',
+      status: 'FAILED',
+      duration_ms: 120,
+      provider: 'typesafe',
+      note: 'judge=network',
+    },
+  ]);
+  assert.equal('span_id' in (writer.spans[0] ?? {}), false);
+});
+
+test('recordSpan defaults the status to OK', () => {
+  const { sink, writer } = memorySink([T0]);
+  recordSpan(sink, MODEL, 5);
+  assert.equal(writer.spans[0]?.status, 'OK');
+});
+
+test('recordSpan clamps a negative duration to zero', () => {
+  const { sink, writer } = memorySink([T0]);
+  recordSpan(sink, MODEL, -40);
+  assert.equal(writer.spans[0]?.duration_ms, 0);
+});
+
+test('recordSpan never lets a throwing writer reach its caller', () => {
+  const writer = memorySpanWriter();
+  const failing = { ...writer, appendSpan: (): void => { throw new Error('disk full'); } };
+  const sink = sinkForTests(failing, () => T0, 'sess-1');
+  assert.doesNotThrow(() => recordSpan(sink, MODEL, 1));
 });
 
 // ------------------------------------------------------------------ fixtures

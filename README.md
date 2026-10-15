@@ -46,8 +46,9 @@ Personal style/hooks/keys remain in personal CLAUDE/settings.local files.
 
 ### Windows
 
-Hooks execute `node "<repo>/dist/engineos.cjs" hook <name>` directly; plugin and
-script modes use identical commands. Git Bash is outside the hook path (avoiding
+Hooks execute `node "<repo>/dist/engineos.cjs" hook <name>` (session hooks) or
+`node "<repo>/dist/engineos-hot.cjs" hook <name>` (the five per-call hooks)
+directly; plugin and script modes use identical commands. Git Bash is outside the hook path (avoiding
 terminal-launcher windows), but needed for `scripts/kernel.sh` until 2.0. Node
 must be on Claude's PATH. jq is unnecessary: merge, parsing, generators/evals,
 bench/usage/validator use the bundle. Repository development needs node >= 18
@@ -179,7 +180,7 @@ never silent renames.
 
 At the final stage, propose relevant integrity/eval scope for user approval:
 ```bash
-scripts/validate-engineos.sh   # 68 self-integrity Checks
+scripts/validate-engineos.sh   # 72 self-integrity Checks
 scripts/run-evals.sh           # router + agent golden set
 ```
 These behavioral checks and `npm test` run only after integrated implementation

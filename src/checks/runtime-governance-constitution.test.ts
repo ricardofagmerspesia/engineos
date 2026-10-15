@@ -119,6 +119,55 @@ test('an overload_action the actions list never declares is caught', (t) => {
   assert.ok(hasFinding(findings, 'overload-action-not-in-actions', 'queue-forever'));
 });
 
+// The backpressure rows src/kernel/admit.ts evaluates, first match wins.
+
+test('an emptied backpressure rows table is caught', (t) => {
+  const findings = run(t, 'C24', (root) => {
+    editBackpressure(root, (backpressure) => {
+      backpressure['rows'] = [];
+    });
+  });
+  assert.ok(hasFinding(findings, 'rows-malformed', 'rows'));
+});
+
+test('a backpressure row with a capacity other than remaining or none is caught', (t) => {
+  const findings = run(t, 'C24', (root) => {
+    editBackpressure(root, (backpressure) => {
+      backpressureRow(backpressure, 0)['capacity'] = 'plenty';
+    });
+  });
+  assert.ok(hasFinding(findings, 'rows-malformed', 'rows[0].capacity'));
+});
+
+test('a backpressure reason naming a slot admit cannot fill is caught', (t) => {
+  const findings = run(t, 'C24', (root) => {
+    editBackpressure(root, (backpressure) => {
+      backpressureRow(backpressure, 0)['reason'] = 'inflight {inflight} below {weather}';
+    });
+  });
+  assert.ok(hasFinding(findings, 'rows-malformed', 'rows[0].reason{weather}'));
+});
+
+test('a backpressure row whose action the actions list never declares is caught', (t) => {
+  const findings = run(t, 'C24', (root) => {
+    editBackpressure(root, (backpressure) => {
+      backpressureRow(backpressure, 0)['action'] = 'stampede';
+    });
+  });
+  assert.ok(hasFinding(findings, 'row-action-undeclared', 'rows[0]:stampede'));
+});
+
+test('a backpressure table whose last row still tests a fact is caught', (t) => {
+  const findings = run(t, 'C24', (root) => {
+    editBackpressure(root, (backpressure) => {
+      const rows = backpressure['rows'];
+      if (!Array.isArray(rows)) throw new Error('backpressure.rows is not an array');
+      backpressure['rows'] = rows.slice(0, -1);
+    });
+  });
+  assert.ok(hasFinding(findings, 'rows-no-catch-all', 'rows[1]'));
+});
+
 // ------------------------------------------------------------------ C24b
 
 test('C24b passes on an unmutated checkout', (t) => {
@@ -177,6 +226,18 @@ test('the overload row explaining the queue bound deleted is caught', (t) => {
   });
   assert.ok(hasFinding(findings, 'overload-row-missing', 'defer'));
 });
+
+// ------------------------------------------------------------------ internals
+
+function backpressureRow(backpressure: Record<string, unknown>, index: number): Record<string, unknown> {
+  const rows = backpressure['rows'];
+  if (!Array.isArray(rows)) throw new Error('backpressure.rows is not an array');
+  const row: unknown = rows[index];
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) throw new Error(`rows[${index}] is not a row`);
+  const record: Record<string, unknown> = { ...row };
+  rows[index] = record;
+  return record;
+}
 
 // ------------------------------------------------------------------- coverage
 

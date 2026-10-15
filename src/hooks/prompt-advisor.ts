@@ -1,27 +1,35 @@
-// EngineOS UserPromptSubmit adapter. One kernel call resolves routing, task
-// scale, policy loads and decision gates; this hook only formats that contract
-// and records best-effort telemetry. Non-blocking by design.
+// EngineOS UserPromptSubmit adapter. A source check, an optional judge call and
+// one kernel call resolve routing, task scale, policy loads and decision gates;
+// this hook only formats that contract and records best-effort telemetry.
+// Non-blocking by design: every failure path is a silent exit 0.
 //
-// Port of hooks/prompt-advisor.sh. The one structural change is the kernel call:
-// bash spawned `scripts/kernel.sh resolve-task --prompt <text>` and parsed its
-// JSON, this calls the same resolver in-process, which is the second node
-// process per prompt that this migration exists to remove. The guidance strings
-// live in ./prompt-advisor-guidance, verbatim from the jq program they replace.
+// Port of hooks/prompt-advisor.sh. bash spawned `scripts/kernel.sh resolve-task
+// --prompt <text>`; this calls the same resolver in-process. The routing
+// replacement (contracts.md@rev2 §5, §10.5) put two steps in front of it: S0
+// refuses text the user did not type, and the opt-in Jev judge turns the prompt
+// into facts the kernel folds — replayably, because the kernel reads the fact,
+// never the network. Rev 3 (§10.6) adds the opt-in embedding tie-break for an
+// ambiguous deterministic route, passed the same way as a fact. Both semantic
+// consultations live in ./prompt-judge, the guidance strings in
+// ./prompt-advisor-guidance.
 //
 // Since the routing decision layer (contracts §3, async amendment) the kernel
 // call is followed by one awaited decision — ./prompt-advisor-router — so the
 // hook answers a promise. resolve() itself stays synchronous.
-import { resolve, type Answer } from '../kernel';
-import { isRiskTier, lazyRegistries, type KernelContext, type Registries, type RiskTier } from '../kernel/context';
+import { resolve, type Answer, type DeclaredFacts, type Registries } from '../kernel';
+import { isRiskTier, lazyRegistries, type KernelContext, type RiskTier } from '../kernel/context';
+import type { JudgeFact } from '../judge';
 import { KernelError } from '../lib/json';
 import { hookSlug } from '../lib/slug';
 import { bypassActive } from './bypass';
 import type { HookEnvelope } from './envelope';
 import { context, silent, type HookContext, type HookDecision } from './output';
-import { guidanceNotes, type TaskAnswer } from './prompt-advisor-guidance';
+import { guidanceLookups, guidanceNotes, judgeNote, type TaskAnswer } from './prompt-advisor-guidance';
 import { advisorProject, routeDecision, type AdvisorProject, type RouterDeps } from './prompt-advisor-router';
+import { consultSemantics, judgeEventData, NOT_USER_INPUT, type Consultation, type TiebreakScores } from './prompt-judge';
+import { classifyPromptSource, sourceMarkersOf } from './prompt-source';
 import { promptNeedsStackQuestion, STACK_QUESTION_NOTE } from './stack-question';
-import { event, telemetrySink, withSpanAsync, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
+import { event, recordSpan, telemetrySink, withSpanAsync, type EventData, type SpanFacts, type SpanFields, type Sink } from './telemetry';
 import { humanPrompt } from '../lib/harness-prompt';
 
 // The only thing a bypassed session is told, and the only reason this hook still
@@ -35,9 +43,33 @@ const BYPASS_NOTICE =
 // spend in every consumer that sums by tier.
 const ROUTER_SPAN: SpanFacts = { kind: 'router', capability: 'route', modelTier: 'cheap' };
 
+// One per ATTEMPTED judge call (contracts §7); `cheap` is the router span's tier.
+const JUDGE_SPAN: SpanFacts = { kind: 'model', capability: 'route', modelTier: 'cheap' };
+
 // The span's own fallback when a prompt resolved no intent at all: a field the
 // journal would reject empty, and `none` is what bash wrote.
 const NO_ROUTE = 'none';
+
+// What a judge fact the kernel refused is replaced by.
+const REFUSED_JUDGE_FACT: JudgeFact = { source: 'fallback', reason: 'invalid-response' };
+
+// The task and the judge fact the kernel actually folded into it.
+interface ResolvedTask {
+  task: TaskAnswer;
+  fact: JudgeFact | null;
+}
+
+type Attempt = readonly [JudgeFact | null, TiebreakScores | null];
+
+interface TaskRequest {
+  prompt: string;
+  declared: Attempt;
+  kernel: KernelContext;
+  project: AdvisorProject;
+  ctx: HookContext;
+  sink: Sink | null;
+  deps: RouterDeps;
+}
 
 export function run(env: HookEnvelope, ctx: HookContext): Promise<HookDecision> {
   return runWith(env, ctx, {});
@@ -50,17 +82,43 @@ export async function runWith(env: HookEnvelope, ctx: HookContext, deps: RouterD
   // An empty prompt resolves nothing and is not evidence of anything, so it is
   // refused before the sink is built — building it would create the telemetry
   // directory for a prompt that never happened.
-  // Hand-backs, notifications and command echoes arrive through the same event
-  // as a typed request; only the human part is routed, and a prompt that is
-  // harness text from end to end is no request at all (src/lib/harness-prompt.ts).
-  const prompt = humanPrompt(env.prompt);
-  if (prompt === '') return silent;
+  if (env.prompt === '') return silent;
   // bypassed is false by construction: the bypass branch above already returned.
   const sink = telemetrySink(env, ctx, { bypassed: false });
-  const task = await resolveTask(prompt, { env, ctx, sink, deps });
-  if (task === null) return silent;
+  const registries = lazyRegistries(ctx.root);
+  // S0: text the user did not type gets no kernel call, no judge call and no
+  // note — one route event says it was seen and skipped. It reads the whole
+  // envelope, framing included, so a host-declared notification is believed
+  // before any text is stripped.
+  if (!typedByUser(env, registries)) {
+    event(sink, 'route', { skipped: NOT_USER_INPUT });
+    return silent;
+  }
+  // Hand-backs, reminders and command echoes the source markers do not frame
+  // still arrive through the same event as a typed request; only the human part
+  // is routed, and a prompt that is harness text from end to end is no request
+  // at all (src/lib/harness-prompt.ts).
+  const prompt = humanPrompt(env.prompt);
+  if (prompt === '') return silent;
+  // The caller's project is resolved once and handed to the semantic
+  // consultations, resolve and the decision layer, so none can read it differently.
+  const project = advisorProject(env, ctx);
+  const kernel = kernelContext(ctx.root, registries, project);
+  // The judge and the tie-break see the human part only, like the kernel.
+  const { consultation, tiebreak } = await consultSemantics({ ...env, prompt }, ctx, kernel);
+  // The judge's span, before the router span, exactly when a call was attempted.
+  if (consultation.span !== null && consultation.latencyMs !== null) {
+    recordSpan(sink, { ...JUDGE_SPAN, ...consultation.span }, consultation.latencyMs);
+  }
+  const resolved = await resolveTask({ prompt, declared: [consultation.fact, tiebreak], kernel, project, ctx, sink, deps });
+  if (resolved === null) return silent;
+  const { task } = resolved;
+  const judged: Consultation = { ...consultation, fact: resolved.fact };
   writeEvents(sink, task);
-  const notes = guidanceNotes(task);
+  const judgeData = judgeEventData(judged);
+  if (judgeData !== null) event(sink, 'judge', judgeData);
+  const notes = notesFor(task, judged, kernel.registries);
+  if (notes === null) return silent;
   // The fallback for a session whose SessionStart note scrolled away: repeated
   // only on prompts that are about to make a stack choice, never on questions.
   if (promptNeedsStackQuestion(task.contract.intents, env.cwd, ctx.spawn)) notes.push(STACK_QUESTION_NOTE);
@@ -70,42 +128,57 @@ export async function runWith(env: HookEnvelope, ctx: HookContext, deps: RouterD
   return context('UserPromptSubmit', notes.join('\n'));
 }
 
+// A registry without source markers (one older than policy 1.8.0) cannot tell
+// the frames apart, and reads every prompt as the user's — today's behaviour.
+// This fail-open answer is for routing only: the judge's egress applies the
+// stricter, fail-closed judgeMayReceive in ./prompt-judge (D3).
+function typedByUser(env: HookEnvelope, regs: Registries): boolean {
+  try {
+    return classifyPromptSource(env, sourceMarkersOf(regs)) === 'user';
+  } catch {
+    return true;
+  }
+}
+
 // The in-process equivalent of `scripts/kernel.sh resolve-task --prompt <text>`:
 // one deep kernel call answering route, decision_rules, hitl and task_contract
 // together, with the same refusal the `resolve-task` projection makes when the
 // kernel answers no contract (src/kernel/cli.ts).
 //
-// Null on any failure, which is bash's `|| exit 0`: a broken registry must not
-// block the user's prompt. The failure path writes NO span, because withSpanAsync
-// records an outcome rather than a duration, and a kernel that did not answer
-// has no outcome to record — the same reason bash wrote its span only after the
-// call returned zero.
+// A fact the kernel refuses (a vocabulary drift between the judge's answer and
+// the registries, a tie-break score it will not read) must not cost the user
+// their routing: the call is repeated without the tie-break, then with the
+// fallback that names the judge failure. Null when every attempt fails, which
+// is bash's `|| exit 0`. A failed attempt writes NO span: withSpanAsync records
+// an outcome, and a kernel that did not answer has none.
 //
-// The caller's project rides along (contracts §2 amendment): `project` is the
-// repo root of the envelope's cwd and `projectCwd` the cwd itself, so the
-// floor's stack rebind applies in a real session. The stack is resolved once
-// here and handed to both resolve and the decision layer, so the two can never
-// read it differently.
-interface ResolveDeps {
-  env: HookEnvelope;
-  ctx: HookContext;
-  sink: Sink | null;
-  deps: RouterDeps;
+// The caller's project rides along (contracts §2 amendment): the floor's stack
+// rebind applies in a real session, and the awaited routing decision layer
+// (./prompt-advisor-router) runs over the kernel answer inside the same span.
+async function resolveTask({ prompt, declared, kernel, project, ctx, sink, deps }: TaskRequest): Promise<ResolvedTask | null> {
+  for (const [fact, scores] of attemptsFor(declared)) {
+    try {
+      return await withSpanAsync(sink, ROUTER_SPAN, async () => {
+        const facts: DeclaredFacts = { prompt, taskContract: true };
+        if (fact !== null) facts.judge = fact;
+        if (scores !== null) facts.tiebreak = scores;
+        const task = narrow(resolve(facts, kernel));
+        const routed = await routeDecision({ prompt, task, project, ctx, regs: kernel.registries, deps });
+        return { result: { task: routed.task, fact }, status: 'OK', fields: { ...spanFields(routed.task), ...routed.fields } };
+      });
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
-async function resolveTask(prompt: string, run: ResolveDeps): Promise<TaskAnswer | null> {
-  const { ctx } = run;
-  const registries = lazyRegistries(ctx.root);
-  try {
-    return await withSpanAsync(run.sink, ROUTER_SPAN, async () => {
-      const project = advisorProject(run.env, ctx);
-      const task = narrow(resolve({ prompt, taskContract: true }, kernelContext(ctx.root, registries, project)));
-      const routed = await routeDecision({ prompt, task, project, ctx, regs: registries, deps: run.deps });
-      return { result: routed.task, status: 'OK', fields: { ...spanFields(routed.task), ...routed.fields } };
-    });
-  } catch {
-    return null;
-  }
+// Most evidence first: both facts, then without the tie-break, then each again
+// with the judge fact replaced by its fallback when it was a `jev` fact.
+function attemptsFor([fact, scores]: Attempt): Attempt[] {
+  const judgeFacts: (JudgeFact | null)[] = fact === null || fact.source === 'fallback' ? [fact] : [fact, REFUSED_JUDGE_FACT];
+  const tiebreaks: (TiebreakScores | null)[] = scores === null ? [null] : [scores, null];
+  return judgeFacts.flatMap((judgeFact) => tiebreaks.map((tiebreak): Attempt => [judgeFact, tiebreak]));
 }
 
 function kernelContext(root: string, registries: Registries, project: AdvisorProject): KernelContext {
@@ -124,6 +197,31 @@ function narrow(answer: Answer): TaskAnswer {
     throw new KernelError('resolve-task: the kernel answered no task contract');
   }
   return { route, decisions, contract, hitl: answer.hitl ?? null, router: null };
+}
+
+// Null when a registry cannot answer the values the notes quote: silent, like
+// every other broken-registry path.
+function notesFor(task: TaskAnswer, consultation: Consultation, regs: Registries): string[] | null {
+  try {
+    const notes = guidanceNotes(task, guidanceLookups(regs));
+    const { policy } = consultation;
+    if (policy === null) return notes;
+    const ruleOf: Record<string, string> = {};
+    for (const rule of regs.decisionRules.rules) if (rule.judge_fact !== null) ruleOf[rule.judge_fact] = rule.id;
+    notes.push(
+      ...judgeNote({
+        mode: policy.mode,
+        fact: consultation.fact,
+        intentThreshold: policy.thresholds.intent_default,
+        ruleThreshold: policy.thresholds.rule_default,
+        ruleOf,
+        riskProposal: task.contract.risk_proposal,
+      }),
+    );
+    return notes;
+  } catch {
+    return null;
+  }
 }
 
 // Ids only, exactly like the events below: the first routed intent and the risk

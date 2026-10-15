@@ -54,7 +54,7 @@ export function intentsResults(ctx: CheckContext): CheckResult[] {
     result('C16', 'intent count matches the CLAUDE.md router table', drift(ctx, intents)),
     result('C16', 'every intent stack is node or python, pairs with a reciprocal stack_sibling, and lists only frameworks of its own stack', stacks(intents)),
     result('C16', 'every intent generic_signals entry is one of its signals', genericSignals(intents)),
-    result('C16', "every stack-bearing intent's domain sample_path routes to it", stackSamples(ctx, intents, domains)),
+    result('C16', "every active stack-bearing intent's domain sample_path routes to it", stackSamples(ctx, intents, domains)),
   ];
 }
 
@@ -232,6 +232,9 @@ function stackSamples(ctx: CheckContext, intents: readonly RawIntent[], domains:
   const findings: Finding[] = [];
   for (const intent of intents) {
     if (intent.stack === undefined || intent.stack === null) continue;
+    // An inactive deprecated compatibility row keeps its stack for the sibling
+    // pairing but routes nothing, so it owes no sample path.
+    if (intent.enabled === false && intent.deprecated === true) continue;
     const domain = intent.domain === null ? undefined : domains.find((row) => row.id === intent.domain);
     if (domain === undefined || domain.samplePath === null || domain.samplePath === '') {
       findings.push(finding('C16', 'stack-intent-sample-unrouted', `${intent.id}->${intent.domain ?? 'null'}:no-sample`));

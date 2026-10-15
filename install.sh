@@ -242,8 +242,10 @@ done
 
 # ---------- 5. Hooks: merge into settings.json (requires node >= 18) ----------
 # The hooks are node now. hooks/hooks.json registers
-# `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>`, so the harness
-# spawns node directly and no shell sits between it and the hook. That is why
+# `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos.cjs" hook <name>` for the session
+# hooks and `node "${CLAUDE_PLUGIN_ROOT}/dist/engineos-hot.cjs" hook <name>` for
+# the five per-call hooks, so the harness spawns node directly and no shell sits
+# between it and the hook. That is why
 # this section no longer resolves an interpreter on Windows: the old form was a
 # bare `...foo.sh` path, which Windows resolved through the .sh file
 # association -- pointed by Git for Windows at git-bash.exe, a *terminal

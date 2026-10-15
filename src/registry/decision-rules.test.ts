@@ -168,3 +168,49 @@ function kernelError(message: string): (error: unknown) => boolean {
     return true;
   };
 }
+
+// A judge fact adds a rule when its probability reaches the cut (contracts
+// §6.3); a rule the judge never scored reads as 0, so a zero cut would add it
+// on every prompt.
+const judgeFieldRefusals: [string, Record<string, unknown>, string][] = [
+  ['a zero judge threshold', { judge_fact: 'large_change', judge_threshold: 0 }, '.rules[0].judge_threshold must be greater than 0 and at most 1'],
+  ['a judge threshold above one', { judge_fact: 'large_change', judge_threshold: 1.2 }, '.rules[0].judge_threshold must be greater than 0 and at most 1'],
+  ['a judge threshold with no judge fact', { judge_threshold: 0.5 }, '.rules[0].judge_threshold requires a judge_fact'],
+  ['a judge fact that is not a lower-case identifier', { judge_fact: 'Large-Change' }, '.rules[0].judge_fact must be a lower-case identifier'],
+  ['a non-numeric judge threshold', { judge_fact: 'large_change', judge_threshold: '0.5' }, '.rules[0].judge_threshold must be a number'],
+];
+
+for (const [name, fields, detail] of judgeFieldRefusals) {
+  test(`loadDecisionRules refuses ${name}`, () => {
+    const registry = baseRegistry();
+    Object.assign(firstRule(registry), fields);
+    const dir = rootWith(registry);
+    try {
+      assert.throws(() => loadDecisionRules(dir), kernelError(`registries/decision-rules.json: ${detail}`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('a judge fact with or without its own threshold loads; an absent fact reads as null', () => {
+  const registry = baseRegistry();
+  Object.assign(firstRule(registry), { judge_fact: 'large_change', judge_threshold: 0.7 });
+  const dir = rootWith(registry);
+  try {
+    const rule = loadDecisionRules(dir).rules[0];
+    assert.equal(rule?.judge_fact, 'large_change');
+    assert.equal(rule?.judge_threshold, 0.7);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  const plain = rootWith(baseRegistry());
+  try {
+    const rule = loadDecisionRules(plain).rules[0];
+    assert.equal(rule?.judge_fact, null);
+    assert.equal(rule?.judge_threshold, null);
+  } finally {
+    rmSync(plain, { recursive: true, force: true });
+  }
+});

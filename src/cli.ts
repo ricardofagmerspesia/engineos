@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readdirSync } from 'node:fs';
 import { processIo, writeJson } from './io';
 import { currentMajor, findNewerNode, guardOutcome, MIN_NODE_MAJOR, type GuardOutcome } from './node-guard';
-import { dispatch, type CommandTable } from './dispatch';
+import { dispatch, exitWith, type CommandTable } from './dispatch';
 import { message, render } from './hooks/output';
 import { runKernel } from './kernel/cli';
 import { runJournal } from './journal/cli';
@@ -33,12 +33,19 @@ function isExecutable(path: string): boolean {
   }
 }
 
+// The script node was started with: the dist/ loader in front of the bundle
+// (scripts/build.mjs), so a re-exec goes through the loader again rather than
+// straight to dist/runtime/. __filename only when there is no main module.
+function entryScript(): string {
+  return require.main?.filename ?? __filename;
+}
+
 function applyOutcome(outcome: GuardOutcome): void {
   switch (outcome.kind) {
     case 'proceed':
       return;
     case 'reexec': {
-      const r = spawnSync(outcome.bin, [__filename, ...argv], { stdio: 'inherit', env: { ...process.env, ENGINEOS_REEXEC: '1' } });
+      const r = spawnSync(outcome.bin, [entryScript(), ...argv], { stdio: 'inherit', env: { ...process.env, ENGINEOS_REEXEC: '1' } });
       if (r.error === undefined && r.status !== null) {
         process.exit(r.status);
       }
@@ -83,18 +90,4 @@ const table: CommandTable = {
   scheduler: runScheduler,
   'workflow-report': runWorkflowReport,
 };
-const code = dispatch(table, argv, io);
-if (typeof code === 'number') {
-  process.exit(code);
-} else {
-  // Exit as soon as the command settles rather than when the event loop drains:
-  // a keep-alive socket from the decision layer's fetch must not hold the hook
-  // open after its answer is already written.
-  code.then(
-    (status) => process.exit(status),
-    (e: unknown) => {
-      io.err(`[engineos] ${e instanceof Error ? e.message : String(e)}\n`);
-      process.exit(1);
-    },
-  );
-}
+exitWith(dispatch(table, argv, io), (code) => process.exit(code));

@@ -10,11 +10,9 @@
 import { writeFileSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { silent, type HookContext, type HookDecision } from './output';
-import { bypassActive } from './bypass';
-import { gitDir } from '../lib/git';
+import { editContext, underSelfDir } from './edit-context';
 import { globMatch } from '../lib/glob';
 import { hookPathSlug } from '../lib/slug';
-import { loadRouting } from '../registry/routing';
 
 // The code-change allowlist. Shared with route-before-change so the two cannot
 // drift (design "Invariants that port byte for byte"): only these extensions
@@ -32,32 +30,23 @@ function isRecordedExtension(file: string): boolean {
   return RECORDED_EXTENSIONS.some((ext) => file.endsWith(`.${ext}`));
 }
 
-// EngineOS's own meta dirs, read from registries/routing.json (.excluded.self_dirs)
-// and resolved against THIS checkout's root — the same list and the same
-// resolution the kernel's route-path uses, so the two cannot drift. Scoping to
-// these exact paths (not any hooks/ or docs/ anywhere) is what keeps a consumer
-// project's own src/hooks/ or product docs/ flagged.
-function selfDirs(root: string): string[] {
-  try {
-    return loadRouting(root).excluded.self_dirs;
-  } catch {
-    // bash `jq ... 2>/dev/null`: an unreadable registry yields no exclusions and
-    // the hook carries on rather than losing the flag.
-    return [];
-  }
-}
-
+// Every exit below is `silent`; the marker write is the hook's only effect. So
+// the order is cheapest first — the pure checks, then the one git process
+// (./edit-context answers the bypass marker and the git dir from it), then the
+// self_dirs exclusion — without changing when the marker is written.
 export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
-  if (bypassActive(env.cwd, ctx.io.env, ctx.spawn)) return silent;
   if (env.file === '') return silent;
   if (!isRecordedExtension(env.file)) return silent;
   if (globMatch(ENGINEOS_META, env.file)) return silent;
-  for (const dir of selfDirs(ctx.root)) {
-    if (dir === '') continue;
-    if (env.file.startsWith(`${ctx.root}/${dir}/`)) return silent;
-  }
   if (env.cwd === '') return silent;
-  const dir = gitDir(env.cwd, ctx.spawn);
+  const edit = editContext(env.cwd, ctx);
+  if (edit.status === 'bypassed') return silent;
+  // EngineOS's own meta dirs (routing.json `.excluded.self_dirs`) resolved
+  // against THIS checkout's root — the same list and resolution the kernel's
+  // route-path uses. Scoping to these exact paths (not any hooks/ or docs/
+  // anywhere) is what keeps a consumer project's own src/hooks/ or docs/ flagged.
+  if (underSelfDir(env, edit.gitDir, ctx)) return silent;
+  const dir = edit.gitDir;
   if (dir === null) return silent;
   // The session id is harness-supplied and here it NAMES A FILE, so it takes the
   // path class rather than the constant prefix as its only containment — a value

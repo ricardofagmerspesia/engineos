@@ -10,7 +10,7 @@ import { fixtureRepo, tempRoot } from '../testing/harness';
 import { readEnvelope, type HookEnvelope } from './envelope';
 import { silent, type HookContext } from './output';
 import { run } from './prompt-advisor';
-import { guidanceNotes } from './prompt-advisor-guidance';
+import { guidanceLookups, guidanceNotes } from './prompt-advisor-guidance';
 import { resolve } from '../kernel/resolve';
 import { lazyRegistries } from '../kernel/context';
 
@@ -55,8 +55,8 @@ async function guidance(prompt: string): Promise<string> {
 
 // The lenient form, for the cases that assert a phrase is ABSENT: silence is a
 // legitimate way to not say something, so those must not also require a payload.
-async function advice(prompt: string): Promise<string> {
-  const decision = await run(promptOf(prompt), hookCtx());
+async function advice(prompt: string, env: NodeJS.ProcessEnv = ISOLATED): Promise<string> {
+  const decision = await run(promptOf(prompt), hookCtx(env));
   return decision.kind === 'context' ? decision.text : '';
 }
 
@@ -289,17 +289,21 @@ function adoptedRepo(t: TestContext): string {
   return repo;
 }
 
-test('an adopted repo receives the route denominator, the two conditional events and one router span', async (t) => {
+test('an adopted repo receives the route denominator, the two conditional events, the judge event and one router span', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
   }
   const repo = adoptedRepo(t);
-  assert.equal((await run(promptOf('deploy the billing service to production', repo, 'unified1'), hookCtx())).kind, 'context');
+  const decision = await run(promptOf('deploy the billing service to production', repo, 'unified1'), hookCtx());
+  assert.equal(decision.kind, 'context');
   const telemetry = join(repo, '.git', 'engineos-telemetry');
   assert.deepEqual(
     jsonLines(join(telemetry, 'unified1.jsonl')).map((line) => line['event']),
-    ['route', 'decision-rules', 'hitl'],
+    // `judge` closes every user prompt's events since the routing replacement
+    // (contracts §6.4), a disabled judge included: it records where the routing
+    // answer's judge fact came from, and `disabled` is an answer.
+    ['route', 'decision-rules', 'hitl', 'judge'],
   );
   const spans = jsonLines(join(telemetry, 'unified1.exec.jsonl'));
   assert.equal(spans.length, 1);
@@ -316,7 +320,7 @@ test('an adopted repo receives the route denominator, the two conditional events
   assert.equal(typeof span['duration_ms'], 'number');
 });
 
-test('a prompt that resolves nothing still writes the route denominator and its span', async (t) => {
+test('a prompt that resolves nothing still writes the route denominator, the judge event and its span', async (t) => {
   if (!hasGit()) {
     t.skip('git is not installed');
     return;
@@ -326,7 +330,7 @@ test('a prompt that resolves nothing still writes the route denominator and its 
   const telemetry = join(repo, '.git', 'engineos-telemetry');
   assert.deepEqual(
     jsonLines(join(telemetry, 'unified2.jsonl')).map((line) => line['event']),
-    ['route'],
+    ['route', 'judge'],
   );
   assert.equal(jsonLines(join(telemetry, 'unified2.exec.jsonl')).length, 1);
 });
@@ -472,13 +476,247 @@ test('a bypassed stackless session hears only the bypass notice', async (t) => {
   });
 });
 
+// ------------------------------------------------------------------ S0: text the user did not type
+
+// readEnvelope again, with whatever extra fields a host might add.
+function envelopeOf(payload: Record<string, unknown>): HookEnvelope {
+  const decoded = readEnvelope(memoryIo({ stdin: JSON.stringify(payload) }));
+  if (decoded === null) throw new Error('the payload did not decode');
+  return decoded;
+}
+
+function telemetryOf(repo: string): string {
+  return join(repo, '.git', 'engineos-telemetry');
+}
+
+test('a task notification is seen and skipped: one route event, no span, no note', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const decision = await run(promptOf('<task-notification> deploy the billing service to production', repo, 's0a'), hookCtx());
+  assert.deepEqual(decision, silent);
+  const rows = jsonLines(join(telemetryOf(repo), 's0a.jsonl'));
+  assert.deepEqual(rows.map((row) => [row['event'], row['data']]), [['route', { skipped: 'not-user-input' }]]);
+  // No kernel call means no router span, and no judge call means no model span.
+  assert.equal(existsSync(join(telemetryOf(repo), 's0a.exec.jsonl')), false);
+});
+
+test('a hook echo is not routed as the user prompt it quotes', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  assert.deepEqual(await run(promptOf('[engineos] drop the users table in production', repo, 's0b'), hookCtx()), silent);
+  const rows = jsonLines(join(telemetryOf(repo), 's0b.jsonl'));
+  assert.deepEqual(rows.map((row) => row['event']), ['route']);
+});
+
+test('a host that declares the text a notification is believed over text that looks typed', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const envelope = envelopeOf({ prompt: 'drop the users table in production', cwd: repo, session_id: 's0c', source: 'notification' });
+  assert.deepEqual(await run(envelope, hookCtx()), silent);
+  const rows = jsonLines(join(telemetryOf(repo), 's0c.jsonl'));
+  assert.deepEqual(rows.map((row) => [row['event'], row['data']]), [['route', { skipped: 'not-user-input' }]]);
+});
+
+test('text typed before a notification frame is still the user prompt', async () => {
+  assert.match(await guidance('drop the users table in production <task-notification>'), /human-in-the-loop required/);
+});
+
+// ------------------------------------------------------------------ the judge
+
+// The global transport, swapped for one test and restored after it. A function
+// declaration cannot be assigned, so the property descriptor is replaced.
+function stubFetch(t: TestContext, transport: typeof globalThis.fetch): void {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
+  Object.defineProperty(globalThis, 'fetch', { value: transport, configurable: true, writable: true });
+  t.after(() => {
+    if (original === undefined) Reflect.deleteProperty(globalThis, 'fetch');
+    else Object.defineProperty(globalThis, 'fetch', original);
+  });
+}
+
+// A transport that refuses every request without touching the network, and
+// remembers where each one was addressed.
+function refusingTransport(addressed: string[]): typeof globalThis.fetch {
+  return (input) => {
+    addressed.push(String(input));
+    return Promise.reject(new TypeError('fetch failed'));
+  };
+}
+
+// Built by concatenation so no credential-shaped literal sits in the source.
+const JUDGE_KEY = ['unit', 'test', 'judge', 'key'].join('-');
+const JUDGE_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
+
+function judgeEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return { ...ISOLATED, ENGINEOS_JUDGE: 'jev', TYPESAFE_API_KEY: JUDGE_KEY, ...extra };
+}
+
+test('an attempted judge call writes its model span before the router span', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const addressed: string[] = [];
+  stubFetch(t, refusingTransport(addressed));
+  await run(promptOf('deploy the billing service to production', repo, 'judge1'), hookCtx(judgeEnv()));
+  assert.deepEqual(addressed, [JUDGE_ENDPOINT]);
+  const spans = jsonLines(join(telemetryOf(repo), 'judge1.exec.jsonl'));
+  assert.deepEqual(spans.map((span) => span['span_kind']), ['model', 'router']);
+  const model = first(spans);
+  assert.equal(model['capability_id'], 'route');
+  assert.equal(model['model_tier'], 'cheap');
+  assert.equal(model['status'], 'FAILED');
+  assert.equal(model['provider'], 'typesafe');
+  assert.equal(model['note'], 'judge=network');
+  assert.equal(model['trace_id'], 'judge1');
+});
+
+test('a refused judge call still routes, and its event names the failure and the latency bucket', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  stubFetch(t, refusingTransport([]));
+  const decision = await run(promptOf('deploy the billing service to production', repo, 'judge2'), hookCtx(judgeEnv()));
+  assert.equal(decision.kind, 'context');
+  if (decision.kind !== 'context') throw new Error('unreachable');
+  assert.match(decision.text, /rule-production-write/);
+  const rows = jsonLines(join(telemetryOf(repo), 'judge2.jsonl'));
+  assert.deepEqual(rows.map((row) => row['event']), ['route', 'decision-rules', 'hitl', 'judge']);
+  const judgeRow = rows[3];
+  if (judgeRow === undefined) throw new Error('no judge event');
+  assert.deepEqual(judgeRow['data'], {
+    source: 'fallback',
+    mode: 'shadow',
+    model: 'jev-1.13.0',
+    skipped_reason: 'network',
+    latency_bucket: 'lt100',
+  });
+});
+
+test('the judge key never reaches the telemetry files', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  stubFetch(t, refusingTransport([]));
+  await run(promptOf('deploy the billing service to production', repo, 'judge3'), hookCtx(judgeEnv()));
+  for (const file of ['judge3.jsonl', 'judge3.exec.jsonl']) {
+    const raw = readFileSync(join(telemetryOf(repo), file), 'utf8');
+    assert.ok(!raw.includes(JUDGE_KEY), `${file} carries the judge key`);
+  }
+});
+
+test('a disabled judge sends nothing and writes only the router span', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const addressed: string[] = [];
+  stubFetch(t, refusingTransport(addressed));
+  // The key alone is not the switch.
+  await run(promptOf('deploy the billing service to production', repo, 'judge4'), hookCtx({ ...ISOLATED, TYPESAFE_API_KEY: JUDGE_KEY }));
+  assert.deepEqual(addressed, []);
+  const spans = jsonLines(join(telemetryOf(repo), 'judge4.exec.jsonl'));
+  assert.deepEqual(spans.map((span) => span['span_kind']), ['router']);
+  const judgeRow = jsonLines(join(telemetryOf(repo), 'judge4.jsonl')).find((row) => row['event'] === 'judge');
+  assert.deepEqual(judgeRow?.['data'], { source: 'fallback', mode: 'shadow', model: 'jev-1.13.0', skipped_reason: 'disabled' });
+});
+
+test('an enabled judge with no key is skipped: no request, no model span, no latency bucket', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const addressed: string[] = [];
+  stubFetch(t, refusingTransport(addressed));
+  await run(promptOf('deploy the billing service to production', repo, 'judge5'), hookCtx(judgeEnv({ TYPESAFE_API_KEY: '' })));
+  assert.deepEqual(addressed, []);
+  const spans = jsonLines(join(telemetryOf(repo), 'judge5.exec.jsonl'));
+  assert.deepEqual(spans.map((span) => span['span_kind']), ['router']);
+  const judgeRow = jsonLines(join(telemetryOf(repo), 'judge5.jsonl')).find((row) => row['event'] === 'judge');
+  assert.deepEqual(judgeRow?.['data'], { source: 'fallback', mode: 'shadow', model: 'jev-1.13.0', skipped_reason: 'no-key' });
+});
+
+test('a notification never reaches the judge, even with the judge enabled', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const addressed: string[] = [];
+  stubFetch(t, refusingTransport(addressed));
+  await run(promptOf('<task-notification> deploy the billing service', repo, 'judge6'), hookCtx(judgeEnv()));
+  assert.deepEqual(addressed, []);
+});
+
+test('the judge in shadow mode adds no note to the guidance', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  stubFetch(t, refusingTransport([]));
+  const judged = await contextIn('deploy the billing service to production', repo, judgeEnv());
+  const plain = await contextIn('deploy the billing service to production', repo);
+  assert.equal(judged, plain);
+});
+
+// ------------------------------------------------------------------ the tie-break
+
+test('without the daemon switch the contract line carries no tie-break winner', async () => {
+  // A single-intent prompt: a multi-agent prompt escalates to the router and
+  // prints the escalation line instead, so it never reaches the contract line
+  // this assertion is about.
+  const text = await guidance('add a paginated orders endpoint to the API');
+  assert.match(text, /task contract \(kernel, deterministic\)/);
+  assert.ok(!text.includes(' tiebreak='), `an unswitched tie-break must not name a winner: ${text}`);
+});
+
+test('a switched-on tie-break with no daemon running leaves the guidance unchanged', async (t) => {
+  // An empty private runtime dir: no socket can be found there.
+  const runtime = tempRoot(t);
+  const prompt = 'add a paginated orders endpoint to the API and mirror the screen to mobile';
+  const switched = await advice(prompt, { ...ISOLATED, ENGINEOS_EMBED_DAEMON: '1', XDG_RUNTIME_DIR: runtime, TMPDIR: runtime });
+  assert.equal(switched, await advice(prompt));
+});
+
+test('a switched-on tie-break still leaves exactly one router span and no model span', async (t) => {
+  if (!hasGit()) {
+    t.skip('git is not installed');
+    return;
+  }
+  const repo = adoptedRepo(t);
+  const runtime = tempRoot(t);
+  const env: NodeJS.ProcessEnv = { ...ISOLATED, ENGINEOS_EMBED_DAEMON: '1', XDG_RUNTIME_DIR: runtime, TMPDIR: runtime };
+  // The tie-break ranks the prompt a second time to find its candidates; that
+  // ranking must not publish a span of its own.
+  await run(promptOf('add a paginated orders endpoint to the API and mirror the screen to mobile', repo, 'tie1'), hookCtx(env));
+  const spans = jsonLines(join(telemetryOf(repo), 'tie1.exec.jsonl'));
+  assert.deepEqual(spans.map((span) => span['span_kind']), ['router']);
+});
+
 test('resolved simple-task guidance asks clickable planning choice and avoids automatic spec instructions', () => {
   const execution = {complexity: 'small' as const, riskTier: 'low' as const, reversible: true, files: ['notes.md'], domains: ['docs'], unitCount: 1, newFeature: true, securitySensitive: false, requiredAgents: [], designRequired: false, scopeRevision: 'scope'};
   for (const specChoice of ['pending', 'direct'] as const) {
     const answer = resolve({prompt: 'add a short note', taskContract: true, execution: {...execution, specChoice, specChoiceScopeRevision: 'scope'}}, {root: checkout, registries: lazyRegistries(checkout)});
     const route = answer.route; const decisions = answer.decision_rules; const contract = answer.task_contract;
     if (!route || !('escalate' in route) || !decisions || !contract) throw new Error('missing task answer');
-    const text = guidanceNotes({route, decisions, contract, hitl: answer.hitl ?? null, router: null}).join('\n');
+    const text = guidanceNotes({route, decisions, contract, hitl: answer.hitl ?? null, router: null}, guidanceLookups(lazyRegistries(checkout))).join('\n');
     if (specChoice === 'pending') assert.match(text, /clickable Implement directly \/ Create a lightweight spec/);
     else assert.match(text, /No mandatory prototype, spec or ticket workflow/);
     assert.doesNotMatch(text, /decision rules matched/);

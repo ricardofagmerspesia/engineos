@@ -53,6 +53,10 @@ export interface RawIntent {
   // so absent (undefined) and a non-string must stay distinguishable.
   readonly stack: unknown;
   readonly stackSibling: unknown;
+  // Read raw like the stack pair: an inactive deprecated compatibility row is
+  // exempt from the sample-path walk, and only the exact pair of flags says so.
+  readonly enabled: unknown;
+  readonly deprecated: unknown;
   readonly genericSignals: readonly string[];
   readonly stackFrameworks: readonly string[];
 }
@@ -114,6 +118,8 @@ export function readIntents(root: string): readonly RawIntent[] {
     riskFloor: intent['risk_floor'],
     stack: intent['stack'],
     stackSibling: intent['stack_sibling'],
+    enabled: intent['enabled'],
+    deprecated: intent['deprecated'],
     genericSignals: stringArray(intent['generic_signals']),
     stackFrameworks: stringArray(intent['stack_frameworks']),
   }));

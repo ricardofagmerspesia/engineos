@@ -15,14 +15,28 @@ Codex / Cursor / Copilot): a prose layer of rules, agents and skills; a
 machine-readable projection of that prose in `registries/*.json`; a
 deterministic TypeScript kernel that turns a prompt or a file path into a
 task contract; and a set of Claude Code hooks that inject that contract into
-the session and gate the Stop event. A validator (68 checks) keeps prose and
+the session and gate the Stop event. A validator (72 checks) keeps prose and
 registries from drifting.
 
-Two release lines matter for reading the code: 1.6.0 added the runtime
+Three release lines matter for reading the code: 1.6.0 added the runtime
 governance blocks (admit / breaker / hitl / repair); 1.7.0 replaced the bash +
-jq runtime with one committed Node bundle, `dist/engineos.cjs`. Every
-`hooks/*.sh` and `scripts/*.sh` left in the tree is a compatibility shim that
-`exec`s that bundle.
+jq runtime with one committed Node bundle, `dist/engineos.cjs`; the routing
+replacement (#127, Unreleased in `docs/COMPATIBILITY.md`) made routing a
+three-tier router (ADR `docs/adr/2026-10-10-three-tier-router-and-jev-judge.md`)
+and split the runtime into two build entries: `dist/engineos.cjs` (every
+subcommand and the session hooks) and `dist/engineos-hot.cjs` (the five per-call
+hooks plus `--version`), each a small loader over its bundle in `dist/runtime/`.
+Every `hooks/*.sh` and `scripts/*.sh` left in the tree is a compatibility shim
+that `exec`s the full bundle.
+
+The three tiers: Tier 0 is the deterministic gates (path routing, decision
+rules, HITL floors, suppression); Tier 1 is the scored classifier over
+`intents.json` (`src/kernel/score.ts`); Tier 2 escalates the residue to the
+read-only `router` agent. Two opt-in, add-only inputs feed the combination
+policy (`src/kernel/combine.ts`): the Jev judge (`src/judge/`,
+`ENGINEOS_JUDGE=jev`, shadow mode by default) may only add decision matches and
+raise risk, and the embedding tie-break may only narrow an ambiguous set of
+already-ranked survivors to one of them.
 
 ## System Overview
 
@@ -38,8 +52,11 @@ engineos/
   CONTEXT.md             Vocabulary glossary for EngineOS itself (Task, Route, Gate, Span ...)
   README.md              Install (script vs plugin), what's inside, change lifecycle
   install.sh / install.ps1   Machine install: symlinks into ~/.claude, settings-merge, secrets gate
-  package.json / tsconfig.json / scripts/build.mjs   esbuild -> dist/engineos.cjs (committed)
-  dist/engineos.cjs      The runtime. Never edit; CI fails on drift from src/
+  package.json / tsconfig.json / scripts/build.mjs   esbuild, one graph per entry -> dist/ (committed)
+  dist/engineos.cjs      Loader for dist/runtime/engineos.cjs: every subcommand + the session hooks
+  dist/engineos-hot.cjs  Loader for dist/runtime/engineos-hot.cjs: the five per-call hooks + --version
+  dist/engineos-inprocess.cjs   Loader for the opt-in per-session host (adapters/claude-code-mod)
+  dist/runtime/          The bundles the loaders require. Never edit dist/; CI fails on drift from src/
   rules/                 20 policy files; 11 always-on, 8 routed per intent, 1 deprecated (production-backend-standards)
   agents/                22 agent definitions (frontmatter: name, tools, model, tier)
   skills/                Canonical activity procedures; NestJS, React, Mastra, spec/record/review skills; legacy Python/LangGraph paths deprecated
@@ -50,6 +67,8 @@ engineos/
   hooks/                 hooks.json (plugin wiring) + 11 .sh shims + 2 sourced bash libs
   scripts/               .sh shims over dist/engineos.cjs; build.mjs
   src/                   TypeScript runtime (see Module Guide)
+  adapters/claude-code-mod/   Opt-in in-process adapter: per-session host + classic-hook map (ENGINEOS_INPROCESS=1)
+  tools/embedding-daemon/     Opt-in local embedding daemon for the tie-break; its own package (docs/OPT-IN-TIERS.md)
   test/fixtures/         Pinned legacy bash CLIs + registries for byte-parity tests; py-fastapi/ (pyproject + app + tests) for the Python Stop-gate e2e
   evals/                 Golden set (33 intent cases, 16 agent cases) + RUBRIC.md
   docs/                  BIG-PICTURE, METHODOLOGY, COMPATIBILITY, ADOPTION, START, adr/, specs/, release-notes/
@@ -116,26 +135,53 @@ Not a registry but read the same strict way: the project's `.engineos/config.jso
 | `resolve-stack` | `[dir]` (optional; defaults to the repo root of cwd) | `.engineos/config.json` first, else `pyproject.toml`/`requirements.txt`/`package.json` per package dir (`src/kernel/stack.ts`); registries play no part | packages[] (dir, language, framework, compose_service, python_env), source `config` \| `detected` |
 | `decide` (no CLI verb; `src/kernel/decision-layer.ts`) | `DecisionInput` from `buildDecisionInput(task, stack, prompt, regs)`; the setting from `effectiveSetting(ENGINEOS_ROUTER, repo router.mode, policy default, restrictiveness)`, with `auto` resolved beforehand by `resolveAuto` (key present → `jev`, else `llm`; never keyword); injected `fetch`/`env`/`now`/`schedule` | policy.router_decision | **async** `Promise<Decision>`: mode that ran, requested setting, intents chosen among `offered`, confidence, escalate, fallback_reason, shadow, latency_ms, cost_micros. Called by the prompt-advisor after `resolve`, never by `resolve` itself, which stays synchronous and emits no `router` section |
 | `skill-state` | `[--id <skill>]` | `skills/*/SKILL.md` frontmatter (`enabled:`, first block only) | skills[] + disabled[], or id/exists/enabled for one id; absence of the key means enabled |
-| `route-escalate` | prompt | intents signals + suppression, policy.router | escalate, reasons, intents, agents, model_tier, risk_floor, scale |
+| `route-escalate` | prompt | intents signals + suppression, policy.router | escalate, reasons, intents, agents, model_tier, risk_floor, scale, ranked, margin, judge |
 | `risk` | five inputs | policy.risk | tier (max, never average) |
 | `hitl` | `--risk --autonomy [--evidence thin] [--external-effect] [--situation]` | policy.hitl, policy.autonomy | required, reasons (closed 9-id vocabulary; `topology-approval` is folded from `rule-multi-agent-design`, not from a tier), autonomy_after, record_home |
 | `admit` | `--inflight --queued` | policy.parallelism (wave cap reused as capacity) | dispatch / defer / reject |
 | `breaker` | `--state --failures` | policy.breaker | closed / open / half-open + allow |
 | `repair` | attempt, situation | policy.repair | continue / escalate / stop |
 
+Router modules added by the routing replacement (all pure; no clock, network or env):
+
+| File | Role |
+|---|---|
+| `score.ts` | Tier 1: deterministic scored classifier over `intents.json` v2 (phrases, exemplars, path features); `RankedIntent` with score, confidence and `features`; owns the matching primitives so `route.ts -> score.ts` is the only import direction |
+| `combine.ts` | The combination policy: deterministic gates win; a judge fact only adds decision matches and only raises risk (replaces the intent set only in authoritative mode); a tie-break fact only narrows an ambiguous survivor set. Invariants are declared in `policy.router.combination`, whose loader fails closed |
+| `judge-facts.ts`, `tiebreak-facts.ts` | Kernel-side types and validation of the judge and tie-break facts passed via `--facts`; the kernel never imports `src/judge/**` (decision D5), so a prompt plus a journaled fact replays the same answer offline |
+| `resolve-task-contract.ts` | Assembles the `task_contract` (judge, risk_proposal, tiebreak, judge_added) from `combine()` output |
+| `table.ts`, `transitions.ts` | Policy decision tables (FIRST / COLLECT) and registry-edged state machines whose rows live in `policy.json`; used by the governance arms (T10), not by intent routing |
+
 `src/registry/*` are typed, normalizing loaders (fail-closed on malformed JSON, coerce out-of-vocabulary fields to safe defaults). `src/lib/` holds `json.ts` (`isRecord`, `KernelError`), `deferrals.ts` (rule cross-reference closure), `git.ts`, `glob.ts`, `slug.ts` (`hookSlug` sanitizes, `hookPathSlug` also drops `.` and `/` so a slug is safe as a path component), `time.ts`.
 
 **Gotcha**: `src/checks` deliberately reads several registries raw instead of through these loaders because the loaders coerce exactly the malformations the checks must report.
 
+### `src/judge/`
+
+**Purpose**: the opt-in semantic half of routing. Off unless `ENGINEOS_JUDGE=jev` and `TYPESAFE_API_KEY` (by name; never logged) are set; ships in shadow mode, so its outcome is journaled but not folded until the policy says authoritative.
+**Entry point**: `judge()` in `src/judge/index.ts`, called only by `src/hooks/prompt-judge.ts`.
+
+| File | Role |
+|---|---|
+| `jev.ts`, `response.ts` | The Jev client: one POST per prompt, no retry, hard deadline, `fetch` injected (inert without it); the response is schema-validated into a fact before use |
+| `questions.ts`, `question-text.ts` | The deterministic question set: membership and order from the registries, wording in `question-text.ts` |
+| `state.ts`, `redact.ts` | The request `state`: only the redacted prompt (patterns from `policy.judge.redaction`), repository facts and the last intent |
+| `breaker.ts` | File-backed consecutive-failure breaker for the judge provider |
+| `shadow-request.ts` | Renders the committed reviewable draft request in `docs/specs/` |
+| `tiebreak.ts` | Client of `tools/embedding-daemon` (`ENGINEOS_EMBED_DAEMON=1`); consulted only for an ambiguous route and an existing private socket; scores only the survivors the kernel already ranked |
+| `types.ts` | Re-declares the fact shapes of `src/kernel/judge-facts.ts` identically (decision D5) |
+
+Isolation is checked by C38c: findings `kernel-imports-judge`, `judge-calls-fetch` and `bundle-imports-adapter`.
+
 ### `src/hooks/` + `hooks/`
 
-**Purpose**: Claude Code integration. `hooks/hooks.json` calls `node dist/engineos.cjs hook <name>` directly; the `.sh` shims are for external callers only.
-**Entry point**: `src/hooks/cli.ts` (`HOOKS` map of 10 handlers), `src/hooks/envelope.ts` (decode stdin), `src/hooks/output.ts` (the only module that writes stdout / picks exit code).
+**Purpose**: Claude Code integration. `hooks/hooks.json` calls `node dist/engineos.cjs hook <name>` for the session hooks (SessionStart, UserPromptSubmit, Stop) and `node dist/engineos-hot.cjs hook <name>` for the five per-call hooks (route-before-change, announce-agent-dispatch, git-write-guard, mark-unrecorded, announce-agent-return); the `.sh` shims are for external callers only.
+**Entry points**: `src/hooks/cli.ts` (full `HOOKS` table of 10 handlers) and `src/hot-cli.ts` (the five per-call handlers only, so the hot bundle stays small). Both share `src/hooks/adapter.ts`, the harness contract: decode the envelope (`src/hooks/envelope.ts`), run the hook (sync, or a promise for the prompt advisor), render via `src/hooks/output.ts` (the only module that writes stdout / picks exit code). `src/hooks/prompt-judge.ts` is the prompt advisor's semantic half: it consults the judge and the tie-break and returns the facts the kernel folds; the telemetry calls stay in `prompt-advisor.ts`.
 
 | Event | Matcher | Handler | Emits |
 |---|---|---|---|
 | SessionStart | `""` | `ensure-project-layout.ts` | expire repo bypass marker, reap stale flags/cache/telemetry, scaffold `.engineos/` (opt-in), context hint; `STACK_QUESTION_NOTE` (`stack-question.ts`) when `hasStackSignal` (`src/kernel/stack.ts`) is false — opted in or not, outside a git repo against cwd without scaffolding, never in `$HOME` |
-| UserPromptSubmit | `""` | `prompt-advisor.ts` | one in-process `resolve({taskContract:true})`, then `await decide(...)` (decision layer); additionalContext with scale / decision-rule / route / HITL / classify notes, plus `router=<mode>[/<confidence>]` on the contract line and the keyword-fallback line when one happened; plus `STACK_QUESTION_NOTE` when a `STACK_DEPENDENT_INTENTS` intent matches in a stackless repo; the only hook that speaks while bypassed |
+| UserPromptSubmit | `""` | `prompt-advisor.ts` (+ `prompt-judge.ts`, `prompt-advisor-router.ts`) | one in-process `resolve({taskContract:true})`, with judge/tie-break facts when opted in, then `await routeDecision(...)` (decision layer); additionalContext with scale / decision-rule / route / HITL / classify notes, plus `router=<mode>[/<confidence>]` on the contract line and the keyword-fallback line when one happened; plus `STACK_QUESTION_NOTE` when a `STACK_DEPENDENT_INTENTS` intent matches in a stackless repo; the only hook that speaks while bypassed |
 | PreToolUse | `Edit\|Write\|NotebookEdit` | `route-before-change.ts` | `[router] ...` context from route-path; per-session file cache under `<gitdir>/engineos-route-cache`; never blocks |
 | PreToolUse | `Agent\|Task` | `announce-agent-dispatch.ts` | green banner instruction; opens a span |
 | PreToolUse | `Bash` | `git-write-guard.ts` | `ask` permission decision (`[engineos] git write: <subcommand>`) when any segment of the command is a git/forge write and `ENGINEOS_GIT_WRITES` is not `auto`; silent otherwise; never denies; ignores bypass |
@@ -161,7 +207,7 @@ Wire formats (`output.ts`): `context` -> `{"hookSpecificOutput":{"hookEventName"
 
 ### `src/checks/` + `src/validate/`
 
-**Purpose**: the 68-check integrity harness behind `engineos validate` (`scripts/validate-engineos.sh`). Asserts the prose, registries, hooks and kernel agree.
+**Purpose**: the 72-check integrity harness behind `engineos validate` (`scripts/validate-engineos.sh`). Asserts the prose, registries, hooks and kernel agree.
 **Entry point**: `src/validate/cli.ts::runValidate` -> `src/checks/index.ts::CHECKS`.
 
 | Family | Checks | Asserts |
@@ -177,6 +223,7 @@ Wire formats (`output.ts`): `context` -> `{"hookSpecificOutput":{"hookEventName"
 | portability | C32-C33 | adapter-mirror parity, LF policy |
 | skill enablement | C34-C35 | skills/skills_suppressed pair on every kernel answer, no routing domain emptied by disablement |
 | prose truth | C36-C37 | router-table /command and patterns/ references resolve; check-count claims equal CHECK_IDS.length |
+| router v2 | C38-C38d | intents.json v2 scoring fields and exemplar counts; policy router/judge blocks and the judge/bundle isolation boundaries; the generated router table equals the CLAUDE.md/AGENTS.md region between the markers |
 
 Pattern: checks never shell out. They call `runKernel`, `runTelemetry`, `runJournal` in-process against a `memoryIo` rooted at the checkout under test. Findings are typed codes (declaration-merged `CheckCodes`), graded ok / fail / skip. `mirrors.ts` is a declarative table of ~30 "registry value must appear under doc anchor" rows; empty anchor body or empty registry list is a failure, never a vacuous pass.
 
@@ -184,14 +231,20 @@ Pattern: checks never shell out. They call `runKernel`, `runTelemetry`, `runJour
 
 | Module | Command | What it does |
 |---|---|---|
-| `gen/` | `engineos gen agent-registry \| agent-commands` | agents/*.md frontmatter -> `registries/agents.json`; one alias command per agent name/alias with a `@generated` marker (marker removed = hand-customized, preserved) |
+| `gen/` | `engineos gen agent-registry \| agent-commands \| router-table` | agents/*.md frontmatter -> `registries/agents.json`; one alias command per agent name/alias with a `@generated` marker (marker removed = hand-customized, preserved); `intents.json` `router_row` -> the CLAUDE.md and AGENTS.md table between `<!-- engineos:router-table:begin -->` and `<!-- engineos:router-table:end -->` (idempotent; a file without both markers is left untouched) |
 | `install/` | `engineos settings-merge` | merges hooks.json + permissions template into `~/.claude/settings.json`; scrubs both old `.sh` and new node hook forms; atomic write, write-once `.engineos.bak` |
 | `init/` | `engineos init [--stack auto\|<framework>[@dir],...]` (`scripts/init-project.sh`, `/engineos:init`) | scaffold `.engineos/{changes,archived,memory}` + `docs/{specs,prds,rules}`; write `.engineos/config.json` once from `--stack` or detection; seed `CLAUDE.md` from `templates/project-claude.md`; Python template/config retained deprecated; refuses inside the EngineOS checkout (exit 3) |
 | `evals/` | `engineos evals` | deterministic tier (always; 7 assertions over `evals/*.jsonl`, coverage floor 25) + live tier (`ENGINEOS_EVAL_LIVE=1`, grades `[router]` announcement) |
 | `evals/router-golden*` | `engineos router-golden collect \| run` (`scripts/router-golden.sh`) | `collect`: shadow `router` spans from each repo's `.git/engineos-telemetry`, joined by `trace_id` to the user turn in `~/.claude/projects/*/<session>.jsonl`, appended as candidates to `evals/router-golden/candidates.local.jsonl` (gitignored); `run`: grades every mode on the curated `cases.jsonl` through resolve-task + the advisor's `routeDecision` in throwaway stack projects, writes `RESULTS.md`, and with `--write-default` is the only writer of `policy.json` `router_decision.default` |
-| `bench/` | `engineos bench` | five budgets: route-intent 250ms, resolve-task 500ms, prompt-advisor 600ms, route-before-change cache hit 150ms, always-on context 32000 bytes |
+| `bench/` | `engineos bench` | six budgets: route-intent 250ms, resolve-task 500ms, prompt-advisor 600ms, route-before-change cache hit 150ms, always-on context 32000 bytes, per-call hook bundle 320000 bytes; plus lifecycle scenarios (bash-noop, hot-bundle-load, full-bundle-load) |
 | `report/` | `engineos usage-report [days]` | mines `~/.claude/projects` transcripts + telemetry for skill/agent/intent hit rates (input to `retro`) |
 | `testing/harness.ts` | test only | `tempRoot`, `fixtureRepo`, `relocatedRoot`, `runCli`, `runInProcess`; refuses paths inside the checkout; never bundled |
+
+### `adapters/claude-code-mod/` + `tools/embedding-daemon/` (opt-in tiers)
+
+Neither runs unless opted in (`docs/OPT-IN-TIERS.md`).
+- `adapters/claude-code-mod/`: `host/` (`server.ts`, `routes.ts`, `protocol.ts`, `presence.ts`) is a per-session host built to `dist/engineos-inprocess.cjs` and enabled with `ENGINEOS_INPROCESS=1`; `hooks/` (`hooks.json`, `register.ts`, `host-client.ts`, `classic-map.ts`) forwards hook calls to it and maps them back to the classic hook names. The host imports `src/`; nothing in `src/` imports the host. Accepted deviation: with the adapter on, each call still costs one immediate-exit spawn per registered `hooks.json` route.
+- `tools/embedding-daemon/`: its own package (`package.json`, `src/{daemon,embedder,protocol,socket}.ts`; `node_modules/` git-ignored) serving local embeddings over a socket to `src/judge/tiebreak.ts`. Environment: `ENGINEOS_EMBED_DAEMON`, `ENGINEOS_EMBED_CACHE`, `ENGINEOS_EMBED_OFFLINE`, `ENGINEOS_EMBED_IDLE_MINUTES`.
 
 ### `console/`
 
@@ -205,6 +258,13 @@ Standalone Next.js 15 + React 19 + Drizzle/better-sqlite3 admin console for edit
 ## Data Flow
 
 ### Prompt to task contract (UserPromptSubmit)
+
+Decode prompt/cwd/session; announce bypass or resolve task contract in-process;
+return route/scale/decision-rule/risk/autonomy/gates/HITL guidance and telemetry.
+Tier 0 gates and the Tier 1 ranking run first; when opted in, `prompt-judge.ts`
+adds the judge fact (shadow by default) and, for an ambiguous route only, the
+tie-break fact; `combine.ts` folds them add-only. Low confidence or residue
+escalates to the `router` agent (Tier 2).
 
 ```mermaid
 sequenceDiagram
@@ -245,15 +305,18 @@ The verification gate is a no-op in projects without `.engineos/` — the same o
 
 ### Build, generate, validate
 
-Final `npm run build` emits `dist/engineos.cjs`; `engineos gen` projects agent
-frontmatter to registry/commands. CI checks generated drift and source/console
+Final `npm run build` emits one esbuild graph per entry (`src/cli.ts`,
+`src/hot-cli.ts`, `adapters/claude-code-mod/host/server.ts`) into
+`dist/runtime/`, each behind a loader in `dist/` that enables node's compile
+cache on 22.8+; `engineos gen` projects agent frontmatter to registry/commands
+and `intents.json` to the router table. CI checks generated drift and source/console
 validation. Behavioral validator, evals, benchmarks and smoke checks run only as
 separate approved final actions, not intermediate implementation checks.
 
 ## Conventions
 
 - Prose is the source of truth for policy; registries are its projection; the validator keeps them equal. Edit prose and registry in the same PR; behavioral integrity checks require approved final validation.
-- Generated surfaces: `dist/engineos.cjs`, `registries/agents.json`, `commands/agents/*.md` (marker-gated). CI fails on drift. Never hand-edit.
+- Generated surfaces: `dist/engineos.cjs`, `dist/engineos-hot.cjs`, `dist/engineos-inprocess.cjs`, `dist/runtime/*.cjs`, `registries/agents.json`, `commands/agents/*.md` (marker-gated), the router table between the `engineos:router-table` markers in `CLAUDE.md`/`AGENTS.md`. CI (dist drift guard) and C38d fail on drift. Never hand-edit.
 - Byte parity with the retired bash runtime is pinned by `test/fixtures/legacy-*` and the `*parity.test.ts` suites. Many "odd" behaviors (jq number formatting, code-point sort, `false` treated as absent) are deliberate reproductions.
 - Tests: `npm test` = `tsc` into `build/` then `node --test`. No framework. `*.test.ts` in-process via `memoryIo`; `*.e2e.test.ts` spawn `dist/engineos.cjs` with an env allowlist.
 - Every agent reply starts with the YAML return envelope; status vocabulary OK / DEGRADED / CRITICAL / BLOCKED / FAILED.
@@ -264,7 +327,8 @@ separate approved final actions, not intermediate implementation checks.
 ## Gotchas
 
 - `stop-verify` runs lint/typecheck only in projects that carry `.engineos/`; elsewhere the verification gate is a no-op, the same opt-in as telemetry and the scaffolder.
-- `hooks/hooks.json` never calls the `hooks/*.sh` shims; it runs `node dist/engineos.cjs hook <name>` directly. Reading a shim tells you nothing about behavior.
+- `hooks/hooks.json` never calls the `hooks/*.sh` shims; it runs `node dist/engineos.cjs hook <name>` (session hooks) or `node dist/engineos-hot.cjs hook <name>` (per-call hooks) directly. Reading a shim tells you nothing about behavior.
+- A per-call hook must be registered in `src/hot-cli.ts`, not only in `src/hooks/cli.ts`; importing `src/hooks/cli.ts` from the hot entry would pull every hook into the hot bundle and break its size budget.
 - `block` is a JSON decision with exit 0, not exit 2. Only `fail` (unwired `post-edit-check`) uses exit 2. A throwing hook renders silent.
 - `SubagentStart`/`SubagentStop` exist in the type but are never used; agent lifecycle is simulated via `PreToolUse`/`PostToolUse` on `Agent|Task`.
 - Bypass has three switches; only the repo marker expires. Under bypass every hook goes silent except prompt-advisor, which announces `BYPASS ACTIVE`.
@@ -289,13 +353,13 @@ test/eval/behavioral-validator execution waits for explicit approved final
 validation. Project writes remain supervised on the active branch/PR; protected
 `AGENTS.md` and locked mirrors are not edited independently.
 
-**To add or change a routing intent**: edit the CLAUDE.md router table row and `AGENTS.md` mirror, add/adjust the intent in `registries/intents.json` (signals, rules, skills, agents, risk_floor), and if path-driven also `registries/routing.json` and its `sample_path`. Run `scripts/validate-engineos.sh` (C14, C16, C17*). Add an eval case in `evals/intent-routing-cases.jsonl`.
+**To add or change a routing intent**: add/adjust the intent in `registries/intents.json` (phrases, exemplars, rules, skills, agents, risk_floor, `router_row`), regenerate the CLAUDE.md and `AGENTS.md` table with `engineos gen router-table` (never hand-edit between the markers; C38d), and if path-driven also `registries/routing.json` and its `sample_path`. Run `scripts/validate-engineos.sh` (C14, C16, C17*, C38*). Add an eval case in `evals/intent-routing-cases.jsonl`.
 
 **To add a rule**: create `rules/<name>.md`; add it to every router row that should load it and to every row that loads a rule deferring to it (closure, C5); update `registries/intents.json` rules arrays; mention it in `docs/COMPATIBILITY.md` if always-on.
 
 **To add an agent**: create `agents/<name>.md` with frontmatter `name, description, tools, model, tier` and the standard `## Return format`; run `engineos gen agent-registry` and `engineos gen agent-commands`; bind it in `registries/capabilities.json` and the router table.
 
-**To add a hook**: implement `run(env, ctx): HookDecision` in `src/hooks/<name>.ts`, register in `src/hooks/cli.ts::HOOKS`, wire in `hooks/hooks.json`, add to `SILENT_HOOKS` in `src/node-guard.ts` if it must stay quiet on old node, add a shim `hooks/<name>.sh`, rebuild `dist/`, cover with `src/hooks/<name>.test.ts` and an e2e test.
+**To add a hook**: implement `run(env, ctx): HookDecision` in `src/hooks/<name>.ts`, register in `src/hooks/cli.ts::HOOKS` (and in `src/hot-cli.ts` if it fires per tool call), wire in `hooks/hooks.json` against the matching bundle, add to `SILENT_HOOKS` in `src/node-guard.ts` if it must stay quiet on old node, add a shim `hooks/<name>.sh`, rebuild `dist/`, cover with `src/hooks/<name>.test.ts` and an e2e test.
 
 **To add a kernel command**: add the arm in `src/kernel/cli.ts`, the section builder in `src/kernel/<area>.ts`, the policy block in `registries/policy.json`, a check family in `src/checks/runtime-governance-<area>.ts` with a live canary, and an ADR in `docs/adr/`.
 
@@ -305,6 +369,6 @@ validation. Project writes remain supervised on the active branch/PR; protected
 
 **To release**: bump `package.json`, `npm run build` (dist drift guard), write `docs/release-notes/<version>.md` via the `release-notes` skill, update `docs/COMPATIBILITY.md`, record the change in `.engineos/changes/`, archive it.
 
-**To debug "hooks are not firing"**: check which `node` the hook PATH resolves to (floor 18), check the three bypass switches, check `hooks/hooks.json` is what `~/.claude/settings.json` carries (`engineos settings-merge`), run `node dist/engineos.cjs hook prompt-advisor` with a hand-built stdin envelope.
+**To debug "hooks are not firing"**: check which `node` the hook PATH resolves to (floor 18), check the three bypass switches, check `hooks/hooks.json` is what `~/.claude/settings.json` carries (`engineos settings-merge`), run `node dist/engineos.cjs hook prompt-advisor` (or `node dist/engineos-hot.cjs hook <per-call hook>`) with a hand-built stdin envelope.
 
 **To understand what the kernel decided**: `.git/engineos-telemetry/<session>.jsonl` (events) and `<session>.exec.jsonl` (spans); `engineos usage-report`.

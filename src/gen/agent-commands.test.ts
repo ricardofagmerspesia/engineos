@@ -235,7 +235,7 @@ test('gen refuses an unknown target with the usage line', () => {
   const result = runInProcess(runGen, ['agent-nonsense']);
 
   assert.equal(result.status, 1);
-  assert.equal(result.stderr, 'usage: engineos gen agent-commands|agent-registry\n');
+  assert.equal(result.stderr, 'usage: engineos gen agent-commands|agent-registry|router-table\n');
   assert.equal(result.stdout, '');
 });
 
@@ -243,7 +243,7 @@ test('gen with no target refuses the same way', () => {
   const result = runInProcess(runGen, []);
 
   assert.equal(result.status, 1);
-  assert.equal(result.stderr, 'usage: engineos gen agent-commands|agent-registry\n');
+  assert.equal(result.stderr, 'usage: engineos gen agent-commands|agent-registry|router-table\n');
 });
 
 test('gen agent-commands generates into ENGINEOS_ROOT', (t) => {

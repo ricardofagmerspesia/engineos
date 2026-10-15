@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { readFileSync, realpathSync } from 'node:fs';
 import type { HookEnvelope } from './envelope';
 import { block, message, silent, type HookContext, type HookDecision } from './output';
-import { bypassActive } from './bypass';
+import { bypassActive, bypassActiveOnDisk } from './bypass';
 import { classify, type InfraReason } from './classify-failure';
 import { PYTHON_UNAVAILABLE_REASON, runnerHandle, runnerHasTarget, runnerRun, runnerSelect, runnerSelectFor, type RunnerSelection, type RunnerUnavailable, type SpawnSyncLike } from './runner';
 import { unpinnedTools } from './runner-python';
@@ -14,7 +14,7 @@ import { event, telemetrySink, withSpan, type EventData, type SpanFacts } from '
 import type { SpanStatus } from '../registry/policy-exec-journal';
 import type { ProjectConfig } from '../registry/project-config';
 import { NODE_PACKAGE_MARKERS, SUMMARY_LINES, containedIn, failureBlock, firstLines, hasPythonExtension, hasVerifyExtension, isDirectory, isFile, packageOwner, projectConfig, runnerCommand, runnerFound, runnerProbe, startDir, verifyEnvironment, type VerifyEnvironment } from './verify-targets';
-import { lazyRegistries } from '../kernel/context';
+import { lazyRegistries, type Registries } from '../kernel/context';
 import { repairSection } from '../kernel/repair';
 import { isRecord, KernelError } from '../lib/json';
 import { requireHostValidation, type HostValidationApproval } from '../workflow/gates';
@@ -83,6 +83,10 @@ interface Plan {
 
 export function run(env: HookEnvelope, ctx: HookContext): HookDecision {
   if (env.stopHookActive || env.cwd === '') return silent;
+  // Bypass short-circuits every gate (CLAUDE.md), the pending-approval notice
+  // included: under the marker the Stop hook says nothing at all. Looked up on
+  // disk because the automatic Stop may not spawn a single subprocess.
+  if (bypassActiveOnDisk(env.cwd, ctx.io.env)) return silent;
   return message('[engineos] Final validation pending explicit user approval after integration; automatic Stop ran no checks.');
 }
 
@@ -137,7 +141,7 @@ export function verify(
   // The span measures the CHECKS, not the transcript parsing that decided which
   // packages to check, which is why it opens here and not at the top.
   const ladder = withSpan(sink, VERIFICATION_SPAN, () => {
-    const result = runLadder(plan.runs, targets, environment.env, spawn, root, JSON.stringify([approved.taskId, approved.scopeRevision, approved.sourceRevision]));
+    const result = runLadder(plan.runs, targets, environment.env, spawn, root, JSON.stringify([approved.taskId, approved.scopeRevision, approved.sourceRevision]), lazyRegistries(ctx.root));
     return { result, status: ladderStatus(result) };
   });
   // Written red or green: a green run is half the base rate usage-report.sh has
@@ -342,6 +346,10 @@ function runLadder(
   spawn: SpawnSyncLike,
   root: string,
   approvalRevision: string,
+  // The EngineOS checkout's registries (ctx.root), not the project's: the
+  // "target was never there" patterns are policy, read from the same root as
+  // every other policy answer this hook gives.
+  registries: Registries,
 ): Ladder {
   const failures: Failure[] = [];
   const infra: Infra[] = [];
@@ -368,7 +376,10 @@ function runLadder(
       if (!runnerHasTarget(selection, handle, target, undefined, spawn, root)) continue;
       const seconds = budgetFor(target, env);
       const result = runnerRun(selection, handle, target, seconds, env, spawn, root);
-      const verdict = classify({ kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut });
+      const verdict = classify(
+        { kind: 'run', runner: selection.kind, target, code: result.code, output: result.output, timedOut: result.timedOut },
+        registries.policy.repair.infra_patterns,
+      );
       if (verdict === null) {
         if (completedChecks.size >= 4096) completedChecks.delete(completedChecks.keys().next().value ?? '');
         completedChecks.set(key, true);

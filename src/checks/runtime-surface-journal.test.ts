@@ -185,7 +185,7 @@ test('C27c is clean on an unmutated checkout', (t: TestContext) => {
 });
 
 test('the router span removed from prompt-advisor.ts is caught', (t: TestContext) => {
-  const root = checkoutCopy(t, (copy) => dropLines(copy, 'src/hooks/prompt-advisor.ts', 'withSpanAsync(run.sink, ROUTER_SPAN,'));
+  const root = checkoutCopy(t, (copy) => dropLines(copy, 'src/hooks/prompt-advisor.ts', 'withSpanAsync(sink, ROUTER_SPAN,'));
   assert.ok(hasFinding(run(root, 'C27c'), 'declared-writer-writes-no-span', 'src/hooks/prompt-advisor.ts'));
 });
 

@@ -1,0 +1,166 @@
+{
+  "version": "2.0.0",
+  "description": "Five-intent v2 sample for src/kernel/score.ts and the v2 loader (contracts.md@rev1 §1). Rows: new-feature and llm declare phrases, verb_object, negative and exemplars and keep their v1 signals; adr is the §1.4 example verbatim; bug is a v1-only row (signals only, phrases derived at weight 1); frontend declares phrases without signals and carries a routing domain for the path feature. Misroute 1 ('create a mod ...') must not rank llm first; misroute 2 ('create a plan to replace our routing ...') must rank adr above new-feature.",
+  "intents": [
+    {
+      "id": "new-feature",
+      "title": "New feature / multi-file change",
+      "signals": ["add", "build", "create", "implement"],
+      "rules": [],
+      "skills": ["tlc-spec-lean"],
+      "agents": [],
+      "commands": ["new-feature"],
+      "mcp": [],
+      "model_tier": null,
+      "risk_floor": null,
+      "hook_mirrored": false,
+      "note": "New behavior with no more-specific row; a more specific matching row suppresses this one.",
+      "suppressible": true,
+      "phrases": [
+        { "text": "new feature", "weight": 2 },
+        { "text": "implement", "weight": 0.8 },
+        { "text": "build", "weight": 0.5 },
+        { "text": "add", "weight": 0.5 },
+        { "text": "create", "weight": 0.3 }
+      ],
+      "verb_object": {
+        "verbs": ["add", "build", "create", "implement"],
+        "objects": ["endpoint", "feature", "screen", "page", "module", "service", "component", "api", "integration", "form", "checkout"],
+        "weight": 2
+      },
+      "negative": [
+        { "text": "plan", "weight": 1.5 },
+        { "text": "should we", "weight": 1.5 },
+        { "text": "evaluate", "weight": 1 },
+        { "text": "replaceable", "weight": 1 }
+      ],
+      "exemplars": [
+        "add a checkout endpoint with payment validation",
+        "build the invoices screen",
+        "implement password reset across api and web"
+      ],
+      "threshold": 0.5
+    },
+    {
+      "id": "bug",
+      "title": "Bug / unexpected behavior",
+      "signals": ["broken", "fails", "failing", "why does", "does nothing"],
+      "rules": [],
+      "skills": ["superpowers:systematic-debugging"],
+      "agents": [],
+      "commands": [],
+      "mcp": [],
+      "model_tier": "design",
+      "risk_floor": null,
+      "hook_mirrored": false,
+      "note": "v1-only row: no v2 field, so phrases derive from signals at weight 1."
+    },
+    {
+      "id": "frontend",
+      "title": "Frontend work",
+      "rules": ["frontend", "architecture", "testing"],
+      "skills": ["react-patterns"],
+      "agents": ["frontend-coordinator"],
+      "commands": [],
+      "mcp": [],
+      "model_tier": "build",
+      "risk_floor": "low",
+      "hook_mirrored": true,
+      "domain": "frontend",
+      "note": "Phrases without signals: exercises the relaxed signals rule and the path feature (domain frontend).",
+      "phrases": [
+        { "text": "react", "weight": 2 },
+        { "text": "next.js", "weight": 2 },
+        { "text": "component", "weight": 1.5 },
+        { "text": "styling", "weight": 1.5 },
+        { "text": "page", "weight": 0.5 },
+        { "text": "ui", "weight": 0.5 }
+      ],
+      "negative": [
+        { "text": "react native", "weight": 2 }
+      ],
+      "exemplars": [
+        "fix the spacing on the settings page component",
+        "add a dark mode toggle to the react header",
+        "restyle the checkout form with the design tokens"
+      ]
+    },
+    {
+      "id": "llm",
+      "title": "LLM/agent/chatbot work",
+      "signals": ["Mastra", "chatbot", "chat bot", "conversational AI", "prompt", "agent", "RAG", "embedding", "eval", "tool schema"],
+      "rules": ["llm-apps"],
+      "skills": ["llm-engineering", "mastra-patterns"],
+      "agents": ["llm-coordinator"],
+      "commands": [],
+      "mcp": [],
+      "model_tier": "build",
+      "risk_floor": "medium",
+      "hook_mirrored": true,
+      "domain": "llm",
+      "note": "Product LLM work only; Claude Code tooling (mods, hooks, sub-agents) is not this row.",
+      "phrases": [
+        { "text": "mastra", "weight": 2 },
+        { "text": "chatbot", "weight": 2 },
+        { "text": "rag", "weight": 2 },
+        { "text": "embedding", "weight": 1.5 },
+        { "text": "prompt", "weight": 1 },
+        { "text": "eval", "weight": 1 },
+        { "text": "agent", "weight": 0.3 }
+      ],
+      "negative": [
+        { "text": "sub-agent", "weight": 2 },
+        { "text": "sub agent", "weight": 2 },
+        { "text": "subagent", "weight": 2 },
+        { "text": "mod", "weight": 1.5 },
+        { "text": "claude code", "weight": 2 },
+        { "text": "status line", "weight": 2 },
+        { "text": "hook", "weight": 1 }
+      ],
+      "exemplars": [
+        "build a mastra support chatbot with rag over the help center",
+        "tune the summarization prompt and add evals",
+        "add an embedding pipeline for product search"
+      ],
+      "threshold": 0.6
+    },
+    {
+      "id": "adr",
+      "title": "Architecture decision",
+      "signals": ["should we use", "how should we structure"],
+      "rules": [],
+      "skills": ["adr"],
+      "agents": [],
+      "commands": [],
+      "mcp": [],
+      "model_tier": "most-capable",
+      "risk_floor": null,
+      "hook_mirrored": false,
+      "note": "The decision gets recorded, not just chatted. ...",
+      "phrases": [
+        { "text": "should we use", "weight": 3 },
+        { "text": "adr", "weight": 3 },
+        { "text": "how should we structure", "weight": 3 },
+        { "text": "trade off", "weight": 2 },
+        { "text": "decision", "weight": 1.5 },
+        { "text": "plan", "weight": 1.2 },
+        { "text": "replace", "weight": 1 },
+        { "text": "framework", "weight": 1 },
+        { "text": "evaluate", "weight": 1 }
+      ],
+      "verb_object": { "verbs": ["plan", "evaluate", "compare", "decide"], "objects": ["framework", "library", "architecture", "approach", "structure"], "weight": 2 },
+      "negative": [ { "text": "implement", "weight": 1 } ],
+      "exemplars": [
+        "should we use postgres or mongo for events",
+        "plan to replace the queue library and evaluate alternatives",
+        "which framework fits the routing layer better",
+        "how should we structure the billing module"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Architecture decision (\"should we use X or Y\", \"how should we structure\")",
+        "load": "skill `adr` + `rules/memory.md` — decision gets recorded, not just chatted"
+      }
+    }
+  ]
+}

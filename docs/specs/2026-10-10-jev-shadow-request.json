@@ -111,11 +111,11 @@
           "what": "Write or close the change record that describes work already done",
           "not_for": "Confirming that the work is correct"
         },
+        "route-planning": "Ask which agents should handle a request or how to split it into a dispatch plan",
         "verify-done": {
           "what": "Confirm that work is done, shipped or ready to archive, with evidence",
           "not_for": "Writing the change record"
         },
-        "route-planning": "Ask which agents should handle a request or how to split it into a dispatch plan",
         "other": {
           "what": "None of the listed kinds of work: a general question, or work outside these categories, such as configuring Claude Code itself (hooks, settings, mods or the status line)",
           "not_for": "Requests that fit one of the listed kinds of work"
@@ -382,6 +382,13 @@
         "question": "Does `request.text` ask the assistant to do this kind of `work`?"
       }
     },
+    "intent.route-planning": {
+      "type": "noul",
+      "instructions": {
+        "work": "Ask which agents should handle a request or how to split it into a dispatch plan",
+        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
+      }
+    },
     "intent.verify-done": {
       "type": "noul",
       "instructions": {
@@ -389,13 +396,6 @@
           "what": "Confirm that work is done, shipped or ready to archive, with evidence",
           "not_for": "Writing the change record"
         },
-        "question": "Does `request.text` ask the assistant to do this kind of `work`?"
-      }
-    },
-    "intent.route-planning": {
-      "type": "noul",
-      "instructions": {
-        "work": "Ask which agents should handle a request or how to split it into a dispatch plan",
         "question": "Does `request.text` ask the assistant to do this kind of `work`?"
       }
     },
@@ -439,10 +439,6 @@
       "type": "noul",
       "instructions": "Does the work in `request.text` involve retrieval-augmented generation, embeddings or fine-tuning?"
     },
-    "fact.retrieval_over_shared_corpus": {
-      "type": "noul",
-      "instructions": "Does the work in `request.text` involve retrieving documents from a corpus shared by several users or tenants?"
-    },
     "fact.multi_agent_system": {
       "type": "noul",
       "instructions": "Does `request.text` ask to design or build a product system in which more than one AI agent cooperates?",
@@ -450,6 +446,10 @@
         "true": "A product with several cooperating agents, such as a supervisor with workers or agents handing off to each other",
         "false": "A single agent or chatbot, or Claude Code subagents that the developer uses while working"
       }
+    },
+    "fact.retrieval_over_shared_corpus": {
+      "type": "noul",
+      "instructions": "Does the work in `request.text` involve retrieving documents from a corpus shared by several users or tenants?"
     },
     "scale": {
       "type": "score",

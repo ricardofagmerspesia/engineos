@@ -1,24 +1,30 @@
 import { KernelError } from '../lib/json';
 import type { Registries } from './context';
+import { evaluateFirst, fillTemplate } from './table';
 
 // Backpressure: may one more unit be dispatched right now? Capacity is
 // registries/policy.json .parallelism.wave_concurrency_cap — the same number the
-// wave cap is, never a second copy of it — and the queue bound and the overload
-// action live in .parallelism.backpressure. rules/parallelism.md "Backpressure"
-// is the prose mirror; C24 guards both.
+// wave cap is, never a second copy of it — and the queue bound, the overload
+// action and the answer ladder (.rows, a FIRST table) live in
+// .parallelism.backpressure. rules/parallelism.md "Backpressure" is the prose
+// mirror; C24 guards both.
 export interface AdmitFacts {
   inflight: number;
   queued: number;
 }
 
-// cmd_admit's key order: action, capacity, reason. `action` is registry data on
-// the middle branch (backpressure.overload_action), so it is a string rather
-// than a union spelled here.
+// cmd_admit's key order: action, capacity, reason. `action` is registry data, so
+// it is a string rather than a union spelled here.
 export interface AdmitSection {
   action: string;
   capacity: number;
   reason: string;
 }
+
+// The facts a backpressure row may test and the slots its action and reason may
+// use; the C24 schema check holds policy.parallelism.backpressure.rows to both.
+export const ADMIT_FACTS = ['capacity_available', 'queue_has_room'] as const;
+export const ADMIT_PLACEHOLDERS = ['inflight', 'queued', 'cap', 'max_queued_units', 'overload_action'] as const;
 
 export function admitSection(facts: AdmitFacts, regs: Registries): AdmitSection {
   // The bash arm's digits-only guards, in its order: a count that is not a
@@ -46,28 +52,30 @@ export function admitSection(facts: AdmitFacts, regs: Registries): AdmitSection 
   const cap = parallelism.wave_concurrency_cap;
   const maxQueued = backpressure.max_queued_units;
   const capacity = cap - facts.inflight;
-
-  if (capacity > 0) {
-    return {
-      action: 'dispatch',
-      capacity,
-      reason: `inflight ${facts.inflight} below cap ${cap}`,
-    };
+  const measured: Record<(typeof ADMIT_FACTS)[number], boolean> = {
+    capacity_available: capacity > 0,
+    queue_has_room: facts.queued < maxQueued,
+  };
+  const row = evaluateFirst(backpressure.rows, { facts: measured });
+  if (row === undefined) {
+    throw new KernelError(
+      'policy.json parallelism.backpressure.rows has no row for this load — the ladder must end in a row with an empty when',
+    );
   }
-  if (facts.queued < maxQueued) {
-    return {
-      action: backpressure.overload_action,
-      capacity: 0,
-      reason: `cap ${cap} reached; ${facts.queued} of ${maxQueued} queued — hold the unit for the next wave`,
-    };
-  }
-  // C26d greps this file for the `hitl: budget-exhausted` literal: reject is a
-  // HITL reason (rules/risk-autonomy.md), not a retry, and the reason string is
-  // where an orchestrator reads that.
+  // The reject row's reason carries the literal `hitl: budget-exhausted` (C26d
+  // reads it there): reject is a HITL reason (rules/risk-autonomy.md), not a
+  // retry, and the reason string is where an orchestrator reads that.
+  const slots: Record<(typeof ADMIT_PLACEHOLDERS)[number], string | number> = {
+    inflight: facts.inflight,
+    queued: facts.queued,
+    cap,
+    max_queued_units: maxQueued,
+    overload_action: backpressure.overload_action,
+  };
   return {
-    action: 'reject',
-    capacity: 0,
-    reason: `cap ${cap} reached and queue full (${facts.queued}/${maxQueued}) — stop planning, report BLOCKED, re-plan with a human (hitl: budget-exhausted)`,
+    action: fillTemplate(row.action, slots),
+    capacity: row.capacity === 'remaining' ? capacity : 0,
+    reason: fillTemplate(row.reason, slots),
   };
 }
 

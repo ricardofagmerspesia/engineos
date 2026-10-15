@@ -4,17 +4,32 @@ import { loadProjectConfig, type PackageStack, type ProjectConfig } from '../reg
 import { admitSection, type AdmitFacts, type AdmitSection } from './admit';
 import { breakerSection, type BreakerFacts, type BreakerSection } from './breaker';
 import type { KernelContext, Registries, RiskTier } from './context';
-import { decisionsSection, type DecisionsFacts, type DecisionsSection } from './decisions';
+import { decisionsSection, type ComposedDecisionsSection, type DecisionsFacts, type DecisionsSection } from './decisions';
 import { executionSection, isSimpleTaskEligible, parseExecutionFacts, type ExecutionFacts, type ExecutionSection } from './execution';
 import { hitlSection, type HitlFacts, type HitlSection } from './hitl';
+import { judgeFact, judgeSummary, type JudgeSummary } from './judge-facts';
 import { modelSection, type ModelSection } from './model';
 import { repairSection, type RepairFacts, type RepairSection } from './repair';
+import { composeTaskContract, genericSpecThreshold, type TaskContractSection } from './resolve-task-contract';
 import { riskSection, type RiskSection } from './risk';
-import { routeByIntent, routeByPath, routeEscalate, type EscalateRouteSection, type RouteSection, type StackFacts, type SuppressedIntent } from './route';
-import { asciiDowncase, compilePromptRegex, scaleSection, type ScaleFacts, type ScaleSection } from './scale';
+import {
+  routeByIntent,
+  routeByPath,
+  routeEscalate,
+  type EscalateRouteSection,
+  type IntentRouteSection,
+  type PathRouteSection,
+  type StackFacts,
+} from './route';
+import { scaleSection, type ScaleFacts, type ScaleSection } from './scale';
 import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
 import { resolveStack } from './stack';
+import { tiebreakFact } from './tiebreak-facts';
 import { wavesSection, type WavesFacts, type WavesSection } from './waves';
+
+// The task-contract block lives in resolve-task-contract.ts; its section type
+// stays importable from here, where the answer that carries it is declared.
+export type { TaskContractSection } from './resolve-task-contract';
 
 // Declared facts, sparse by design: a section is answered iff the facts it needs
 // were declared. With Wave 1(d) the set is complete — every legacy arm is a
@@ -54,8 +69,21 @@ export interface DeclaredFacts {
   breaker?: BreakerFacts;
   hitl?: HitlFacts;
   waves?: WavesFacts;
+  // Passed through unread, like `signals`: judge-facts.ts owns what a
+  // well-formed fact is, and checks its vocabulary against the registries.
+  judge?: unknown;
+  // The same, for tiebreak-facts.ts: the embedding tie-break scores
+  // (contracts.md@rev3 §3.1), checked against the registries and the ranking.
+  tiebreak?: unknown;
   execution?: ExecutionFacts;
 }
+
+// The escalate form carries the judge summary as its trailing key
+// (contracts.md@rev1 §2.3) in every answer: the declared fact's summary, or the
+// no-judge-fact fallback when none was declared.
+export type JudgedEscalateRouteSection = EscalateRouteSection & { judge: JudgeSummary };
+
+export type AnswerRouteSection = PathRouteSection | IntentRouteSection | JudgedEscalateRouteSection;
 
 // Keys appear in the order resolve fills them, which is the order below for
 // every fact but the task contract: that block is composed last and fills
@@ -64,42 +92,17 @@ export interface DeclaredFacts {
 // resolve-task projection re-orders into the legacy composite; the `resolve` arm
 // emits this order verbatim.
 export interface Answer {
-  route?: RouteSection;
+  route?: AnswerRouteSection;
   model?: ModelSection;
   risk?: RiskSection;
   scale?: ScaleSection;
-  decision_rules?: DecisionsSection;
+  decision_rules?: DecisionsSection | ComposedDecisionsSection;
   repair?: RepairSection;
   admit?: AdmitSection;
   breaker?: BreakerSection;
   hitl?: HitlSection;
   waves?: WavesSection;
   task_contract?: TaskContractSection;
-  execution?: ExecutionSection;
-}
-
-// cmd_resolve_task's task_contract key order, which is the answer's contract.
-export interface TaskContractSection {
-  substantive: boolean;
-  intents: string[];
-  escalates: boolean;
-  escalation_reasons: string[];
-  suppressed: SuppressedIntent[];
-  agents: string[];
-  rules: string[];
-  policy_rules: string[];
-  skills: string[];
-  skills_suppressed: SuppressedSkill[];
-  commands: string[];
-  mcp: string[];
-  model_tier: string | null;
-  risk_floor: RiskTier | null;
-  autonomy_ceiling_at_floor: string | null;
-  scale: ScaleSection;
-  decision_rules: string[];
-  required: string[];
-  gates: string[];
-  preferences: string[];
   execution?: ExecutionSection;
 }
 
@@ -126,6 +129,17 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
   if (facts.taskContract === true && facts.hitl !== undefined) {
     throw new KernelError('a task-contract fact and a hitl fact cannot be declared together');
   }
+  // Only the task contract folds a judge fact (decision D7); accepted anywhere
+  // else it would be a fact silently answered by nothing.
+  if (facts.judge !== undefined && facts.taskContract !== true) {
+    throw new KernelError('a judge fact cannot be declared without a task-contract fact');
+  }
+  // The same reason, contracts.md@rev3 §3.1: only the task contract reads it.
+  if (facts.tiebreak !== undefined && facts.taskContract !== true) {
+    throw new KernelError('a tiebreak fact cannot be declared without a task-contract fact');
+  }
+  const judge = facts.judge === undefined ? null : judgeFact(facts.judge, ctx.registries);
+  const tiebreak = facts.tiebreak === undefined ? null : tiebreakFact(facts.tiebreak, ctx.registries);
   if (facts.path !== undefined) {
     // Refuse rather than fabricate: an empty path would route as the repo root
     // and answer a domain nobody asked about.
@@ -142,7 +156,7 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     stack = ctx.stack ?? repositoryStack(ctx.project, ctx.projectCwd);
     answer.route =
       facts.escalate === true || facts.taskContract === true
-        ? routeEscalate(prompt, ctx.registries, stack)
+        ? { ...routeEscalate(prompt, ctx.registries, stack), judge: judgeSummary(judge) }
         : routeByIntent(prompt, ctx.registries, stack);
   }
   if (facts.workType !== undefined) {
@@ -192,45 +206,14 @@ export function resolve(facts: DeclaredFacts, ctx: KernelContext): Answer {
     if (route === undefined || !('escalate' in route)) {
       throw new KernelError('a task-contract fact answered no escalate route section');
     }
-    const declaredDecisions = decisionsSection({ prompt }, ctx.registries);
+    // A simple, directly executed task replaces the generic spec-threshold
+    // obligation with the scoped choice the execution facts record; every other
+    // decision rule stays (resolve-task-contract.ts applies the filter).
     const simple = answer.execution?.planning?.simple === true && answer.execution.planning.decision !== 'spec';
-    const decisions = simple ? {
-      ...declaredDecisions,
-      matches: declaredDecisions.matches.filter((match) => !genericSpecThreshold(match.id, ctx.registries)),
-    } : declaredDecisions;
-    answer.decision_rules = decisions;
-    const floor = decisions.any_high ? 'high' : route.risk_floor;
-    // The ceiling lookup runs for any floor, classified or not: a floor with no
-    // entry in autonomy.ceiling_by_risk is a broken registry, and the contract
-    // object below publishes the same value.
-    const ceiling = floor === null ? null : ceilingAt(floor, ctx.registries);
-    // HITL is folded ONLY from decisions.any_high: a matched rule declaring
-    // risk=high is a CLASSIFICATION of this prompt's own text, while
-    // route.risk_floor is an input to classification, inherited from whichever
-    // domain a keyword landed in. Folding the floor in would announce a human
-    // gate nobody owed — the gate theatre rules/gates.md warns about. A
-    // floor-only prompt therefore gets no hitl section at all, and
-    // task_contract.risk_floor is what says a classification is still owed.
-    // The ceiling is non-null exactly when the floor is, and any_high raises the
-    // floor to high, so what hitl is handed here is the ceiling at high — the
-    // same value the contract object publishes.
-    //
-    // The one other fold is the topology fact: a matched rule whose `when`
-    // declares multi_agent_system owes the developer's approval before any
-    // graph code (policy.json hitl.reasons topology-approval). That reason is
-    // about the REQUEST, not about a tier, so it is folded at whatever tier the
-    // contract already carries — the floor's tier contributes no reason of its
-    // own below high, so a floor alone still never triggers hitl. It needs a
-    // ceiling to ask about, and every rule signal is also an intent signal, so
-    // a matched rule always arrives with a floor (resolve.test.ts holds this).
-    const topology = topologyRequired(decisions, ctx.registries);
-    if ((decisions.any_high || topology) && floor !== null && ceiling !== null) {
-      // No conflict fact here: a matched high rule on a task nobody has
-      // classified is not an observed disagreement between rule and tier, and
-      // asserting one would be the same unearned claim one level down.
-      answer.hitl = hitlSection({ riskTier: floor, autonomy: ceiling, topology }, ctx.registries);
-    }
-    answer.task_contract = taskContract({ prompt, route, decisions, floor, ceiling }, ctx.registries);
+    const composed = composeTaskContract({ prompt, route, judge, tiebreak, simple }, ctx.registries);
+    answer.decision_rules = composed.decision_rules;
+    if (composed.hitl !== null) answer.hitl = composed.hitl;
+    answer.task_contract = composed.task_contract;
     if (answer.execution !== undefined) {
       answer.task_contract.execution = answer.execution;
       if (answer.execution.planning?.simple === true && answer.execution.planning.rulesMode === 'stack') {
@@ -310,15 +293,6 @@ function resolvedExecution(
   return executionSection(execution, regs);
 }
 
-// Only the generic size/new-feature obligation is replaceable by a scoped choice.
-function genericSpecThreshold(id: string, regs: Registries): boolean {
-  const rule = regs.decisionRules.rules.find((entry) => entry.id === id);
-  return id === 'rule-spec-threshold' && rule !== undefined && rule.then.gate === 'design' &&
-    rule.then.risk === null && rule.then.require.length === 1 && rule.then.require[0] === 'design-doc' &&
-    rule.when['files_changed'] === '>2' && rule.when['or_new_feature'] === true &&
-    Object.keys(rule.when).every((key) => key === 'files_changed' || key === 'or_new_feature');
-}
-
 // The repository's packages, and the one holding the working directory, or
 // none when no project was named or its stack cannot be read. Routing is
 // advisory: a broken .engineos/config.json or an unreadable tree degrades to
@@ -370,117 +344,8 @@ function safeConfig(project: string): ProjectConfig | null {
   }
 }
 
-// The closed policy bundle for substantive work. gates references
-// parallelism/risk/verification; parallelism references models/risk/
-// verification. Returning the closure keeps adapters and router rows from
-// reconstructing it independently.
-const POLICY_BUNDLE: readonly string[] = ['gates', 'models', 'parallelism', 'risk-autonomy', 'verification'];
-
-// The rule that applies because agents were routed, not because the work is
-// substantive: rules/subagents.md is about whether ANY agent runs at all.
-const AGENT_POLICY_RULE = 'subagents';
-
-interface ContractInputs {
-  prompt: string;
-  route: EscalateRouteSection;
-  decisions: DecisionsSection;
-  floor: RiskTier | null;
-  ceiling: string | null;
-}
-
-function taskContract(inputs: ContractInputs, regs: Registries): TaskContractSection {
-  const { prompt, route, decisions } = inputs;
-  // Registry order, not match order: the bash arm selects the matched rows out
-  // of intents.json, so the unions below follow the registry's own ordering.
-  const matched = regs.intents.intents.filter((intent) => route.intents.includes(intent.id));
-  // The union is read from intents.json directly here, not through
-  // routeByIntent, so the enablement filter has to be applied again at this
-  // site. Two answer shapes, one rule: a disabled skill is never recommended,
-  // and never disappears without saying why.
-  const declaredSkills = unique(matched.flatMap((intent) => intent.skills));
-  const substantive =
-    route.intents.length > 0 ||
-    decisions.matches.length > 0 ||
-    route.scale.big_task ||
-    route.scale.spec_authoring ||
-    route.scale.design_work ||
-    // A prompt can request real work without matching a registered domain
-    // ("update this prose"). The registry-owned action expression is the
-    // fallback that keeps such work inside the safety/verification bundle.
-    substantiveAction(prompt, regs);
-  return {
-    substantive,
-    intents: [...route.intents],
-    escalates: route.escalate,
-    escalation_reasons: [...route.reasons],
-    suppressed: route.suppressed.map((entry) => ({ ...entry })),
-    agents: [...route.agents],
-    rules: unique(matched.flatMap((intent) => intent.rules)),
-    // jq's `unique` sorts as well as de-duplicates, and the answer callers
-    // already parse carries that ordering.
-    policy_rules: [
-      ...new Set([
-        ...(substantive ? POLICY_BUNDLE : []),
-        ...(route.agents.length > 0 ? [AGENT_POLICY_RULE] : []),
-      ]),
-    ].sort(),
-    skills: enabledSkills(declaredSkills, regs.skillState),
-    skills_suppressed: suppressedSkills(declaredSkills, regs.skillState),
-    commands: unique(matched.flatMap((intent) => intent.commands)),
-    mcp: unique(matched.flatMap((intent) => intent.mcp)),
-    model_tier: route.model_tier,
-    risk_floor: inputs.floor,
-    autonomy_ceiling_at_floor: inputs.ceiling,
-    scale: { ...route.scale },
-    decision_rules: decisions.matches.map((match) => match.id),
-    required: unique(decisions.matches.flatMap((match) => match.require)),
-    // jq's `map(.gate // empty)` drops a null value rather than emitting it, so
-    // a rule that names no gate and no preference contributes to neither list.
-    gates: unique(declared(decisions.matches.map((match) => match.gate))),
-    preferences: unique(declared(decisions.matches.map((match) => match.prefer))),
-  };
-}
-
-// The `when` key that names a multi-agent topology in decision-rules.json. The
-// fold reads the matched rules' declared condition rather than a rule id, so a
-// second rule with the same condition folds the same way without a code change.
-const TOPOLOGY_WHEN_KEY = 'multi_agent_system';
-
-function topologyRequired(decisions: DecisionsSection, regs: Registries): boolean {
-  const matched = new Set(decisions.matches.map((match) => match.id));
-  return regs.decisionRules.rules.some(
-    (rule) => matched.has(rule.id) && rule.when[TOPOLOGY_WHEN_KEY] === true,
-  );
-}
-
-// A floor the registry cannot map to a ceiling is a broken registry, not a null
-// shipped at exit 0: the contract publishes this value, and a caller reading it
-// as "no ceiling" would grant more autonomy than the tier permits.
-function ceilingAt(floor: RiskTier, regs: Registries): string {
-  const ceiling = regs.policy.autonomy.ceiling_by_risk[floor];
-  if (ceiling === '') {
-    throw new KernelError(
-      `policy.json has no autonomy.ceiling_by_risk[${floor}] — resolve-task cannot resolve the ceiling hitl needs`,
-    );
-  }
-  return ceiling;
-}
-
-function substantiveAction(prompt: string, regs: Registries): boolean {
-  const source = regs.policy.parallelism.prompt_signals.substantive_action;
-  const pattern = compilePromptRegex(source, 'registries/policy.json: .parallelism.prompt_signals.substantive_action');
-  return pattern.test(asciiDowncase(prompt));
-}
-
-// The `// empty` half of jq's `map(.gate // empty)`: a null is dropped, not
-// emitted as a member of a list of names.
-function declared(values: readonly (string | null)[]): string[] {
-  return values.filter((value): value is string => value !== null);
-}
-
 // First-occurrence order, which is what jq's `reduce ... if index($x) then . else
-// . + [$x] end` preserves — deliberately not `unique`, whose sorting is only
-// wanted for policy_rules above.
+// . + [$x] end` preserves.
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
 }

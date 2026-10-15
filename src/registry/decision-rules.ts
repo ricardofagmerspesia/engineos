@@ -32,6 +32,14 @@ export interface DecisionRule {
   // schema the registry never promised.
   when: Record<string, unknown>;
   then: DecisionOutcome;
+  // The judge fact that can add this rule (contracts.md@rev2 §6.3): the
+  // `fact.<name>` question suffix src/judge/questions.ts generates, so this
+  // registry is the one source of the fact vocabulary. Null means the rule is
+  // never judge-added — derived in code, or owed by every change.
+  judge_fact: string | null;
+  // The probability cut at which a jev fact adds the rule; null falls back to
+  // policy.json judge.thresholds.rule_default.
+  judge_threshold: number | null;
   // A rule with no signals is model-only by design. An empty list says that the
   // same way jq's `select(.signals != null)` did: the keyword tier cannot match
   // it, because there is nothing to match against.
@@ -45,8 +53,12 @@ export interface DecisionRulesRegistry {
   rules: DecisionRule[];
 }
 
-const { requireRecord, requireString, requireNumber, requireStrings, requireRows, optionalString, optionalStrings } =
+const { malformed, requireRecord, requireString, requireNumber, requireStrings, requireRows, optionalString, optionalStrings } =
   strictReader('decision-rules.json');
+
+// A fact name becomes a question key (`fact.<name>`) and a telemetry-safe id, so
+// it is a lower-case identifier rather than free text.
+const JUDGE_FACT = /^[a-z][a-z0-9_]*$/;
 
 export function loadDecisionRules(root: string): DecisionRulesRegistry {
   const raw = loadRegistry(root, 'decision-rules.json');
@@ -69,8 +81,24 @@ export function loadDecisionRules(root: string): DecisionRulesRegistry {
           risk: optionalString(then['risk'], `${at}.then.risk`),
           prefer: optionalString(then['prefer'], `${at}.then.prefer`),
         },
+        ...judgeFields(row, at),
         signals: optionalStrings(row['signals'], `${at}.signals`),
       };
     }),
   };
+}
+
+function judgeFields(row: Record<string, unknown>, at: string): Pick<DecisionRule, 'judge_fact' | 'judge_threshold'> {
+  const fact = optionalString(row['judge_fact'], `${at}.judge_fact`);
+  if (fact !== null && !JUDGE_FACT.test(fact)) malformed(`${at}.judge_fact must be a lower-case identifier`);
+  const threshold = row['judge_threshold'];
+  if (threshold === undefined || threshold === null) return { judge_fact: fact, judge_threshold: null };
+  // A cut with no fact to compare it against can never fire, which is a
+  // registry mistake rather than a harmless extra.
+  if (fact === null) malformed(`${at}.judge_threshold requires a judge_fact`);
+  const cut = requireNumber(threshold, `${at}.judge_threshold`);
+  // Zero is refused with the rest of [0,1]'s outside: a rule the judge never
+  // scored reads as probability 0, so a zero cut would add it on every prompt.
+  if (cut <= 0 || cut > 1) malformed(`${at}.judge_threshold must be greater than 0 and at most 1`);
+  return { judge_fact: fact, judge_threshold: cut };
 }

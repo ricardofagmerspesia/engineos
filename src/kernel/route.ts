@@ -1,10 +1,12 @@
-import { globMatch } from '../lib/glob';
 import type { IntentRow } from '../registry/intents';
 import type { Language, PackageStack } from '../registry/project-config';
 import type { RoutingDomain } from '../registry/routing';
 import type { Registries, RiskTier } from './context';
-import { scaleSection, type ScaleSection } from './scale';
+import { highest, highFloorIntentIds, RISK_ORDER, suppressorOf } from './intent-order';
+import { asciiDowncase, scaleSection, type ScaleSection } from './scale';
+import { boundedContains, marginOf, matchPathDomain, scoreIntents, type RankedIntent } from './score';
 import { enabledSkills, suppressedSkills, type SuppressedSkill } from './skill-state';
+import type { ScoringPolicy } from '../registry/policy';
 
 // One route section, three declared-fact forms: a path routes to a domain, a
 // prompt routes to intents, and resolve-task's prompt routes to the escalate
@@ -39,9 +41,15 @@ export interface IntentMatch {
   note: string | null;
 }
 
+export type { RankedIntent } from './score';
+
+// Key order is the answer's contract (contracts.md@rev1 §2.2): the two pinned
+// keys, then the trailing ranking siblings.
 export interface IntentRouteSection {
   matches: IntentMatch[];
   ambiguous: boolean;
+  ranked: RankedIntent[];
+  margin: number | null;
   rebound: Rebound[];
   generic_only: boolean;
 }
@@ -93,62 +101,108 @@ export function floorOf(domain: RoutingDomain, regs: Registries): RiskTier | nul
   return intent === undefined ? null : intent.risk_floor;
 }
 
+// The matching itself is score.ts matchPathDomain (shared with the scorer's
+// path feature); this arm only shapes the answer.
 export function routeByPath(file: string, regs: Registries, root: string): PathRouteSection {
-  const reg = regs.routing;
-  const base = file.slice(file.lastIndexOf('/') + 1);
-  const norm = `/${file}`;
-
-  // Exclusions first, in registry order: self dirs of THIS checkout, then path
-  // globs, then basename globs. self_dirs is data; only its resolution against
-  // root is code, which keeps a consumer project's own hooks/ or docs/ routable.
-  for (const dir of reg.excluded.self_dirs) {
-    if (file.startsWith(`${root}/${dir}/`)) return { domain: null, excluded: true };
-  }
-  for (const pattern of reg.excluded.paths) {
-    if (globMatch(pattern, norm)) return { domain: null, excluded: true };
-  }
-  for (const pattern of reg.excluded.basenames) {
-    if (globMatch(pattern, base)) return { domain: null, excluded: true };
-  }
-
-  for (const id of reg.precedence) {
-    const dom = reg.domains.find((d) => d.id === id);
-    if (dom === undefined) continue;
-    // Fidelity with the bash loop: every path glob of a domain is tried before
-    // any of its basename globs, per domain in precedence order.
-    const hit =
-      dom.match.paths.some((p) => globMatch(p, norm)) ||
-      dom.match.basenames.some((p) => globMatch(p, base));
-    if (hit) {
-      // Key order is the answer's contract: jq emitted domain, rules, skills,
-      // skills_suppressed, agent, risk_floor, hook_guidance, excluded.
-      return {
-        domain: dom.id,
-        rules: dom.rules,
-        skills: enabledSkills(dom.skills, regs.skillState),
-        skills_suppressed: suppressedSkills(dom.skills, regs.skillState),
-        agent: dom.agent,
-        risk_floor: floorOf(dom, regs),
-        hook_guidance: renderGuidance(dom),
-        excluded: false,
-      };
-    }
-  }
-  return { domain: null, excluded: false };
+  const match = matchPathDomain(file, regs.routing, root);
+  if (match.kind === 'excluded') return { domain: null, excluded: true };
+  if (match.kind === 'none') return { domain: null, excluded: false };
+  const dom = match.domain;
+  // Key order is the answer's contract: jq emitted domain, rules, skills,
+  // skills_suppressed, agent, risk_floor, hook_guidance, excluded.
+  return {
+    domain: dom.id,
+    rules: dom.rules,
+    skills: enabledSkills(dom.skills, regs.skillState),
+    skills_suppressed: suppressedSkills(dom.skills, regs.skillState),
+    agent: dom.agent,
+    risk_floor: floorOf(dom, regs),
+    hook_guidance: renderGuidance(dom),
+    excluded: false,
+  };
 }
 
-// Case-insensitive boundary match of each intent's literal signal phrases
-// against the prompt. Multi-match by design (CLAUDE.md: load all that apply);
-// ambiguity handling beyond zero-match belongs to the router agent, which reads
-// each intent's note. `stack` is the repository's resolved stack; absent or
+// Scored multi-match (contracts.md@rev1 §2.2) over the stack-aware keyword
+// floor: every intent whose score clears router.scoring.min_score matches,
+// emitted in registry order with the eleven pinned fields. With a v1 registry
+// every firing signal scores 1, so the placeholders (min_score 1) reproduce the
+// any-match set. The router agent still owns real ambiguity and reads `ranked`
+// instead of a flat set. `stack` is the repository's resolved stack; absent or
 // empty, no stack is known and no match is rebound.
-export function routeByIntent(
-  text: string,
-  regs: Registries,
-  stack?: StackInput,
-): IntentRouteSection {
-  const matched = matchIntents(text, regs, stack);
-  const matches: IntentMatch[] = matched.rows.map((intent) => ({
+export function routeByIntent(text: string, regs: Registries, stack?: StackInput): IntentRouteSection {
+  const raw = matchIntents(text, regs, stack);
+  const matches = raw.rows.map((intent) => intentMatch(intent, regs));
+  return {
+    matches,
+    ambiguous: ambiguityOf(raw, regs.policy.router.scoring),
+    ranked: raw.ranked,
+    margin: raw.margin,
+    rebound: raw.rebound,
+    generic_only: genericOnly(raw.rows, raw.specific),
+  };
+}
+
+// One reading of ambiguity for both answer forms: nothing matched, or the top
+// candidate is weak on confidence or on its margin over the runner-up. The
+// escalate form reads it over the RAW matched rows, before suppression, so a
+// tie-break fact narrows the same set the intent form called ambiguous.
+function ambiguityOf(raw: MatchedIntents, scoring: ScoringPolicy): boolean {
+  const top = raw.ranked[0];
+  return (
+    raw.rows.length === 0 ||
+    top === undefined ||
+    top.confidence < scoring.threshold ||
+    (raw.margin !== null && raw.margin < scoring.margin)
+  );
+}
+
+// max_intents trims only what any-match would never have routed. Two kinds of
+// admitted candidate are exempt: a high-floor intent, by the same set
+// combine.ts keeps (./intent-order highFloorIntentIds), since dropping it would
+// lower the floor and lose the reviewer a high-risk prompt needs; and an
+// intent whose declared evidence alone (phrases, pair,
+// path, minus negatives) clears min_score, which is the §1.5 any-match set.
+// The cap fills its remaining slots, score then registry order, from intents
+// that needed exemplar similarity to clear min_score. A v1 registry has no
+// exemplars, so there the cap can never bind.
+function keptIntentIds(text: string, candidates: readonly RankedIntent[], regs: Registries): Set<string> {
+  const scoring = regs.policy.router.scoring;
+  const admitted = candidates.filter((candidate) => candidate.score >= scoring.min_score);
+  if (admitted.length <= scoring.max_intents) return new Set(admitted.map((candidate) => candidate.id));
+  const highFloor = highFloorIntentIds(regs);
+  const declared = new Set(
+    scoreIntents(text, withoutExemplars(regs))
+      .filter((candidate) => candidate.score >= scoring.min_score)
+      .map((candidate) => candidate.id),
+  );
+  const isExempt = (id: string): boolean => highFloor.has(id) || declared.has(id);
+  const exempt = admitted.filter((candidate) => isExempt(candidate.id));
+  const slots = Math.max(0, scoring.max_intents - exempt.length);
+  // `admitted` is already score descending, ties by registry order.
+  const capped = admitted.filter((candidate) => !isExempt(candidate.id)).slice(0, slots);
+  return new Set([...exempt, ...capped].map((candidate) => candidate.id));
+}
+
+// The same registries with bm25_weight 0, so the scorer answers from declared
+// evidence only. Getters delegate rather than spread: spreading lazyRegistries
+// would load every registry file just to override one number.
+function withoutExemplars(regs: Registries): Registries {
+  const policy = regs.policy;
+  const declaredOnly = { ...policy, router: { ...policy.router, scoring: { ...policy.router.scoring, bm25_weight: 0 } } };
+  return {
+    get routing(): Registries['routing'] { return regs.routing; },
+    get intents(): Registries['intents'] { return regs.intents; },
+    get models(): Registries['models'] { return regs.models; },
+    policy: declaredOnly,
+    get decisionRules(): Registries['decisionRules'] { return regs.decisionRules; },
+    get capabilities(): Registries['capabilities'] { return regs.capabilities; },
+    get agents(): Registries['agents'] { return regs.agents; },
+    get skillState(): Registries['skillState'] { return regs.skillState; },
+  };
+}
+
+function intentMatch(intent: IntentRow, regs: Registries): IntentMatch {
+  return {
     id: intent.id,
     title: intent.title,
     rules: intent.rules,
@@ -162,33 +216,38 @@ export function routeByIntent(
     model_tier: intent.model_tier,
     risk_floor: intent.risk_floor,
     note: intent.note,
-  }));
-  return {
-    matches,
-    ambiguous: matches.length === 0,
-    rebound: matched.rebound,
-    generic_only: genericOnly(matched.rows, matched.specific),
   };
 }
 
-// The keyword floor's raw answer, before any suppression: the matched rows in
-// registry order, whether each was reached through a signal that is not one of
-// its row's generic_signals, and the stack rebinds applied on the way.
+// The floor's raw answer, before any suppression: the matched rows in registry
+// order, whether each was reached through a signal that is not one of its
+// row's generic_signals, the stack rebinds applied on the way, and the scored
+// ranking the rows were selected from (the top_k candidates, score descending,
+// with the margin between the first two).
 interface MatchedIntents {
   rows: IntentRow[];
   specific: ReadonlyMap<string, boolean>;
   rebound: Rebound[];
+  ranked: RankedIntent[];
+  margin: number | null;
 }
 
+// Selection is the scorer's (keptIntentIds); specificity and the stack rebind
+// are the keyword floor's, applied to the kept rows. A kept row with no literal
+// signal hit was admitted on phrase, pair, path or exemplar evidence, none of
+// which is a generic signal, so it counts as specific.
 function matchIntents(text: string, regs: Registries, stack?: StackInput): MatchedIntents {
+  const scoring = regs.policy.router.scoring;
   const facts = stackFacts(stack);
   const lower = asciiDowncase(text);
   const all = regs.intents.intents;
+  const candidates = scoreIntents(text, regs);
+  const kept = keptIntentIds(text, candidates, regs);
   const direct = new Map<string, boolean>();
   for (const intent of all) {
+    if (!kept.has(intent.id)) continue;
     const hits = intent.signals.filter((signal) => boundedContains(lower, asciiDowncase(signal)));
-    if (hits.length === 0) continue;
-    direct.set(intent.id, hits.some((signal) => !intent.generic_signals.includes(signal)));
+    direct.set(intent.id, hits.length === 0 || hits.some((signal) => !intent.generic_signals.includes(signal)));
   }
   const rebound: Rebound[] = [];
   const specific = new Map<string, boolean>();
@@ -208,7 +267,13 @@ function matchIntents(text: string, regs: Registries, stack?: StackInput): Match
   }
   // Registry order, which every reader of the raw set relies on (routeEscalate
   // and the task contract both select rows out of intents.json in that order).
-  return { rows: all.filter((intent) => specific.has(intent.id)), specific, rebound };
+  return {
+    rows: all.filter((intent) => specific.has(intent.id)),
+    specific,
+    rebound,
+    ranked: candidates.slice(0, scoring.top_k),
+    margin: marginOf(candidates),
+  };
 }
 
 // Whether the floor would keep this intent for the given stack: true unless
@@ -303,7 +368,7 @@ export interface SuppressedIntent {
 
 // cmd_route_escalate's key order, which is the answer's contract: escalate,
 // reasons, intents, suppressed, agents, model_tier, risk_floor, scale,
-// ambiguous.
+// ambiguous, then the trailing ranking siblings of contracts.md@rev1 §2.3.
 export interface EscalateRouteSection {
   escalate: boolean;
   reasons: string[];
@@ -314,15 +379,11 @@ export interface EscalateRouteSection {
   risk_floor: RiskTier | null;
   scale: ScaleSection;
   ambiguous: boolean;
+  ranked: RankedIntent[];
+  margin: number | null;
   rebound: Rebound[];
   generic_only: boolean;
 }
-
-// The bash arm spells this ordering inline rather than reading policy.json, and
-// so does the port: it is the ordering of the tier vocabulary itself — the same
-// three names RiskTier is — not a policy knob somebody could re-tune. The model
-// tiers are the opposite case, and come from models.json escalation_order.
-const RISK_ORDER: readonly RiskTier[] = ['low', 'medium', 'high'];
 
 // Whether a dispatch plan is needed: the condition of frozen contract 1 of
 // docs/specs/2026-08-06-decision-kernel-p3-router-agent.md. Reuses the keyword
@@ -358,7 +419,7 @@ export function routeEscalate(
   const suppressed: SuppressedIntent[] = [];
   const surviving: IntentRow[] = [];
   for (const intent of matched) {
-    const by = suppressorOf(intent, hasNonSuppressible, rawIds);
+    const by = suppressorOf(intent, rawIds, hasNonSuppressible);
     if (by === null) surviving.push(intent);
     else suppressed.push({ id: intent.id, by });
   }
@@ -380,6 +441,7 @@ export function routeEscalate(
     design_work: scale.design_work,
   };
   const agentIntents = surviving.filter((i) => i.agents.length > 0).length;
+  const top = raw.ranked[0];
   const triggered: Record<string, boolean> = {
     'multi-agent-dispatch': agentIntents >= router.escalate_when.multi_agent_intents_min,
     // Zero RAW matches, not zero survivors: an intent that matched and was then
@@ -389,6 +451,11 @@ export function routeEscalate(
       rawIds.size === 0 &&
       router.escalate_when.unrouted_scale_signals.some((signal) => scaleFlags[signal] === true),
     'requires-dispatch-plan': surviving.some((i) => i.requires_dispatch_plan),
+    // Weak top confidence or margin among real candidates. Zero candidates never
+    // fire it, so a pure question keeps routing nowhere (§2.3).
+    'low-confidence':
+      top !== undefined &&
+      (top.confidence < router.scoring.threshold || (raw.margin !== null && raw.margin < router.scoring.margin)),
   };
   // Both the vocabulary and the emission order are policy.json's: a reason it
   // does not declare is not emitted, however true its condition.
@@ -409,70 +476,12 @@ export function routeEscalate(
       RISK_ORDER,
     ),
     scale,
-    ambiguous: matched.length === 0,
+    ambiguous: ambiguityOf(raw, router.scoring),
+    // Passed through unchanged: suppression edits `intents`, never the ranking
+    // or the rebind record, so the router agent sees every candidate.
+    ranked: raw.ranked,
+    margin: raw.margin,
     rebound: raw.rebound,
     generic_only: genericOnly(surviving, raw.specific),
   };
-}
-
-function suppressorOf(
-  intent: IntentRow,
-  hasNonSuppressible: boolean,
-  rawIds: ReadonlySet<string>,
-): string | null {
-  if (intent.suppressible && hasNonSuppressible) return 'more-specific-match';
-  return intent.suppressed_by.find((id) => rawIds.has(id)) ?? null;
-}
-
-// Max by position in a declared ordering, the aggregation both the tier and the
-// floor use. A value the ordering does not name cannot be compared against one
-// it does, so it never wins and an all-unknown set aggregates to null.
-function highest<T extends string>(values: readonly (T | null)[], order: readonly T[]): T | null {
-  let best: T | null = null;
-  let bestIndex = -1;
-  for (const value of values) {
-    if (value === null) continue;
-    const index = order.indexOf(value);
-    if (index > bestIndex) {
-      bestIndex = index;
-      best = value;
-    }
-  }
-  return best;
-}
-
-// jq's ascii_downcase folds A-Z and nothing else. String.toLowerCase() also
-// folds non-ASCII, and some of those foldings change a string's length (U+0130
-// lowercases to two code units), which would shift every match index away from
-// the answer the registry was written against.
-function asciiDowncase(text: string): string {
-  return text.replace(/[A-Z]/g, (c) => c.toLowerCase());
-}
-
-// The jq bounded_contains helper, literally: a signal matches only where both
-// of its edges sit against the start of the text, the end of the text, or a
-// non-alphanumeric character. "add" matches "add endpoint" but never
-// "addressed". Scanning with indexOf rather than a built regex is the invariant
-// the port carries over — a signal is registry data, and turning data into a
-// pattern is how a "*.sql" or a "CI/CD" becomes an injection.
-function boundedContains(haystack: string, needle: string): boolean {
-  // An empty signal would match at every position; refusing it keeps a
-  // malformed registry row from routing every prompt to its intent.
-  if (needle === '') return false;
-  for (let i = haystack.indexOf(needle); i !== -1; i = haystack.indexOf(needle, i + 1)) {
-    if (!isAlnum(haystack[i - 1]) && !isAlnum(haystack[i + needle.length])) return true;
-  }
-  return false;
-}
-
-// Oniguruma's POSIX [[:alnum:]] over UTF-8 is Unicode-aware: it accepts letters
-// and decimal digits in any script, and rejects marks, "_" and punctuation.
-// Verified against jq for U+00B2, U+2167, U+0663, U+0308, U+AC00, U+00B7 and "_".
-// Known limit: a JS index into an astral character yields a lone surrogate,
-// which reads as non-alphanumeric here and as alphanumeric in jq.
-const ALNUM = /^[\p{Alphabetic}\p{Nd}]$/u;
-
-// undefined is the text's own edge — start or end — which bounds a match.
-function isAlnum(char: string | undefined): boolean {
-  return char !== undefined && ALNUM.test(char);
 }

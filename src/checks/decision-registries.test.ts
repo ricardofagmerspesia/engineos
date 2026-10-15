@@ -360,6 +360,9 @@ test('a generic signal that is not one of the row signals is caught', (t) => {
 
 test("a stack-bearing intent whose domain sample routes elsewhere is caught", (t) => {
   const findings = run(t, (root) => {
+    editJson(root, 'registries/intents.json', (doc) => {
+      intentRow(doc, 'backend-python')['enabled'] = true;
+    });
     editJson(root, 'registries/routing.json', (doc) => {
       const domain = arrayAt(doc, 'domains').find((row) => isRecord(row) && row['id'] === 'backend-python');
       if (!isRecord(domain)) throw new Error('the backend-python domain is not in routing.json');
@@ -367,6 +370,11 @@ test("a stack-bearing intent whose domain sample routes elsewhere is caught", (t
     });
   });
   assert.ok(findings.some((f) => f.code === 'stack-intent-sample-unrouted' && f.subject?.startsWith('backend-python->backend-python:routes-to-') === true));
+});
+
+test('an inactive deprecated stack-bearing intent owes no sample path', (t) => {
+  const findings = run(t);
+  assert.ok(!findings.some((f) => f.code === 'stack-intent-sample-unrouted' && f.subject?.startsWith('backend-python->') === true));
 });
 
 test('policy.json risk aggregation other than max is caught', (t) => {

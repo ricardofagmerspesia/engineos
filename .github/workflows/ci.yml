@@ -67,16 +67,22 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: npm audit --audit-level=high
 
-      # Build and source drift are non-test integration validation.
+      # Build and source drift are non-test integration validation. The build
+      # writes two loaders (dist/engineos.cjs, dist/engineos-hot.cjs) and their
+      # bundles under dist/runtime/, so the guard covers the whole directory and
+      # uses `git status --porcelain`: `git diff` is blind to an output file the
+      # commit forgot to add, which is exactly how a new bundle goes missing.
       - name: Node runtime — dist drift guard
         run: |
           npm run build
-          if ! git diff --quiet -- dist/engineos.cjs; then
-            echo "FAIL: dist/engineos.cjs is out of sync with src/ — run npm run build and commit the result."
-            git diff --stat -- dist/engineos.cjs
+          DRIFT="$(git status --porcelain -- dist/)"
+          if [ -n "$DRIFT" ]; then
+            echo "FAIL: dist/ is out of sync with src/ — run npm run build and commit the result, new files included."
+            printf '%s\n' "$DRIFT"
+            git diff --stat -- dist/
             exit 1
           fi
-          echo "ok: dist/engineos.cjs matches src/"
+          echo "ok: dist/ matches src/"
 
       # The gen drift guards below stay on the .sh shims on purpose: they are the
       # one CI exercise the deprecated shims get before 2.0 removes them.
@@ -172,9 +178,14 @@ jobs:
       - name: EngineOS integrity and behavioral kernel checks
         run: node dist/engineos.cjs validate
 
+      # Both entry points answer --version: the per-call hooks in hooks.json run
+      # dist/engineos-hot.cjs, so a hot bundle that fails to load would silence
+      # git-write-guard and the edit-time route while the full bundle still passes.
       - name: Bundle version smoke check
         run: |
-          test "$(node dist/engineos.cjs --version)" = "engineos $(node -p "require('./package.json').version")"
+          EXPECTED="engineos $(node -p "require('./package.json').version")"
+          test "$(node dist/engineos.cjs --version)" = "$EXPECTED"
+          test "$(node dist/engineos-hot.cjs --version)" = "$EXPECTED"
 
       - name: Evals (deterministic tier)
         run: node dist/engineos.cjs evals

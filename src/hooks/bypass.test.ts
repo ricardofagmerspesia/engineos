@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fixtureRepo, tempRoot } from '../testing/harness';
-import { bypassActive, bypassMarker } from './bypass';
+import { bypassActive, bypassFlagPath, bypassMarkedAt, bypassMarker, bypassSwitchedOn } from './bypass';
 
 function hasGit(): boolean {
   return spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0;
@@ -100,4 +100,45 @@ test('an empty ENGINEOS_BYPASS_FLAG falls back to the HOME default', (t) => {
   const env: NodeJS.ProcessEnv = { ENGINEOS_BYPASS_FLAG: '', HOME: home };
   // HOME has no .claude/engineos.bypass, so the fallback path resolves and misses.
   assert.equal(bypassActive(home, env, spawnSync), false);
+});
+
+// ------------------------------------------------------------------ the repository-free switches
+
+test('the process variable alone switches the bypass on, with no repository consulted', () => {
+  assert.equal(bypassSwitchedOn({ ...ISOLATED, ENGINEOS_BYPASS: '1' }), true);
+});
+
+test('only the exact value 1 switches the bypass on', () => {
+  for (const value of ['', '0', 'true', 'yes', ' 1']) {
+    assert.equal(bypassSwitchedOn({ ...ISOLATED, ENGINEOS_BYPASS: value }), false, JSON.stringify(value));
+  }
+});
+
+test('an existing flag file switches the bypass on, a missing one does not', (t) => {
+  const flag = join(tempRoot(t), 'engineos.bypass');
+  assert.equal(bypassSwitchedOn({ ENGINEOS_BYPASS_FLAG: flag }), false);
+  writeFileSync(flag, '');
+  assert.equal(bypassSwitchedOn({ ENGINEOS_BYPASS_FLAG: flag }), true);
+});
+
+test('the flag path defaults under the injected HOME', () => {
+  assert.equal(bypassFlagPath({ HOME: '/home/someone' }), '/home/someone/.claude/engineos.bypass');
+  assert.equal(bypassFlagPath({ HOME: '/home/someone', ENGINEOS_BYPASS_FLAG: '/elsewhere/flag' }), '/elsewhere/flag');
+  assert.equal(bypassFlagPath({ HOME: '/home/someone', ENGINEOS_BYPASS_FLAG: '' }), '/home/someone/.claude/engineos.bypass');
+});
+
+// ------------------------------------------------------------------ the per-repo marker, given its directory
+
+test('a directory holding the marker is marked', (t) => {
+  const dir = tempRoot(t);
+  writeFileSync(join(dir, 'ENGINEOS_BYPASS'), '');
+  assert.equal(bypassMarkedAt(dir), true);
+});
+
+test('a directory without the marker is not marked', (t) => {
+  assert.equal(bypassMarkedAt(tempRoot(t)), false);
+});
+
+test('no directory at all is never marked', () => {
+  assert.equal(bypassMarkedAt(null), false);
 });

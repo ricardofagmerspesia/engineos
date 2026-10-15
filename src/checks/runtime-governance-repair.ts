@@ -5,10 +5,14 @@
 // and stated — never hardcoded — in the Stop-gate hook and the two prose homes
 // that used to say only "until clean".
 // Spec: docs/specs/2026-08-06-decision-kernel-p5-repair-loop.md
+import { isRecord } from '../lib/json';
+import { INFRA_PATTERN_REASONS, RUNNER_KINDS, infraRegExp } from '../hooks/classify-failure';
+import { LADDER_FACTS, NEVER_REPAIR_PLACEHOLDERS } from '../kernel/repair';
 import { finding, result, type CheckResult, type Finding } from './findings';
 import type { CheckContext } from './lib';
 import { runMirrors } from './mirror';
 import { rowsOf } from './mirrors';
+import { endsInCatchAll, rowProblems, type RowShape } from './runtime-governance-tables';
 import {
   answerText,
   child,
@@ -32,6 +36,14 @@ export const C20_FINDINGS = [
   'by-situation-mismatch',
   'by-situation-empty-response',
   'never-repair-missing-or-empty',
+  // The answer data src/kernel/repair.ts and src/hooks/classify-failure.ts read:
+  // the FIRST ladder (well-formed, ending in an empty-when row), each situation
+  // answer, the never-repair answer, and one infra pattern per runner.
+  'ladder-malformed',
+  'ladder-no-catch-all',
+  'situation-answer-malformed',
+  'never-repair-answer-malformed',
+  'infra-patterns-malformed',
 ] as const;
 
 export const C20B_FINDINGS = [
@@ -119,6 +131,7 @@ export function checkC20(ctx: CheckContext): CheckResult[] {
   if (stringsOf(repair, 'never_repair').length < 1) {
     findings.push(finding('C20', 'never-repair-missing-or-empty'));
   }
+  findings.push(...ladderFindings(repair), ...answerFindings(repair), ...infraPatternFindings(repair));
   return [result('C20', C20_TITLE, findings)];
 }
 
@@ -202,6 +215,78 @@ export function checkC20d(ctx: CheckContext): CheckResult[] {
 }
 
 // ------------------------------------------------------------------ internals
+
+const LADDER_SHAPE: RowShape = { conditionKey: 'when', vocabulary: { facts: LADDER_FACTS }, strings: ['action', 'reason'] };
+const ANSWER_SHAPE: RowShape = { strings: ['action', 'reason'] };
+
+function ladderFindings(repair: Record<string, unknown> | undefined): Finding[] {
+  const rows = arrayOf(repair, 'ladder');
+  if (rows === undefined || rows.length === 0) return [finding('C20', 'ladder-malformed', 'ladder')];
+  const findings = rows.flatMap((row, index) =>
+    rowProblems(row, LADDER_SHAPE).map((problem) => finding('C20', 'ladder-malformed', `ladder[${index}].${problem}`)),
+  );
+  if (!endsInCatchAll(rows)) findings.push(finding('C20', 'ladder-no-catch-all', `ladder[${rows.length - 1}]`));
+  return findings;
+}
+
+// A by_situation row answers through its own action and reason, or carries
+// neither (red defers to the ladder); one without the other is half an answer.
+function answerFindings(repair: Record<string, unknown> | undefined): Finding[] {
+  const findings: Finding[] = [];
+  (arrayOf(repair, 'by_situation') ?? []).forEach((row, index) => {
+    if (isRecord(row) && isAbsent(row['action']) && isAbsent(row['reason'])) return;
+    for (const problem of rowProblems(row, ANSWER_SHAPE)) {
+      findings.push(finding('C20', 'situation-answer-malformed', `by_situation[${index}].${problem}`));
+    }
+  });
+  const never = repair?.['never_repair_answer'];
+  const shape: RowShape = { strings: ['action', 'reason'], placeholders: NEVER_REPAIR_PLACEHOLDERS };
+  for (const problem of rowProblems(never, shape)) {
+    findings.push(finding('C20', 'never-repair-answer-malformed', `never_repair_answer.${problem}`));
+  }
+  return findings;
+}
+
+function infraPatternFindings(repair: Record<string, unknown> | undefined): Finding[] {
+  const rows = arrayOf(repair, 'infra_patterns');
+  if (rows === undefined) return [finding('C20', 'infra-patterns-malformed', 'infra_patterns')];
+  const findings: Finding[] = [];
+  const runners = Object.keys(RUNNER_KINDS);
+  const seen: string[] = [];
+  rows.forEach((row, index) => {
+    const problems = rowProblems(row, { strings: ['runner', 'pattern', 'reason'] });
+    if (isRecord(row) && problems.length === 0) {
+      const runner = String(row['runner']);
+      if (!runners.includes(runner) || seen.includes(runner)) problems.push('runner');
+      if (!INFRA_REASONS.includes(row['reason'])) problems.push('reason');
+      if (!compiles(String(row['pattern']))) problems.push('pattern');
+      seen.push(runner);
+    }
+    for (const problem of problems) findings.push(finding('C20', 'infra-patterns-malformed', `infra_patterns[${index}].${problem}`));
+  });
+  // Every runner needs its row: a runner without one reads every nonzero exit
+  // as red, including a stale target the old per-runner table caught.
+  for (const runner of runners) {
+    if (!seen.includes(runner)) findings.push(finding('C20', 'infra-patterns-malformed', `infra_patterns:${runner}`));
+  }
+  return findings;
+}
+
+const INFRA_REASONS: readonly unknown[] = INFRA_PATTERN_REASONS;
+
+function compiles(pattern: string): boolean {
+  try {
+    infraRegExp(pattern, 'target');
+    return true;
+  } catch {
+    // A SyntaxError is the answer, not a failure of the check.
+    return false;
+  }
+}
+
+function isAbsent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
 
 function verifyDoneNoteNamesRepair(ctx: CheckContext): boolean {
   try {

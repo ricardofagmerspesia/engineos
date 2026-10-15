@@ -1,7 +1,48 @@
 import type { RiskTier } from './intents';
 import type { WorkflowPolicy } from '../workflow/contracts';
 import { loadRegistry } from './load';
+import { parseJudge, type JudgePolicy } from './policy-judge';
+import { parseRouter, type RouterPolicy } from './policy-router';
+import {
+  parseAdmitRows,
+  parseInfraPatterns,
+  parseLadder,
+  parseReasonTable,
+  parseRepairAnswer,
+  parseSituations,
+  parseTransitions,
+  type AdmitRow,
+  type BreakerTransition,
+  type HitlReasonRow,
+  type InfraPattern,
+  type RepairAnswer,
+  type RepairLadderRow,
+  type RepairSituation,
+} from './policy-tables';
 import { strictReader } from './strict';
+
+// The router, judge and decision-table blocks parse in sibling modules so each
+// file stays one concern; their types are re-exported here so every consumer
+// keeps importing from '../registry/policy'.
+export type {
+  CombinationPolicy,
+  EscalateWhen,
+  RouterFixture,
+  RouterPolicy,
+  ScoringPolicy,
+  SourceMarkers,
+} from './policy-router';
+export type { JudgeBreaker, JudgeMode, JudgePolicy, JudgeRedactionPattern, JudgeThresholds } from './policy-judge';
+export type {
+  AdmitRow,
+  BreakerTransition,
+  HitlReasonRow,
+  InfraPattern,
+  InfraPatternReason,
+  RepairAnswer,
+  RepairLadderRow,
+  RepairSituation,
+} from './policy-tables';
 
 // registries/policy.json is the registry whose answers ARE gates: a risk tier,
 // an autonomy ceiling, a repair action. A lenient loader that defaulted a
@@ -25,17 +66,15 @@ export interface RiskPolicy {
   high_floors: string[];
 }
 
-export interface RepairSituation {
-  situation: string;
-  response: string;
-}
-
 export interface RepairPolicy {
   checks: string[];
   max_fix_attempts_per_check: number;
   escalations: number;
   by_situation: RepairSituation[];
   never_repair: string[];
+  never_repair_answer: RepairAnswer;
+  ladder: RepairLadderRow[];
+  infra_patterns: InfraPattern[];
 }
 
 export interface AutonomyLevel {
@@ -73,6 +112,7 @@ export interface BackpressurePolicy {
   max_queued_units: number;
   overload_action: string;
   actions: string[];
+  rows: AdmitRow[];
 }
 
 export interface PromptSignals {
@@ -90,38 +130,20 @@ export interface ParallelismPolicy {
   prompt_signals: PromptSignals;
 }
 
-export interface EscalateWhen {
-  multi_agent_intents_min: number;
-  unrouted_scale_signals: string[];
-}
-
-export interface RouterFixture {
-  prompt: string;
-  escalate: boolean;
-  reasons: string[];
-  intents: string[];
-}
-
-export interface RouterPolicy {
-  agent: string;
-  capability: string;
-  reasons: string[];
-  escalate_when: EscalateWhen;
-  fixtures: RouterFixture[];
-}
-
 export interface BreakerPolicy {
   failure_threshold: number;
   cooldown_waves: number;
   half_open_probes: number;
   states: string[];
   scopes: string[];
+  transitions: BreakerTransition[];
 }
 
 export interface HitlPolicy {
   reasons: string[];
   situations: string[];
   record_home: string;
+  reason_table: HitlReasonRow[];
 }
 
 export interface PolicyRegistry {
@@ -135,6 +157,7 @@ export interface PolicyRegistry {
   breaker: BreakerPolicy;
   hitl: HitlPolicy;
   router: RouterPolicy;
+  judge: JudgePolicy;
   workflow: WorkflowPolicy;
 }
 
@@ -155,8 +178,7 @@ export function loadPolicy(root: string): PolicyRegistry {
   const promptSignals = requireRecord(parallelism['prompt_signals'], '.parallelism.prompt_signals');
   const breaker = requireRecord(p['breaker'], '.breaker');
   const hitl = requireRecord(p['hitl'], '.hitl');
-  const router = requireRecord(p['router'], '.router');
-  const escalateWhen = requireRecord(router['escalate_when'], '.router.escalate_when');
+  const scopes = requireStrings(breaker['scopes'], '.breaker.scopes');
   return {
     version: requireString(p['version'], '.version'),
     risk: {
@@ -173,11 +195,11 @@ export function loadPolicy(root: string): PolicyRegistry {
         '.repair.max_fix_attempts_per_check',
       ),
       escalations: requireNumber(repair['escalations'], '.repair.escalations'),
-      by_situation: requireRows(repair['by_situation'], '.repair.by_situation').map((row, i) => ({
-        situation: requireString(row['situation'], `.repair.by_situation[${i}].situation`),
-        response: requireString(row['response'], `.repair.by_situation[${i}].response`),
-      })),
+      by_situation: parseSituations(repair['by_situation'], '.repair.by_situation'),
       never_repair: requireStrings(repair['never_repair'], '.repair.never_repair'),
+      never_repair_answer: parseRepairAnswer(repair['never_repair_answer'], '.repair.never_repair_answer'),
+      ladder: parseLadder(repair['ladder'], '.repair.ladder'),
+      infra_patterns: parseInfraPatterns(repair['infra_patterns'], '.repair.infra_patterns'),
     },
     autonomy: {
       levels: requireRows(autonomy['levels'], '.autonomy.levels').map((row, i) => ({
@@ -226,6 +248,7 @@ export function loadPolicy(root: string): PolicyRegistry {
           '.parallelism.backpressure.overload_action',
         ),
         actions: requireStrings(backpressure['actions'], '.parallelism.backpressure.actions'),
+        rows: parseAdmitRows(backpressure['rows'], '.parallelism.backpressure.rows'),
       },
       prompt_signals: {
         action: requireString(promptSignals['action'], '.parallelism.prompt_signals.action'),
@@ -250,34 +273,17 @@ export function loadPolicy(root: string): PolicyRegistry {
       cooldown_waves: requireNumber(breaker['cooldown_waves'], '.breaker.cooldown_waves'),
       half_open_probes: requireNumber(breaker['half_open_probes'], '.breaker.half_open_probes'),
       states: requireStrings(breaker['states'], '.breaker.states'),
-      scopes: requireStrings(breaker['scopes'], '.breaker.scopes'),
+      scopes,
+      transitions: parseTransitions(breaker['transitions'], '.breaker.transitions'),
     },
     hitl: {
       reasons: requireStrings(hitl['reasons'], '.hitl.reasons'),
       situations: requireStrings(hitl['situations'], '.hitl.situations'),
       record_home: requireString(hitl['record_home'], '.hitl.record_home'),
+      reason_table: parseReasonTable(hitl['reason_table'], '.hitl.reason_table'),
     },
-    router: {
-      agent: requireString(router['agent'], '.router.agent'),
-      capability: requireString(router['capability'], '.router.capability'),
-      reasons: requireStrings(router['reasons'], '.router.reasons'),
-      escalate_when: {
-        multi_agent_intents_min: requireNumber(
-          escalateWhen['multi_agent_intents_min'],
-          '.router.escalate_when.multi_agent_intents_min',
-        ),
-        unrouted_scale_signals: requireStrings(
-          escalateWhen['unrouted_scale_signals'],
-          '.router.escalate_when.unrouted_scale_signals',
-        ),
-      },
-      fixtures: requireRows(router['fixtures'], '.router.fixtures').map((row, i) => ({
-        prompt: requireString(row['prompt'], `.router.fixtures[${i}].prompt`),
-        escalate: requireBoolean(row['escalate'], `.router.fixtures[${i}].escalate`),
-        reasons: requireStrings(row['reasons'], `.router.fixtures[${i}].reasons`),
-        intents: requireStrings(row['intents'], `.router.fixtures[${i}].intents`),
-      })),
-    },
+    router: parseRouter(p['router']),
+    judge: parseJudge(p['judge'], scopes),
     workflow: workflowPolicy(p['workflow']),
   };
 }

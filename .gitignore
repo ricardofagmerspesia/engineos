@@ -5,6 +5,10 @@
 *.key
 .DS_Store
 node_modules/
+# The opt-in embedding daemon is its own package with its own install, never a
+# workspace of the root one (docs/OPT-IN-TIERS.md); named so the root rule above
+# is not the only thing keeping onnxruntime-node out of the tree.
+tools/embedding-daemon/node_modules/
 build/
 dist-release/
 

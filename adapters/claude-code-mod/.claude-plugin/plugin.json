@@ -1,0 +1,7 @@
+{
+  "name": "engineos-inprocess",
+  "version": "0.1.0",
+  "description": "Opt-in (ENGINEOS_INPROCESS=1): serves the EngineOS hooks from one long-lived host process per session instead of one node spawn per hook. Shell hooks stay registered for Codex and Cursor; each stands down only while this host serves it for the session, and git-write-guard never stands down.",
+  "author": { "name": "Ricardo Fagmer", "url": "https://github.com/ricardofagmer" },
+  "license": "MIT"
+}

@@ -3,22 +3,25 @@ import { join } from 'node:path';
 import { writeJson, type Io } from './io';
 
 export type Command = (argv: string[], io: Io) => number;
-// A command that may finish after an await (the hook adapter, whose prompt
-// advisor waits on the routing decision layer). Every other command stays a
-// plain Command; a Command is an AsyncCommand, so the table takes either.
+// A command that may await before answering its exit code. Only the hook
+// adapter is one today (the prompt advisor awaits the judge and the routing
+// decision layer); every other command stays synchronous, and a Command is
+// assignable to this type. `ExitCode` and `AsyncCommand` are the same contract
+// under the names the hook CLI's tests use.
 export type ExitCode = number | Promise<number>;
-export type AsyncCommand = (argv: string[], io: Io) => ExitCode;
-export interface CommandTable { [name: string]: Command | AsyncCommand }
+export type MaybeAsyncCommand = (argv: string[], io: Io) => ExitCode;
+export type AsyncCommand = MaybeAsyncCommand;
+export interface SyncCommandTable { [name: string]: Command }
+export interface CommandTable { [name: string]: MaybeAsyncCommand }
 
 // Injected by scripts/build.mjs via `define`; falls back for tsc test builds.
 declare const ENGINEOS_VERSION: string | undefined;
 
-// Returns the command's own answer untouched: a number stays a number, so a
-// synchronous command exits exactly as it always did, and only an async one
-// hands the entry point a promise to await.
-export function dispatch(table: Readonly<Record<string, Command>>, argv: string[], io: Io): number;
-export function dispatch(table: CommandTable, argv: string[], io: Io): ExitCode;
-export function dispatch(table: CommandTable, argv: string[], io: Io): ExitCode {
+// A table of synchronous commands answers synchronously, so callers that need a
+// plain exit code (in-process drives, tests) keep one.
+export function dispatch(table: SyncCommandTable, argv: string[], io: Io): number;
+export function dispatch(table: CommandTable, argv: string[], io: Io): number | Promise<number>;
+export function dispatch(table: CommandTable, argv: string[], io: Io): number | Promise<number> {
   const [name, ...rest] = argv;
   if (name === '--version' || name === '-v') {
     const v = typeof ENGINEOS_VERSION === 'string' ? ENGINEOS_VERSION : readPackageVersion();
@@ -31,6 +34,21 @@ export function dispatch(table: CommandTable, argv: string[], io: Io): ExitCode 
     return 1;
   }
   return command(rest, io);
+}
+
+// The entry points' exit: a synchronous answer exits in the same tick, exactly
+// as before async commands existed; a pending one exits when it settles. The
+// only asynchronous command is the hook adapter, whose contract is a silent
+// exit 0 on any failure, so a rejection exits 0 too.
+export function exitWith(result: number | Promise<number>, exit: (code: number) => void): void {
+  if (typeof result === 'number') {
+    exit(result);
+    return;
+  }
+  void result.then(
+    (code) => exit(code),
+    () => exit(0),
+  );
 }
 
 function readPackageVersion(): string {

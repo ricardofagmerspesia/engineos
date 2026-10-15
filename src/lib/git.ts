@@ -3,7 +3,8 @@
 //
 // `spawnSync` arrives as an argument rather than a module import so a caller can
 // answer "not a repo" without a subprocess, which is what most hook tests need.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import type { spawnSync } from 'node:child_process';
 
 function gitOutput(cwd: string, args: readonly string[], spawn: typeof spawnSync): string | null {
@@ -59,4 +60,30 @@ export function findUpFile(start: string, name: string): string | null {
     const candidate = `${dir}/${name}`;
     return existsSync(candidate) ? candidate : null;
   });
+}
+
+// The git dir found by walking the filesystem alone: a `.git` directory is the
+// answer, a `.git` file (linked worktree, submodule) names it. For the one
+// caller that may not spawn anything — the automatic Stop, which must stay
+// inert with no subprocess at all — this replaces `gitDir`.
+export function gitDirOnDisk(cwd: string): string | null {
+  let dir = cwd;
+  for (;;) {
+    const candidate = join(dir, '.git');
+    if (existsSync(candidate)) {
+      try {
+        if (statSync(candidate).isDirectory()) return candidate;
+        const pointer = readFileSync(candidate, 'utf8').trim();
+        const prefix = 'gitdir: ';
+        if (!pointer.startsWith(prefix)) return null;
+        const target = pointer.slice(prefix.length);
+        return isAbsolute(target) ? target : join(dir, target);
+      } catch {
+        return null;
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }

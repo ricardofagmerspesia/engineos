@@ -107,7 +107,8 @@ test('a prompt carrying several intents matches all of them, in registry order',
 });
 
 test('a prompt matching no signal is ambiguous, not an error', () => {
-  assert.deepEqual(routeIntent('zzz qqq'), { matches: [], ambiguous: true, rebound: [], generic_only: false });
+  // contracts.md@rev1 §2.2: no candidate ranks, so the margin is null.
+  assert.deepEqual(routeIntent('zzz qqq'), { matches: [], ambiguous: true, ranked: [], margin: null, rebound: [], generic_only: false });
 });
 
 test('a signal inside a longer word does not match', () => {
@@ -311,9 +312,10 @@ test('a decisions match carries the five fields in jq key order', () => {
 
 test('the escalate modifier selects the escalate form of the route section', () => {
   const section = escalateRoute('add a paginated orders endpoint to the API and mirror the screen to mobile');
+  // contracts.md@rev1 §2.3: ranked, margin and judge trail the legacy keys.
   assert.deepEqual(Object.keys(section), [
     'escalate', 'reasons', 'intents', 'suppressed', 'agents', 'model_tier', 'risk_floor', 'scale', 'ambiguous',
-    'rebound', 'generic_only',
+    'ranked', 'margin', 'rebound', 'generic_only', 'judge',
   ]);
   assert.deepEqual(section.intents, ['backend', 'mobile']);
   assert.deepEqual(section.suppressed, [{ id: 'new-feature', by: 'more-specific-match' }]);
@@ -321,7 +323,7 @@ test('the escalate modifier selects the escalate form of the route section', () 
 
 test('without the modifier the same prompt still answers the intent form', () => {
   const section = routeIntent('add a paginated orders endpoint to the API and mirror the screen to mobile');
-  assert.deepEqual(Object.keys(section), ['matches', 'ambiguous', 'rebound', 'generic_only']);
+  assert.deepEqual(Object.keys(section), ['matches', 'ambiguous', 'ranked', 'margin', 'rebound', 'generic_only']);
 });
 
 test('a modifier without a prompt fact is refused rather than ignored', () => {
@@ -339,6 +341,8 @@ test('a task-contract fact answers route, decision_rules and task_contract toget
     'policy_rules', 'skills', 'skills_suppressed', 'commands', 'mcp', 'model_tier', 'risk_floor',
     'autonomy_ceiling_at_floor',
     'scale', 'decision_rules', 'required', 'gates', 'preferences',
+    // contracts.md@rev3 §2.4 keys 21-23.
+    'judge', 'risk_proposal', 'tiebreak',
   ]);
   // "endpoint" is a backend signal (registries/intents.json 1.4.0), so the
   // prompt names both stacks and the contract carries both coordinators.

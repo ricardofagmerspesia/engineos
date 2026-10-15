@@ -1,6 +1,6 @@
 {
-  "version": "1.5.0",
-  "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally.",
+  "version": "2.0.0",
+  "description": "Machine-readable source of truth for the EngineOS router. 32 entries for CLAUDE.md's 31 '| Intent (signals) | Load |' table rows — the +1 is the mobile store-release row split into ios-release/android-release intents — which stays the human mirror. scripts/validate-engineos.sh checks this file: C16 against CLAUDE.md (row count, drift alarm) and against registries/routing.json (every hook_mirrored intent carries a domain FK whose rules array matches the registry), and resolves every unqualified rule, skill and agent name to a file under rules/, skills/ and agents/; C18d checks suppression data integrity; C19 checks required_sections/required_fields/archive_contract (handoff, P4); C21 checks the record-change archive contract (P6). Plugin-qualified skill names (superpowers:*) and the external code-review skill are not resolved locally. v2 (2.0.0, contracts.md@rev2 §1.2) adds the scoring fields of the Tier 1 classifier (src/kernel/score.ts) beside every kept signals array: phrases (weighted; every signal stays a phrase at weight 1 or more (agent-system multi-agent and orchestration signals at 1.5), except migration at 0.3 in big-sweep and backend because dba owns it, plus phrases calibrated by T13d at 0.3-1.5, evidence in evals/BASELINE.md), verb_object (a verb + object pair counted once; calibrated weight 0.4-0.5 so a pair alone stays below policy.json router.scoring.min_score while a pair plus the top exemplar similarity can route), negative (subtracted phrases), exemplars (3-10 BM25 documents per active intent, C38b), threshold (the judge cut for intent.<id>, greater than 0 and at most 1; placeholders until the judge shadow calibration recorded in evals/BASELINE.md) and router_row, the CLAUDE.md table cells that src/gen/router-table.ts renders between the engineos:router-table markers (C38d). Rows are in table order; android-release carries no router_row because the generator folds it into ios-release's store-release row. C38 checks the v2 shape.",
   "multi_match": true,
   "intents": [
     {
@@ -17,6 +17,39 @@
       "hook_mirrored": false,
       "note": "Resolve execution facts before artifacts. Eligible simple tasks ask a clickable Implement directly / Create a lightweight spec choice; direct needs only stack guidance and security/Git safeguards, with no mandatory prototype or PRD/ADR/tickets. Outside that exception >2 files or any new feature requires design. Accepted specs use Matt Pocock upstream-to-tickets for multiple bounded slices and a dependency graph; launch all independent ready workers within capacity. Tests and executable checks wait for entire implementation integration and fresh final user consent.",
       "suppressible": true,
+      "phrases": [
+        { "text": "add", "weight": 1 },
+        { "text": "build", "weight": 1 },
+        { "text": "create", "weight": 1 },
+        { "text": "implement", "weight": 1 },
+        { "text": "new feature", "weight": 1 },
+        { "text": "let users", "weight": 0.5 },
+        { "text": "let admins", "weight": 0.5 }
+      ],
+      "negative": [
+        { "text": "what does", "weight": 1 },
+        { "text": "where is", "weight": 1 },
+        { "text": "how does", "weight": 1 },
+        { "text": "create a plan", "weight": 1 },
+        { "text": "make a plan", "weight": 1 },
+        { "text": "sub-agent", "weight": 1 },
+        { "text": "subagent", "weight": 1 },
+        { "text": "claude code", "weight": 1 },
+        { "text": "status line", "weight": 1 },
+        { "text": "mod", "weight": 1 }
+      ],
+      "exemplars": [
+        "add a csv export button to the invoices page",
+        "implement password reset by email for user accounts",
+        "build a notifications inbox where users see unread alerts",
+        "create a wishlist so customers can save items for later",
+        "let admins invite teammates to a workspace with a role"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "New feature / multi-file change (\"add\", \"build\", \"create\", \"implement\") — new behavior with no more-specific row below; a more specific matching row suppresses this one",
+        "load": "`/engineos:new-feature` — resolve the kernel planning lane first; eligible simple tasks ask clickable direct/spec choices before artifacts. Direct uses stack rules and security/Git safeguards; selected specs use native `engineos-spec` with Matt Pocock `to-tickets` and a consolidated dependency graph. Non-simple feature design produces PRD + ADR + SPEC + TASKS; `engineos-implement-spec` consumes every independent ready ticket. Preserve artifact paths and design review gates. External Matt Pocock/tlc-spec-lean skills are optional upstream references. Apply rules/parallelism.md task-budget guidance, then routed stack rules. A small single-file non-feature change resolves the execution lane and may use direct execution only when the complete kernel contract permits it"
+      },
       "generic_signals": ["add", "build", "create", "implement"]
     },
     {
@@ -32,7 +65,33 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "note": "Both named rules are already always-on; the row names them to make the fan-out obligation explicit. Fan out via /engineos:implement <domain> <task> for changes, /engineos:audit for analysis, or N Task calls in ONE message over disjoint scopes. /engineos:implement dispatch is spec-gated. Tier is design: the row's primary work is fan-out planning and task decomposition, not the changes themselves.",
-      "requires_dispatch_plan": true
+      "requires_dispatch_plan": true,
+      "phrases": [
+        { "text": "across all", "weight": 1 },
+        { "text": "across every", "weight": 1 },
+        { "text": "migration", "weight": 0.3 },
+        { "text": "backfill", "weight": 1 },
+        { "text": "across the repo", "weight": 1 },
+        { "text": "across the codebase", "weight": 1 },
+        { "text": "every package", "weight": 1 },
+        { "text": "to every", "weight": 0.6 },
+        { "text": "in every", "weight": 0.6 },
+        { "text": "every module", "weight": 0.6 },
+        { "text": "all existing", "weight": 0.5 },
+        { "text": "monorepo", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "update every service to the new logging format across all packages",
+        "backfill the created_by column for all existing orders",
+        "rename the tenant id field in every module and every test",
+        "move all repositories from the old http client to fetch",
+        "apply the new error envelope across every module in the monorepo"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Big / multi-domain / sweep work (>3 files, >1 domain, ≥3 independent tasks, \"across all X\", migration, backfill)",
+        "load": "Apply `rules/parallelism.md` + `rules/models.md` from the task contract; fan out — `/engineos:implement <domain> <task>` for changes, `/engineos:audit` for analysis, or N Task calls in ONE message over disjoint scopes. Skills: `superpowers:dispatching-parallel-agents`, `superpowers:subagent-driven-development`; `/engineos:implement` dispatch is spec-gated"
+      }
     },
     {
       "id": "bug",
@@ -47,6 +106,43 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "note": "Tier is design per registries/models.json work type hard-debugging.",
+      "phrases": [
+        { "text": "broken", "weight": 1 },
+        { "text": "fails", "weight": 1 },
+        { "text": "failing", "weight": 1 },
+        { "text": "why does", "weight": 1 },
+        { "text": "does nothing", "weight": 1 },
+        { "text": "not working", "weight": 1 },
+        { "text": "doesn't work", "weight": 1 },
+        { "text": "does not work", "weight": 1 },
+        { "text": "stack trace", "weight": 1 },
+        { "text": "crash", "weight": 0.6 },
+        { "text": "crashes", "weight": 0.6 },
+        { "text": "throws", "weight": 0.6 },
+        { "text": "fail", "weight": 0.6 },
+        { "text": "error", "weight": 0.5 },
+        { "text": "exception", "weight": 0.5 },
+        { "text": "bug", "weight": 0.5 },
+        { "text": "wrong", "weight": 0.5 },
+        { "text": "timeout", "weight": 0.4 }
+      ],
+      "negative": [
+        { "text": "what is broken", "weight": 1 },
+        { "text": "what's broken", "weight": 1 },
+        { "text": "pass and fail", "weight": 1 }
+      ],
+      "exemplars": [
+        "the save button does nothing after the form is edited",
+        "why does the login request fail with a 500 after the deploy",
+        "order totals are wrong when a discount code is applied",
+        "the nightly job crashes with a null reference error",
+        "users get logged out at random and nobody knows why"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Bug / unexpected behavior (\"broken\", \"fails\", error pasted, \"why does X happen\")",
+        "load": "`superpowers:systematic-debugging`"
+      },
       "generic_signals": []
     },
     {
@@ -63,6 +159,51 @@
       "hook_mirrored": true,
       "domain": "backend",
       "note": "Application backends require NestJS, including API services, workers and LLM service hosts. Express/plain Node backend requests route to backend-coordinator for NestJS guidance; identify existing non-Nest backends truthfully and scope migration before extension. Express is allowed only as Nest's HTTP adapter. Node.js remains the runtime for tooling and libraries, not a backend framework choice. Rules follow routing.json; active frameworks are JavaScript/TypeScript only.",
+      "phrases": [
+        { "text": "NestJS", "weight": 1 },
+        { "text": "Express", "weight": 1 },
+        { "text": "Node backend", "weight": 1 },
+        { "text": "Node.js backend", "weight": 1 },
+        { "text": "plain Node", "weight": 1 },
+        { "text": "pure Node", "weight": 1 },
+        { "text": "API", "weight": 1 },
+        { "text": "service", "weight": 1 },
+        { "text": "controller", "weight": 1 },
+        { "text": "migration", "weight": 0.3 },
+        { "text": "queue", "weight": 1 },
+        { "text": "router", "weight": 1 },
+        { "text": "endpoint", "weight": 1 },
+        { "text": "bullmq", "weight": 1 },
+        { "text": "dto", "weight": 1 },
+        { "text": "webhook", "weight": 0.5 },
+        { "text": "graphql", "weight": 0.5 },
+        { "text": "worker", "weight": 0.4 },
+        { "text": "consumer", "weight": 0.4 },
+        { "text": "rest", "weight": 0.3 },
+        { "text": "repository", "weight": 0.3 },
+        { "text": "fastapi", "weight": 1 },
+        { "text": "django", "weight": 1 }
+      ],
+      "verb_object": { "verbs": ["add", "create", "write", "expose", "implement"], "objects": ["endpoint", "controller", "service", "api", "worker", "queue", "consumer", "webhook", "resolver"], "weight": 0.5 },
+      "negative": [
+        { "text": "customer service", "weight": 1 },
+        { "text": "test suite", "weight": 1 },
+        { "text": "test all endpoints", "weight": 1 },
+        { "text": "deploy", "weight": 0.5 },
+        { "text": "dockerfile", "weight": 1 }
+      ],
+      "exemplars": [
+        "add a paginated get endpoint for invoices in the nestjs api",
+        "create a service that publishes order events to the queue",
+        "write a controller to update a customer shipping address",
+        "add a bullmq worker that sends the weekly digest",
+        "expose a rest resource for listing projects with filters"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Backend work (NestJS, Express, Node backend, Node.js backend, plain Node, pure Node, API, service, controller, migration, queue, router, endpoint)",
+        "load": "`rules/architecture.md` + `rules/backend.md` + `rules/testing.md` + `rules/observability.md`; skill `nestjs-patterns`; nestjs MCP for codegen; agent `backend-coordinator`"
+      },
       "suppressed_by": ["backend-python"],
       "stack": "node",
       "stack_sibling": "backend-python",
@@ -85,6 +226,10 @@
       "note": "Inactive compatibility entry, retained until the next major release no earlier than one minor release after deprecation. No automatic routing; explain unsupported Python requests and ask for a supported Node.js stack.",
       "enabled": false,
       "deprecated": true,
+      "router_row": {
+        "intent": "Deprecated inactive Python backend compatibility (no automatic matching or dispatch)",
+        "load": "`rules/architecture.md` + `rules/backend-python.md` + `rules/backend.md` + `rules/data.md` + `rules/testing.md` + `rules/observability.md`; skill `python-patterns`; agent `backend-coordinator`"
+      },
       "stack": "python",
       "stack_sibling": "backend",
       "stack_frameworks": ["fastapi", "django", "flask"],
@@ -103,7 +248,47 @@
       "risk_floor": "low",
       "hook_mirrored": true,
       "domain": "frontend",
-      "note": "Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists the same three with architecture first. Must be matched after mobile in the hook chain, since mobile screens are .tsx too. frontend-coordinator alias arturo."
+      "note": "Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists the same three with architecture first. Must be matched after mobile in the hook chain, since mobile screens are .tsx too. frontend-coordinator alias arturo.",
+      "phrases": [
+        { "text": "React", "weight": 1 },
+        { "text": "Next", "weight": 1 },
+        { "text": "component", "weight": 1 },
+        { "text": "page/app", "weight": 1 },
+        { "text": "UI", "weight": 1 },
+        { "text": "styling", "weight": 1 },
+        { "text": "next.js", "weight": 1 },
+        { "text": "tailwind", "weight": 1 },
+        { "text": "css", "weight": 0.6 },
+        { "text": "modal", "weight": 0.6 },
+        { "text": "dark mode", "weight": 0.6 },
+        { "text": "responsive", "weight": 0.6 },
+        { "text": "sidebar", "weight": 0.5 },
+        { "text": "button", "weight": 0.4 },
+        { "text": "layout", "weight": 0.4 },
+        { "text": "hero", "weight": 0.4 },
+        { "text": "page", "weight": 0.3 },
+        { "text": "form", "weight": 0.3 },
+        { "text": "header", "weight": 0.3 }
+      ],
+      "verb_object": { "verbs": ["build", "add", "style", "make"], "objects": ["component", "page", "button", "layout", "modal", "form", "sidebar"], "weight": 0.5 },
+      "negative": [
+        { "text": "react native", "weight": 1 },
+        { "text": "what does", "weight": 1 },
+        { "text": "where is", "weight": 1 },
+        { "text": "how does", "weight": 1 }
+      ],
+      "exemplars": [
+        "build a responsive pricing table component in react",
+        "add a dark mode toggle to the next.js settings page",
+        "show a designed empty state on the dashboard when there are no projects",
+        "adjust the header styling so it wraps on small screens",
+        "extract the date picker into a reusable ui component"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Frontend work (React, Next, component, page/app, UI, styling)",
+        "load": "`rules/architecture.md` + `rules/frontend.md` + `rules/testing.md`; skill `react-patterns`; agent `frontend-coordinator`"
+      }
     },
     {
       "id": "mobile",
@@ -119,7 +304,39 @@
       "hook_mirrored": true,
       "domain": "mobile",
       "note": "Store build/publish requests belong to ios-release / android-release, not here. Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists the same five with architecture first. All of them are adapted the mobile way: frontend.md for component/state patterns, backend.md for the API-consumption parts, observability.md as backend.md's closure target; react-patterns is adapted to React Native. mobile-coordinator (alias elias) covers greenfield mobile features and web->mobile mirroring, treats the web frontend as read-only reference when mirroring, and writes only in the mobile tree — never API/backend, web frontend, or DevOps.",
-      "suppressed_by": ["ios-release", "android-release"]
+      "suppressed_by": ["ios-release", "android-release"],
+      "phrases": [
+        { "text": "React Native", "weight": 1 },
+        { "text": "screen", "weight": 1 },
+        { "text": "navigation", "weight": 1 },
+        { "text": "native module", "weight": 1 },
+        { "text": "iOS/Android app", "weight": 1 },
+        { "text": "mirror to mobile", "weight": 1 },
+        { "text": "port to mobile", "weight": 1 },
+        { "text": "same feature on mobile", "weight": 1 },
+        { "text": "mobile parity", "weight": 1 },
+        { "text": "to mobile", "weight": 1 },
+        { "text": "mobile app", "weight": 1 },
+        { "text": "expo", "weight": 1 },
+        { "text": "phone", "weight": 0.4 }
+      ],
+      "verb_object": { "verbs": ["build", "add", "port", "mirror"], "objects": ["screen", "app", "navigation"], "weight": 0.5 },
+      "negative": [
+        { "text": "mobile safari", "weight": 1 },
+        { "text": "mobile web", "weight": 1 }
+      ],
+      "exemplars": [
+        "build a profile screen in the react native app",
+        "add tab navigation between home and settings on mobile",
+        "port the web checkout flow to the mobile app",
+        "cache the feed on the phone so it opens without network",
+        "wire the camera native module for scanning receipts"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Mobile work / mirror web to mobile (React Native, screen, navigation, native module, iOS/Android app; \"mirror to mobile\", \"port to mobile\", \"mobile parity\")",
+        "load": "`rules/architecture.md` + `rules/frontend.md` + `rules/backend.md` (API-consumption parts) + `rules/observability.md` + `rules/testing.md`, adapted the mobile way; agent `mobile-coordinator` (elias)"
+      }
     },
     {
       "id": "ios-release",
@@ -134,7 +351,32 @@
       "risk_floor": "high",
       "hook_mirrored": true,
       "domain": "ios-release",
-      "note": "CLAUDE.md carries a single 'Mobile store release' row; it is modelled as two intents here so that each keeps a 1:1 domain FK into registries/routing.json, which has separate ios-release and android-release domains. Full pipeline: preflight, version bump, quality gates, signed build, TestFlight upload. App Store review submission and production rollout happen only on explicit instruction. Always-on security.md governs signing keys and store credentials. Precedes mobile in the hook chain by matching only build/release files, so ordinary React Native screens fall through."
+      "note": "CLAUDE.md carries a single 'Mobile store release' row; it is modelled as two intents here so that each keeps a 1:1 domain FK into registries/routing.json, which has separate ios-release and android-release domains. Full pipeline: preflight, version bump, quality gates, signed build, TestFlight upload. App Store review submission and production rollout happen only on explicit instruction. Always-on security.md governs signing keys and store credentials. Precedes mobile in the hook chain by matching only build/release files, so ordinary React Native screens fall through.",
+      "phrases": [
+        { "text": "build ios", "weight": 1 },
+        { "text": "publish to App Store", "weight": 1 },
+        { "text": "TestFlight", "weight": 1 },
+        { "text": "ipa", "weight": 1 },
+        { "text": "release the app", "weight": 1 },
+        { "text": "store submission", "weight": 1 },
+        { "text": "app store", "weight": 1 },
+        { "text": "ios release", "weight": 1 },
+        { "text": "ios build", "weight": 1 },
+        { "text": "iphone", "weight": 0.4 },
+        { "text": "apple", "weight": 0.4 },
+        { "text": "build number", "weight": 0.5 }
+      ],
+      "exemplars": [
+        "build the ios app and upload it to testflight",
+        "prepare an ipa and submit it for app store review",
+        "bump the ios build number and push a beta to testers",
+        "publish the new iphone version to the app store"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Mobile store release (\"build ios\", \"publish to App Store\", \"TestFlight\", \"build android\", \"Play Store\", \"release the app\", ipa/aab, store submission)",
+        "load": "`rules/security.md` (signing keys/store credentials); agent `ios-builder` for Apple, `android-builder` for Google Play. Store review submission / production rollout only on explicit instruction"
+      }
     },
     {
       "id": "android-release",
@@ -149,7 +391,28 @@
       "risk_floor": "high",
       "hook_mirrored": true,
       "domain": "android-release",
-      "note": "Second half of CLAUDE.md's single 'Mobile store release' row, split to keep a 1:1 domain FK into registries/routing.json. Full pipeline: preflight, version bump, quality gates, signed AAB, track upload. Production-track rollout only on explicit instruction. Always-on security.md governs the upload keystore and Play service-account key."
+      "note": "Second half of CLAUDE.md's single 'Mobile store release' row, split to keep a 1:1 domain FK into registries/routing.json. Full pipeline: preflight, version bump, quality gates, signed AAB, track upload. Production-track rollout only on explicit instruction. Always-on security.md governs the upload keystore and Play service-account key.",
+      "phrases": [
+        { "text": "build android", "weight": 1 },
+        { "text": "Play Store", "weight": 1 },
+        { "text": "aab", "weight": 1 },
+        { "text": "release the app", "weight": 1 },
+        { "text": "store submission", "weight": 1 },
+        { "text": "google play", "weight": 1 },
+        { "text": "play console", "weight": 1 },
+        { "text": "android release", "weight": 1 },
+        { "text": "android app", "weight": 0.5 },
+        { "text": "signed bundle", "weight": 0.6 },
+        { "text": "version code", "weight": 0.6 },
+        { "text": "rollout", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "build an aab and upload it to the play store internal track",
+        "release the android app to beta testers on google play",
+        "sign the android bundle and roll it out on the play store",
+        "bump the android version code and publish a closed test"
+      ],
+      "threshold": 0.5
     },
     {
       "id": "llm",
@@ -164,7 +427,67 @@
       "risk_floor": "medium",
       "hook_mirrored": true,
       "domain": "llm",
-      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. Active LLM/chatbot orchestration uses Mastra in NestJS backend providers; Node.js is the runtime. LangGraph/LangChain signals retain migration ownership, not active implementation defaults. Bare Mastra or chatbot requests and single agents do not require multi-agent topology approval. An LLM feature with no evals also matches the eval-setup row; defer eval authoring/execution until the approved final test phase. A system with more than one agent also matches the agent-system row, which owns the design gate."
+      "note": "Last in the hook precedence chain. llm-coordinator alias hermsdorff. Active LLM/chatbot orchestration uses Mastra in NestJS backend providers; Node.js is the runtime. LangGraph/LangChain signals retain migration ownership, not active implementation defaults. Bare Mastra or chatbot requests and single agents do not require multi-agent topology approval. An LLM feature with no evals also matches the eval-setup row; defer eval authoring/execution until the approved final test phase. A system with more than one agent also matches the agent-system row, which owns the design gate.",
+      "phrases": [
+        { "text": "Mastra", "weight": 1 },
+        { "text": "chatbot", "weight": 1 },
+        { "text": "chat bot", "weight": 1 },
+        { "text": "conversational AI", "weight": 1 },
+        { "text": "prompt", "weight": 1 },
+        { "text": "agent", "weight": 1 },
+        { "text": "RAG", "weight": 1 },
+        { "text": "embedding", "weight": 1 },
+        { "text": "eval", "weight": 1 },
+        { "text": "tool schema", "weight": 1 },
+        { "text": "LangGraph", "weight": 1 },
+        { "text": "LangChain", "weight": 1 },
+        { "text": "orchestrate", "weight": 1 },
+        { "text": "orchestration", "weight": 1 },
+        { "text": "orchestrator", "weight": 1 },
+        { "text": "supervisor", "weight": 1 },
+        { "text": "multi-agent", "weight": 1 },
+        { "text": "multi agent", "weight": 1 },
+        { "text": "multiagent", "weight": 1 },
+        { "text": "agent-to-agent", "weight": 1 },
+        { "text": "A2A", "weight": 1 },
+        { "text": "system prompt", "weight": 1 },
+        { "text": "llm", "weight": 1 },
+        { "text": "embeddings", "weight": 1 },
+        { "text": "retrieval", "weight": 0.6 },
+        { "text": "vector", "weight": 0.5 },
+        { "text": "chunk", "weight": 0.5 },
+        { "text": "assistant", "weight": 0.4 }
+      ],
+      "verb_object": { "verbs": ["write", "build", "add", "tune"], "objects": ["prompt", "chatbot", "agent", "embedding", "eval"], "weight": 0.4 },
+      "negative": [
+        { "text": "sub-agent", "weight": 1 },
+        { "text": "subagent", "weight": 1 },
+        { "text": "claude code", "weight": 1 },
+        { "text": "status line", "weight": 1 },
+        { "text": "mod", "weight": 1 },
+        { "text": "user agent", "weight": 1 },
+        { "text": "user-agent", "weight": 1 },
+        { "text": "travel agent", "weight": 1 },
+        { "text": "estate agent", "weight": 1 },
+        { "text": "set up evals", "weight": 1 },
+        { "text": "golden set", "weight": 1 },
+        { "text": "judge rubric", "weight": 1 },
+        { "text": "what does", "weight": 1 },
+        { "text": "where is", "weight": 1 },
+        { "text": "how does", "weight": 1 }
+      ],
+      "exemplars": [
+        "add retrieval over the help center articles to the mastra chatbot",
+        "rewrite the summarization prompt and pin a new prompt version",
+        "give the support assistant a tool schema for looking up order status",
+        "switch the embeddings model and rebuild the vector index",
+        "make the chatbot return structured json validated with zod"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "LLM/agent/chatbot work (Mastra, chatbot, chat bot, conversational AI, prompt, agent, RAG, embedding, eval, tool schema; LangGraph/LangChain migration)",
+        "load": "`rules/llm-apps.md`; skills `llm-engineering` + `mastra-patterns`; agent `llm-coordinator`; Mastra orchestration in NestJS providers"
+      }
     },
     {
       "id": "agent-system",
@@ -179,7 +502,52 @@
       "risk_floor": "medium",
       "hook_mirrored": false,
       "domain": null,
-      "note": "Interactive: llm-coordinator (hermsdorff) designs multi-agent Mastra workflows hosted in NestJS via patterns/3-Agent-topology-interview.md; developer approval recorded before workflow code. LangGraph signals retain legacy migration detection. Mastra/chatbot alone does not trigger this intent. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems."
+      "note": "Interactive: llm-coordinator (hermsdorff) designs multi-agent Mastra workflows hosted in NestJS via patterns/3-Agent-topology-interview.md; developer approval recorded before workflow code. LangGraph signals retain legacy migration detection. Mastra/chatbot alone does not trigger this intent. The same signals trip decision rule rule-multi-agent-design, which folds the hitl reason topology-approval into resolve-task so the prompt advisor announces the gate; every phrase that rule's regexes accept is covered here or on the llm row, because the fold needs the floor an intent carries (src/kernel/resolve.test.ts holds the pair together). Spelled-out inflections (orchestrate/orchestration/orchestrator, multi agent/multiagent) because signals match as bounded literals, never as stems.",
+      "phrases": [
+        { "text": "multi-agent", "weight": 1.5 },
+        { "text": "multi agent", "weight": 1.5 },
+        { "text": "multiagent", "weight": 1.5 },
+        { "text": "agents that", "weight": 1 },
+        { "text": "agents which", "weight": 1 },
+        { "text": "orchestrate", "weight": 1.5 },
+        { "text": "orchestration", "weight": 1.5 },
+        { "text": "orchestrator", "weight": 1.5 },
+        { "text": "supervisor agent", "weight": 1 },
+        { "text": "agent topology", "weight": 1 },
+        { "text": "LangGraph", "weight": 1 },
+        { "text": "A2A", "weight": 1 },
+        { "text": "agent-to-agent", "weight": 1 },
+        { "text": "handoff between agents", "weight": 1 },
+        { "text": "specialist agents", "weight": 1 },
+        { "text": "topology", "weight": 1 },
+        { "text": "handoff protocol", "weight": 1 },
+        { "text": "supervisor", "weight": 0.5 },
+        { "text": "hands off", "weight": 0.5 },
+        { "text": "delegates", "weight": 0.4 },
+        { "text": "agents", "weight": 0.3 }
+      ],
+      "negative": [
+        { "text": "sub-agent", "weight": 1 },
+        { "text": "subagent", "weight": 1 },
+        { "text": "claude code", "weight": 1 },
+        { "text": "status line", "weight": 1 },
+        { "text": "mod", "weight": 1 },
+        { "text": "user agent", "weight": 1 },
+        { "text": "user-agent", "weight": 1 },
+        { "text": "travel agent", "weight": 1 },
+        { "text": "estate agent", "weight": 1 }
+      ],
+      "exemplars": [
+        "design a supervisor that routes customer questions to a billing specialist and a shipping specialist",
+        "lay out the topology for three product agents that pass an insurance claim between them",
+        "orchestrate a researcher model and a writer model with a handoff protocol",
+        "migrate our langgraph multi-agent workflow to a mastra topology"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Multi-agent system design (multi-agent, orchestration, supervisor agent, agent topology, legacy LangGraph migration, A2A, handoff between agents)",
+        "load": "`/engineos:design-agents` + `rules/llm-apps.md`; skill `agent-system-design`; agent `llm-coordinator` (hermsdorff) in INTERVIEW mode (`patterns/3-Agent-topology-interview.md`), interactive, one step at a time; developer approval (hitl reason `topology-approval`) recorded before multi-agent Mastra workflow code; Mastra/chatbot alone does not require topology approval"
+      }
     },
     {
       "id": "dba",
@@ -194,7 +562,39 @@
       "risk_floor": "high",
       "hook_mirrored": true,
       "domain": "dba",
-      "note": "Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists architecture first. High floor: migrations are the canonical irreversible change. dba-coordinator (alias ronaldo) writes migrations and queries and holds NO database MCP; live schema and plan introspection is the read-only postgres-specialist / oracle-specialist leaves. routing.json names only dba-coordinator as the hook's agent — the two leaves are named by the CLAUDE.md row, so this array is a superset of the registry's single agent field."
+      "note": "Rules follow registries/routing.json's order (the registry wins); CLAUDE.md lists architecture first. High floor: migrations are the canonical irreversible change. dba-coordinator (alias ronaldo) writes migrations and queries and holds NO database MCP; live schema and plan introspection is the read-only postgres-specialist / oracle-specialist leaves. routing.json names only dba-coordinator as the hook's agent — the two leaves are named by the CLAUDE.md row, so this array is a superset of the registry's single agent field.",
+      "phrases": [
+        { "text": "*.sql", "weight": 1 },
+        { "text": "migrations", "weight": 1 },
+        { "text": "schema", "weight": 1 },
+        { "text": "query perf", "weight": 1 },
+        { "text": "indexing", "weight": 1 },
+        { "text": "migration", "weight": 1 },
+        { "text": "slow query", "weight": 1 },
+        { "text": "query plan", "weight": 1 },
+        { "text": "foreign key", "weight": 1 },
+        { "text": "index", "weight": 0.5 },
+        { "text": "constraint", "weight": 0.5 },
+        { "text": "nullable", "weight": 0.5 },
+        { "text": "sql", "weight": 0.6 },
+        { "text": "postgres", "weight": 0.6 },
+        { "text": "query", "weight": 0.4 },
+        { "text": "table", "weight": 0.3 },
+        { "text": "column", "weight": 0.3 }
+      ],
+      "verb_object": { "verbs": ["add", "create", "write", "optimize", "drop", "design"], "objects": ["index", "migration", "table", "query", "schema", "column"], "weight": 0.5 },
+      "exemplars": [
+        "this orders query takes eight seconds, add the right index",
+        "write a migration that splits users into users and profiles",
+        "design the schema for subscription plans and invoices",
+        "read the query plan for the monthly revenue report and fix the slow join",
+        "add a unique constraint on email in the accounts table"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "DBA / data layer (`*.sql`, migrations, schema, query perf, indexing)",
+        "load": "`rules/architecture.md` + `rules/data.md`; agent `dba-coordinator` (writes migrations/queries, holds NO database MCP). Live schema/plan introspection is the read-only `postgres-specialist` / `oracle-specialist` leaves"
+      }
     },
     {
       "id": "devops",
@@ -209,7 +609,44 @@
       "risk_floor": "high",
       "hook_mirrored": true,
       "domain": "devops",
-      "note": "High floor: infra config changes reach production by definition. devops-coordinator (alias hinokuma) writes config and holds NO cloud MCP; live cluster, cloud and CI introspection is the read-only kubernetes-specialist / gcp-specialist / cicd-specialist leaves. routing.json names only devops-coordinator as the hook's agent, so this array is a superset of the registry's single agent field."
+      "note": "High floor: infra config changes reach production by definition. devops-coordinator (alias hinokuma) writes config and holds NO cloud MCP; live cluster, cloud and CI introspection is the read-only kubernetes-specialist / gcp-specialist / cicd-specialist leaves. routing.json names only devops-coordinator as the hook's agent, so this array is a superset of the registry's single agent field.",
+      "phrases": [
+        { "text": "CI/CD", "weight": 1 },
+        { "text": "Docker", "weight": 1 },
+        { "text": "k8s/Helm", "weight": 1 },
+        { "text": "Terraform", "weight": 1 },
+        { "text": ".github/workflows/", "weight": 1 },
+        { "text": "cloud", "weight": 1 },
+        { "text": "github actions", "weight": 1 },
+        { "text": "dockerfile", "weight": 1 },
+        { "text": "kubernetes", "weight": 1 },
+        { "text": "k8s", "weight": 1 },
+        { "text": "helm chart", "weight": 1 },
+        { "text": "ci pipeline", "weight": 1 },
+        { "text": "readiness probe", "weight": 1 },
+        { "text": "deploy to", "weight": 1 },
+        { "text": "deploy the", "weight": 1 },
+        { "text": "helm", "weight": 0.6 },
+        { "text": "deployment pipeline", "weight": 1 },
+        { "text": "deploy pipeline", "weight": 1 },
+        { "text": "release pipeline", "weight": 1 },
+        { "text": "resource limits", "weight": 0.5 },
+        { "text": "build pipeline", "weight": 0.6 },
+        { "text": "rollout", "weight": 0.3 }
+      ],
+      "verb_object": { "verbs": ["add", "set up", "configure", "write", "provision"], "objects": ["ci pipeline", "build pipeline", "release pipeline", "workflow", "dockerfile", "helm chart", "terraform", "deployment", "probe"], "weight": 0.5 },
+      "exemplars": [
+        "add resource limits to the helm chart for the api deployment",
+        "set up a github actions workflow that builds the docker image",
+        "write terraform for a private storage bucket with versioning",
+        "add a readiness probe to the kubernetes deployment",
+        "cache node modules in the ci pipeline to speed up builds"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "DevOps / infra (CI/CD, Docker, k8s/Helm, Terraform, `.github/workflows/`, cloud)",
+        "load": "`rules/architecture.md` + `rules/observability.md`; agent `devops-coordinator` (writes config, holds NO cloud MCP). Live cluster/cloud/CI introspection is the read-only `kubernetes-specialist` / `gcp-specialist` / `cicd-specialist` leaves"
+      }
     },
     {
       "id": "security-files",
@@ -224,7 +661,37 @@
       "risk_floor": "high",
       "hook_mirrored": true,
       "domain": "security",
-      "note": "First in the hook precedence chain — cross-cutting, checked before every other domain, and delimiter-bounded so authors/ does not collide with auth/. security.md is already always-on; this row records a required security-reviewer pass (alias leo-ely), queued until final integrated scoped consent under rules/verification.md, which is design tier per registries/models.json work type adversarial-review."
+      "note": "First in the hook precedence chain — cross-cutting, checked before every other domain, and delimiter-bounded so authors/ does not collide with auth/. security.md is already always-on; this row records a required security-reviewer pass (alias leo-ely), queued until final integrated scoped consent under rules/verification.md, which is design tier per registries/models.json work type adversarial-review.",
+      "phrases": [
+        { "text": "auth", "weight": 1 },
+        { "text": "guard", "weight": 1 },
+        { "text": "middleware", "weight": 1 },
+        { "text": "secret", "weight": 1 },
+        { "text": ".env", "weight": 1 },
+        { "text": "credentials", "weight": 1 },
+        { "text": "csrf", "weight": 1 },
+        { "text": "object-level", "weight": 1 },
+        { "text": "access control", "weight": 1 },
+        { "text": "idor", "weight": 1 },
+        { "text": "secrets", "weight": 1 },
+        { "text": "jwt", "weight": 0.6 },
+        { "text": "rotate", "weight": 0.5 },
+        { "text": "leaked", "weight": 0.5 },
+        { "text": "permission", "weight": 0.4 },
+        { "text": "tokens", "weight": 0.4 }
+      ],
+      "exemplars": [
+        "add a guard so only admins can call the billing routes",
+        "move the database credentials out of the config file into the environment",
+        "harden the auth middleware so expired tokens are rejected",
+        "rotate the leaked api secret and update the env template",
+        "add csrf protection to the session cookie"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Editing security-sensitive files (auth, guard, middleware, secret, `.env`, credentials)",
+        "load": "`rules/security.md`; dispatch `security-reviewer`"
+      }
     },
     {
       "id": "system-comprehension",
@@ -238,7 +705,31 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Docs and onboarding output only — defect and health findings go to the audit row. architecture-analyst (alias ricardo-fagmer) runs patterns/1-Analysis.md and produces code-grounded architecture and onboarding docs."
+      "note": "Docs and onboarding output only — defect and health findings go to the audit row. architecture-analyst (alias ricardo-fagmer) runs patterns/1-Analysis.md and produces code-grounded architecture and onboarding docs.",
+      "phrases": [
+        { "text": "document the system", "weight": 1 },
+        { "text": "architecture docs", "weight": 1 },
+        { "text": "docs for new devs", "weight": 1 },
+        { "text": "understand the codebase", "weight": 1 },
+        { "text": "codebase map", "weight": 1 },
+        { "text": "onboarding", "weight": 0.3 },
+        { "text": "new developers", "weight": 0.6 },
+        { "text": "new hire", "weight": 0.6 },
+        { "text": "explain how", "weight": 0.4 },
+        { "text": "data flows", "weight": 0.4 },
+        { "text": "document the", "weight": 0.4 }
+      ],
+      "exemplars": [
+        "document the system architecture for new developers",
+        "write onboarding docs that explain how the modules fit together",
+        "help me understand the codebase before I start working on it",
+        "generate architecture docs with the main data flows"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "System comprehension / onboarding docs (\"document the system\", \"architecture docs\", \"docs for new devs\", \"understand the codebase\")",
+        "load": "`/analyze-architecture` + `rules/memory.md`; agent `architecture-analyst` (analyst) runs `patterns/1-Analysis.md`"
+      }
     },
     {
       "id": "interview-gaps",
@@ -252,7 +743,28 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "architecture-analyst in INTERVIEW mode (patterns/2-Interview-brainstorm.md). Interactive by design; folds the answers back into docs/. Not dispatchable non-interactively."
+      "note": "architecture-analyst in INTERVIEW mode (patterns/2-Interview-brainstorm.md). Interactive by design; folds the answers back into docs/. Not dispatchable non-interactively.",
+      "phrases": [
+        { "text": "interview me about the system", "weight": 1 },
+        { "text": "ask me about", "weight": 1 },
+        { "text": "resolve open hypotheses", "weight": 1 },
+        { "text": "interview me", "weight": 1 },
+        { "text": "quiz me", "weight": 1 },
+        { "text": "question me", "weight": 1 },
+        { "text": "fill the gaps", "weight": 0.5 },
+        { "text": "missing sections", "weight": 0.4 }
+      ],
+      "exemplars": [
+        "interview me about the system to fill the gaps in the docs",
+        "ask me questions about how billing works and fold the answers into the docs",
+        "resolve the open hypotheses in the architecture notes by asking me",
+        "question me on the deployment process so the docs capture it"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Fill doc gaps by interview (\"interview me about the system\", \"ask me about how X works\", resolve open hypotheses)",
+        "load": "`/talk-about-the-system` + `rules/memory.md`; `architecture-analyst` in INTERVIEW mode (`patterns/2-Interview-brainstorm.md`), interactive, folds answers back into `docs/`"
+      }
     },
     {
       "id": "qa-endpoints",
@@ -266,7 +778,32 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "qa-tester (alias ameer): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Dispatch only after implementation/integration and explicit current-task user approval; preserve configured non-interactive execution once approved."
+      "note": "qa-tester (alias ameer): clean-slate Docker up, endpoint inventory JSON plus Postman collection, headless Newman run of all endpoints and scenarios (skips MFA and email steps), pass/fail report. Dispatch only after implementation/integration and explicit current-task user approval; preserve configured non-interactive execution once approved.",
+      "phrases": [
+        { "text": "test all endpoints", "weight": 1 },
+        { "text": "run the API test suite", "weight": 1 },
+        { "text": "QA the system", "weight": 1 },
+        { "text": "Postman/Newman run", "weight": 1 },
+        { "text": "every endpoint", "weight": 1 },
+        { "text": "each endpoint", "weight": 1 },
+        { "text": "api test suite", "weight": 1 },
+        { "text": "postman", "weight": 1 },
+        { "text": "newman", "weight": 1 },
+        { "text": "smoke test", "weight": 0.6 },
+        { "text": "pass and fail", "weight": 0.5 },
+        { "text": "end to end", "weight": 0.4 }
+      ],
+      "exemplars": [
+        "test all endpoints of the api against a clean stack",
+        "run the postman collection with newman and report the results",
+        "exercise every api route end to end and give me a pass and fail report",
+        "bring the stack up and smoke test each endpoint"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "End-to-end API QA after implementation/integration and explicit current-task approval (\"test all endpoints\", \"run the API test suite\", \"QA the system\", Postman/Newman run)",
+        "load": "agent `qa-tester` (qa) — only after explicit approval for final test work; non-interactive execution skips MFA/email steps"
+      }
     },
     {
       "id": "audit",
@@ -280,7 +817,29 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Read-only. Defect and health findings only; docs and onboarding output go to the system-comprehension row. The row names the command, not the agents: /engineos:audit <domain|all> fans out to the domain coordinators in AUDIT mode plus the read-only MCP leaf specialists, then consolidates via audit-consolidator (alias danilo) into a status report. agents is empty on purpose so this entry stays a faithful mirror of the table cell."
+      "note": "Read-only. Defect and health findings only; docs and onboarding output go to the system-comprehension row. The row names the command, not the agents: /engineos:audit <domain|all> fans out to the domain coordinators in AUDIT mode plus the read-only MCP leaf specialists, then consolidates via audit-consolidator (alias danilo) into a status report. agents is empty on purpose so this entry stays a faithful mirror of the table cell.",
+      "phrases": [
+        { "text": "audit", "weight": 1 },
+        { "text": "analyze the system", "weight": 1 },
+        { "text": "what's broken", "weight": 1 },
+        { "text": "what is broken", "weight": 1 },
+        { "text": "health check", "weight": 1 },
+        { "text": "status report", "weight": 0.6 },
+        { "text": "analyze the", "weight": 0.4 },
+        { "text": "risks", "weight": 0.4 },
+        { "text": "rank the", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "audit the whole system and tell me what is broken",
+        "run a health check across the backend, the database and the infra",
+        "find what is wrong across all services and rank the fixes",
+        "analyze the system for risks and produce a status report"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Multi-domain audit / system health check (\"audit\", \"analyze the system\", \"what's broken across X\")",
+        "load": "`/engineos:audit <domain\\|all>` — fans out to coordinators + MCP leaf specialists, consolidates into a status report"
+      }
     },
     {
       "id": "refactor",
@@ -294,7 +853,33 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Finish with an explicit simplify pass over the diff: dead code, one-caller abstractions, and the hygiene rules of always-on base.md. Tier is design per registries/models.json work type hard-debugging, which covers cross-cutting refactor design."
+      "note": "Finish with an explicit simplify pass over the diff: dead code, one-caller abstractions, and the hygiene rules of always-on base.md. Tier is design per registries/models.json work type hard-debugging, which covers cross-cutting refactor design.",
+      "phrases": [
+        { "text": "refactor", "weight": 1 },
+        { "text": "clean up", "weight": 1 },
+        { "text": "simplify", "weight": 1 },
+        { "text": "tech debt", "weight": 1 },
+        { "text": "dead code", "weight": 1 },
+        { "text": "without changing behavior", "weight": 1 },
+        { "text": "rename", "weight": 1 },
+        { "text": "duplicated", "weight": 0.5 },
+        { "text": "too many things", "weight": 0.5 }
+      ],
+      "verb_object": { "verbs": ["refactor", "clean up", "simplify"], "objects": ["module", "service", "code", "function"], "weight": 0.5 },
+      "negative": [
+        { "text": "local", "weight": 0.5 }
+      ],
+      "exemplars": [
+        "refactor the order service to remove the duplicated pricing logic",
+        "clean up the dead code in the reports module",
+        "simplify this function, it does too many things",
+        "pay down tech debt in the payments adapter without changing behavior"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Refactor / cleanup (\"refactor\", \"clean up\", \"simplify\", \"tech debt\")",
+        "load": "`rules/architecture.md`; finish with a simplify pass"
+      }
     },
     {
       "id": "adr",
@@ -308,7 +893,41 @@
       "model_tier": "most-capable",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "The decision gets recorded, not just chatted. Tier is most-capable per registries/models.json work type adr — an ADR is a recorded decision with a long half-life, the same class as a spec. Business, career and positioning decisions go to the strategy row instead; this row owns technical X-vs-Y choices."
+      "note": "The decision gets recorded, not just chatted. Tier is most-capable per registries/models.json work type adr — an ADR is a recorded decision with a long half-life, the same class as a spec. Business, career and positioning decisions go to the strategy row instead; this row owns technical X-vs-Y choices.",
+      "phrases": [
+        { "text": "should we use", "weight": 1 },
+        { "text": "how should we structure", "weight": 1 },
+        { "text": "adr", "weight": 1 },
+        { "text": "trade-off", "weight": 1.5 },
+        { "text": "trade off", "weight": 1.5 },
+        { "text": "tradeoff", "weight": 1.5 },
+        { "text": "record the decision", "weight": 1 },
+        { "text": "create a plan", "weight": 1 },
+        { "text": "decision", "weight": 0.6 },
+        { "text": "plan", "weight": 0.6 },
+        { "text": "alternatives", "weight": 0.6 },
+        { "text": "evaluate", "weight": 0.5 },
+        { "text": "compare", "weight": 0.5 },
+        { "text": "framework", "weight": 0.5 },
+        { "text": "replace", "weight": 0.4 },
+        { "text": "options", "weight": 0.3 }
+      ],
+      "verb_object": { "verbs": ["plan", "evaluate", "compare", "decide", "choose"], "objects": ["framework", "library", "architecture", "approach", "structure", "database", "broker"], "weight": 0.5 },
+      "negative": [
+        { "text": "implement", "weight": 1 }
+      ],
+      "exemplars": [
+        "should we use postgres or mongo for the event store",
+        "write up a plan for replacing our auth library and compare the options",
+        "evaluate whether to move the job queue to a different broker before we build anything",
+        "how should we structure the modules for the new billing domain",
+        "record the decision to adopt a monorepo with its trade offs"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Architecture decision (\"should we use X or Y\", \"how should we structure\")",
+        "load": "skill `adr` + `rules/memory.md` — decision gets recorded, not just chatted"
+      }
     },
     {
       "id": "release-notes",
@@ -322,7 +941,28 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Stack-agnostic. Build tier rather than cheap: the notes are written against a real diff and a real version boundary, not summarized mechanically."
+      "note": "Stack-agnostic. Build tier rather than cheap: the notes are written against a real diff and a real version boundary, not summarized mechanically.",
+      "phrases": [
+        { "text": "write release notes", "weight": 1 },
+        { "text": "document version", "weight": 1 },
+        { "text": "what changed in this release", "weight": 1 },
+        { "text": "version bump", "weight": 1 },
+        { "text": "release notes", "weight": 1 },
+        { "text": "changelog", "weight": 1 },
+        { "text": "release body", "weight": 0.6 }
+      ],
+      "verb_object": { "verbs": ["write", "draft"], "objects": ["release notes", "changelog"], "weight": 0.5 },
+      "exemplars": [
+        "write release notes for version 2.4.0",
+        "summarize what changed in this release for the changelog",
+        "document version 3.1 with the breaking changes called out",
+        "draft the github release body for the latest tag"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Release notes (\"write release notes\", \"document version X.Y.Z\", \"what changed in this release\", version bump)",
+        "load": "skill `release-notes`"
+      }
     },
     {
       "id": "strategy",
@@ -336,7 +976,35 @@
       "model_tier": "most-capable",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to docs/strategy/. Technical X-vs-Y stays with the adr row. Tier is most-capable — the same problem-framing class as spec and PRD authoring in registries/models.json."
+      "note": "Five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to docs/strategy/. Technical X-vs-Y stays with the adr row. Tier is most-capable — the same problem-framing class as spec and PRD authoring in registries/models.json.",
+      "phrases": [
+        { "text": "where is this market going", "weight": 1 },
+        { "text": "before competitors", "weight": 1 },
+        { "text": "what do I learn, in what order", "weight": 1 },
+        { "text": "and I can't decide", "weight": 1 },
+        { "text": "and I cannot decide", "weight": 1 },
+        { "text": "positioning", "weight": 1 },
+        { "text": "monetizing existing assets", "weight": 1 },
+        { "text": "monetize", "weight": 1 },
+        { "text": "market", "weight": 0.6 },
+        { "text": "position", "weight": 0.6 },
+        { "text": "career", "weight": 0.6 },
+        { "text": "competitors", "weight": 0.6 },
+        { "text": "consulting", "weight": 0.5 },
+        { "text": "learn", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "where is the developer tooling market going over the next two years",
+        "what should I learn to move into platform engineering, and in what order",
+        "should I sell this as a product or as consulting, I cannot decide",
+        "how do I position myself as an authority on ai engineering",
+        "how can I monetize the internal tools we already built"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Business / career strategy — market opportunity (\"where is this market going\", \"before competitors\"), skill learning path (\"what do I learn, in what order\"), blocked non-technical decision (\"X or Y and I can't decide\"), positioning & perceived authority, monetizing existing assets",
+        "load": "skill `strategy` — five modes over one grounding discipline: every claim traced to a dated web source or a file in this repo, output persisted to `docs/strategy/`. Technical \"X vs Y\" stays with `adr`; `strategy` handles business/career/positioning decisions"
+      }
     },
     {
       "id": "review",
@@ -350,7 +1018,35 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "The code-review skill is EXTERNAL — provided by the Claude Code environment, not this repo — so there is no skills/code-review/ directory and unqualified-name resolution must exempt it. It is listed unqualified because that is the name the router table and the Skill tool use. If the diff touches auth, input handling, data or LLM surfaces, also record the security-reviewer requirement and queue Agent-tool dispatch until final integrated scoped consent under rules/verification.md; that pass is design tier per registries/models.json work type adversarial-review, while the standards/spec review itself is the build-tier code-review work type."
+      "note": "The code-review skill is EXTERNAL — provided by the Claude Code environment, not this repo — so there is no skills/code-review/ directory and unqualified-name resolution must exempt it. It is listed unqualified because that is the name the router table and the Skill tool use. If the diff touches auth, input handling, data or LLM surfaces, also record the security-reviewer requirement and queue Agent-tool dispatch until final integrated scoped consent under rules/verification.md; that pass is design tier per registries/models.json work type adversarial-review, while the standards/spec review itself is the build-tier code-review work type.",
+      "phrases": [
+        { "text": "review", "weight": 1 },
+        { "text": "is this safe", "weight": 1 },
+        { "text": "PR URL", "weight": 1 },
+        { "text": "safe to merge", "weight": 1 },
+        { "text": "before I merge", "weight": 0.6 },
+        { "text": "pull request", "weight": 0.3 },
+        { "text": "look over", "weight": 0.5 },
+        { "text": "diff", "weight": 0.4 }
+      ],
+      "negative": [
+        { "text": "performance review", "weight": 1 },
+        { "text": "customer review", "weight": 1 },
+        { "text": "product review", "weight": 1 },
+        { "text": "app store review", "weight": 1 },
+        { "text": "store review", "weight": 1 }
+      ],
+      "exemplars": [
+        "review this pull request before I merge it",
+        "is this branch safe to merge",
+        "look over my diff for standards problems",
+        "do a code review of the changes since main"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Review / pre-merge (\"review\", \"is this safe\", PR URL)",
+        "load": "skill `code-review` (external — provided by the Claude Code environment, not this repo); if diff touches auth/input/data/LLM, also dispatch `security-reviewer` subagent (Agent tool)"
+      }
     },
     {
       "id": "test-writing",
@@ -365,7 +1061,31 @@
       "risk_floor": "low",
       "hook_mirrored": true,
       "domain": "test",
-      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias sameer) for well-scoped targets. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing. Queue test-writer until ALL implementation tickets/corrections integrate and the user answers a fresh final clickable check prompt; earlier broad test requests are insufficient."
+      "note": "Hook-mirrored as the routing.json domain `test`, second in the hook precedence chain, so test files route here rather than to their stack domain. Dispatch test-writer (alias sameer) for well-scoped targets. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing. Queue test-writer until ALL implementation tickets/corrections integrate and the user answers a fresh final clickable check prompt; earlier broad test requests are insufficient.",
+      "phrases": [
+        { "text": "write tests", "weight": 1 },
+        { "text": "add coverage", "weight": 1 },
+        { "text": "regression test for a fix", "weight": 1 },
+        { "text": "regression test", "weight": 1 },
+        { "text": "write a test", "weight": 1 },
+        { "text": "unit tests", "weight": 0.8 },
+        { "text": "integration tests", "weight": 0.8 },
+        { "text": "tests for", "weight": 0.8 },
+        { "text": "coverage", "weight": 0.6 },
+        { "text": "test cases", "weight": 0.6 }
+      ],
+      "verb_object": { "verbs": ["write", "add"], "objects": ["test", "coverage"], "weight": 0.5 },
+      "exemplars": [
+        "write tests for the discount calculator",
+        "add coverage for the invoice mapper edge cases",
+        "write a regression test for the rounding bug we just fixed",
+        "add integration tests for the orders repository against a real database"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Test writing — explicit request only (\"write tests\", \"add coverage\", \"integration tests\", \"E2E\", \"TDD this\", \"run the suite\", regression test for a fix)",
+        "load": "Read `rules/testing.md`; dispatch `test-writer` subagent for well-scoped targets. This row identifies test ownership; write/run only at the end, after implementation/integration and explicit current-task user approval. TDD sequencing does not override the final-phase policy"
+      }
     },
     {
       "id": "eval-setup",
@@ -379,7 +1099,27 @@
       "model_tier": "build",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Scaffolding a harness against a known shape is build tier. Shares rules/llm-apps.md with the llm row, which this row will usually co-match. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing."
+      "note": "Scaffolding a harness against a known shape is build tier. Shares rules/llm-apps.md with the llm row, which this row will usually co-match. Test authoring, suite execution and eval execution require explicit current-task user approval after implementation/integration is complete. Dispatch, configuration and environment flags do not authorize testing.",
+      "phrases": [
+        { "text": "set up evals", "weight": 1 },
+        { "text": "golden set", "weight": 1 },
+        { "text": "new LLM feature lacking evals", "weight": 1 },
+        { "text": "evals", "weight": 1 },
+        { "text": "judge rubric", "weight": 1 },
+        { "text": "eval harness", "weight": 1 },
+        { "text": "groundedness", "weight": 0.6 }
+      ],
+      "exemplars": [
+        "set up evals for the summarization feature",
+        "build a golden set for the support chatbot answers",
+        "add a judge rubric that grades answer groundedness",
+        "our new classification prompt has no evals, add them"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Eval setup in the explicitly approved final test phase (\"set up evals\", \"golden set\", new LLM feature lacking evals)",
+        "load": "Read `rules/llm-apps.md`; skill `eval-harness`"
+      }
     },
     {
       "id": "critic-verification",
@@ -393,7 +1133,30 @@
       "model_tier": "design",
       "risk_floor": "high",
       "hook_mirrored": false,
-      "note": "critic (alias rogerio): adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by rules/gates.md at risk=high; security-reviewer still owns the security lens. risk_floor high is the tier of the work under review — the row's own stated trigger — not of the review pass, which writes nothing. Tier design per registries/models.json work type adversarial-review."
+      "note": "critic (alias rogerio): adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by rules/gates.md at risk=high; security-reviewer still owns the security lens. risk_floor high is the tier of the work under review — the row's own stated trigger — not of the review pass, which writes nothing. Tier design per registries/models.json work type adversarial-review.",
+      "phrases": [
+        { "text": "is this actually right", "weight": 1 },
+        { "text": "pre-release check on risk=high", "weight": 1 },
+        { "text": "release gate needs an independent pass", "weight": 1 },
+        { "text": "adversarial", "weight": 1 },
+        { "text": "refute", "weight": 1 },
+        { "text": "try to break", "weight": 1 },
+        { "text": "actually correct", "weight": 1 },
+        { "text": "independent", "weight": 0.4 },
+        { "text": "challenge", "weight": 0.4 },
+        { "text": "before we ship", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "is this actually right before we ship it",
+        "give the high risk change an independent adversarial check",
+        "try to refute the claim that the migration work is complete",
+        "the release gate needs an independent pass on this change"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Independent verification of high-risk work (\"is this actually right\", pre-release check on risk=high, release gate needs an independent pass)",
+        "load": "`critic` agent (alias `rogerio`) — adversarial correctness review, read-only, tries to refute the claim that the work is done. Required by `rules/gates.md` at risk=high; `security-reviewer` still owns the security lens"
+      }
     },
     {
       "id": "handoff",
@@ -420,7 +1183,33 @@
         "Resume"
       ],
       "required_fields": ["Gate", "Risk"],
-      "note": "The row's load target is templates/handoff.md — a repo template, which is neither a rule nor a skill and so has no field of its own here. The section contract lives in required_sections/required_fields, validated against the template by scripts/validate-engineos.sh C19 — never restate the list here or anywhere else in prose except the CLAUDE.md row, which C19c checks. Never hand off with 'continue where you left off'. Cheap tier: the template is filled from state that already exists."
+      "note": "The row's load target is templates/handoff.md — a repo template, which is neither a rule nor a skill and so has no field of its own here. The section contract lives in required_sections/required_fields, validated against the template by scripts/validate-engineos.sh C19 — never restate the list here or anywhere else in prose except the CLAUDE.md row, which C19c checks. Never hand off with 'continue where you left off'. Cheap tier: the template is filled from state that already exists.",
+      "phrases": [
+        { "text": "hand this off", "weight": 1 },
+        { "text": "wave barrier reached", "weight": 1 },
+        { "text": "session ending mid-task", "weight": 1 },
+        { "text": "handoff", "weight": 1 },
+        { "text": "hand off", "weight": 1 },
+        { "text": "out of time", "weight": 0.6 },
+        { "text": "next session", "weight": 0.5 },
+        { "text": "pick this up", "weight": 0.5 }
+      ],
+      "negative": [
+        { "text": "handoff protocol", "weight": 1 },
+        { "text": "between agents", "weight": 1 },
+        { "text": "hand off to each other", "weight": 1 }
+      ],
+      "exemplars": [
+        "hand this off to the next session",
+        "I am out of time, write a handoff for whoever picks this up",
+        "the session is ending mid task, capture the state and next steps",
+        "wave barrier reached, prepare the handoff for the next wave"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Handoff between agents, waves or sessions (\"hand this off\", wave barrier reached, session ending mid-task)",
+        "load": "`templates/handoff.md` — objective, state (gate, risk), done, decisions, files, evidence, known failures and open risks, not done, next step, resume. Never hand off with \"continue where you left off\""
+      }
     },
     {
       "id": "retro",
@@ -434,7 +1223,30 @@
       "model_tier": "design",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Mines .engineos/archived/, .engineos/skill-observations/log.md, eval failures and integrity failures for patterns with 3 or more occurrences, then proposes rule, skill and registry deltas as a PR. Proposes only; a human merges. Design tier because the output is policy change, not code."
+      "note": "Mines .engineos/archived/, .engineos/skill-observations/log.md, eval failures and integrity failures for patterns with 3 or more occurrences, then proposes rule, skill and registry deltas as a PR. Proposes only; a human merges. Design tier because the output is policy change, not code.",
+      "phrases": [
+        { "text": "run a retro", "weight": 1 },
+        { "text": "what should we improve", "weight": 1 },
+        { "text": "same correction recurring", "weight": 1 },
+        { "text": "monthly cadence", "weight": 1 },
+        { "text": "retro", "weight": 1 },
+        { "text": "retrospective", "weight": 1 },
+        { "text": "keeps coming up", "weight": 0.6 },
+        { "text": "propose rule", "weight": 0.6 },
+        { "text": "archived changes", "weight": 0.6 },
+        { "text": "recurring", "weight": 0.5 }
+      ],
+      "exemplars": [
+        "run a retro on the last month of changes",
+        "what should we improve in our rules based on recent work",
+        "the same correction keeps coming up, look for the pattern",
+        "do the monthly review of archived changes and propose rule updates"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Continuous improvement (\"run a retro\", \"what should we improve\", same correction recurring, monthly cadence)",
+        "load": "skill `retro` — mines `.engineos/archived/`, `.engineos/skill-observations/log.md`, eval failures and integrity failures for patterns with 3+ occurrences, proposes rule/skill/registry deltas as a PR. Proposes only; a human merges"
+      }
     },
     {
       "id": "task-observer",
@@ -448,7 +1260,29 @@
       "model_tier": "cheap",
       "risk_floor": null,
       "hook_mirrored": false,
-      "note": "Continuous capture of skill and rule friction into .engineos/skill-observations/log.md, logged at the moment of friction. Capture only — the retro intent consumes OPEN entries and owns proposals and merges. Cheap tier: appending a structured entry to a log, no design work. Adapted from 'One Skill to Rule Them All' (CC BY 4.0, rebelytics.com)."
+      "note": "Continuous capture of skill and rule friction into .engineos/skill-observations/log.md, logged at the moment of friction. Capture only — the retro intent consumes OPEN entries and owns proposals and merges. Cheap tier: appending a structured entry to a log, no design work. Adapted from 'One Skill to Rule Them All' (CC BY 4.0, rebelytics.com).",
+      "phrases": [
+        { "text": "log an observation", "weight": 1 },
+        { "text": "watch for skill opportunities", "weight": 1 },
+        { "text": "observation log", "weight": 1 },
+        { "text": "a loaded rule got violated", "weight": 1 },
+        { "text": "skill observations", "weight": 1 },
+        { "text": "rule was violated", "weight": 1 },
+        { "text": "observations", "weight": 0.6 },
+        { "text": "dead weight", "weight": 0.6 },
+        { "text": "was unclear", "weight": 0.4 }
+      ],
+      "exemplars": [
+        "log an observation that the testing rule was unclear here",
+        "note that this skill section was dead weight for this task",
+        "a loaded rule got violated just now, record it for the retro",
+        "watch for skill opportunities while we work on this"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Skill/rule friction observed mid-task (\"log an observation\", \"watch for skill opportunities\", \"observation log\", a loaded rule got violated, a correction reveals a missing rule, a skill section proves dead weight)",
+        "load": "skill `task-observer` — appends to `.engineos/skill-observations/log.md`; capture only, `retro` consumes OPEN entries. Log at the moment of friction, don't wait for the retro"
+      }
     },
     {
       "id": "record-change",
@@ -485,21 +1319,29 @@
         "spec_path_prefix": "docs/specs/",
         "note": "The change record is where delivered work claims conformance with its spec: spec: names the design-doc that rule-spec-threshold required, ## Verification carries the output-shown that rule-verification required, and the record itself is rule-change-record's artifact. Template checked by C21b, archived instances by C21c/C21d, prose mirrors by C21e. domains is deliberately NOT an FK to routing.json.domains — that enum routes file paths to hook domains (and has ios-release/android-release, no docs/general); this one files completed work. Records completed before grandfathered_before predate the schema and are never checked (archived/README.md: not migrated). instance_sections_since carries the P6 cutoff: the three evidence sections became scaffolded and required on 2026-08-06; earlier archived records legitimately lack them and the archive is read-only except for factual errors."
       },
-      "note": "Marks the record done, describes what was made, registers files changed and movements, and moves the record from .engineos/changes/ to .engineos/archived/. Clears the unrecorded-changes flag the Stop hook record-verify.sh enforces. The record schema is data in required_sections/required_fields/archive_contract, validated by scripts/validate-engineos.sh C21 — never restate it here, in .engineos/changes/README.md, or anywhere else in prose; _template.md is the one scaffold."
-    },
-    {
-      "id": "verify-done",
-      "title": "Claiming done / complete / fixed; spec archived / feature shipped",
-      "signals": ["archiving", "spec done", "moving to archive", "claiming done / complete / fixed", "spec moved to .engineos/archived/"],
-      "rules": [],
-      "skills": ["superpowers:verification-before-completion"],
-      "agents": [],
-      "commands": [],
-      "mcp": [],
-      "model_tier": "build",
-      "risk_floor": null,
-      "hook_mirrored": false,
-      "note": "Evidence before assertion, always. For spec-archive and ship cases: all executable lint/typecheck/build/startup/tests/integrity checks require final integration and explicit current-task scope/revision approval, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. Automatic stop-verify.sh runs no checks and reports approval pending; record-verify.sh reports an unrecorded change record. Manual user-approved final checks supply Validation evidence, never Release permission."
+      "note": "Marks the record done, describes what was made, registers files changed and movements, and moves the record from .engineos/changes/ to .engineos/archived/. Clears the unrecorded-changes flag the Stop hook record-verify.sh enforces. The record schema is data in required_sections/required_fields/archive_contract, validated by scripts/validate-engineos.sh C21 — never restate it here, in .engineos/changes/README.md, or anywhere else in prose; _template.md is the one scaffold.",
+      "phrases": [
+        { "text": "record the change", "weight": 1 },
+        { "text": "log this change", "weight": 1 },
+        { "text": "Stop gate reports unrecorded changes", "weight": 1 },
+        { "text": "change record", "weight": 1 },
+        { "text": "unrecorded", "weight": 1 },
+        { "text": "close it out", "weight": 0.6 },
+        { "text": "close out", "weight": 0.6 },
+        { "text": "what was made", "weight": 0.6 },
+        { "text": "record", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "record the change we just made",
+        "the work is done, close out the change record",
+        "log this change with what was made and the checklist",
+        "the stop gate says there are unrecorded changes, complete the record"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Work complete / close the change record (\"record the change\", \"log this change\", Stop gate reports unrecorded changes)",
+        "load": "skill `record-change`"
+      }
     },
     {
       "id": "route-planning",
@@ -520,7 +1362,68 @@
       "risk_floor": null,
       "hook_mirrored": false,
       "requires_dispatch_plan": true,
-      "note": "The router agent runs one scripts/kernel.sh resolve call FIRST and reasons only about the residue: intent tiebreaks the notes do not settle mechanically, scope decomposition against real files, and wave grouping. It returns a dispatch plan; it never dispatches and never edits. Tier is design per registries/models.json work type architecture, which covers task decomposition and fan-out planning. The deterministic path needs no agent at all — hooks/prompt-advisor.sh emits the kernel's answer directly when route-escalate reports escalate=false."
+      "note": "The router agent runs one scripts/kernel.sh resolve call FIRST and reasons only about the residue: intent tiebreaks the notes do not settle mechanically, scope decomposition against real files, and wave grouping. It returns a dispatch plan; it never dispatches and never edits. Tier is design per registries/models.json work type architecture, which covers task decomposition and fan-out planning. The deterministic path needs no agent at all — hooks/prompt-advisor.sh emits the kernel's answer directly when route-escalate reports escalate=false.",
+      "phrases": [
+        { "text": "route this", "weight": 1 },
+        { "text": "who should do this", "weight": 1 },
+        { "text": "which agents", "weight": 1 },
+        { "text": "dispatch plan", "weight": 1 },
+        { "text": "how should we split this", "weight": 1 },
+        { "text": "which workers", "weight": 1 },
+        { "text": "waves", "weight": 0.6 },
+        { "text": "split this", "weight": 0.6 },
+        { "text": "dispatch", "weight": 0.5 }
+      ],
+      "exemplars": [
+        "route this request and tell me which agents should do it",
+        "who should do this, it touches the api, the app and the database",
+        "give me a dispatch plan for this work without starting it",
+        "how should we split this across workers"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Ambiguous or multi-agent request needing a dispatch plan (\"route this\", \"who should do this\", \"which agents\", request spans several domains with no obvious owner)",
+        "load": "`/engineos:route` — `router` agent runs one `scripts/kernel.sh resolve` call FIRST, then reasons only about the residue: intent tiebreaks, scope decomposition, wave grouping. Returns a dispatch plan (intents, rules, agents with disjoint file scopes, model per agent, risk, gates, waves); it never dispatches and never edits. When the kernel resolves the route on its own, no router planner agent is needed; the supervisor consumes the resolved execution lane: eligible direct work needs no worker; other work dispatches scoped workers. An explicit route-only request returns the plan without dispatching implementation"
+      }
+    },
+    {
+      "id": "verify-done",
+      "title": "Claiming done / complete / fixed; spec archived / feature shipped",
+      "signals": ["archiving", "spec done", "moving to archive", "claiming done / complete / fixed", "spec moved to .engineos/archived/"],
+      "rules": [],
+      "skills": ["superpowers:verification-before-completion"],
+      "agents": [],
+      "commands": [],
+      "mcp": [],
+      "model_tier": "build",
+      "risk_floor": null,
+      "hook_mirrored": false,
+      "note": "Evidence before assertion, always. For spec-archive and ship cases: all executable lint/typecheck/build/startup/tests/integrity checks require final integration and explicit current-task scope/revision approval, output shown, with a bounded fix loop — attempts, escalation and the never-repair floors per registries/policy.json repair, answered per attempt by scripts/kernel.sh repair; exhausting the bound reports red, never done. Automatic stop-verify.sh runs no checks and reports approval pending; record-verify.sh reports an unrecorded change record. Manual user-approved final checks supply Validation evidence, never Release permission.",
+      "phrases": [
+        { "text": "archiving", "weight": 1 },
+        { "text": "spec done", "weight": 1 },
+        { "text": "moving to archive", "weight": 1 },
+        { "text": "claiming done / complete / fixed", "weight": 1 },
+        { "text": "spec moved to .engineos/archived/", "weight": 1 },
+        { "text": "spec is done", "weight": 1 },
+        { "text": "to archive", "weight": 0.6 },
+        { "text": "final gate", "weight": 0.6 },
+        { "text": "evidence", "weight": 0.5 },
+        { "text": "actually works", "weight": 0.5 },
+        { "text": "it is fixed", "weight": 0.5 },
+        { "text": "is done", "weight": 0.3 }
+      ],
+      "exemplars": [
+        "the spec is done, move it to the archive",
+        "show evidence that the feature is complete before calling it done",
+        "verify the fix actually works before we say it is fixed",
+        "we are archiving this spec, run the final gate first"
+      ],
+      "threshold": 0.5,
+      "router_row": {
+        "intent": "Claiming done / complete / fixed; spec archived / feature shipped (\"archiving\", \"spec done\", \"moving to archive\", spec moved to `.engineos/archived/` or the project's spec archive)",
+        "load": "`superpowers:verification-before-completion` — evidence before assertion, always. For spec-archive / ship cases: the final gate (`rules/verification.md`) plus build + API/Web startup check, output shown; a bounded fix loop — 2 fix attempts per check, one model-tier escalation, then stop and report red (`registries/policy.json` `repair`; `scripts/kernel.sh repair` answers each attempt). Exhausting the bound reports red honestly — it never reports done. Automatic `stop-verify.sh` executes no checks; explicit approved final validation supplies evidence. `record-verify.sh` reports an unrecorded change record"
+      }
     }
   ]
 }

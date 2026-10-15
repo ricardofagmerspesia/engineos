@@ -26,7 +26,18 @@ checklist items. Also read existing evidence, without running tests/evals:
 - BLOCKED/FAILED/DEGRADED change statuses;
 - `.git/engineos-telemetry/*.jsonl` route/decision/verify outcomes
   (`registries/policy.json`): unused routes/rules suggest pruning, repeated
-  verification failures suggest patterns.
+  verification failures suggest patterns;
+- the same directory's `route` events (`intents`, `escalate`, `reasons` —
+  a recurring trailing `low-confidence` marks prompts the classifier could not
+  separate) and `judge` events (`source`, `model`, `mode`, `skipped_reason`,
+  `latency_bucket` — persistent `fallback`/`timeout` is provider trouble, not a
+  registry gap). Neither carries prompt text;
+- the `## Misroutes` section of `engineos usage-report <days>` for the same
+  window: `<kernel intent> -> <corrected intent>  <count>`, mined from the
+  supervisor's `[router] ... corrected_from=<id>[,<id>...]` token. For each pair,
+  the router plans' `Candidates` tables and `intent_overrides` reasons in those
+  sessions name the `features` (matched phrase, pair, path, exemplar) that
+  scored the wrong row.
 - Existing workflow event reports (`engineos workflow-report --file <local-jsonl>`)
   when supplied by the host: compare task count/consolidation, readiness and
   capacity waits, completed-attempt runtime, integration latency, TTFR, total
@@ -53,6 +64,7 @@ Use `rules/memory.md` placement guidance:
 | Missing/ambiguous rule | `rules/<domain>.md` |
 | Correct rule not loaded | CLAUDE.md router + `registries/routing.json` |
 | Missing gate | `registries/decision-rules.json` |
+| Kernel ranks the wrong intent (Misroutes pair) | `registries/intents.json` row fields `phrases`, `negative`, `exemplars` (step 4) |
 | Repeated procedure | `skills/<name>/SKILL.md` |
 | Agent oversteps/under-reports | `agents/<name>.md` |
 | Eval missed failure | `evals/`, after final approval |
@@ -72,6 +84,37 @@ Keep each pattern's proposal independently reviewable:
 
 The detection criterion is mandatory. Include deletion candidates for rules that
 never caught anything; do not merely restate records or grow rules indefinitely.
+
+### Routing-registry proposals (Misroutes)
+
+A `<kernel intent> -> <corrected intent>` pair qualifies only with **three
+independent occurrences** in the window (three sessions, not one session's
+repeated line); smaller counts go on the watch list. Each qualifying pair gets
+one proposal that changes **one** v2 field of **one** `registries/intents.json`
+row, named exactly:
+
+`Proposal: <title>`
+`Pattern: <kernel intent> -> <corrected intent>, <count> occurrences (Misroutes <from>..<to>; session ids)`
+`Change: registries/intents.json row "<id>" field <phrases | negative | exemplars>: add <entry>`
+`Why this and not more: the feature that misfired (from the cited Candidates rows) and why this field fixes it`
+`How we would know it worked: an evals/intent-routing-cases.jsonl case expecting <corrected intent>, and the pair absent from the next window's Misroutes`
+
+Pick the field from the evidence:
+
+| Evidence | Row | Field | Entry shape |
+|---|---|---|---|
+| A matched phrase scored the kernel intent on prompts that belong elsewhere | kernel intent | `negative` | `{"text": "<phrase>", "weight": <n>}` (subtracted) |
+| A phrase that names the corrected intent matched no row | corrected intent | `phrases` | `{"text": "<phrase>", "weight": <n>}` |
+| No single phrase separates the two; the wording varies | corrected intent | `exemplars` | `"<paraphrased request>"` (an active row keeps 3–10) |
+
+Never propose an edit to `signals`: it is in its deprecation window (read
+through 1.x, removed in 2.0) and new vocabulary goes into `phrases`. Write phrases and exemplars as short, synthetic
+paraphrases: never paste transcript text, and never include customer, product,
+person names or secrets (`rules/security.md`). Phrase text follows the
+registry's metasyntax ban (no standalone `X`/`Y`/`N`, no `>` or `≥`). The router
+table in `CLAUDE.md`/`AGENTS.md` is generated from the registry: the proposal
+changes the registry row, never the table. Retro writes nothing to
+`registries/`; a human reviews and merges each proposal.
 
 ## 5. Implement and deliver
 
