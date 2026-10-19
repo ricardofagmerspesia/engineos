@@ -14,13 +14,13 @@
     "decisions:worker": "node .decision-build/worker.cjs"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query": "^5.104.3",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
-    "next": "^16.4.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "zod": "4.5.4"
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
@@ -29,8 +29,8 @@
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.6.1",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.4.0",
-    "postcss": "^8.5.29",
+    "eslint-config-next": "^16.4.2",
+    "postcss": "^8.5.30",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3"
   }
